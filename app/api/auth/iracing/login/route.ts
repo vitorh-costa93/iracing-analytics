@@ -1,34 +1,32 @@
 import { NextResponse } from "next/server";
 import { authorize } from "@/lib/iracing";
-import {
-  challenge,
-  random,
-  seal,
-  PENDING,
-} from "@/lib/oauth";
+import { challenge, random } from "@/lib/oauth";
 
 export async function GET() {
-  const state = random();
-  const verifier = random();
+  try {
+    const state = random();
+    const verifier = random();
 
-  const authorizationUrl = authorize(
-    state,
-    challenge(verifier)
-  );
+    const authorizationUrl = authorize(
+      state,
+      challenge(verifier)
+    );
 
-  const response = NextResponse.redirect(authorizationUrl);
-
-  response.cookies.set(
-    PENDING,
-    seal({ state, verifier }),
-    {
-      httpOnly: true,
-      secure: true,
-      sameSite: "lax",
-      maxAge: 600,
-      path: "/",
-    }
-  );
-
-  return response;
+    return NextResponse.json({
+      status: "ok",
+      authorizationUrl,
+      hasClientId: Boolean(process.env.IRACING_CLIENT_ID),
+      hasRedirectUri: Boolean(process.env.IRACING_REDIRECT_URI),
+      hasClientSecret: Boolean(process.env.IRACING_CLIENT_SECRET),
+      hasScope: Boolean(process.env.IRACING_SCOPE),
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  }
 }
