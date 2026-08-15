@@ -1,0 +1,2 @@
+import {NextResponse} from 'next/server'; import {authorize} from '@/lib/iracing'; import {challenge,random,seal,PENDING} from '@/lib/oauth';
+export async function GET(){const state=random(),verifier=random();const r=NextResponse.redirect(authorize(state,challenge(verifier)));r.cookies.set(PENDING,seal({state,verifier}),{httpOnly:true,secure:process.env.NODE_ENV==='production',sameSite:'lax',maxAge:600,path:'/'});return r}

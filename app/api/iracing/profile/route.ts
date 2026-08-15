@@ -1,0 +1,2 @@
+import {NextRequest,NextResponse} from 'next/server'; import {open,SESSION} from '@/lib/oauth'; import {profile} from '@/lib/iracing';
+export async function GET(req:NextRequest){const raw=req.cookies.get(SESSION)?.value;if(!raw)return NextResponse.json({authenticated:false},{status:401});try{const s=open<{access:string;profile:unknown}>(raw);return NextResponse.json({authenticated:true,profile:await profile(s.access)})}catch(e){return NextResponse.json({authenticated:false,error:e instanceof Error?e.message:'failed'},{status:502})}}
