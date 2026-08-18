@@ -2,8 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function GET(request: NextRequest) {
   try {
-    const eventId =
-      request.nextUrl.searchParams.get("event");
+    const eventId = request.nextUrl.searchParams.get("event");
 
     if (!eventId) {
       return NextResponse.json(
@@ -15,101 +14,96 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const token =
-      process.env.GARAGE61_API_TOKEN;
+    const rawToken = process.env.GARAGE61_API_TOKEN;
 
-    if (!token) {
+    if (!rawToken) {
       return NextResponse.json(
         {
           status: "error",
-          message:
-            "GARAGE61_API_TOKEN não configurado",
+          message: "GARAGE61_API_TOKEN não configurado",
         },
         { status: 500 }
       );
     }
 
-    const url =
+    // Normalização defensiva
+    const token = rawToken
+      .trim()
+      .replace(/^["']|["']$/g, "")
+      .replace(/^Bearer\s+/i, "");
+
+    const headers = {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    };
+
+    // 1. Testar o mesmo token contra um endpoint público
+    const publicResponse = await fetch(
+      "https://garage61.net/api/v1/me",
+      {
+        headers,
+        cache: "no-store",
+      }
+    );
+
+    const publicText = await publicResponse.text();
+
+    // 2. Testar contra o endpoint interno
+    const internalResponse = await fetch(
       `https://garage61.net/api/internal/events_live_timing/${encodeURIComponent(
         eventId
-      )}/state`;
-
-    const response =
-      await fetch(url, {
-        method: "GET",
-
+      )}/state`,
+      {
         headers: {
-          Authorization:
-            `Bearer ${token}`,
-
-          Accept:
-            "application/vnd.google.protobuf",
+          Authorization: `Bearer ${token}`,
+          Accept: "application/vnd.google.protobuf",
         },
-
         cache: "no-store",
-      });
+      }
+    );
 
-    const contentType =
-      response.headers.get(
-        "content-type"
-      );
+    const internalBuffer = await internalResponse.arrayBuffer();
+    const internalBytes = new Uint8Array(internalBuffer);
 
-    const eventLive =
-      response.headers.get(
-        "X-G61-Event-Live"
-      );
-
-    const buffer =
-      await response.arrayBuffer();
-
-    const bytes =
-      new Uint8Array(buffer);
-
-    // Só para diagnóstico:
-    // mostramos os primeiros bytes em hexadecimal.
-    const preview =
-      Array.from(
-        bytes.slice(0, 80)
-      )
-        .map((byte) =>
-          byte
-            .toString(16)
-            .padStart(2, "0")
-        )
-        .join(" ");
+    const internalPreview = new TextDecoder()
+      .decode(internalBytes.slice(0, 500));
 
     return NextResponse.json({
-      status:
-        response.ok
-          ? "ok"
-          : "error",
+      status: "ok",
 
-      httpStatus:
-        response.status,
+      tokenDiagnostics: {
+        rawLength: rawToken.length,
+        normalizedLength: token.length,
+        rawStartsWithBearer: /^Bearer\s+/i.test(rawToken.trim()),
+        rawStartsWithQuote: /^["']/.test(rawToken.trim()),
+        rawEndsWithQuote: /["']$/.test(rawToken.trim()),
+        containsWhitespace: /\s/.test(token),
+      },
 
-      contentType,
+      publicApi: {
+        status: publicResponse.status,
+        ok: publicResponse.ok,
+        preview: publicText.slice(0, 300),
+      },
 
-      eventLive,
-
-      byteLength:
-        bytes.length,
-
-      hexPreview:
-        preview,
+      internalApi: {
+        status: internalResponse.status,
+        ok: internalResponse.ok,
+        contentType: internalResponse.headers.get("content-type"),
+        byteLength: internalBytes.length,
+        preview: internalPreview,
+      },
     });
   } catch (error) {
     return NextResponse.json(
       {
         status: "error",
-
         message:
           error instanceof Error
             ? error.message
             : String(error),
       },
-      {
-        status: 500,
-      }
+      { status: 500 }
     );
   }
 }
