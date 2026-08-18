@@ -77,8 +77,58 @@ type DashboardData = {
   bestLaps: BestLap[];
 };
 
-function formatHours(seconds: number) {
-  const hours = seconds / 3600;
+type BatchResult = {
+  status: string;
+
+  completed: boolean;
+
+  tracksUsed: number;
+
+  totalBatches: number;
+
+  currentBatch: number;
+
+  offset: number;
+
+  pageSize: number;
+
+  lapsReceived: number;
+
+  lapsSynced: number;
+
+  sectorsSynced: number;
+
+  telemetryAvailable: number;
+
+  totalAvailableForBatch?: number | null;
+
+  nextBatch: number;
+
+  nextOffset: number;
+
+  message?: string;
+};
+
+type ProgressState = {
+  batch: number;
+  totalBatches: number;
+
+  offset: number;
+
+  totalLapsSynced: number;
+
+  totalSectorsSynced: number;
+
+  telemetryAvailable: number;
+
+  requests: number;
+};
+
+function formatHours(
+  seconds: number
+) {
+  const hours =
+    seconds / 3600;
 
   if (hours < 10) {
     return `${hours.toFixed(1)}h`;
@@ -90,19 +140,23 @@ function formatHours(seconds: number) {
 function formatLapTime(
   seconds: number
 ) {
-  const minutes = Math.floor(
-    seconds / 60
-  );
+  const minutes =
+    Math.floor(
+      seconds / 60
+    );
 
   const remaining =
-    seconds - minutes * 60;
+    seconds -
+    minutes * 60;
 
   return `${minutes}:${remaining
     .toFixed(3)
     .padStart(6, "0")}`;
 }
 
-function formatMonth(month: string) {
+function formatMonth(
+  month: string
+) {
   const [year, m] =
     month.split("-");
 
@@ -166,99 +220,213 @@ export default function Home() {
     useState(false);
 
   const [message, setMessage] =
-    useState<string | null>(null);
+    useState<string | null>(
+      null
+    );
+
+  const [progress, setProgress] =
+    useState<ProgressState | null>(
+      null
+    );
 
   const loadDashboard =
-    useCallback(async () => {
-      try {
-        const response = await fetch(
-          "/api/dashboard/overview",
-          {
-            cache: "no-store",
+    useCallback(
+      async () => {
+        try {
+          const response =
+            await fetch(
+              "/api/dashboard/overview",
+              {
+                cache:
+                  "no-store",
+              }
+            );
+
+          const result =
+            await response.json();
+
+          if (!response.ok) {
+            throw new Error(
+              result.message ??
+                "Erro ao carregar dashboard"
+            );
           }
-        );
 
-        const result =
-          await response.json();
-
-        if (!response.ok) {
-          throw new Error(
-            result.message ??
-              "Erro ao carregar dashboard"
+          setData(result);
+        } catch (error) {
+          setMessage(
+            error instanceof
+              Error
+              ? error.message
+              : "Erro ao carregar dashboard"
           );
+        } finally {
+          setLoading(false);
         }
-
-        setData(result);
-      } catch (error) {
-        setMessage(
-          error instanceof Error
-            ? error.message
-            : "Erro ao carregar dashboard"
-        );
-      } finally {
-        setLoading(false);
-      }
-    }, []);
+      },
+      []
+    );
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
-  async function syncAll() {
-    setSyncing(true);
-    setMessage(
-      "Sincronizando dados gerais..."
-    );
-
-    try {
-      const mainResponse =
-        await fetch(
-          "/api/sync/all",
-          {
-            method: "POST",
-          }
-        );
-
-      const main =
-        await mainResponse.json();
-
-      if (!mainResponse.ok) {
-        throw new Error(
-          main.message ??
-            "Erro na sincronização geral"
-        );
-      }
-
-      setMessage(
-        "Sincronizando voltas e telemetria..."
+  async function syncGeneral() {
+    const response =
+      await fetch(
+        "/api/sync/all",
+        {
+          method: "POST",
+        }
       );
 
-      const lapsResponse =
+    const result =
+      await response.json();
+
+    if (!response.ok) {
+      throw new Error(
+        result.message ??
+          "Erro ao sincronizar dados gerais"
+      );
+    }
+
+    return result;
+  }
+
+  async function runLapBackfill() {
+    let batch = 0;
+    let offset = 0;
+
+    let totalLapsSynced = 0;
+    let totalSectorsSynced = 0;
+    let telemetryAvailable = 0;
+    let requests = 0;
+
+    while (true) {
+      setMessage(
+        `Importando histórico • lote ${
+          batch + 1
+        } • offset ${offset}`
+      );
+
+      const response =
         await fetch(
-          "/api/sync/laps-all",
+          "/api/sync/laps-batch",
           {
             method: "POST",
+
+            headers: {
+              "Content-Type":
+                "application/json",
+            },
+
+            body:
+              JSON.stringify({
+                batch,
+                offset,
+              }),
           }
         );
 
-      const laps =
-        await lapsResponse.json();
+      const result: BatchResult =
+        await response.json();
 
-      if (!lapsResponse.ok) {
+      if (
+        !response.ok ||
+        result.status !==
+          "ok"
+      ) {
         throw new Error(
-          laps.message ??
-            "Erro ao sincronizar voltas"
+          result.message ??
+            "Erro ao importar histórico"
         );
       }
 
+      requests++;
+
+      totalLapsSynced +=
+        result.lapsSynced ??
+        0;
+
+      totalSectorsSynced +=
+        result.sectorsSynced ??
+        0;
+
+      telemetryAvailable +=
+        result.telemetryAvailable ??
+        0;
+
+      setProgress({
+        batch:
+          result.currentBatch +
+          1,
+
+        totalBatches:
+          result.totalBatches,
+
+        offset:
+          result.offset,
+
+        totalLapsSynced,
+
+        totalSectorsSynced,
+
+        telemetryAvailable,
+
+        requests,
+      });
+
+      if (
+        result.completed
+      ) {
+        break;
+      }
+
+      batch =
+        result.nextBatch;
+
+      offset =
+        result.nextOffset;
+    }
+
+    return {
+      totalLapsSynced,
+      totalSectorsSynced,
+      telemetryAvailable,
+      requests,
+    };
+  }
+
+  async function syncAll() {
+    setSyncing(true);
+
+    setProgress(null);
+
+    try {
       setMessage(
-        `Sincronizado: ${laps.lapsSynced} voltas • ${laps.telemetrySynced} novas telemetrias`
+        "Sincronizando perfil, ratings, carros, pistas e estatísticas..."
+      );
+
+      await syncGeneral();
+
+      setMessage(
+        "Importando histórico completo de voltas..."
+      );
+
+      const backfill =
+        await runLapBackfill();
+
+      setMessage(
+        `Concluído • ${backfill.totalLapsSynced.toLocaleString(
+          "pt-BR"
+        )} voltas importadas`
       );
 
       await loadDashboard();
     } catch (error) {
       setMessage(
-        error instanceof Error
+        error instanceof
+          Error
           ? error.message
           : "Erro na sincronização"
       );
@@ -269,13 +437,16 @@ export default function Home() {
 
   const maxActivityLaps =
     useMemo(() => {
-      if (!data?.activity.length) {
+      if (
+        !data?.activity.length
+      ) {
         return 1;
       }
 
       return Math.max(
         ...data.activity.map(
-          (item) => item.laps
+          (item) =>
+            item.laps
         ),
         1
       );
@@ -283,13 +454,16 @@ export default function Home() {
 
   const maxCarLaps =
     useMemo(() => {
-      if (!data?.topCars.length) {
+      if (
+        !data?.topCars.length
+      ) {
         return 1;
       }
 
       return Math.max(
         ...data.topCars.map(
-          (item) => item.laps
+          (item) =>
+            item.laps
         ),
         1
       );
@@ -297,13 +471,16 @@ export default function Home() {
 
   const maxTrackLaps =
     useMemo(() => {
-      if (!data?.topTracks.length) {
+      if (
+        !data?.topTracks.length
+      ) {
         return 1;
       }
 
       return Math.max(
         ...data.topTracks.map(
-          (item) => item.laps
+          (item) =>
+            item.laps
         ),
         1
       );
@@ -347,15 +524,22 @@ export default function Home() {
             <p>
               {data.driver.name} •
               iRacing #
-              {data.driver.iracingId}
+              {
+                data.driver
+                  .iracingId
+              }
             </p>
           </div>
 
           <div className="sync-area">
             <button
               className="sync-button"
-              onClick={syncAll}
-              disabled={syncing}
+              onClick={
+                syncAll
+              }
+              disabled={
+                syncing
+              }
             >
               {syncing
                 ? "Sincronizando..."
@@ -369,6 +553,79 @@ export default function Home() {
             )}
           </div>
         </header>
+
+        {syncing &&
+          progress && (
+            <section className="panel">
+              <div className="panel-header">
+                <div>
+                  <span className="panel-kicker">
+                    BACKFILL
+                  </span>
+
+                  <h2>
+                    Importando
+                    histórico
+                  </h2>
+                </div>
+
+                <span className="panel-note">
+                  Lote{" "}
+                  {
+                    progress.batch
+                  }{" "}
+                  de{" "}
+                  {
+                    progress.totalBatches
+                  }
+                </span>
+              </div>
+
+              <div className="summary-strip">
+                <div>
+                  <strong>
+                    {progress.totalLapsSynced.toLocaleString(
+                      "pt-BR"
+                    )}
+                  </strong>
+                  <span>
+                    Voltas
+                  </span>
+                </div>
+
+                <div>
+                  <strong>
+                    {progress.totalSectorsSynced.toLocaleString(
+                      "pt-BR"
+                    )}
+                  </strong>
+                  <span>
+                    Setores
+                  </span>
+                </div>
+
+                <div>
+                  <strong>
+                    {progress.telemetryAvailable.toLocaleString(
+                      "pt-BR"
+                    )}
+                  </strong>
+                  <span>
+                    Com
+                    telemetria
+                  </span>
+                </div>
+              </div>
+
+              <p className="panel-note">
+                Requisições
+                processadas:{" "}
+                {
+                  progress.requests
+                }
+              </p>
+            </section>
+          )}
 
         <section className="metrics-grid">
           <RatingCard
@@ -440,7 +697,10 @@ export default function Home() {
                 "pt-BR"
               )}
             </strong>
-            <span>Eventos</span>
+
+            <span>
+              Eventos
+            </span>
           </div>
 
           <div>
@@ -450,6 +710,7 @@ export default function Home() {
                   .drivenTracks
               }
             </strong>
+
             <span>
               Pistas utilizadas
             </span>
@@ -462,6 +723,7 @@ export default function Home() {
                   .telemetryLaps
               }
             </strong>
+
             <span>
               Telemetrias
             </span>
@@ -476,7 +738,8 @@ export default function Home() {
               </span>
 
               <h2>
-                Últimos 12 meses
+                Últimos 12
+                meses
               </h2>
             </div>
 
@@ -499,10 +762,14 @@ export default function Home() {
                 return (
                   <div
                     className="activity-column"
-                    key={item.month}
+                    key={
+                      item.month
+                    }
                   >
                     <div className="activity-value">
-                      {item.laps}
+                      {
+                        item.laps
+                      }
                     </div>
 
                     <div className="activity-bar-track">
@@ -545,15 +812,22 @@ export default function Home() {
                 (car) => (
                   <div
                     className="ranking-item"
-                    key={car.id}
+                    key={
+                      car.id
+                    }
                   >
                     <div className="ranking-title">
                       <span>
-                        {car.name}
+                        {
+                          car.name
+                        }
                       </span>
 
                       <strong>
-                        {car.laps} voltas
+                        {
+                          car.laps
+                        }{" "}
+                        voltas
                       </strong>
                     </div>
 
@@ -593,15 +867,22 @@ export default function Home() {
                 (track) => (
                   <div
                     className="ranking-item"
-                    key={track.id}
+                    key={
+                      track.id
+                    }
                   >
                     <div className="ranking-title">
                       <span>
-                        {track.name}
+                        {
+                          track.name
+                        }
                       </span>
 
                       <strong>
-                        {track.laps} voltas
+                        {
+                          track.laps
+                        }{" "}
+                        voltas
                       </strong>
                     </div>
 
@@ -635,35 +916,56 @@ export default function Home() {
                 Voltas disponíveis
               </h2>
             </div>
-
-            <span className="panel-note">
-              Garage61
-            </span>
           </div>
 
           <div className="table-wrapper">
             <table>
               <thead>
                 <tr>
-                  <th>Pista</th>
-                  <th>Carro</th>
-                  <th>Tempo</th>
-                  <th>iRating</th>
-                  <th>Limpa</th>
-                  <th>Telemetria</th>
+                  <th>
+                    Pista
+                  </th>
+
+                  <th>
+                    Carro
+                  </th>
+
+                  <th>
+                    Tempo
+                  </th>
+
+                  <th>
+                    iRating
+                  </th>
+
+                  <th>
+                    Limpa
+                  </th>
+
+                  <th>
+                    Telemetria
+                  </th>
                 </tr>
               </thead>
 
               <tbody>
                 {data.bestLaps.map(
                   (lap) => (
-                    <tr key={lap.id}>
+                    <tr
+                      key={
+                        lap.id
+                      }
+                    >
                       <td>
-                        {lap.track}
+                        {
+                          lap.track
+                        }
                       </td>
 
                       <td>
-                        {lap.car}
+                        {
+                          lap.car
+                        }
                       </td>
 
                       <td className="lap-time">
