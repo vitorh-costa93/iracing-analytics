@@ -41,6 +41,10 @@ type Garage61StatisticsItem = {
   cleanLapsDriven: number;
 };
 
+type Garage61StatisticsResponse = {
+  drivingStatistics: Garage61StatisticsItem[];
+};
+
 type Garage61List<T> = {
   items: T[];
   total?: number;
@@ -78,10 +82,7 @@ export async function POST() {
     .single();
 
   try {
-    // -------------------------
     // PROFILE / DRIVER
-    // -------------------------
-
     const accountsResponse = await garage61Get<{
       items: Garage61Account[];
       total: number;
@@ -118,10 +119,7 @@ export async function POST() {
       throw driverError;
     }
 
-    // -------------------------
     // RATINGS
-    // -------------------------
-
     const ratingRows = account.ratings.map((rating) => ({
       driver_id: driver.id,
       category: rating.category,
@@ -139,10 +137,7 @@ export async function POST() {
       throw ratingsError;
     }
 
-    // -------------------------
     // GARAGE61 DATA
-    // -------------------------
-
     const [
       carsResponse,
       tracksResponse,
@@ -156,20 +151,17 @@ export async function POST() {
         Garage61Track[] | Garage61List<Garage61Track>
       >("/tracks"),
 
-      garage61Get<
-        | Garage61StatisticsItem[]
-        | Garage61List<Garage61StatisticsItem>
-      >("/me/statistics"),
+      garage61Get<Garage61StatisticsResponse>(
+        "/me/statistics"
+      ),
     ]);
 
     const cars = extractItems(carsResponse);
     const tracks = extractItems(tracksResponse);
-    const statistics = extractItems(statsResponse);
+    const statistics =
+      statsResponse.drivingStatistics ?? [];
 
-    // -------------------------
     // CARS
-    // -------------------------
-
     const carRows = cars.map((car) => ({
       id: car.id,
       platform: car.platform ?? "iracing",
@@ -190,10 +182,7 @@ export async function POST() {
       }
     }
 
-    // -------------------------
     // TRACKS
-    // -------------------------
-
     const trackRows = tracks.map((track) => ({
       id: track.id,
       platform: track.platform ?? "iracing",
@@ -214,10 +203,7 @@ export async function POST() {
       }
     }
 
-    // -------------------------
     // DAILY STATISTICS
-    // -------------------------
-
     const statisticRows = statistics.map((item) => ({
       driver_id: driver.id,
       statistic_date: item.day,
@@ -243,10 +229,7 @@ export async function POST() {
       }
     }
 
-    // -------------------------
     // SYNC LOG
-    // -------------------------
-
     const totalRecords =
       ratingRows.length +
       carRows.length +
