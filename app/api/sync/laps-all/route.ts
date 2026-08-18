@@ -2,8 +2,6 @@ import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-const GARAGE61_BASE_URL = "https://garage61.net/api/v1";
-
 type Garage61Lap = {
   id: string;
 
@@ -82,38 +80,7 @@ type Garage61LapsResponse = {
   total?: number;
 };
 
-function getGarage61Token() {
-  const token = process.env.GARAGE61_API_TOKEN;
-
-  if (!token) {
-    throw new Error("GARAGE61_API_TOKEN não configurado");
-  }
-
-  return token;
-}
-
-async function getTelemetryCsv(lapId: string) {
-  const response = await fetch(
-    `${GARAGE61_BASE_URL}/laps/${encodeURIComponent(lapId)}/csv`,
-    {
-      headers: {
-        Authorization: `Bearer ${getGarage61Token()}`,
-        Accept: "text/csv",
-      },
-      cache: "no-store",
-    }
-  );
-
-  if (!response.ok) {
-    const text = await response.text();
-
-    throw new Error(
-      `Falha ao buscar telemetria ${lapId}: ${response.status} ${text}`
-    );
-  }
-
-  return await response.arrayBuffer();
-}
+const PAGE_SIZE = 1000;
 
 export async function POST() {
   const startedAt = new Date().toISOString();
@@ -121,7 +88,7 @@ export async function POST() {
   const { data: syncRun } = await supabaseAdmin
     .from("sync_runs")
     .insert({
-      sync_type: "laps_all",
+      sync_type: "laps_full_backfill",
       status: "running",
       started_at: startedAt,
     })
@@ -155,7 +122,7 @@ export async function POST() {
       throw new Error("Driver não encontrado no Supabase");
     }
 
-    const { data: statistics, error: statsError } =
+    const { data: stats, error: statsError } =
       await supabaseAdmin
         .from("daily_statistics")
         .select("track_id")
@@ -168,40 +135,65 @@ export async function POST() {
 
     const trackIds = Array.from(
       new Set(
-        (statistics ?? [])
+        (stats ?? [])
           .map((row) => row.track_id)
-          .filter((id): id is number => typeof id === "number")
+          .filter(
+            (id): id is number =>
+              typeof id === "number"
+          )
       )
     );
 
-    let tracksProcessed = 0;
+    if (trackIds.length === 0) {
+      throw new Error("Nenhuma pista encontrada");
+    }
+
+    const tracksParam = trackIds.join(",");
+
+    let offset = 0;
+    let pagesProcessed = 0;
     let lapsReceived = 0;
     let lapsSynced = 0;
     let sectorsSynced = 0;
-    let telemetrySynced = 0;
-    let telemetrySkippedExisting = 0;
-    let telemetryFailed = 0;
+    let telemetryAvailable = 0;
+    let totalAvailable = 0;
 
-    for (const trackId of trackIds) {
+    while (true) {
       const response =
         await garage61Get<Garage61LapsResponse>(
           "/laps",
           {
-            tracks: trackId,
+            tracks: tracksParam,
+            drivers: "me",
+            group: "none",
+            unclean: "true",
+            lapTypes: "1,2,3,4",
+            limit: PAGE_SIZE,
+            offset,
           }
         );
 
       const laps = response.items ?? [];
 
-      tracksProcessed++;
+      totalAvailable =
+        response.total ?? totalAvailable;
+
+      pagesProcessed++;
       lapsReceived += laps.length;
+
+      if (laps.length === 0) {
+        break;
+      }
 
       for (const lap of laps) {
         if (!lap.car?.id || !lap.track?.id) {
           continue;
         }
 
-        // SESSION
+        if (lap.canViewTelemetry) {
+          telemetryAvailable++;
+        }
+
         let sessionQuery = supabaseAdmin
           .from("sessions")
           .select("id")
@@ -220,15 +212,17 @@ export async function POST() {
           .eq("track_id", lap.track.id);
 
         if (lap.startTime) {
-          sessionQuery = sessionQuery.eq(
-            "started_at",
-            lap.startTime
-          );
+          sessionQuery =
+            sessionQuery.eq(
+              "started_at",
+              lap.startTime
+            );
         } else {
-          sessionQuery = sessionQuery.is(
-            "started_at",
-            null
-          );
+          sessionQuery =
+            sessionQuery.is(
+              "started_at",
+              null
+            );
         }
 
         const {
@@ -308,21 +302,30 @@ export async function POST() {
             .select("id")
             .single();
 
-          if (sessionError || !createdSession) {
-            throw sessionError ??
-              new Error("Erro ao criar sessão");
+          if (
+            sessionError ||
+            !createdSession
+          ) {
+            throw (
+              sessionError ??
+              new Error(
+                "Erro ao criar sessão"
+              )
+            );
           }
 
-          sessionId = createdSession.id;
+          sessionId =
+            createdSession.id;
         }
 
-        // Verifica se lap já existe e se telemetria já foi salva
         const {
           data: existingLap,
           error: existingLapError,
         } = await supabaseAdmin
           .from("laps")
-          .select("id, telemetry_path")
+          .select(
+            "id, telemetry_path"
+          )
           .eq("id", lap.id)
           .maybeSingle();
 
@@ -330,55 +333,6 @@ export async function POST() {
           throw existingLapError;
         }
 
-        let telemetryPath =
-          existingLap?.telemetry_path ?? null;
-
-        if (
-          lap.canViewTelemetry &&
-          !telemetryPath
-        ) {
-          const path =
-            `laps/${lap.track.id}/${lap.id}.csv`;
-
-          try {
-            const csv =
-              await getTelemetryCsv(lap.id);
-
-            const { error: uploadError } =
-              await supabaseAdmin.storage
-                .from("telemetry")
-                .upload(
-                  path,
-                  csv,
-                  {
-                    contentType:
-                      "text/csv; charset=utf-8",
-                    upsert: true,
-                  }
-                );
-
-            if (uploadError) {
-              throw uploadError;
-            }
-
-            telemetryPath = path;
-            telemetrySynced++;
-          } catch (telemetryError) {
-            console.error(
-              `Erro na telemetria ${lap.id}:`,
-              telemetryError
-            );
-
-            telemetryFailed++;
-          }
-        } else if (
-          lap.canViewTelemetry &&
-          telemetryPath
-        ) {
-          telemetrySkippedExisting++;
-        }
-
-        // LAP
         const { error: lapError } =
           await supabaseAdmin
             .from("laps")
@@ -386,17 +340,25 @@ export async function POST() {
               {
                 id: lap.id,
 
-                session_id: sessionId,
-                driver_id: driver.id,
+                session_id:
+                  sessionId,
 
-                car_id: lap.car.id,
-                track_id: lap.track.id,
+                driver_id:
+                  driver.id,
+
+                car_id:
+                  lap.car.id,
+
+                track_id:
+                  lap.track.id,
 
                 lap_number:
-                  lap.lapNumber ?? null,
+                  lap.lapNumber ??
+                  null,
 
                 lap_time:
-                  lap.lapTime ?? null,
+                  lap.lapTime ??
+                  null,
 
                 clean:
                   lap.clean ?? null,
@@ -405,57 +367,74 @@ export async function POST() {
                   lap.joker ?? null,
 
                 discontinuity:
-                  lap.discontinuity ?? null,
+                  lap.discontinuity ??
+                  null,
 
                 missing:
                   lap.missing ?? null,
 
                 incomplete:
-                  lap.incomplete ?? null,
+                  lap.incomplete ??
+                  null,
 
                 off_track:
-                  lap.offtrack ?? null,
+                  lap.offtrack ??
+                  null,
 
                 pit_lane:
-                  lap.pitLane ?? null,
+                  lap.pitLane ??
+                  null,
 
                 pit_in:
-                  lap.pitIn ?? null,
+                  lap.pitIn ??
+                  null,
 
                 pit_out:
-                  lap.pitOut ?? null,
+                  lap.pitOut ??
+                  null,
 
                 driver_rating:
                   lap.driverRating ??
-                  lap.driver?.driverRating ??
+                  lap.driver
+                    ?.driverRating ??
                   null,
 
                 fuel_level:
-                  lap.fuelLevel ?? null,
+                  lap.fuelLevel ??
+                  null,
 
                 fuel_used:
-                  lap.fuelUsed ?? null,
+                  lap.fuelUsed ??
+                  null,
 
                 fuel_added:
-                  lap.fuelAdded ?? null,
+                  lap.fuelAdded ??
+                  null,
 
                 weight_penalty:
-                  lap.weightPenalty ?? null,
+                  lap.weightPenalty ??
+                  null,
 
                 power_adjust:
-                  lap.powerAdjust ?? null,
+                  lap.powerAdjust ??
+                  null,
 
                 tire_compound:
-                  lap.tireCompound ?? null,
+                  lap.tireCompound ??
+                  null,
 
                 can_view_telemetry:
-                  lap.canViewTelemetry ?? false,
+                  lap.canViewTelemetry ??
+                  false,
 
                 can_view_setup:
-                  lap.canViewSetup ?? false,
+                  lap.canViewSetup ??
+                  false,
 
                 telemetry_path:
-                  telemetryPath,
+                  existingLap
+                    ?.telemetry_path ??
+                  null,
 
                 garage61_payload:
                   lap,
@@ -474,7 +453,6 @@ export async function POST() {
 
         lapsSynced++;
 
-        // SECTORS
         if (
           lap.sectors &&
           Array.isArray(lap.sectors)
@@ -482,7 +460,8 @@ export async function POST() {
           const sectorRows =
             lap.sectors.map(
               (sector, index) => ({
-                lap_id: lap.id,
+                lap_id:
+                  lap.id,
 
                 sector_number:
                   index + 1,
@@ -497,18 +476,23 @@ export async function POST() {
               })
             );
 
-          if (sectorRows.length > 0) {
+          if (
+            sectorRows.length > 0
+          ) {
             const {
               error: sectorError,
-            } = await supabaseAdmin
-              .from("lap_sectors")
-              .upsert(
-                sectorRows,
-                {
-                  onConflict:
-                    "lap_id,sector_number",
-                }
-              );
+            } =
+              await supabaseAdmin
+                .from(
+                  "lap_sectors"
+                )
+                .upsert(
+                  sectorRows,
+                  {
+                    onConflict:
+                      "lap_id,sector_number",
+                  }
+                );
 
             if (sectorError) {
               throw sectorError;
@@ -519,6 +503,15 @@ export async function POST() {
           }
         }
       }
+
+      if (
+        laps.length <
+        PAGE_SIZE
+      ) {
+        break;
+      }
+
+      offset += PAGE_SIZE;
     }
 
     if (syncRun?.id) {
@@ -528,21 +521,28 @@ export async function POST() {
           status: "completed",
           finished_at:
             new Date().toISOString(),
+
           records_found:
             lapsReceived,
+
           records_inserted:
             lapsSynced,
         })
-        .eq("id", syncRun.id);
+        .eq(
+          "id",
+          syncRun.id
+        );
     }
 
     return NextResponse.json({
       status: "ok",
 
-      tracksFound:
+      tracksUsed:
         trackIds.length,
 
-      tracksProcessed,
+      pagesProcessed,
+
+      totalAvailable,
 
       lapsReceived,
 
@@ -550,11 +550,7 @@ export async function POST() {
 
       sectorsSynced,
 
-      telemetrySynced,
-
-      telemetrySkippedExisting,
-
-      telemetryFailed,
+      telemetryAvailable,
     });
   } catch (error) {
     const message =
@@ -567,12 +563,17 @@ export async function POST() {
         .from("sync_runs")
         .update({
           status: "error",
+
           finished_at:
             new Date().toISOString(),
+
           error_message:
             message,
         })
-        .eq("id", syncRun.id);
+        .eq(
+          "id",
+          syncRun.id
+        );
     }
 
     return NextResponse.json(
@@ -580,7 +581,9 @@ export async function POST() {
         status: "error",
         message,
       },
-      { status: 500 }
+      {
+        status: 500,
+      }
     );
   }
 }
