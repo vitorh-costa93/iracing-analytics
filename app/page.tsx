@@ -1,494 +1,705 @@
 "use client";
 
-import { useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 
-type MainSyncResult = {
-  status?: string;
+type Rating = {
+  value?: number | null;
+  display?: string | null;
+};
 
-  driver?: {
-    id?: string;
-    name?: string;
+type RatingCategory = {
+  irating?: Rating;
+  safety_rating?: Rating;
+};
+
+type Activity = {
+  month: string;
+  events: number;
+  laps: number;
+  cleanLaps: number;
+  seconds: number;
+};
+
+type PerformanceItem = {
+  id: number;
+  name: string;
+  events: number;
+  laps: number;
+  cleanLaps: number;
+  seconds: number;
+};
+
+type BestLap = {
+  id: string;
+  car: string;
+  track: string;
+  lapNumber?: number | null;
+  lapTime: number;
+  clean?: boolean | null;
+  driverRating?: number | null;
+  telemetryAvailable: boolean;
+};
+
+type DashboardData = {
+  status: string;
+
+  driver: {
+    id: string;
+    name: string;
+    iracingId: string;
   };
 
-  ratingsInserted?: number;
-  carsSynced?: number;
-  tracksSynced?: number;
-  statisticsSynced?: number;
+  ratings: Record<
+    string,
+    RatingCategory
+  >;
 
-  message?: string;
+  totals: {
+    events: number;
+    laps: number;
+    cleanLaps: number;
+    cleanPercentage: number;
+    timeOnTrackSeconds: number;
+    drivenTracks: number;
+    telemetryLaps: number;
+  };
+
+  activity: Activity[];
+
+  topCars: PerformanceItem[];
+  topTracks: PerformanceItem[];
+
+  bestLaps: BestLap[];
 };
 
-type LapsSyncResult = {
-  status?: string;
+function formatHours(seconds: number) {
+  const hours = seconds / 3600;
 
-  tracksFound?: number;
-  tracksProcessed?: number;
+  if (hours < 10) {
+    return `${hours.toFixed(1)}h`;
+  }
 
-  lapsReceived?: number;
-  lapsSynced?: number;
+  return `${Math.round(hours)}h`;
+}
 
-  sectorsSynced?: number;
+function formatLapTime(
+  seconds: number
+) {
+  const minutes = Math.floor(
+    seconds / 60
+  );
 
-  telemetrySynced?: number;
-  telemetrySkippedExisting?: number;
-  telemetryFailed?: number;
+  const remaining =
+    seconds - minutes * 60;
 
-  message?: string;
-};
+  return `${minutes}:${remaining
+    .toFixed(3)
+    .padStart(6, "0")}`;
+}
 
-type FullSyncResult = {
-  status: "ok" | "error";
+function formatMonth(month: string) {
+  const [year, m] =
+    month.split("-");
 
-  main?: MainSyncResult;
-  laps?: LapsSyncResult;
+  const names = [
+    "Jan",
+    "Fev",
+    "Mar",
+    "Abr",
+    "Mai",
+    "Jun",
+    "Jul",
+    "Ago",
+    "Set",
+    "Out",
+    "Nov",
+    "Dez",
+  ];
 
-  message?: string;
-};
+  return `${names[
+    Number(m) - 1
+  ]}/${year.slice(2)}`;
+}
+
+function RatingCard({
+  title,
+  rating,
+}: {
+  title: string;
+  rating?: RatingCategory;
+}) {
+  return (
+    <div className="metric-card">
+      <span className="metric-label">
+        {title}
+      </span>
+
+      <strong className="metric-value">
+        {rating?.irating?.display ??
+          "—"}
+      </strong>
+
+      <span className="metric-subtitle">
+        SR{" "}
+        {rating?.safety_rating
+          ?.display ?? "—"}
+      </span>
+    </div>
+  );
+}
 
 export default function Home() {
-  const [syncing, setSyncing] = useState(false);
+  const [data, setData] =
+    useState<DashboardData | null>(
+      null
+    );
 
-  const [syncStage, setSyncStage] =
+  const [loading, setLoading] =
+    useState(true);
+
+  const [syncing, setSyncing] =
+    useState(false);
+
+  const [message, setMessage] =
     useState<string | null>(null);
 
-  const [syncResult, setSyncResult] =
-    useState<FullSyncResult | null>(null);
+  const loadDashboard =
+    useCallback(async () => {
+      try {
+        const response = await fetch(
+          "/api/dashboard/overview",
+          {
+            cache: "no-store",
+          }
+        );
+
+        const result =
+          await response.json();
+
+        if (!response.ok) {
+          throw new Error(
+            result.message ??
+              "Erro ao carregar dashboard"
+          );
+        }
+
+        setData(result);
+      } catch (error) {
+        setMessage(
+          error instanceof Error
+            ? error.message
+            : "Erro ao carregar dashboard"
+        );
+      } finally {
+        setLoading(false);
+      }
+    }, []);
+
+  useEffect(() => {
+    loadDashboard();
+  }, [loadDashboard]);
 
   async function syncAll() {
     setSyncing(true);
-    setSyncResult(null);
+    setMessage(
+      "Sincronizando dados gerais..."
+    );
 
     try {
-      // ------------------------------------
-      // ETAPA 1
-      // Perfil + catálogo + estatísticas
-      // ------------------------------------
+      const mainResponse =
+        await fetch(
+          "/api/sync/all",
+          {
+            method: "POST",
+          }
+        );
 
-      setSyncStage(
-        "Sincronizando perfil, ratings, carros, pistas e estatísticas..."
-      );
-
-      const mainResponse = await fetch(
-        "/api/sync/all",
-        {
-          method: "POST",
-        }
-      );
-
-      const mainData: MainSyncResult =
+      const main =
         await mainResponse.json();
 
-      if (
-        !mainResponse.ok ||
-        mainData.status !== "ok"
-      ) {
+      if (!mainResponse.ok) {
         throw new Error(
-          mainData.message ??
-            "Erro na sincronização principal"
+          main.message ??
+            "Erro na sincronização geral"
         );
       }
 
-      // ------------------------------------
-      // ETAPA 2
-      // Laps + setores + telemetria
-      // ------------------------------------
-
-      setSyncStage(
-        "Sincronizando voltas, setores e telemetria..."
+      setMessage(
+        "Sincronizando voltas e telemetria..."
       );
 
-      const lapsResponse = await fetch(
-        "/api/sync/laps-all",
-        {
-          method: "POST",
-        }
-      );
+      const lapsResponse =
+        await fetch(
+          "/api/sync/laps-all",
+          {
+            method: "POST",
+          }
+        );
 
-      const lapsData: LapsSyncResult =
+      const laps =
         await lapsResponse.json();
 
-      if (
-        !lapsResponse.ok ||
-        lapsData.status !== "ok"
-      ) {
+      if (!lapsResponse.ok) {
         throw new Error(
-          lapsData.message ??
-            "Erro na sincronização das voltas"
+          laps.message ??
+            "Erro ao sincronizar voltas"
         );
       }
 
-      // ------------------------------------
-      // FINAL
-      // ------------------------------------
+      setMessage(
+        `Sincronizado: ${laps.lapsSynced} voltas • ${laps.telemetrySynced} novas telemetrias`
+      );
 
-      setSyncResult({
-        status: "ok",
-        main: mainData,
-        laps: lapsData,
-      });
-
-      setSyncStage(null);
+      await loadDashboard();
     } catch (error) {
-      setSyncResult({
-        status: "error",
-
-        message:
-          error instanceof Error
-            ? error.message
-            : "Erro desconhecido durante a sincronização",
-      });
-
-      setSyncStage(null);
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : "Erro na sincronização"
+      );
     } finally {
       setSyncing(false);
     }
   }
 
+  const maxActivityLaps =
+    useMemo(() => {
+      if (!data?.activity.length) {
+        return 1;
+      }
+
+      return Math.max(
+        ...data.activity.map(
+          (item) => item.laps
+        ),
+        1
+      );
+    }, [data]);
+
+  const maxCarLaps =
+    useMemo(() => {
+      if (!data?.topCars.length) {
+        return 1;
+      }
+
+      return Math.max(
+        ...data.topCars.map(
+          (item) => item.laps
+        ),
+        1
+      );
+    }, [data]);
+
+  const maxTrackLaps =
+    useMemo(() => {
+      if (!data?.topTracks.length) {
+        return 1;
+      }
+
+      return Math.max(
+        ...data.topTracks.map(
+          (item) => item.laps
+        ),
+        1
+      );
+    }, [data]);
+
+  if (loading) {
+    return (
+      <main className="dashboard-shell">
+        <div className="loading">
+          Carregando Racing
+          Analytics...
+        </div>
+      </main>
+    );
+  }
+
+  if (!data) {
+    return (
+      <main className="dashboard-shell">
+        <div className="error-box">
+          {message ??
+            "Não foi possível carregar os dados."}
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main
-      style={{
-        minHeight: "100vh",
-        background: "#0b0d10",
-        color: "#f4f5f7",
-        padding: "48px 24px",
+    <main className="dashboard-shell">
+      <div className="dashboard">
+        <header className="topbar">
+          <div>
+            <span className="eyebrow">
+              IRACING ANALYTICS
+            </span>
 
-        fontFamily:
-          'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
-      }}
-    >
-      <div
-        style={{
-          maxWidth: "900px",
-          margin: "0 auto",
+            <h1>
+              Racing Analytics
+            </h1>
 
-          background: "#14171c",
-
-          border:
-            "1px solid #282d35",
-
-          borderRadius: "18px",
-
-          padding: "32px",
-        }}
-      >
-        <small
-          style={{
-            color: "#8ab4d9",
-
-            letterSpacing: "0.12em",
-
-            fontWeight: 700,
-          }}
-        >
-          IRACING ANALYTICS
-        </small>
-
-        <h1
-          style={{
-            fontSize: "48px",
-
-            marginTop: "18px",
-
-            marginBottom: "12px",
-          }}
-        >
-          Racing Analytics
-        </h1>
-
-        <p
-          style={{
-            color: "#b8c0ca",
-
-            lineHeight: 1.6,
-          }}
-        >
-          Sincronize seus dados do Garage61
-          com o Supabase.
-        </p>
-
-        <button
-          onClick={syncAll}
-          disabled={syncing}
-          style={{
-            marginTop: "22px",
-
-            padding:
-              "14px 22px",
-
-            borderRadius:
-              "10px",
-
-            border: "none",
-
-            cursor: syncing
-              ? "not-allowed"
-              : "pointer",
-
-            fontWeight: 700,
-
-            fontSize: "15px",
-
-            background: syncing
-              ? "#4b5563"
-              : "#f4f5f7",
-
-            color: syncing
-              ? "#d1d5db"
-              : "#0b0d10",
-          }}
-        >
-          {syncing
-            ? "Sincronizando..."
-            : "Sincronizar tudo"}
-        </button>
-
-        {syncing && syncStage && (
-          <div
-            style={{
-              marginTop: "22px",
-
-              padding: "16px",
-
-              borderRadius:
-                "10px",
-
-              background:
-                "#17202b",
-
-              color: "#a9c5df",
-            }}
-          >
-            {syncStage}
+            <p>
+              {data.driver.name} •
+              iRacing #
+              {data.driver.iracingId}
+            </p>
           </div>
-        )}
 
-        {syncResult?.status ===
-          "ok" && (
-          <div
-            style={{
-              marginTop: "28px",
-
-              padding: "24px",
-
-              background:
-                "#10301f",
-
-              borderRadius:
-                "14px",
-            }}
-          >
-            <h2
-              style={{
-                marginTop: 0,
-
-                color:
-                  "#91e5ad",
-              }}
+          <div className="sync-area">
+            <button
+              className="sync-button"
+              onClick={syncAll}
+              disabled={syncing}
             >
-              ✓ Sincronização concluída
-            </h2>
+              {syncing
+                ? "Sincronizando..."
+                : "Sincronizar dados"}
+            </button>
 
-            <p>
-              <strong>
-                Piloto:
-              </strong>{" "}
-              {
-                syncResult.main
-                  ?.driver?.name
-              }
-            </p>
-
-            <hr
-              style={{
-                border: 0,
-
-                borderTop:
-                  "1px solid #285039",
-
-                margin:
-                  "22px 0",
-              }}
-            />
-
-            <h3>
-              Dados gerais
-            </h3>
-
-            <p>
-              <strong>
-                Ratings:
-              </strong>{" "}
-              {
-                syncResult.main
-                  ?.ratingsInserted
-              }
-            </p>
-
-            <p>
-              <strong>
-                Carros:
-              </strong>{" "}
-              {
-                syncResult.main
-                  ?.carsSynced
-              }
-            </p>
-
-            <p>
-              <strong>
-                Pistas:
-              </strong>{" "}
-              {
-                syncResult.main
-                  ?.tracksSynced
-              }
-            </p>
-
-            <p>
-              <strong>
-                Estatísticas:
-              </strong>{" "}
-              {
-                syncResult.main
-                  ?.statisticsSynced
-              }
-            </p>
-
-            <hr
-              style={{
-                border: 0,
-
-                borderTop:
-                  "1px solid #285039",
-
-                margin:
-                  "22px 0",
-              }}
-            />
-
-            <h3>
-              Dados de pilotagem
-            </h3>
-
-            <p>
-              <strong>
-                Pistas utilizadas:
-              </strong>{" "}
-              {
-                syncResult.laps
-                  ?.tracksFound
-              }
-            </p>
-
-            <p>
-              <strong>
-                Pistas processadas:
-              </strong>{" "}
-              {
-                syncResult.laps
-                  ?.tracksProcessed
-              }
-            </p>
-
-            <p>
-              <strong>
-                Voltas:
-              </strong>{" "}
-              {
-                syncResult.laps
-                  ?.lapsSynced
-              }
-            </p>
-
-            <p>
-              <strong>
-                Setores:
-              </strong>{" "}
-              {
-                syncResult.laps
-                  ?.sectorsSynced
-              }
-            </p>
-
-            <hr
-              style={{
-                border: 0,
-
-                borderTop:
-                  "1px solid #285039",
-
-                margin:
-                  "22px 0",
-              }}
-            />
-
-            <h3>
-              Telemetria
-            </h3>
-
-            <p>
-              <strong>
-                Novas:
-              </strong>{" "}
-              {
-                syncResult.laps
-                  ?.telemetrySynced
-              }
-            </p>
-
-            <p>
-              <strong>
-                Já existentes:
-              </strong>{" "}
-              {
-                syncResult.laps
-                  ?.telemetrySkippedExisting
-              }
-            </p>
-
-            <p>
-              <strong>
-                Falhas:
-              </strong>{" "}
-              {
-                syncResult.laps
-                  ?.telemetryFailed
-              }
-            </p>
+            {message && (
+              <small>
+                {message}
+              </small>
+            )}
           </div>
-        )}
+        </header>
 
-        {syncResult?.status ===
-          "error" && (
-          <div
-            style={{
-              marginTop: "28px",
+        <section className="metrics-grid">
+          <RatingCard
+            title="Sports Car"
+            rating={
+              data.ratings[
+                "sports_car"
+              ]
+            }
+          />
 
-              padding: "20px",
+          <RatingCard
+            title="Formula Car"
+            rating={
+              data.ratings[
+                "formula_car"
+              ]
+            }
+          />
 
-              background:
-                "#421b1e",
+          <div className="metric-card">
+            <span className="metric-label">
+              Tempo em pista
+            </span>
 
-              borderRadius:
-                "12px",
-            }}
-          >
-            <h2
-              style={{
-                marginTop: 0,
+            <strong className="metric-value">
+              {formatHours(
+                data.totals
+                  .timeOnTrackSeconds
+              )}
+            </strong>
 
-                color:
-                  "#ff9da4",
-              }}
-            >
-              Erro na sincronização
-            </h2>
-
-            <p>
-              {syncResult.message}
-            </p>
+            <span className="metric-subtitle">
+              {data.totals.laps.toLocaleString(
+                "pt-BR"
+              )}{" "}
+              voltas
+            </span>
           </div>
-        )}
+
+          <div className="metric-card">
+            <span className="metric-label">
+              Voltas limpas
+            </span>
+
+            <strong className="metric-value">
+              {data.totals.cleanPercentage.toFixed(
+                1
+              )}
+              %
+            </strong>
+
+            <span className="metric-subtitle">
+              {data.totals.cleanLaps.toLocaleString(
+                "pt-BR"
+              )}{" "}
+              de{" "}
+              {data.totals.laps.toLocaleString(
+                "pt-BR"
+              )}
+            </span>
+          </div>
+        </section>
+
+        <section className="summary-strip">
+          <div>
+            <strong>
+              {data.totals.events.toLocaleString(
+                "pt-BR"
+              )}
+            </strong>
+            <span>Eventos</span>
+          </div>
+
+          <div>
+            <strong>
+              {
+                data.totals
+                  .drivenTracks
+              }
+            </strong>
+            <span>
+              Pistas utilizadas
+            </span>
+          </div>
+
+          <div>
+            <strong>
+              {
+                data.totals
+                  .telemetryLaps
+              }
+            </strong>
+            <span>
+              Telemetrias
+            </span>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="panel-kicker">
+                ATIVIDADE
+              </span>
+
+              <h2>
+                Últimos 12 meses
+              </h2>
+            </div>
+
+            <span className="panel-note">
+              Voltas por mês
+            </span>
+          </div>
+
+          <div className="activity-chart">
+            {data.activity.map(
+              (item) => {
+                const height =
+                  Math.max(
+                    4,
+                    (item.laps /
+                      maxActivityLaps) *
+                      100
+                  );
+
+                return (
+                  <div
+                    className="activity-column"
+                    key={item.month}
+                  >
+                    <div className="activity-value">
+                      {item.laps}
+                    </div>
+
+                    <div className="activity-bar-track">
+                      <div
+                        className="activity-bar"
+                        style={{
+                          height: `${height}%`,
+                        }}
+                      />
+                    </div>
+
+                    <span>
+                      {formatMonth(
+                        item.month
+                      )}
+                    </span>
+                  </div>
+                );
+              }
+            )}
+          </div>
+        </section>
+
+        <section className="two-column">
+          <div className="panel">
+            <div className="panel-header">
+              <div>
+                <span className="panel-kicker">
+                  CARROS
+                </span>
+
+                <h2>
+                  Mais pilotados
+                </h2>
+              </div>
+            </div>
+
+            <div className="ranking-list">
+              {data.topCars.map(
+                (car) => (
+                  <div
+                    className="ranking-item"
+                    key={car.id}
+                  >
+                    <div className="ranking-title">
+                      <span>
+                        {car.name}
+                      </span>
+
+                      <strong>
+                        {car.laps} voltas
+                      </strong>
+                    </div>
+
+                    <div className="ranking-track">
+                      <div
+                        className="ranking-fill"
+                        style={{
+                          width: `${
+                            (car.laps /
+                              maxCarLaps) *
+                            100
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+
+          <div className="panel">
+            <div className="panel-header">
+              <div>
+                <span className="panel-kicker">
+                  PISTAS
+                </span>
+
+                <h2>
+                  Mais pilotadas
+                </h2>
+              </div>
+            </div>
+
+            <div className="ranking-list">
+              {data.topTracks.map(
+                (track) => (
+                  <div
+                    className="ranking-item"
+                    key={track.id}
+                  >
+                    <div className="ranking-title">
+                      <span>
+                        {track.name}
+                      </span>
+
+                      <strong>
+                        {track.laps} voltas
+                      </strong>
+                    </div>
+
+                    <div className="ranking-track">
+                      <div
+                        className="ranking-fill"
+                        style={{
+                          width: `${
+                            (track.laps /
+                              maxTrackLaps) *
+                            100
+                          }%`,
+                        }}
+                      />
+                    </div>
+                  </div>
+                )
+              )}
+            </div>
+          </div>
+        </section>
+
+        <section className="panel">
+          <div className="panel-header">
+            <div>
+              <span className="panel-kicker">
+                PERFORMANCE
+              </span>
+
+              <h2>
+                Voltas disponíveis
+              </h2>
+            </div>
+
+            <span className="panel-note">
+              Garage61
+            </span>
+          </div>
+
+          <div className="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Pista</th>
+                  <th>Carro</th>
+                  <th>Tempo</th>
+                  <th>iRating</th>
+                  <th>Limpa</th>
+                  <th>Telemetria</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                {data.bestLaps.map(
+                  (lap) => (
+                    <tr key={lap.id}>
+                      <td>
+                        {lap.track}
+                      </td>
+
+                      <td>
+                        {lap.car}
+                      </td>
+
+                      <td className="lap-time">
+                        {formatLapTime(
+                          lap.lapTime
+                        )}
+                      </td>
+
+                      <td>
+                        {lap.driverRating ??
+                          "—"}
+                      </td>
+
+                      <td>
+                        {lap.clean
+                          ? "Sim"
+                          : "Não"}
+                      </td>
+
+                      <td>
+                        {lap.telemetryAvailable
+                          ? "Disponível"
+                          : "—"}
+                      </td>
+                    </tr>
+                  )
+                )}
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <footer>
+          Dados fornecidos por
+          Garage61.
+        </footer>
       </div>
     </main>
   );
