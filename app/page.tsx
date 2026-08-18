@@ -1,1006 +1,285 @@
 "use client";
 
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import KpiCard from "@/components/KpiCard";
+import PerformanceRanking from "@/components/PerformanceRanking";
+import SeasonChart from "@/components/SeasonChart";
 
-type Rating = {
-  value?: number | null;
-  display?: string | null;
+type Category = "formula" | "sports";
+type RankingMode = "car" | "track";
+
+type WeekPoint = {
+  week: number;
+  weekStart: string;
+  weekEnd: string;
+  iratingBeforeWeek: number | null;
+  iratingFirst: number | null;
+  iratingEnd: number | null;
+  delta: number | null;
+  min: number | null;
+  max: number | null;
+  ratingChanges: number;
+  races: number;
+  cars: string[];
+  tracks: string[];
 };
 
-type RatingCategory = {
-  irating?: Rating;
-  safety_rating?: Rating;
-};
-
-type Activity = {
-  month: string;
-  events: number;
-  laps: number;
-  cleanLaps: number;
-  seconds: number;
-};
-
-type PerformanceItem = {
-  id: number;
-  name: string;
-  events: number;
-  laps: number;
-  cleanLaps: number;
-  seconds: number;
-};
-
-type BestLap = {
-  id: string;
+type HistoricalRow = {
+  ratingCategory: "formula_car" | "sports_car";
+  carClass: string | null;
   car: string;
   track: string;
-  lapNumber?: number | null;
-  lapTime: number;
-  clean?: boolean | null;
-  driverRating?: number | null;
-  telemetryAvailable: boolean;
+  races: number;
+  delta: number;
+  avgDelta: number;
 };
 
 type DashboardData = {
   status: string;
-
-  driver: {
-    id: string;
-    name: string;
-    iracingId: string;
+  driver: { id: string; name: string; iracingId: string };
+  season: {
+    current: { id: string; name: string; races: number; laps: number };
+    previous: { id: string; name: string; races: number; laps: number };
   };
-
-  ratings: Record<
-    string,
-    RatingCategory
-  >;
-
-  totals: {
-    events: number;
-    laps: number;
-    cleanLaps: number;
-    cleanPercentage: number;
-    timeOnTrackSeconds: number;
-    drivenTracks: number;
-    telemetryLaps: number;
+  ratings: { formula_car: number | null; sports_car: number | null };
+  kpis: {
+    formula: {
+      current: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
+      previous: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
+      wins: { current: number | null; previous: number | null };
+    };
+    sports: {
+      current: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
+      previous: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
+      wins: { current: number | null; previous: number | null };
+    };
   };
-
-  activity: Activity[];
-
-  topCars: PerformanceItem[];
-  topTracks: PerformanceItem[];
-
-  bestLaps: BestLap[];
+  weekly: {
+    formula: { current: WeekPoint[]; previous: WeekPoint[] };
+    sports: { current: WeekPoint[]; previous: WeekPoint[] };
+  };
+  historical: HistoricalRow[];
+  featureAvailability: { wins: boolean; winsReason: string };
 };
 
-type BatchResult = {
-  status: string;
+type RankingItem = { label: string; delta: number; races: number; group?: string | null };
 
-  completed: boolean;
+function shortSeason(name: string) {
+  return name.replace(" Season ", " S");
+}
 
-  tracksUsed: number;
+function aggregateRows(
+  rows: HistoricalRow[],
+  key: "car" | "track",
+  includeGroup = false
+): RankingItem[] {
+  const map = new Map<string, RankingItem>();
 
-  totalBatches: number;
-
-  currentBatch: number;
-
-  offset: number;
-
-  pageSize: number;
-
-  lapsReceived: number;
-
-  lapsSynced: number;
-
-  sectorsSynced: number;
-
-  telemetryAvailable: number;
-
-  totalAvailableForBatch?: number | null;
-
-  nextBatch: number;
-
-  nextOffset: number;
-
-  message?: string;
-};
-
-type ProgressState = {
-  batch: number;
-  totalBatches: number;
-
-  offset: number;
-
-  totalLapsSynced: number;
-
-  totalSectorsSynced: number;
-
-  telemetryAvailable: number;
-
-  requests: number;
-};
-
-function formatHours(
-  seconds: number
-) {
-  const hours =
-    seconds / 3600;
-
-  if (hours < 10) {
-    return `${hours.toFixed(1)}h`;
+  for (const row of rows) {
+    const label = row[key];
+    const group = includeGroup ? row.carClass : null;
+    const mapKey = `${group ?? ""}::${label}`;
+    const current = map.get(mapKey) ?? { label, delta: 0, races: 0, group };
+    current.delta += row.delta;
+    current.races += row.races;
+    map.set(mapKey, current);
   }
 
-  return `${Math.round(hours)}h`;
-}
-
-function formatLapTime(
-  seconds: number
-) {
-  const minutes =
-    Math.floor(
-      seconds / 60
-    );
-
-  const remaining =
-    seconds -
-    minutes * 60;
-
-  return `${minutes}:${remaining
-    .toFixed(3)
-    .padStart(6, "0")}`;
-}
-
-function formatMonth(
-  month: string
-) {
-  const [year, m] =
-    month.split("-");
-
-  const names = [
-    "Jan",
-    "Fev",
-    "Mar",
-    "Abr",
-    "Mai",
-    "Jun",
-    "Jul",
-    "Ago",
-    "Set",
-    "Out",
-    "Nov",
-    "Dez",
-  ];
-
-  return `${names[
-    Number(m) - 1
-  ]}/${year.slice(2)}`;
-}
-
-function RatingCard({
-  title,
-  rating,
-}: {
-  title: string;
-  rating?: RatingCategory;
-}) {
-  return (
-    <div className="metric-card">
-      <span className="metric-label">
-        {title}
-      </span>
-
-      <strong className="metric-value">
-        {rating?.irating?.display ??
-          "—"}
-      </strong>
-
-      <span className="metric-subtitle">
-        SR{" "}
-        {rating?.safety_rating
-          ?.display ?? "—"}
-      </span>
-    </div>
-  );
+  return [...map.values()].sort((a, b) => b.delta - a.delta);
 }
 
 export default function Home() {
-  const [data, setData] =
-    useState<DashboardData | null>(
-      null
-    );
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+  const [chartCategory, setChartCategory] = useState<Category>("formula");
+  const [trackCategory, setTrackCategory] = useState<Category>("formula");
+  const [gt3Mode, setGt3Mode] = useState<RankingMode>("car");
+  const [imsaMode, setImsaMode] = useState<RankingMode>("car");
 
-  const [loading, setLoading] =
-    useState(true);
-
-  const [syncing, setSyncing] =
-    useState(false);
-
-  const [message, setMessage] =
-    useState<string | null>(
-      null
-    );
-
-  const [progress, setProgress] =
-    useState<ProgressState | null>(
-      null
-    );
-
-  const loadDashboard =
-    useCallback(
-      async () => {
-        try {
-          const response =
-            await fetch(
-              "/api/dashboard/overview",
-              {
-                cache:
-                  "no-store",
-              }
-            );
-
-          const result =
-            await response.json();
-
-          if (!response.ok) {
-            throw new Error(
-              result.message ??
-                "Erro ao carregar dashboard"
-            );
-          }
-
-          setData(result);
-        } catch (error) {
-          setMessage(
-            error instanceof
-              Error
-              ? error.message
-              : "Erro ao carregar dashboard"
-          );
-        } finally {
-          setLoading(false);
-        }
-      },
-      []
-    );
+  const loadDashboard = useCallback(async () => {
+    try {
+      const response = await fetch("/api/dashboard/overview", { cache: "no-store" });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "Erro ao carregar dashboard");
+      setData(result);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Erro ao carregar dashboard");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
 
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
 
-  async function syncGeneral() {
-    const response =
-      await fetch(
-        "/api/sync/all",
-        {
-          method: "POST",
-        }
-      );
-
-    const result =
-      await response.json();
-
-    if (!response.ok) {
-      throw new Error(
-        result.message ??
-          "Erro ao sincronizar dados gerais"
-      );
-    }
-
-    return result;
-  }
-
-  async function runLapBackfill() {
-    let batch = 0;
-    let offset = 0;
-
-    let totalLapsSynced = 0;
-    let totalSectorsSynced = 0;
-    let telemetryAvailable = 0;
-    let requests = 0;
-
-    while (true) {
-      setMessage(
-        `Importando histórico • lote ${
-          batch + 1
-        } • offset ${offset}`
-      );
-
-      const response =
-        await fetch(
-          "/api/sync/laps-batch",
-          {
-            method: "POST",
-
-            headers: {
-              "Content-Type":
-                "application/json",
-            },
-
-            body:
-              JSON.stringify({
-                batch,
-                offset,
-              }),
-          }
-        );
-
-      const result: BatchResult =
-        await response.json();
-
-      if (
-        !response.ok ||
-        result.status !==
-          "ok"
-      ) {
-        throw new Error(
-          result.message ??
-            "Erro ao importar histórico"
-        );
-      }
-
-      requests++;
-
-      totalLapsSynced +=
-        result.lapsSynced ??
-        0;
-
-      totalSectorsSynced +=
-        result.sectorsSynced ??
-        0;
-
-      telemetryAvailable +=
-        result.telemetryAvailable ??
-        0;
-
-      setProgress({
-        batch:
-          result.currentBatch +
-          1,
-
-        totalBatches:
-          result.totalBatches,
-
-        offset:
-          result.offset,
-
-        totalLapsSynced,
-
-        totalSectorsSynced,
-
-        telemetryAvailable,
-
-        requests,
-      });
-
-      if (
-        result.completed
-      ) {
-        break;
-      }
-
-      batch =
-        result.nextBatch;
-
-      offset =
-        result.nextOffset;
-    }
-
-    return {
-      totalLapsSynced,
-      totalSectorsSynced,
-      telemetryAvailable,
-      requests,
-    };
-  }
-
-  async function syncAll() {
+  async function syncData() {
     setSyncing(true);
-
-    setProgress(null);
-
+    setMessage("Atualizando perfil, ratings, catálogo e atividade...");
     try {
-      setMessage(
-        "Sincronizando perfil, ratings, carros, pistas e estatísticas..."
-      );
+      const generalResponse = await fetch("/api/sync/all", { method: "POST" });
+      const generalResult = await generalResponse.json();
+      if (!generalResponse.ok) throw new Error(generalResult.message ?? "Erro na sincronização geral");
 
-      await syncGeneral();
+      setMessage("Atualizando histórico de iRating...");
+      const ratingResponse = await fetch("/api/sync/rating-history", { method: "POST" });
+      const ratingResult = await ratingResponse.json();
+      if (!ratingResponse.ok) throw new Error(ratingResult.message ?? "Erro ao atualizar histórico de iRating");
 
-      setMessage(
-        "Importando histórico completo de voltas..."
-      );
-
-      const backfill =
-        await runLapBackfill();
-
-      setMessage(
-        `Concluído • ${backfill.totalLapsSynced.toLocaleString(
-          "pt-BR"
-        )} voltas importadas`
-      );
-
+      setMessage("Dados gerais e iRating atualizados. O backfill completo de voltas não foi reprocessado.");
       await loadDashboard();
     } catch (error) {
-      setMessage(
-        error instanceof
-          Error
-          ? error.message
-          : "Erro na sincronização"
-      );
+      setMessage(error instanceof Error ? error.message : "Erro na sincronização");
     } finally {
       setSyncing(false);
     }
   }
 
-  const maxActivityLaps =
-    useMemo(() => {
-      if (
-        !data?.activity.length
-      ) {
-        return 1;
-      }
+  const rankings = useMemo(() => {
+    if (!data) return null;
 
-      return Math.max(
-        ...data.activity.map(
-          (item) =>
-            item.laps
-        ),
-        1
-      );
-    }, [data]);
+    const categoryKey = trackCategory === "formula" ? "formula_car" : "sports_car";
+    const trackRows = data.historical.filter((row) => row.ratingCategory === categoryKey);
+    const gt3Rows = data.historical.filter((row) => row.carClass === "GT3");
+    const imsaRows = data.historical.filter((row) => row.carClass === "GTP" || row.carClass === "LMP2");
 
-  const maxCarLaps =
-    useMemo(() => {
-      if (
-        !data?.topCars.length
-      ) {
-        return 1;
-      }
-
-      return Math.max(
-        ...data.topCars.map(
-          (item) =>
-            item.laps
-        ),
-        1
-      );
-    }, [data]);
-
-  const maxTrackLaps =
-    useMemo(() => {
-      if (
-        !data?.topTracks.length
-      ) {
-        return 1;
-      }
-
-      return Math.max(
-        ...data.topTracks.map(
-          (item) =>
-            item.laps
-        ),
-        1
-      );
-    }, [data]);
+    return {
+      tracks: aggregateRows(trackRows, "track"),
+      gt3: aggregateRows(gt3Rows, gt3Mode, false),
+      imsa: aggregateRows(imsaRows, imsaMode, true),
+    };
+  }, [data, trackCategory, gt3Mode, imsaMode]);
 
   if (loading) {
-    return (
-      <main className="dashboard-shell">
-        <div className="loading">
-          Carregando Racing
-          Analytics...
-        </div>
-      </main>
-    );
+    return <main className="app-shell"><div className="state-box">Carregando Racing Analytics...</div></main>;
   }
 
-  if (!data) {
-    return (
-      <main className="dashboard-shell">
-        <div className="error-box">
-          {message ??
-            "Não foi possível carregar os dados."}
-        </div>
-      </main>
-    );
+  if (!data || !rankings) {
+    return <main className="app-shell"><div className="state-box error">{message ?? "Não foi possível carregar os dados."}</div></main>;
   }
+
+  const currentLabel = shortSeason(data.season.current.name);
+  const previousLabel = shortSeason(data.season.previous.name);
+  const weekly = chartCategory === "formula" ? data.weekly.formula : data.weekly.sports;
 
   return (
-    <main className="dashboard-shell">
-      <div className="dashboard">
-        <header className="topbar">
-          <div>
-            <span className="eyebrow">
-              IRACING ANALYTICS
-            </span>
-
-            <h1>
-              Racing Analytics
-            </h1>
-
-            <p>
-              {data.driver.name} •
-              iRacing #
-              {
-                data.driver
-                  .iracingId
-              }
-            </p>
+    <main className="app-shell">
+      <div className="app-frame">
+        <header className="app-header">
+          <div className="brand-block">
+            <div className="brand-mark"><span /></div>
+            <div>
+              <div className="brand-kicker">IRACING ANALYTICS</div>
+              <h1>Racing Analytics</h1>
+              <p>{data.driver.name} <span>•</span> iRacing #{data.driver.iracingId}</p>
+            </div>
           </div>
 
-          <div className="sync-area">
-            <button
-              className="sync-button"
-              onClick={
-                syncAll
-              }
-              disabled={
-                syncing
-              }
-            >
-              {syncing
-                ? "Sincronizando..."
-                : "Sincronizar dados"}
+          <div className="header-actions">
+            <div className="season-chip">
+              <span>SEASON</span>
+              <strong>{currentLabel}</strong>
+            </div>
+            <button className="primary-button" onClick={syncData} disabled={syncing}>
+              {syncing ? "Atualizando..." : "Atualizar dados"}
             </button>
-
-            {message && (
-              <small>
-                {message}
-              </small>
-            )}
           </div>
         </header>
 
-        {syncing &&
-          progress && (
-            <section className="panel">
-              <div className="panel-header">
-                <div>
-                  <span className="panel-kicker">
-                    BACKFILL
-                  </span>
+        {message && <div className="status-banner">{message}</div>}
 
-                  <h2>
-                    Importando
-                    histórico
-                  </h2>
-                </div>
-
-                <span className="panel-note">
-                  Lote{" "}
-                  {
-                    progress.batch
-                  }{" "}
-                  de{" "}
-                  {
-                    progress.totalBatches
-                  }
-                </span>
-              </div>
-
-              <div className="summary-strip">
-                <div>
-                  <strong>
-                    {progress.totalLapsSynced.toLocaleString(
-                      "pt-BR"
-                    )}
-                  </strong>
-                  <span>
-                    Voltas
-                  </span>
-                </div>
-
-                <div>
-                  <strong>
-                    {progress.totalSectorsSynced.toLocaleString(
-                      "pt-BR"
-                    )}
-                  </strong>
-                  <span>
-                    Setores
-                  </span>
-                </div>
-
-                <div>
-                  <strong>
-                    {progress.telemetryAvailable.toLocaleString(
-                      "pt-BR"
-                    )}
-                  </strong>
-                  <span>
-                    Com
-                    telemetria
-                  </span>
-                </div>
-              </div>
-
-              <p className="panel-note">
-                Requisições
-                processadas:{" "}
-                {
-                  progress.requests
-                }
-              </p>
-            </section>
-          )}
-
-        <section className="metrics-grid">
-          <RatingCard
-            title="Sports Car"
-            rating={
-              data.ratings[
-                "sports_car"
-              ]
-            }
-          />
-
-          <RatingCard
-            title="Formula Car"
-            rating={
-              data.ratings[
-                "formula_car"
-              ]
-            }
-          />
-
-          <div className="metric-card">
-            <span className="metric-label">
-              Tempo em pista
-            </span>
-
-            <strong className="metric-value">
-              {formatHours(
-                data.totals
-                  .timeOnTrackSeconds
-              )}
-            </strong>
-
-            <span className="metric-subtitle">
-              {data.totals.laps.toLocaleString(
-                "pt-BR"
-              )}{" "}
-              voltas
-            </span>
-          </div>
-
-          <div className="metric-card">
-            <span className="metric-label">
-              Voltas limpas
-            </span>
-
-            <strong className="metric-value">
-              {data.totals.cleanPercentage.toFixed(
-                1
-              )}
-              %
-            </strong>
-
-            <span className="metric-subtitle">
-              {data.totals.cleanLaps.toLocaleString(
-                "pt-BR"
-              )}{" "}
-              de{" "}
-              {data.totals.laps.toLocaleString(
-                "pt-BR"
-              )}
-            </span>
-          </div>
-        </section>
-
-        <section className="summary-strip">
-          <div>
-            <strong>
-              {data.totals.events.toLocaleString(
-                "pt-BR"
-              )}
-            </strong>
-
-            <span>
-              Eventos
-            </span>
-          </div>
-
-          <div>
-            <strong>
-              {
-                data.totals
-                  .drivenTracks
-              }
-            </strong>
-
-            <span>
-              Pistas utilizadas
-            </span>
-          </div>
-
-          <div>
-            <strong>
-              {
-                data.totals
-                  .telemetryLaps
-              }
-            </strong>
-
-            <span>
-              Telemetrias
-            </span>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
+        <section className="section-block">
+          <div className="section-title-row">
             <div>
-              <span className="panel-kicker">
-                ATIVIDADE
-              </span>
-
-              <h2>
-                Últimos 12
-                meses
-              </h2>
+              <span className="section-kicker">SEASON PERFORMANCE</span>
+              <h2>{currentLabel} <em>vs</em> {previousLabel}</h2>
             </div>
-
-            <span className="panel-note">
-              Voltas por mês
-            </span>
+            <div className="season-summary">
+              <strong>{data.season.current.races}</strong> corridas <span>•</span> <strong>{data.season.current.laps.toLocaleString("pt-BR")}</strong> voltas
+            </div>
           </div>
 
-          <div className="activity-chart">
-            {data.activity.map(
-              (item) => {
-                const height =
-                  Math.max(
-                    4,
-                    (item.laps /
-                      maxActivityLaps) *
-                      100
-                  );
-
-                return (
-                  <div
-                    className="activity-column"
-                    key={
-                      item.month
-                    }
-                  >
-                    <div className="activity-value">
-                      {
-                        item.laps
-                      }
-                    </div>
-
-                    <div className="activity-bar-track">
-                      <div
-                        className="activity-bar"
-                        style={{
-                          height: `${height}%`,
-                        }}
-                      />
-                    </div>
-
-                    <span>
-                      {formatMonth(
-                        item.month
-                      )}
-                    </span>
-                  </div>
-                );
-              }
-            )}
+          <div className="kpi-grid">
+            <KpiCard eyebrow="Formula Car • Δ iRating" value={data.kpis.formula.current.delta} previousValue={data.kpis.formula.previous.delta} previousLabel={previousLabel} />
+            <KpiCard eyebrow="Sports Car • Δ iRating" value={data.kpis.sports.current.delta} previousValue={data.kpis.sports.previous.delta} previousLabel={previousLabel} />
+            <KpiCard eyebrow="Formula Car • Vitórias" value={data.kpis.formula.wins.current} previousValue={data.kpis.formula.wins.previous} previousLabel={previousLabel} mode="count" unavailableText="Aguardando race results" />
+            <KpiCard eyebrow="Sports Car • Vitórias" value={data.kpis.sports.wins.current} previousValue={data.kpis.sports.wins.previous} previousLabel={previousLabel} mode="count" unavailableText="Aguardando race results" />
           </div>
         </section>
 
-        <section className="two-column">
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <span className="panel-kicker">
-                  CARROS
-                </span>
-
-                <h2>
-                  Mais pilotados
-                </h2>
-              </div>
-            </div>
-
-            <div className="ranking-list">
-              {data.topCars.map(
-                (car) => (
-                  <div
-                    className="ranking-item"
-                    key={
-                      car.id
-                    }
-                  >
-                    <div className="ranking-title">
-                      <span>
-                        {
-                          car.name
-                        }
-                      </span>
-
-                      <strong>
-                        {
-                          car.laps
-                        }{" "}
-                        voltas
-                      </strong>
-                    </div>
-
-                    <div className="ranking-track">
-                      <div
-                        className="ranking-fill"
-                        style={{
-                          width: `${
-                            (car.laps /
-                              maxCarLaps) *
-                            100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-
-          <div className="panel">
-            <div className="panel-header">
-              <div>
-                <span className="panel-kicker">
-                  PISTAS
-                </span>
-
-                <h2>
-                  Mais pilotadas
-                </h2>
-              </div>
-            </div>
-
-            <div className="ranking-list">
-              {data.topTracks.map(
-                (track) => (
-                  <div
-                    className="ranking-item"
-                    key={
-                      track.id
-                    }
-                  >
-                    <div className="ranking-title">
-                      <span>
-                        {
-                          track.name
-                        }
-                      </span>
-
-                      <strong>
-                        {
-                          track.laps
-                        }{" "}
-                        voltas
-                      </strong>
-                    </div>
-
-                    <div className="ranking-track">
-                      <div
-                        className="ranking-fill"
-                        style={{
-                          width: `${
-                            (track.laps /
-                              maxTrackLaps) *
-                            100
-                          }%`,
-                        }}
-                      />
-                    </div>
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-        </section>
-
-        <section className="panel">
-          <div className="panel-header">
+        <section className="panel large-panel">
+          <div className="panel-heading">
             <div>
-              <span className="panel-kicker">
-                PERFORMANCE
-              </span>
+              <span className="section-kicker">IRATING EVOLUTION</span>
+              <h2>Evolução semanal</h2>
+              <p>iRating absoluto por semana, comparando a Season atual com a anterior.</p>
+            </div>
+            <div className="segmented-control">
+              <button className={chartCategory === "formula" ? "active" : ""} onClick={() => setChartCategory("formula")}>Formula Car</button>
+              <button className={chartCategory === "sports" ? "active" : ""} onClick={() => setChartCategory("sports")}>Sports Car</button>
+            </div>
+          </div>
+          <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} />
+        </section>
 
-              <h2>
-                Voltas disponíveis
-              </h2>
+        <section className="section-block historical-section">
+          <div className="section-title-row">
+            <div>
+              <span className="section-kicker">HISTORICAL PERFORMANCE</span>
+              <h2>Performance por contexto</h2>
+              <p>Todo o período com dados detalhados disponíveis.</p>
             </div>
           </div>
 
-          <div className="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>
-                    Pista
-                  </th>
+          <div className="performance-grid">
+            <article className="panel ranking-panel">
+              <div className="panel-heading compact">
+                <div><span className="section-kicker">TRACK PERFORMANCE</span><h3>Δ iRating por pista</h3></div>
+                <div className="segmented-control small">
+                  <button className={trackCategory === "formula" ? "active" : ""} onClick={() => setTrackCategory("formula")}>Formula</button>
+                  <button className={trackCategory === "sports" ? "active" : ""} onClick={() => setTrackCategory("sports")}>Sports</button>
+                </div>
+              </div>
+              <PerformanceRanking items={rankings.tracks} />
+            </article>
 
-                  <th>
-                    Carro
-                  </th>
+            <article className="panel ranking-panel">
+              <div className="panel-heading compact">
+                <div><span className="section-kicker">GT3</span><h3>Performance GT3</h3></div>
+                <div className="segmented-control small">
+                  <button className={gt3Mode === "car" ? "active" : ""} onClick={() => setGt3Mode("car")}>Carro</button>
+                  <button className={gt3Mode === "track" ? "active" : ""} onClick={() => setGt3Mode("track")}>Pista</button>
+                </div>
+              </div>
+              <PerformanceRanking items={rankings.gt3} />
+            </article>
 
-                  <th>
-                    Tempo
-                  </th>
-
-                  <th>
-                    iRating
-                  </th>
-
-                  <th>
-                    Limpa
-                  </th>
-
-                  <th>
-                    Telemetria
-                  </th>
-                </tr>
-              </thead>
-
-              <tbody>
-                {data.bestLaps.map(
-                  (lap) => (
-                    <tr
-                      key={
-                        lap.id
-                      }
-                    >
-                      <td>
-                        {
-                          lap.track
-                        }
-                      </td>
-
-                      <td>
-                        {
-                          lap.car
-                        }
-                      </td>
-
-                      <td className="lap-time">
-                        {formatLapTime(
-                          lap.lapTime
-                        )}
-                      </td>
-
-                      <td>
-                        {lap.driverRating ??
-                          "—"}
-                      </td>
-
-                      <td>
-                        {lap.clean
-                          ? "Sim"
-                          : "Não"}
-                      </td>
-
-                      <td>
-                        {lap.telemetryAvailable
-                          ? "Disponível"
-                          : "—"}
-                      </td>
-                    </tr>
-                  )
-                )}
-              </tbody>
-            </table>
+            <article className="panel ranking-panel">
+              <div className="panel-heading compact">
+                <div><span className="section-kicker">IMSA</span><h3>GTP / LMP2</h3></div>
+                <div className="segmented-control small">
+                  <button className={imsaMode === "car" ? "active" : ""} onClick={() => setImsaMode("car")}>Carro</button>
+                  <button className={imsaMode === "track" ? "active" : ""} onClick={() => setImsaMode("track")}>Pista</button>
+                </div>
+              </div>
+              <PerformanceRanking items={rankings.imsa} />
+            </article>
           </div>
+        </section>
+
+        <section className="panel telemetry-placeholder">
+          <div>
+            <span className="section-kicker">ACTIVE WEEK TELEMETRY</span>
+            <h2>Telemetria da semana ativa</h2>
+            <p>A próxima etapa identifica a pista ativa e concentra a análise apenas nas atividades da semana atual.</p>
+          </div>
+          <span className="coming-soon">PRÓXIMA ETAPA</span>
         </section>
 
         <footer>
-          Dados fornecidos por
-          Garage61.
+          Racing Analytics • dados pessoais sincronizados via Garage61
         </footer>
       </div>
     </main>
