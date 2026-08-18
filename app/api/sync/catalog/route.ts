@@ -29,6 +29,10 @@ type Garage61StatisticsItem = {
   cleanLapsDriven: number;
 };
 
+type Garage61StatisticsResponse = {
+  drivingStatistics: Garage61StatisticsItem[];
+};
+
 type Garage61List<T> = {
   items: T[];
   total?: number;
@@ -99,15 +103,15 @@ export async function POST() {
         Garage61Track[] | Garage61List<Garage61Track>
       >("/tracks"),
 
-      garage61Get<
-        | Garage61StatisticsItem[]
-        | Garage61List<Garage61StatisticsItem>
-      >("/me/statistics"),
+      garage61Get<Garage61StatisticsResponse>(
+        "/me/statistics"
+      ),
     ]);
 
     const cars = extractItems(carsResponse);
     const tracks = extractItems(tracksResponse);
-    const statistics = extractItems(statsResponse);
+    const statistics =
+      statsResponse.drivingStatistics ?? [];
 
     const carRows = cars.map((car) => ({
       id: car.id,
@@ -132,7 +136,9 @@ export async function POST() {
           onConflict: "id",
         });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
     }
 
     if (trackRows.length > 0) {
@@ -142,7 +148,9 @@ export async function POST() {
           onConflict: "id",
         });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
     }
 
     const statisticRows = statistics.map((item) => ({
@@ -165,7 +173,9 @@ export async function POST() {
             "driver_id,statistic_date,car_id,track_id,session_type",
         });
 
-      if (error) throw error;
+      if (error) {
+        throw error;
+      }
     }
 
     return NextResponse.json({
