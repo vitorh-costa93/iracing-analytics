@@ -21,28 +21,32 @@ export async function POST() {
         "/car-groups"
       );
 
-    const groups =
-      response.items ?? [];
+    const groups = response.items ?? [];
 
     let groupsSynced = 0;
     let membersSynced = 0;
     let carsNotFound = 0;
 
+    const missingCars: {
+      group: string;
+      garage61CarId: number;
+    }[] = [];
+
     for (const group of groups) {
-      const {
-        error: groupError,
-      } = await supabaseAdmin
-        .from("car_groups")
-        .upsert(
-          {
-            id: group.id,
-            name: group.name,
-            platform: group.platform,
-          },
-          {
-            onConflict: "id",
-          }
-        );
+      // Grupo
+      const { error: groupError } =
+        await supabaseAdmin
+          .from("car_groups")
+          .upsert(
+            {
+              id: group.id,
+              name: group.name,
+              platform: group.platform,
+            },
+            {
+              onConflict: "id",
+            }
+          );
 
       if (groupError) {
         throw groupError;
@@ -50,97 +54,95 @@ export async function POST() {
 
       groupsSynced++;
 
-      // IDs em group.cars são platform_id do Garage61/iRacing,
-      // NÃO o nosso cars.id interno.
-      if (
-        !group.cars ||
-        group.cars.length === 0
-      ) {
+      if (!group.cars?.length) {
         continue;
       }
 
+      /*
+       * IMPORTANTE:
+       *
+       * group.cars contém o ID do objeto
+       * Garage61.
+       *
+       * Esse valor corresponde a cars.id
+       * na nossa tabela, NÃO a platform_id.
+       */
       const {
         data: localCars,
         error: carsError,
       } = await supabaseAdmin
         .from("cars")
-        .select("id, platform_id")
-        .eq("platform", group.platform)
-        .in(
-          "platform_id",
-          group.cars
-        );
+        .select("id, name")
+        .in("id", group.cars);
 
       if (carsError) {
         throw carsError;
       }
 
-      const foundPlatformIds =
-        new Set(
-          (localCars ?? []).map(
-            (car) =>
-              Number(car.platform_id)
-          )
-        );
+      const foundIds = new Set(
+        (localCars ?? []).map(
+          (car) => Number(car.id)
+        )
+      );
 
-      carsNotFound +=
-        group.cars.filter(
-          (platformId) =>
-            !foundPlatformIds.has(
-              Number(platformId)
-            )
-        ).length;
+      for (
+        const garage61CarId of group.cars
+      ) {
+        if (
+          !foundIds.has(
+            Number(garage61CarId)
+          )
+        ) {
+          carsNotFound++;
+
+          missingCars.push({
+            group: group.name,
+            garage61CarId,
+          });
+        }
+      }
 
       const members =
         (localCars ?? []).map(
           (car) => ({
-            car_group_id:
-              group.id,
-
-            car_id:
-              car.id,
+            car_group_id: group.id,
+            car_id: car.id,
           })
         );
 
-      if (
-        members.length > 0
-      ) {
-        const {
-          error:
-            memberError,
-        } =
-          await supabaseAdmin
-            .from(
-              "car_group_members"
-            )
-            .upsert(
-              members,
-              {
-                onConflict:
-                  "car_group_id,car_id",
-              }
-            );
-
-        if (memberError) {
-          throw memberError;
-        }
-
-        membersSynced +=
-          members.length;
+      if (members.length === 0) {
+        continue;
       }
+
+      const { error: memberError } =
+        await supabaseAdmin
+          .from("car_group_members")
+          .upsert(
+            members,
+            {
+              onConflict:
+                "car_group_id,car_id",
+            }
+          );
+
+      if (memberError) {
+        throw memberError;
+      }
+
+      membersSynced +=
+        members.length;
     }
 
     return NextResponse.json({
       status: "ok",
 
-      groupsFound:
-        groups.length,
-
+      groupsFound: groups.length,
       groupsSynced,
 
       membersSynced,
-
       carsNotFound,
+
+      missingCars,
     });
   } catch (error) {
     return NextResponse.json(
