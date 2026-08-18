@@ -1,0 +1,28 @@
+import { NextRequest, NextResponse } from "next/server";
+import { garage61Get } from "@/lib/garage61";
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+
+    const track = searchParams.get("track") ?? "418";
+
+    const data = await garage61Get("/laps", {
+      tracks: track,
+    });
+
+    return NextResponse.json({
+      status: "ok",
+      track,
+      data,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      },
+      { status: 500 }
+    );
+  }
+}
