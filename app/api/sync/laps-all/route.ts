@@ -81,446 +81,682 @@ type Garage61LapsResponse = {
 };
 
 const PAGE_SIZE = 1000;
+const TRACK_BATCH_SIZE = 10;
+
+function chunkArray<T>(
+  items: T[],
+  size: number
+): T[][] {
+  const chunks: T[][] = [];
+
+  for (
+    let i = 0;
+    i < items.length;
+    i += size
+  ) {
+    chunks.push(
+      items.slice(i, i + size)
+    );
+  }
+
+  return chunks;
+}
 
 export async function POST() {
-  const startedAt = new Date().toISOString();
+  const startedAt =
+    new Date().toISOString();
 
-  const { data: syncRun } = await supabaseAdmin
-    .from("sync_runs")
-    .insert({
-      sync_type: "laps_full_backfill",
-      status: "running",
-      started_at: startedAt,
-    })
-    .select()
-    .single();
+  const { data: syncRun } =
+    await supabaseAdmin
+      .from("sync_runs")
+      .insert({
+        sync_type:
+          "laps_full_backfill",
+        status: "running",
+        started_at: startedAt,
+      })
+      .select()
+      .single();
 
   try {
-    const accounts = await garage61Get<{
-      items: {
-        platform: string;
-        id: string;
-      }[];
-    }>("/me/accounts");
+    // ----------------------------------------
+    // DRIVER
+    // ----------------------------------------
 
-    const account = accounts.items.find(
-      (item) => item.platform === "iracing"
-    );
+    const accounts =
+      await garage61Get<{
+        items: {
+          platform: string;
+          id: string;
+        }[];
+      }>("/me/accounts");
+
+    const account =
+      accounts.items.find(
+        (item) =>
+          item.platform ===
+          "iracing"
+      );
 
     if (!account) {
-      throw new Error("Conta iRacing não encontrada");
+      throw new Error(
+        "Conta iRacing não encontrada"
+      );
     }
 
-    const { data: driver, error: driverError } =
-      await supabaseAdmin
-        .from("drivers")
-        .select("id")
-        .eq("platform_driver_id", account.id)
-        .single();
+    const {
+      data: driver,
+      error: driverError,
+    } = await supabaseAdmin
+      .from("drivers")
+      .select("id")
+      .eq(
+        "platform_driver_id",
+        account.id
+      )
+      .single();
 
-    if (driverError || !driver) {
-      throw new Error("Driver não encontrado no Supabase");
+    if (
+      driverError ||
+      !driver
+    ) {
+      throw new Error(
+        "Driver não encontrado no Supabase"
+      );
     }
 
-    const { data: stats, error: statsError } =
-      await supabaseAdmin
-        .from("daily_statistics")
-        .select("track_id")
-        .eq("driver_id", driver.id)
-        .not("track_id", "is", null);
+    // ----------------------------------------
+    // PISTAS UTILIZADAS
+    // ----------------------------------------
+
+    const {
+      data: stats,
+      error: statsError,
+    } = await supabaseAdmin
+      .from("daily_statistics")
+      .select("track_id")
+      .eq(
+        "driver_id",
+        driver.id
+      )
+      .not(
+        "track_id",
+        "is",
+        null
+      );
 
     if (statsError) {
       throw statsError;
     }
 
-    const trackIds = Array.from(
-      new Set(
-        (stats ?? [])
-          .map((row) => row.track_id)
-          .filter(
-            (id): id is number =>
-              typeof id === "number"
-          )
-      )
-    );
+    const trackIds =
+      Array.from(
+        new Set(
+          (stats ?? [])
+            .map(
+              (row) =>
+                row.track_id
+            )
+            .filter(
+              (
+                id
+              ): id is number =>
+                typeof id ===
+                "number"
+            )
+        )
+      );
 
-    if (trackIds.length === 0) {
-      throw new Error("Nenhuma pista encontrada");
+    if (
+      trackIds.length === 0
+    ) {
+      throw new Error(
+        "Nenhuma pista encontrada"
+      );
     }
 
-    const tracksParam = trackIds.join(",");
+    const trackBatches =
+      chunkArray(
+        trackIds,
+        TRACK_BATCH_SIZE
+      );
 
-    let offset = 0;
+    // ----------------------------------------
+    // CONTADORES
+    // ----------------------------------------
+
+    let batchesProcessed = 0;
     let pagesProcessed = 0;
+
     let lapsReceived = 0;
     let lapsSynced = 0;
+
     let sectorsSynced = 0;
+
     let telemetryAvailable = 0;
+
     let totalAvailable = 0;
 
-    while (true) {
-      const response =
-        await garage61Get<Garage61LapsResponse>(
-          "/laps",
-          {
-            tracks: tracksParam,
-            drivers: "me",
-            group: "none",
-            unclean: "true",
-            lapTypes: "1,2,3,4",
-            limit: PAGE_SIZE,
-            offset,
-          }
-        );
+    // ----------------------------------------
+    // LOOP DE BLOCOS DE PISTAS
+    // ----------------------------------------
 
-      const laps = response.items ?? [];
+    for (
+      const batch of
+      trackBatches
+    ) {
+      const tracksParam =
+        batch.join(",");
 
-      totalAvailable =
-        response.total ?? totalAvailable;
+      let offset = 0;
 
-      pagesProcessed++;
-      lapsReceived += laps.length;
+      while (true) {
+        const response =
+          await garage61Get<Garage61LapsResponse>(
+            "/laps",
+            {
+              tracks:
+                tracksParam,
 
-      if (laps.length === 0) {
-        break;
-      }
+              drivers:
+                "me",
 
-      for (const lap of laps) {
-        if (!lap.car?.id || !lap.track?.id) {
-          continue;
-        }
+              group:
+                "none",
 
-        if (lap.canViewTelemetry) {
-          telemetryAvailable++;
-        }
+              unclean:
+                "true",
 
-        let sessionQuery = supabaseAdmin
-          .from("sessions")
-          .select("id")
-          .eq(
-            "garage61_event_id",
-            lap.event ?? ""
-          )
-          .eq(
-            "garage61_session_id",
-            lap.session !== undefined
-              ? String(lap.session)
-              : ""
-          )
-          .eq("driver_id", driver.id)
-          .eq("car_id", lap.car.id)
-          .eq("track_id", lap.track.id);
+              lapTypes:
+                "1,2,3,4",
 
-        if (lap.startTime) {
-          sessionQuery =
-            sessionQuery.eq(
-              "started_at",
-              lap.startTime
-            );
-        } else {
-          sessionQuery =
-            sessionQuery.is(
-              "started_at",
-              null
-            );
-        }
+              limit:
+                PAGE_SIZE,
 
-        const {
-          data: existingSession,
-          error: findSessionError,
-        } = await sessionQuery.maybeSingle();
+              offset,
+            }
+          );
 
-        if (findSessionError) {
-          throw findSessionError;
-        }
+        const laps =
+          response.items ??
+          [];
 
-        let sessionId: string;
+        pagesProcessed++;
 
-        if (existingSession) {
-          sessionId = existingSession.id;
-        } else {
-          const {
-            data: createdSession,
-            error: sessionError,
-          } = await supabaseAdmin
-            .from("sessions")
-            .insert({
-              garage61_event_id:
-                lap.event ?? "",
+        lapsReceived +=
+          laps.length;
 
-              garage61_session_id:
-                lap.session !== undefined
-                  ? String(lap.session)
-                  : "",
-
-              driver_id: driver.id,
-              car_id: lap.car.id,
-              track_id: lap.track.id,
-
-              season_id:
-                lap.season?.id ?? null,
-
-              season_name:
-                lap.season?.name ?? null,
-
-              event_type:
-                lap.eventType ?? null,
-
-              session_type:
-                lap.sessionType ?? null,
-
-              run:
-                lap.run ?? null,
-
-              started_at:
-                lap.startTime ?? null,
-
-              air_pressure:
-                lap.airPressure ?? null,
-
-              wind_velocity:
-                lap.windVel ?? null,
-
-              wind_direction:
-                lap.windDir ?? null,
-
-              relative_humidity:
-                lap.relativeHumidity ?? null,
-
-              fog_level:
-                lap.fogLevel ?? null,
-
-              track_temp:
-                lap.trackTemp ?? null,
-
-              track_usage:
-                lap.trackUsage ?? null,
-
-              track_wetness:
-                lap.trackWetness ?? null,
-            })
-            .select("id")
-            .single();
-
-          if (
-            sessionError ||
-            !createdSession
-          ) {
-            throw (
-              sessionError ??
-              new Error(
-                "Erro ao criar sessão"
-              )
-            );
-          }
-
-          sessionId =
-            createdSession.id;
-        }
-
-        const {
-          data: existingLap,
-          error: existingLapError,
-        } = await supabaseAdmin
-          .from("laps")
-          .select(
-            "id, telemetry_path"
-          )
-          .eq("id", lap.id)
-          .maybeSingle();
-
-        if (existingLapError) {
-          throw existingLapError;
-        }
-
-        const { error: lapError } =
-          await supabaseAdmin
-            .from("laps")
-            .upsert(
-              {
-                id: lap.id,
-
-                session_id:
-                  sessionId,
-
-                driver_id:
-                  driver.id,
-
-                car_id:
-                  lap.car.id,
-
-                track_id:
-                  lap.track.id,
-
-                lap_number:
-                  lap.lapNumber ??
-                  null,
-
-                lap_time:
-                  lap.lapTime ??
-                  null,
-
-                clean:
-                  lap.clean ?? null,
-
-                joker:
-                  lap.joker ?? null,
-
-                discontinuity:
-                  lap.discontinuity ??
-                  null,
-
-                missing:
-                  lap.missing ?? null,
-
-                incomplete:
-                  lap.incomplete ??
-                  null,
-
-                off_track:
-                  lap.offtrack ??
-                  null,
-
-                pit_lane:
-                  lap.pitLane ??
-                  null,
-
-                pit_in:
-                  lap.pitIn ??
-                  null,
-
-                pit_out:
-                  lap.pitOut ??
-                  null,
-
-                driver_rating:
-                  lap.driverRating ??
-                  lap.driver
-                    ?.driverRating ??
-                  null,
-
-                fuel_level:
-                  lap.fuelLevel ??
-                  null,
-
-                fuel_used:
-                  lap.fuelUsed ??
-                  null,
-
-                fuel_added:
-                  lap.fuelAdded ??
-                  null,
-
-                weight_penalty:
-                  lap.weightPenalty ??
-                  null,
-
-                power_adjust:
-                  lap.powerAdjust ??
-                  null,
-
-                tire_compound:
-                  lap.tireCompound ??
-                  null,
-
-                can_view_telemetry:
-                  lap.canViewTelemetry ??
-                  false,
-
-                can_view_setup:
-                  lap.canViewSetup ??
-                  false,
-
-                telemetry_path:
-                  existingLap
-                    ?.telemetry_path ??
-                  null,
-
-                garage61_payload:
-                  lap,
-
-                synced_at:
-                  new Date().toISOString(),
-              },
-              {
-                onConflict: "id",
-              }
-            );
-
-        if (lapError) {
-          throw lapError;
-        }
-
-        lapsSynced++;
+        totalAvailable +=
+          response.total ?? 0;
 
         if (
-          lap.sectors &&
-          Array.isArray(lap.sectors)
+          laps.length === 0
         ) {
-          const sectorRows =
-            lap.sectors.map(
-              (sector, index) => ({
-                lap_id:
-                  lap.id,
+          break;
+        }
 
-                sector_number:
-                  index + 1,
+        // ------------------------------------
+        // LOOP DE LAPS
+        // ------------------------------------
 
-                sector_time:
-                  sector.sectorTime ??
-                  null,
-
-                incomplete:
-                  sector.incomplete ??
-                  false,
-              })
-            );
+        for (
+          const lap of laps
+        ) {
+          if (
+            !lap.car?.id ||
+            !lap.track?.id
+          ) {
+            continue;
+          }
 
           if (
-            sectorRows.length > 0
+            lap.canViewTelemetry
           ) {
+            telemetryAvailable++;
+          }
+
+          // --------------------------------
+          // SESSÃO
+          // --------------------------------
+
+          let sessionQuery =
+            supabaseAdmin
+              .from(
+                "sessions"
+              )
+              .select("id")
+              .eq(
+                "garage61_event_id",
+                lap.event ??
+                  ""
+              )
+              .eq(
+                "garage61_session_id",
+                lap.session !==
+                  undefined
+                  ? String(
+                      lap.session
+                    )
+                  : ""
+              )
+              .eq(
+                "driver_id",
+                driver.id
+              )
+              .eq(
+                "car_id",
+                lap.car.id
+              )
+              .eq(
+                "track_id",
+                lap.track.id
+              );
+
+          if (
+            lap.startTime
+          ) {
+            sessionQuery =
+              sessionQuery.eq(
+                "started_at",
+                lap.startTime
+              );
+          } else {
+            sessionQuery =
+              sessionQuery.is(
+                "started_at",
+                null
+              );
+          }
+
+          const {
+            data:
+              existingSession,
+            error:
+              findSessionError,
+          } =
+            await sessionQuery
+              .maybeSingle();
+
+          if (
+            findSessionError
+          ) {
+            throw findSessionError;
+          }
+
+          let sessionId:
+            string;
+
+          if (
+            existingSession
+          ) {
+            sessionId =
+              existingSession.id;
+          } else {
             const {
-              error: sectorError,
+              data:
+                createdSession,
+
+              error:
+                sessionError,
             } =
               await supabaseAdmin
                 .from(
-                  "lap_sectors"
+                  "sessions"
                 )
-                .upsert(
-                  sectorRows,
-                  {
-                    onConflict:
-                      "lap_id,sector_number",
-                  }
-                );
+                .insert({
+                  garage61_event_id:
+                    lap.event ??
+                    "",
 
-            if (sectorError) {
-              throw sectorError;
+                  garage61_session_id:
+                    lap.session !==
+                    undefined
+                      ? String(
+                          lap.session
+                        )
+                      : "",
+
+                  driver_id:
+                    driver.id,
+
+                  car_id:
+                    lap.car.id,
+
+                  track_id:
+                    lap.track.id,
+
+                  season_id:
+                    lap.season
+                      ?.id ??
+                    null,
+
+                  season_name:
+                    lap.season
+                      ?.name ??
+                    null,
+
+                  event_type:
+                    lap.eventType ??
+                    null,
+
+                  session_type:
+                    lap.sessionType ??
+                    null,
+
+                  run:
+                    lap.run ??
+                    null,
+
+                  started_at:
+                    lap.startTime ??
+                    null,
+
+                  air_pressure:
+                    lap.airPressure ??
+                    null,
+
+                  wind_velocity:
+                    lap.windVel ??
+                    null,
+
+                  wind_direction:
+                    lap.windDir ??
+                    null,
+
+                  relative_humidity:
+                    lap.relativeHumidity ??
+                    null,
+
+                  fog_level:
+                    lap.fogLevel ??
+                    null,
+
+                  track_temp:
+                    lap.trackTemp ??
+                    null,
+
+                  track_usage:
+                    lap.trackUsage ??
+                    null,
+
+                  track_wetness:
+                    lap.trackWetness ??
+                    null,
+                })
+                .select(
+                  "id"
+                )
+                .single();
+
+            if (
+              sessionError ||
+              !createdSession
+            ) {
+              throw (
+                sessionError ??
+                new Error(
+                  "Erro ao criar sessão"
+                )
+              );
             }
 
-            sectorsSynced +=
-              sectorRows.length;
+            sessionId =
+              createdSession.id;
+          }
+
+          // --------------------------------
+          // LAP EXISTENTE
+          // --------------------------------
+
+          const {
+            data:
+              existingLap,
+
+            error:
+              existingLapError,
+          } =
+            await supabaseAdmin
+              .from("laps")
+              .select(
+                "id, telemetry_path"
+              )
+              .eq(
+                "id",
+                lap.id
+              )
+              .maybeSingle();
+
+          if (
+            existingLapError
+          ) {
+            throw existingLapError;
+          }
+
+          // --------------------------------
+          // UPSERT LAP
+          // --------------------------------
+
+          const {
+            error:
+              lapError,
+          } =
+            await supabaseAdmin
+              .from("laps")
+              .upsert(
+                {
+                  id:
+                    lap.id,
+
+                  session_id:
+                    sessionId,
+
+                  driver_id:
+                    driver.id,
+
+                  car_id:
+                    lap.car.id,
+
+                  track_id:
+                    lap.track.id,
+
+                  lap_number:
+                    lap.lapNumber ??
+                    null,
+
+                  lap_time:
+                    lap.lapTime ??
+                    null,
+
+                  clean:
+                    lap.clean ??
+                    null,
+
+                  joker:
+                    lap.joker ??
+                    null,
+
+                  discontinuity:
+                    lap.discontinuity ??
+                    null,
+
+                  missing:
+                    lap.missing ??
+                    null,
+
+                  incomplete:
+                    lap.incomplete ??
+                    null,
+
+                  off_track:
+                    lap.offtrack ??
+                    null,
+
+                  pit_lane:
+                    lap.pitLane ??
+                    null,
+
+                  pit_in:
+                    lap.pitIn ??
+                    null,
+
+                  pit_out:
+                    lap.pitOut ??
+                    null,
+
+                  driver_rating:
+                    lap.driverRating ??
+                    lap.driver
+                      ?.driverRating ??
+                    null,
+
+                  fuel_level:
+                    lap.fuelLevel ??
+                    null,
+
+                  fuel_used:
+                    lap.fuelUsed ??
+                    null,
+
+                  fuel_added:
+                    lap.fuelAdded ??
+                    null,
+
+                  weight_penalty:
+                    lap.weightPenalty ??
+                    null,
+
+                  power_adjust:
+                    lap.powerAdjust ??
+                    null,
+
+                  tire_compound:
+                    lap.tireCompound ??
+                    null,
+
+                  can_view_telemetry:
+                    lap.canViewTelemetry ??
+                    false,
+
+                  can_view_setup:
+                    lap.canViewSetup ??
+                    false,
+
+                  telemetry_path:
+                    existingLap
+                      ?.telemetry_path ??
+                    null,
+
+                  garage61_payload:
+                    lap,
+
+                  synced_at:
+                    new Date()
+                      .toISOString(),
+                },
+                {
+                  onConflict:
+                    "id",
+                }
+              );
+
+          if (lapError) {
+            throw lapError;
+          }
+
+          lapsSynced++;
+
+          // --------------------------------
+          // SETORES
+          // --------------------------------
+
+          if (
+            lap.sectors &&
+            Array.isArray(
+              lap.sectors
+            )
+          ) {
+            const sectorRows =
+              lap.sectors.map(
+                (
+                  sector,
+                  index
+                ) => ({
+                  lap_id:
+                    lap.id,
+
+                  sector_number:
+                    index + 1,
+
+                  sector_time:
+                    sector.sectorTime ??
+                    null,
+
+                  incomplete:
+                    sector.incomplete ??
+                    false,
+                })
+              );
+
+            if (
+              sectorRows.length >
+              0
+            ) {
+              const {
+                error:
+                  sectorError,
+              } =
+                await supabaseAdmin
+                  .from(
+                    "lap_sectors"
+                  )
+                  .upsert(
+                    sectorRows,
+                    {
+                      onConflict:
+                        "lap_id,sector_number",
+                    }
+                  );
+
+              if (
+                sectorError
+              ) {
+                throw sectorError;
+              }
+
+              sectorsSynced +=
+                sectorRows.length;
+            }
           }
         }
+
+        if (
+          laps.length <
+          PAGE_SIZE
+        ) {
+          break;
+        }
+
+        offset +=
+          PAGE_SIZE;
       }
 
-      if (
-        laps.length <
-        PAGE_SIZE
-      ) {
-        break;
-      }
-
-      offset += PAGE_SIZE;
+      batchesProcessed++;
     }
+
+    // ----------------------------------------
+    // LOG
+    // ----------------------------------------
 
     if (syncRun?.id) {
       await supabaseAdmin
         .from("sync_runs")
         .update({
-          status: "completed",
+          status:
+            "completed",
+
           finished_at:
-            new Date().toISOString(),
+            new Date()
+              .toISOString(),
 
           records_found:
             lapsReceived,
@@ -534,11 +770,20 @@ export async function POST() {
         );
     }
 
+    // ----------------------------------------
+    // RESULTADO
+    // ----------------------------------------
+
     return NextResponse.json({
       status: "ok",
 
       tracksUsed:
         trackIds.length,
+
+      trackBatches:
+        trackBatches.length,
+
+      batchesProcessed,
 
       pagesProcessed,
 
@@ -562,10 +807,12 @@ export async function POST() {
       await supabaseAdmin
         .from("sync_runs")
         .update({
-          status: "error",
+          status:
+            "error",
 
           finished_at:
-            new Date().toISOString(),
+            new Date()
+              .toISOString(),
 
           error_message:
             message,
