@@ -46,6 +46,24 @@ type Garage61List<T> = {
   total?: number;
 };
 
+function extractItems<T>(
+  response: T[] | Garage61List<T>
+): T[] {
+  if (Array.isArray(response)) {
+    return response;
+  }
+
+  if (
+    response &&
+    typeof response === "object" &&
+    Array.isArray(response.items)
+  ) {
+    return response.items;
+  }
+
+  return [];
+}
+
 export async function POST() {
   const startedAt = new Date().toISOString();
 
@@ -60,6 +78,10 @@ export async function POST() {
     .single();
 
   try {
+    // -------------------------
+    // PROFILE / DRIVER
+    // -------------------------
+
     const accountsResponse = await garage61Get<{
       items: Garage61Account[];
       total: number;
@@ -70,28 +92,35 @@ export async function POST() {
     );
 
     if (!account) {
-      throw new Error("Conta iRacing não encontrada no Garage61");
+      throw new Error(
+        "Conta iRacing não encontrada no Garage61"
+      );
     }
 
-    const { data: driver, error: driverError } = await supabaseAdmin
-      .from("drivers")
-      .upsert(
-        {
-          platform: account.platform,
-          platform_driver_id: account.id,
-          name: account.name,
-          updated_at: new Date().toISOString(),
-        },
-        {
-          onConflict: "platform_driver_id",
-        }
-      )
-      .select()
-      .single();
+    const { data: driver, error: driverError } =
+      await supabaseAdmin
+        .from("drivers")
+        .upsert(
+          {
+            platform: account.platform,
+            platform_driver_id: account.id,
+            name: account.name,
+            updated_at: new Date().toISOString(),
+          },
+          {
+            onConflict: "platform_driver_id",
+          }
+        )
+        .select()
+        .single();
 
     if (driverError) {
       throw driverError;
     }
+
+    // -------------------------
+    // RATINGS
+    // -------------------------
 
     const ratingRows = account.ratings.map((rating) => ({
       driver_id: driver.id,
@@ -110,13 +139,38 @@ export async function POST() {
       throw ratingsError;
     }
 
-    const [carsResponse, tracksResponse, statsResponse] = await Promise.all([
-      garage61Get<Garage61List<Garage61Car>>("/cars"),
-      garage61Get<Garage61List<Garage61Track>>("/tracks"),
-      garage61Get<Garage61StatisticsItem[]>("/me/statistics"),
+    // -------------------------
+    // GARAGE61 DATA
+    // -------------------------
+
+    const [
+      carsResponse,
+      tracksResponse,
+      statsResponse,
+    ] = await Promise.all([
+      garage61Get<
+        Garage61Car[] | Garage61List<Garage61Car>
+      >("/cars"),
+
+      garage61Get<
+        Garage61Track[] | Garage61List<Garage61Track>
+      >("/tracks"),
+
+      garage61Get<
+        | Garage61StatisticsItem[]
+        | Garage61List<Garage61StatisticsItem>
+      >("/me/statistics"),
     ]);
 
-    const carRows = carsResponse.items.map((car) => ({
+    const cars = extractItems(carsResponse);
+    const tracks = extractItems(tracksResponse);
+    const statistics = extractItems(statsResponse);
+
+    // -------------------------
+    // CARS
+    // -------------------------
+
+    const carRows = cars.map((car) => ({
       id: car.id,
       platform: car.platform ?? "iracing",
       platform_id: car.platform_id ?? null,
@@ -124,7 +178,23 @@ export async function POST() {
       variant: car.variant ?? null,
     }));
 
-    const trackRows = tracksResponse.items.map((track) => ({
+    if (carRows.length > 0) {
+      const { error: carsError } = await supabaseAdmin
+        .from("cars")
+        .upsert(carRows, {
+          onConflict: "id",
+        });
+
+      if (carsError) {
+        throw carsError;
+      }
+    }
+
+    // -------------------------
+    // TRACKS
+    // -------------------------
+
+    const trackRows = tracks.map((track) => ({
       id: track.id,
       platform: track.platform ?? "iracing",
       platform_id: track.platform_id ?? null,
@@ -132,27 +202,23 @@ export async function POST() {
       variant: track.variant ?? null,
     }));
 
-    const { error: carsError } = await supabaseAdmin
-      .from("cars")
-      .upsert(carRows, {
-        onConflict: "id",
-      });
+    if (trackRows.length > 0) {
+      const { error: tracksError } = await supabaseAdmin
+        .from("tracks")
+        .upsert(trackRows, {
+          onConflict: "id",
+        });
 
-    if (carsError) {
-      throw carsError;
+      if (tracksError) {
+        throw tracksError;
+      }
     }
 
-    const { error: tracksError } = await supabaseAdmin
-      .from("tracks")
-      .upsert(trackRows, {
-        onConflict: "id",
-      });
+    // -------------------------
+    // DAILY STATISTICS
+    // -------------------------
 
-    if (tracksError) {
-      throw tracksError;
-    }
-
-    const statisticRows = statsResponse.map((item) => ({
+    const statisticRows = statistics.map((item) => ({
       driver_id: driver.id,
       statistic_date: item.day,
       car_id: item.car,
@@ -164,16 +230,28 @@ export async function POST() {
       clean_laps_driven: item.cleanLapsDriven,
     }));
 
-    const { error: statsError } = await supabaseAdmin
-      .from("daily_statistics")
-      .upsert(statisticRows, {
-        onConflict:
-          "driver_id,statistic_date,car_id,track_id,session_type",
-      });
+    if (statisticRows.length > 0) {
+      const { error: statsError } = await supabaseAdmin
+        .from("daily_statistics")
+        .upsert(statisticRows, {
+          onConflict:
+            "driver_id,statistic_date,car_id,track_id,session_type",
+        });
 
-    if (statsError) {
-      throw statsError;
+      if (statsError) {
+        throw statsError;
+      }
     }
+
+    // -------------------------
+    // SYNC LOG
+    // -------------------------
+
+    const totalRecords =
+      ratingRows.length +
+      carRows.length +
+      trackRows.length +
+      statisticRows.length;
 
     if (syncRun?.id) {
       await supabaseAdmin
@@ -181,40 +259,44 @@ export async function POST() {
         .update({
           status: "completed",
           finished_at: new Date().toISOString(),
-          records_found:
-            ratingRows.length +
-            carRows.length +
-            trackRows.length +
-            statisticRows.length,
-          records_inserted:
-            ratingRows.length +
-            carRows.length +
-            trackRows.length +
-            statisticRows.length,
+          records_found: totalRecords,
+          records_inserted: totalRecords,
         })
         .eq("id", syncRun.id);
     }
 
     return NextResponse.json({
       status: "ok",
+
       driver: {
         id: driver.id,
         name: driver.name,
       },
+
       ratingsInserted: ratingRows.length,
       carsSynced: carRows.length,
       tracksSynced: trackRows.length,
       statisticsSynced: statisticRows.length,
+
+      debug: {
+        carsReceived: cars.length,
+        tracksReceived: tracks.length,
+        statisticsReceived: statistics.length,
+      },
     });
   } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : String(error);
+
     if (syncRun?.id) {
       await supabaseAdmin
         .from("sync_runs")
         .update({
           status: "error",
           finished_at: new Date().toISOString(),
-          error_message:
-            error instanceof Error ? error.message : String(error),
+          error_message: message,
         })
         .eq("id", syncRun.id);
     }
@@ -222,8 +304,7 @@ export async function POST() {
     return NextResponse.json(
       {
         status: "error",
-        message:
-          error instanceof Error ? error.message : String(error),
+        message,
       },
       { status: 500 }
     );
