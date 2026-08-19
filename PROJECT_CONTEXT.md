@@ -201,6 +201,8 @@ A navegação principal agora expõe Overview, Telemetria e Setup. `/setup` intr
 
 O Setup Lab passou a inventariar todos os pares carro+pista com corridas (`session_type = 3`) na season atual, não apenas a semana ativa. Ao selecionar um contexto, faz uma consulta pontual ao Garage61 para verificar as voltas daquela combinação e o sinal `canViewSetup`, evitando disparar dezenas de chamadas ao carregar a página. Uploads manuais são limitados a 5 MB, armazenados no bucket privado `private-setups` e catalogados em `setup_files`; somente rotas server-side com service role acessam objetos e metadados. A presença de `canViewSetup` é evidência de acesso no Garage61, não de que o arquivo foi importado: a API pública documentada não oferece download de setup diretamente por lap. Downloads automáticos só podem ser marcados como concluídos quando um endpoint autorizado realmente devolver parâmetros ou binário.
 
+A subaba Engenheiro usa o mesmo cofre: anexar um `.sto` executa o upload, seleciona o arquivo como setup ativo e libera a geração de um plano preliminar baseado no feedback de entrada/meio/saída. As recomendações são regras conservadoras de teste A/B, explicam efeito e telemetria a validar e nunca afirmam ter regravado o binário. A edição automática do `.sto` e a análise autônoma sem feedback continuam dependentes de um parser validado para o formato e de integração server-side com telemetria/referência; não esconder essa limitação atrás de um botão inerte.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada
