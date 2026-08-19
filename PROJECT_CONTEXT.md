@@ -175,6 +175,10 @@ Em 19/08/2026 foi implementada a primeira fatia funcional da telemetria própria
 
 O upload e a persistência de referência de Data Pack, normalização comparativa, delta e coaching continuam como roadmap; não fazem parte desta primeira fatia.
 
+Em seguida foi implementado o upload de uma referência CSV ativa por driver+carro+pista. O arquivo original é validado server-side, limitado a 10 MB, salvo em bucket privado `telemetry-references` e descrito em `telemetry_references`; somente a service role acessa tabela e objeto. Um novo upload substitui de forma idempotente a referência do mesmo contexto. A UI recupera essa referência automaticamente ao trocar o seletor.
+
+A comparação inicial interpola as duas voltas em uma grade comum de distância, sobrepõe velocidade e usa a integral inversa da velocidade, calibrada pelo tempo real da volta própria, para estimar tempo/gap da referência e perdas por décimos da pista. Os insights destacam até três segmentos e cruzam diferença de velocidade, freio e acelerador. Esses ganhos são estimativas: combustível, setup, clima e aderência precisam ser considerados antes de transformar o achado em recomendação de pilotagem. Identificação por curva e coaching contextual mais profundo continuam no roadmap.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada
