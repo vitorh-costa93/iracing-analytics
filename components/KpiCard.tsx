@@ -1,3 +1,5 @@
+import { Gauge, Trophy } from "lucide-react";
+
 type Props = {
   eyebrow: string;
   value: number | null;
@@ -34,7 +36,7 @@ export default function KpiCard({
 
   return (
     <article className="kpi-card">
-      <div className="kpi-label"><span className="kpi-icon" aria-hidden>{mode === "delta" ? "↗" : "⌁"}</span>{eyebrow}</div>
+      <div className="kpi-label"><span className="kpi-icon" aria-hidden>{mode === "delta" ? <Gauge size={15} /> : <Trophy size={15} />}</span>{eyebrow}</div>
       <div className={`kpi-main ${valueClass}`}>
         {available
           ? mode === "delta"
