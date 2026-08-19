@@ -123,12 +123,17 @@ export default function Home() {
       const generalResult = await generalResponse.json();
       if (!generalResponse.ok) throw new Error(generalResult.message ?? "Erro na sincronização geral");
 
+      setMessage("Atualizando sessões recentes...");
+      const sessionsResponse = await fetch("/api/sync/incremental", { method: "POST" });
+      const sessionsResult = await sessionsResponse.json();
+      if (!sessionsResponse.ok) throw new Error(sessionsResult.message ?? "Erro na sincronização incremental");
+
       setMessage("Atualizando histórico de iRating...");
       const ratingResponse = await fetch("/api/sync/rating-history", { method: "POST" });
       const ratingResult = await ratingResponse.json();
       if (!ratingResponse.ok) throw new Error(ratingResult.message ?? "Erro ao atualizar histórico de iRating");
 
-      setMessage("Dados gerais e iRating atualizados. O backfill completo de voltas não foi reprocessado.");
+      setMessage("Dados gerais, sessões recentes e iRating atualizados.");
       await loadDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
