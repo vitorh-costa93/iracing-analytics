@@ -130,10 +130,15 @@ export async function GET() {
         const date = new Date(lap.startTime);
         return Number.isFinite(date.getTime()) && date >= weekStart && date < weekEnd;
       });
-      const bestLap = currentWeekLaps
-        .filter((lap) => isEligibleLap(lap, weekStart, weekEnd))
-        .sort((a, b) => Number(a.lapTime) - Number(b.lapTime))[0];
+      const eligibleLaps = currentWeekLaps
+        .filter((lap) => isEligibleLap(lap, weekStart, weekEnd));
       const car = cars.get(pair.carId);
+      const isSuperFormula = /super formula sf23/i.test(car?.name ?? "");
+      const qualifyingLaps = isSuperFormula
+        ? eligibleLaps.filter((lap) => lap.sessionType === 2)
+        : [];
+      const bestLap = (qualifyingLaps.length ? qualifyingLaps : eligibleLaps)
+        .sort((a, b) => Number(a.lapTime) - Number(b.lapTime))[0];
       const track = tracks.get(pair.trackId);
 
       return {
@@ -148,6 +153,9 @@ export async function GET() {
           lapTime: Number(bestLap.lapTime),
           startTime: bestLap.startTime,
           sessionType: bestLap.sessionType ?? null,
+          selectionReason: isSuperFormula && qualifyingLaps.length
+            ? "qualifying_without_race_push_to_pass"
+            : "fastest_clean_lap",
           telemetryUrl: `/api/garage61/laps/${encodeURIComponent(bestLap.id)}/telemetry`,
         } : null,
       };

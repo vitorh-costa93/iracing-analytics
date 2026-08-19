@@ -5,6 +5,7 @@ import Link from "next/link";
 import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
 import SeasonChart from "@/components/SeasonChart";
+import AppTabs from "@/components/AppTabs";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -16,6 +17,7 @@ type WeekPoint = {
   iratingBeforeWeek: number | null;
   iratingFirst: number | null;
   iratingEnd: number | null;
+  safetyRatingEnd?: number | null;
   delta: number | null;
   min: number | null;
   max: number | null;
@@ -43,16 +45,19 @@ type DashboardData = {
     previous: { id: string; name: string; races: number; laps: number };
   };
   ratings: { formula_car: number | null; sports_car: number | null };
+  safetyRatings: { formula_car: number | null; sports_car: number | null };
   kpis: {
     formula: {
       current: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
       previous: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
       wins: { current: number | null; previous: number | null };
+      safetyRating: { current: number | null; currentDisplay: string | null; previous: number | null };
     };
     sports: {
       current: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
       previous: { delta: number; races: number; avgDelta: number | null; medianDelta: number | null; positivePct: number | null };
       wins: { current: number | null; previous: number | null };
+      safetyRating: { current: number | null; currentDisplay: string | null; previous: number | null };
     };
   };
   weekly: {
@@ -193,6 +198,7 @@ export default function Home() {
             </button>
           </div>
         </header>
+        <AppTabs />
 
         {message && <div className="status-banner">{message}</div>}
 
@@ -210,12 +216,13 @@ export default function Home() {
           <div className="kpi-grid">
             <KpiCard eyebrow="Formula Car • Δ iRating" value={data.kpis.formula.current.delta} previousValue={data.kpis.formula.previous.delta} previousLabel={previousLabel} />
             <KpiCard eyebrow="Sports Car • Δ iRating" value={data.kpis.sports.current.delta} previousValue={data.kpis.sports.previous.delta} previousLabel={previousLabel} />
-            <KpiCard eyebrow="Formula Car • Vitórias" value={data.kpis.formula.wins.current} previousValue={data.kpis.formula.wins.previous} previousLabel={previousLabel} mode="count" unavailableText="Aguardando race results" />
-            <KpiCard eyebrow="Sports Car • Vitórias" value={data.kpis.sports.wins.current} previousValue={data.kpis.sports.wins.previous} previousLabel={previousLabel} mode="count" unavailableText="Aguardando race results" />
+            <KpiCard eyebrow="Formula Car • Safety Rating" value={data.kpis.formula.safetyRating.current} displayValue={data.kpis.formula.safetyRating.currentDisplay} previousValue={data.kpis.formula.safetyRating.previous} previousLabel={previousLabel} mode="safety" />
+            <KpiCard eyebrow="Sports Car • Safety Rating" value={data.kpis.sports.safetyRating.current} displayValue={data.kpis.sports.safetyRating.currentDisplay} previousValue={data.kpis.sports.safetyRating.previous} previousLabel={previousLabel} mode="safety" />
           </div>
         </section>
 
-        <section className="panel large-panel">
+        <section className="rating-chart-grid">
+        <article className="panel large-panel">
           <div className="panel-heading">
             <div>
               <span className="section-kicker">IRATING EVOLUTION</span>
@@ -228,6 +235,11 @@ export default function Home() {
             </div>
           </div>
           <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} />
+        </article>
+        <article className="panel large-panel">
+          <div className="panel-heading"><div><span className="section-kicker">SAFETY RATING</span><h2>Evolução semanal</h2><p>Safety Rating no mesmo recorte para observar a relação com performance.</p></div></div>
+          <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} metric="safety" />
+        </article>
         </section>
 
         <section className="section-block historical-section">

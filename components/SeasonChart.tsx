@@ -9,6 +9,7 @@ type WeekPoint = {
   iratingBeforeWeek: number | null;
   iratingFirst: number | null;
   iratingEnd: number | null;
+  safetyRatingEnd?: number | null;
   delta: number | null;
   min: number | null;
   max: number | null;
@@ -23,6 +24,7 @@ type Props = {
   previous: WeekPoint[];
   currentName: string;
   previousName: string;
+  metric?: "irating" | "safety";
 };
 
 function signed(value: number | null) {
@@ -34,7 +36,7 @@ function formatRating(value: number | null) {
   return value === null ? "—" : value.toLocaleString("pt-BR");
 }
 
-export default function SeasonChart({ current, previous, currentName, previousName }: Props) {
+export default function SeasonChart({ current, previous, currentName, previousName, metric = "irating" }: Props) {
   const [hovered, setHovered] = useState<{ point: WeekPoint; series: "current" | "previous" } | null>(null);
 
   const width = 1000;
@@ -43,22 +45,24 @@ export default function SeasonChart({ current, previous, currentName, previousNa
   const chartWidth = width - pad.left - pad.right;
   const chartHeight = height - pad.top - pad.bottom;
 
+  const pointValue = (point: WeekPoint) => metric === "safety" ? point.safetyRatingEnd ?? null : point.iratingEnd;
   const values = useMemo(
-    () => [...current, ...previous].map((p) => p.iratingEnd).filter((v): v is number => v !== null),
-    [current, previous]
+    () => [...current, ...previous].map(pointValue).filter((v): v is number => v !== null),
+    [current, previous, metric]
   );
 
-  const min = values.length ? Math.floor((Math.min(...values) - 80) / 100) * 100 : 0;
-  const max = values.length ? Math.ceil((Math.max(...values) + 80) / 100) * 100 : 100;
-  const range = Math.max(max - min, 1);
+  const padding = metric === "safety" ? .12 : 80;
+  const min = values.length ? Math.max(0, Math.min(...values) - padding) : 0;
+  const max = values.length ? Math.max(...values) + padding : metric === "safety" ? 5 : 100;
+  const range = Math.max(max - min, metric === "safety" ? .01 : 1);
 
   const x = (week: number) => pad.left + ((week - 1) / 11) * chartWidth;
   const y = (value: number) => pad.top + (1 - (value - min) / range) * chartHeight;
 
   function pathFor(points: WeekPoint[]) {
-    const available = points.filter((p) => p.iratingEnd !== null);
+    const available = points.filter((p) => pointValue(p) !== null);
     return available
-      .map((p, index) => `${index === 0 ? "M" : "L"} ${x(p.week)} ${y(p.iratingEnd as number)}`)
+      .map((p, index) => `${index === 0 ? "M" : "L"} ${x(p.week)} ${y(pointValue(p) as number)}`)
       .join(" ");
   }
 
@@ -68,7 +72,7 @@ export default function SeasonChart({ current, previous, currentName, previousNa
     return `${pathFor(points)} L ${x(available[available.length - 1].week)} ${height - pad.bottom} L ${x(available[0].week)} ${height - pad.bottom} Z`;
   }
 
-  const ticks = Array.from({ length: 5 }, (_, index) => Math.round(max - (range / 4) * index));
+  const ticks = Array.from({ length: 5 }, (_, index) => max - (range / 4) * index);
 
   return (
     <div className="season-chart-wrap">
@@ -78,11 +82,11 @@ export default function SeasonChart({ current, previous, currentName, previousNa
       </div>
 
       <div className="chart-canvas">
-        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Evolução semanal de iRating">
+        <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Evolução semanal de ${metric === "safety" ? "Safety Rating" : "iRating"}`}>
           {ticks.map((tick) => (
             <g key={tick}>
               <line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} className="grid-line" />
-              <text x={pad.left - 12} y={y(tick) + 4} textAnchor="end" className="axis-label">{tick}</text>
+              <text x={pad.left - 12} y={y(tick) + 4} textAnchor="end" className="axis-label">{metric === "safety" ? tick.toFixed(2) : Math.round(tick)}</text>
             </g>
           ))}
 
@@ -95,11 +99,11 @@ export default function SeasonChart({ current, previous, currentName, previousNa
           <path d={pathFor(previous)} className="season-line previous" />
           <path d={pathFor(current)} className="season-line current" />
 
-          {previous.filter((p) => p.iratingEnd !== null).map((point) => (
+          {previous.filter((p) => pointValue(p) !== null).map((point) => (
             <circle
               key={`previous-${point.week}`}
               cx={x(point.week)}
-              cy={y(point.iratingEnd as number)}
+              cy={y(pointValue(point) as number)}
               r="8"
               className="chart-hit"
               onMouseEnter={() => setHovered({ point, series: "previous" })}
@@ -107,11 +111,11 @@ export default function SeasonChart({ current, previous, currentName, previousNa
             />
           ))}
 
-          {current.filter((p) => p.iratingEnd !== null).map((point) => (
+          {current.filter((p) => pointValue(p) !== null).map((point) => (
             <circle
               key={`current-${point.week}`}
               cx={x(point.week)}
-              cy={y(point.iratingEnd as number)}
+              cy={y(pointValue(point) as number)}
               r="8"
               className="chart-hit"
               onMouseEnter={() => setHovered({ point, series: "current" })}
@@ -125,9 +129,14 @@ export default function SeasonChart({ current, previous, currentName, previousNa
             <div className="tooltip-kicker">
               {hovered.series === "current" ? currentName : previousName} • Semana {hovered.point.week}
             </div>
-            <div className="tooltip-rating">{formatRating(hovered.point.iratingEnd)} iRating</div>
+            <div className="tooltip-rating">{metric === "safety" ? pointValue(hovered.point)?.toFixed(2) : formatRating(pointValue(hovered.point))} {metric === "safety" ? "SR" : "iRating"}</div>
             <div className="tooltip-grid">
-              <span>Δ semana</span><strong>{signed(hovered.point.delta)}</strong>
+              <span>Δ semana</span><strong>{metric === "safety" ? (() => {
+                const series = hovered.series === "current" ? current : previous;
+                const before = [...series].reverse().find((point) => point.week < hovered.point.week && pointValue(point) !== null);
+                const delta = before && pointValue(hovered.point) !== null ? Number(pointValue(hovered.point)) - Number(pointValue(before)) : null;
+                return delta === null ? "—" : signed(Number(delta.toFixed(2)));
+              })() : signed(hovered.point.delta)}</strong>
               <span>Corridas</span><strong>{hovered.point.races}</strong>
               <span>Pistas</span><strong>{hovered.point.tracks.length ? hovered.point.tracks.join(", ") : "—"}</strong>
               <span>Carros</span><strong>{hovered.point.cars.length ? hovered.point.cars.join(", ") : "—"}</strong>
