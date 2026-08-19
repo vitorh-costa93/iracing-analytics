@@ -29,6 +29,8 @@ type Comparison = {
   opportunities: { title: string; detail: string; gain: number }[];
 };
 
+type IbtVariable = { type: number; offset: number };
+
 function formatLapTime(value: number) {
   const minutes = Math.floor(value / 60);
   const seconds = value - minutes * 60;
@@ -83,6 +85,91 @@ function parseTelemetryCsv(csv: string): Trace {
     points: points.filter((_, index) => index % stride === 0),
     channels: headers,
   };
+}
+
+function readIbtValue(view: DataView, offset: number, type: number) {
+  if (type === 0) return view.getInt8(offset);
+  if (type === 1) return view.getUint8(offset);
+  if (type === 2) return view.getInt32(offset, true);
+  if (type === 3) return view.getUint32(offset, true);
+  if (type === 4) return view.getFloat32(offset, true);
+  if (type === 5) return view.getFloat64(offset, true);
+  return Number.NaN;
+}
+
+function ibtToBestLapCsv(buffer: ArrayBuffer) {
+  const view = new DataView(buffer);
+  if (buffer.byteLength < 1024) throw new Error("Arquivo IBT vazio ou inválido");
+  const version = view.getInt32(0, true);
+  const variableCount = view.getInt32(24, true);
+  const variableHeaderOffset = view.getInt32(28, true);
+  const recordLength = view.getInt32(36, true);
+  const recordOffset = view.getInt32(52, true);
+  const recordCount = view.getInt32(140, true);
+  if (version < 1 || variableCount <= 0 || variableCount > 2000 || recordLength <= 0 || recordCount <= 0 || recordOffset <= 0) {
+    throw new Error("Cabeçalho IBT não reconhecido");
+  }
+  if (recordOffset + recordLength * recordCount > buffer.byteLength) throw new Error("Arquivo IBT truncado");
+
+  const decoder = new TextDecoder("ascii");
+  const variables = new Map<string, IbtVariable>();
+  for (let index = 0; index < variableCount; index += 1) {
+    const offset = variableHeaderOffset + index * 144;
+    if (offset + 144 > buffer.byteLength) throw new Error("Tabela de canais IBT inválida");
+    const rawName = new Uint8Array(buffer, offset + 16, 32);
+    const zero = rawName.indexOf(0);
+    const name = decoder.decode(zero >= 0 ? rawName.slice(0, zero) : rawName).trim();
+    variables.set(name, { type: view.getInt32(offset, true), offset: view.getInt32(offset + 4, true) });
+  }
+  const required = ["SessionTime", "Lap", "LapDistPct", "Speed", "Brake", "Throttle"];
+  for (const name of required) if (!variables.has(name)) throw new Error(`O IBT não contém o canal obrigatório ${name}`);
+  const optional = ["RPM", "SteeringWheelAngle", "Gear", "Clutch", "OnPitRoad"];
+  const value = (record: number, name: string) => {
+    const variable = variables.get(name);
+    if (!variable) return Number.NaN;
+    return readIbtValue(view, recordOffset + record * recordLength + variable.offset, variable.type);
+  };
+
+  type LapPoint = { time: number; distance: number; values: number[] };
+  let currentLap = Number.NaN;
+  let points: LapPoint[] = [];
+  let touchedPit = false;
+  let best: { duration: number; points: LapPoint[] } | null = null;
+  const finishLap = () => {
+    if (points.length < 100 || touchedPit) return;
+    const ordered = [...points].sort((a, b) => a.distance - b.distance);
+    const minDistance = ordered[0].distance;
+    const maxDistance = ordered[ordered.length - 1].distance;
+    const duration = points[points.length - 1].time - points[0].time;
+    if (minDistance > 0.03 || maxDistance < 0.97 || duration <= 10) return;
+    if (!best || duration < best.duration) best = { duration, points: ordered };
+  };
+
+  for (let record = 0; record < recordCount; record += 1) {
+    const lap = value(record, "Lap");
+    const distance = value(record, "LapDistPct");
+    if (!Number.isFinite(lap) || lap <= 0 || !Number.isFinite(distance) || distance < 0 || distance > 1.01) continue;
+    if (lap !== currentLap) {
+      finishLap();
+      currentLap = lap;
+      points = [];
+      touchedPit = false;
+    }
+    touchedPit ||= value(record, "OnPitRoad") === 1;
+    points.push({
+      time: value(record, "SessionTime"), distance,
+      values: [value(record, "Speed"), value(record, "Brake"), value(record, "Throttle"), ...optional.slice(0, 4).map((name) => value(record, name))],
+    });
+  }
+  finishLap();
+  const bestLap = best as { duration: number; points: LapPoint[] } | null;
+  if (!bestLap) throw new Error("Nenhuma volta completa fora dos boxes foi encontrada no IBT");
+  const stride = Math.max(1, Math.ceil(bestLap.points.length / 1800));
+  const headers = ["Speed", "LapDistPct", "Brake", "Throttle", "RPM", "SteeringWheelAngle", "Gear", "Clutch"];
+  const rows = bestLap.points.filter((_, index) => index % stride === 0).map((point) =>
+    [point.values[0], point.distance, ...point.values.slice(1)].map((item) => Number.isFinite(item) ? item : "").join(",")
+  );
+  return { csv: [headers.join(","), ...rows].join("\n"), duration: bestLap.duration, samples: rows.length };
 }
 
 function polyline(points: TracePoint[], field: "speed" | "throttle" | "brake", top: number, height: number, scalePoints = points) {
@@ -226,8 +313,16 @@ export default function ActiveWeekTelemetry() {
     setUploading(true);
     setReferenceMessage("Validando e armazenando referência...");
     try {
+      let uploadFile = file;
+      if (file.name.toLowerCase().endsWith(".ibt")) {
+        setReferenceMessage("Lendo o IBT localmente e procurando a volta completa mais rápida...");
+        const converted = ibtToBestLapCsv(await file.arrayBuffer());
+        const name = `${file.name.replace(/\.ibt$/i, "")}-best-lap.csv`;
+        uploadFile = new File([converted.csv], name, { type: "text/csv" });
+        setReferenceMessage(`Volta de ${formatLapTime(converted.duration)} extraída com ${converted.samples.toLocaleString("pt-BR")} amostras. Enviando referência normalizada...`);
+      }
       const form = new FormData();
-      form.set("file", file);
+      form.set("file", uploadFile);
       form.set("carId", String(selected.car.id));
       form.set("trackId", String(selected.track.id));
       const response = await fetch("/api/telemetry/reference", { method: "POST", body: form });
@@ -275,11 +370,11 @@ export default function ActiveWeekTelemetry() {
             <div>
               <span className="section-kicker">REFERENCE LAP</span>
               <strong>{reference ? reference.filename : "Nenhuma referência ativa"}</strong>
-              <p>{reference ? `Salva em ${new Date(reference.uploadedAt).toLocaleString("pt-BR")}` : "Envie o CSV do Data Pack para este carro e pista."}</p>
+              <p>{reference ? `Salva em ${new Date(reference.uploadedAt).toLocaleString("pt-BR")}` : "Envie um CSV ou IBT do iRacing para este carro e pista."}</p>
             </div>
             <label className={`reference-upload ${uploading ? "disabled" : ""}`}>
               {uploading ? "Enviando..." : reference ? "Substituir referência" : "Enviar telemetria de referência"}
-              <input type="file" accept=".csv,text/csv" disabled={uploading} onChange={(event) => {
+              <input type="file" accept=".csv,.ibt,text/csv,application/octet-stream" disabled={uploading} onChange={(event) => {
                 const file = event.target.files?.[0];
                 if (file) uploadReference(file);
                 event.target.value = "";

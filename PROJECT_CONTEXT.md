@@ -179,6 +179,8 @@ Em seguida foi implementado o upload de uma referência CSV ativa por driver+car
 
 A comparação inicial interpola as duas voltas em uma grade comum de distância, sobrepõe velocidade e usa a integral inversa da velocidade, calibrada pelo tempo real da volta própria, para estimar tempo/gap da referência e perdas por décimos da pista. Os insights destacam até três segmentos e cruzam diferença de velocidade, freio e acelerador. Esses ganhos são estimativas: combustível, setup, clima e aderência precisam ser considerados antes de transformar o achado em recomendação de pilotagem. Identificação por curva e coaching contextual mais profundo continuam no roadmap.
 
+O upload também aceita arquivos binários `.ibt` nativos do iRacing. Como esses arquivos podem superar 100 MB e conter uma sessão inteira, a aplicação os decodifica localmente no navegador, valida o cabeçalho/canais, elimina voltas incompletas ou com passagem pelos boxes e extrai a volta completa mais rápida. Somente um CSV normalizado e reduzido dessa volta é enviado ao servidor; o IBT original não sai do computador e não fica armazenado. A seleção automática por enquanto não usa incident flags, combustível ou condição de pista para decidir a volta de referência, limitações que devem ser consideradas na análise.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada
