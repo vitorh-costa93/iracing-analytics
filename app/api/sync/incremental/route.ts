@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
-const OVERLAP_HOURS = 48;
+const OVERLAP_HOURS = 7 * 24;
 const INITIAL_LOOKBACK_DAYS = 14;
 const PAGE_SIZE = 250;
 
