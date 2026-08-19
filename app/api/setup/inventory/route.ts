@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { garage61Get } from "@/lib/garage61";
 
-type Payload = { startTime?: string; season?: { id?: string }; sessionType?: number };
+type Payload = { id?: string; startTime?: string; season?: { id?: string }; sessionType?: number; canViewSetup?: boolean };
+type Garage61Laps = { items?: Payload[] };
 
 async function context() {
   const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
@@ -13,7 +15,7 @@ async function context() {
   return { driverId: driver.id, seasonId: String(current.season_id), seasonName: current.season_name };
 }
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const { driverId, seasonId, seasonName } = await context();
     const [sessionsResult, setupsResult, lapsResult] = await Promise.all([
@@ -46,11 +48,20 @@ export async function GET() {
     const tracks = new Map((tracksResult.data ?? []).map((item) => [Number(item.id), item]));
 
     const seasonLaps = (lapsResult.data ?? []).filter((row) => (row.garage61_payload as Payload | null)?.season?.id === seasonId);
+    const requestedCar = Number(request.nextUrl.searchParams.get("carId"));
+    const requestedTrack = Number(request.nextUrl.searchParams.get("trackId"));
+    let liveLaps: Payload[] | null = null;
+    if (Number.isInteger(requestedCar) && Number.isInteger(requestedTrack) && pairMap.has(`${requestedCar}:${requestedTrack}`)) {
+      const response = await garage61Get<Garage61Laps>("/laps", { cars: requestedCar, tracks: requestedTrack, drivers: "me", group: "none", unclean: "true", lapTypes: "1,2,3,4", limit: 250, offset: 0 });
+      liveLaps = (response.items ?? []).filter((lap) => lap.season?.id === seasonId);
+    }
+
     const contexts = [...pairMap.entries()].map(([key, pair]) => {
       const relevant = seasonLaps.filter((lap) => Number(lap.car_id) === pair.carId && Number(lap.track_id) === pair.trackId);
+      const liveRelevant = requestedCar === pair.carId && requestedTrack === pair.trackId ? liveLaps : null;
+      const observed = liveRelevant ?? relevant.map((lap) => ({ id: lap.id, canViewSetup: lap.can_view_setup }));
       const uploads = (setupsResult.data ?? []).filter((setup) => Number(setup.car_id) === pair.carId && Number(setup.track_id) === pair.trackId);
-      const visibleLap = relevant.find((lap) => lap.can_view_setup);
-      const blockedLap = relevant.find((lap) => !lap.can_view_setup);
+      const visibleLap = observed.find((lap) => lap.canViewSetup);
       const car = cars.get(pair.carId), track = tracks.get(pair.trackId);
       return {
         key,
@@ -58,7 +69,7 @@ export async function GET() {
         track: { id: pair.trackId, name: track?.name ?? `Pista ${pair.trackId}`, variant: track?.variant ?? null },
         races: pair.races,
         lastRace: pair.lastRace,
-        garage61: { accessible: Boolean(visibleLap), accessibleLapId: visibleLap?.id ?? null, blockedCommercialDetected: Boolean(blockedLap), observedLaps: relevant.length },
+        garage61: { scanned: liveRelevant !== null || relevant.length > 0, accessible: Boolean(visibleLap), accessibleLapId: visibleLap?.id ?? null, observedLaps: observed.length },
         uploads,
       };
     }).sort((a, b) => (b.lastRace ?? "").localeCompare(a.lastRace ?? ""));
