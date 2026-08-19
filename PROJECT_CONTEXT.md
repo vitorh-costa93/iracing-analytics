@@ -40,6 +40,8 @@ O projeto é uma aplicação Next.js/TypeScript publicada em `https://iracing-an
 
 Antes de mexer, inventarie `app/`, `components/`, `lib/`, migrations/SQL e scripts declarados em `package.json`. Rotas de debug devem ser tratadas como auxiliares, não como contratos públicos permanentes. Não presuma que toda rota discutida no histórico ainda exista.
 
+Em 19/08/2026, o repositório foi inicializado para desenvolvimento versionado com Supabase CLI `2.115.0`, fixada como dependência de desenvolvimento, e passou a conter `supabase/config.toml`. A integração Supabase ↔ GitHub já foi habilitada externamente. O checkout local foi vinculado com segurança ao projeto remoto `iracing-analytics` (`lwmochpoeltioebqhwwv`, PostgreSQL 17.6) e o schema `public` existente foi exportado, sem dados ou secrets, para a migration baseline `20260819000000_remote_schema.sql`. Esse baseline foi registrado como já aplicado no histórico remoto; `supabase db push --dry-run` confirmou que não há migrations pendentes. Nenhuma alteração de schema ou dados foi aplicada durante essa preparação.
+
 O sync do Garage61 foi desenvolvido para ser incremental e idempotente. Houve uma sincronização validada de car groups com 19 grupos, 72 associações e nenhum carro ausente. Backfills completos existem como operação excepcional; não devem rodar no caminho normal.
 
 ## Banco: estruturas principais conhecidas
