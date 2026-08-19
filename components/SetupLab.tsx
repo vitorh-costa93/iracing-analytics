@@ -9,9 +9,10 @@ type SetupContext = {
   track: { id: number; name: string; variant: string | null };
   races: number;
   garage61: { scanned: boolean; accessible: boolean; observedLaps: number };
-  uploads: { id: string; filename: string; file_size: number; created_at: string }[];
+  uploads: { id: string; filename: string; file_size: number; setup_kind: "commercial" | "fixed" | "open" | "unknown"; created_at: string }[];
 };
 type EngineerResult = { summary: string; limitation: string; recommendations: { adjustment: string; direction: string; why: string; validate: string }[] };
+type CompareResult = { summary: string; totalParameters: number; changes: { tab: string; section: string; label: string; before: string; after: string; explanation: string }[] };
 
 export default function SetupLab() {
   const [mode, setMode] = useState<"generator" | "engineer">("generator");
@@ -24,6 +25,11 @@ export default function SetupLab() {
   const [activeSetupId, setActiveSetupId] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
   const [engineerResult, setEngineerResult] = useState<EngineerResult | null>(null);
+  const [baseSetupId, setBaseSetupId] = useState("");
+  const [comparisonSetupId, setComparisonSetupId] = useState("");
+  const [decodeConsent, setDecodeConsent] = useState(false);
+  const [comparing, setComparing] = useState(false);
+  const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
 
   function loadInventory() {
     fetch("/api/setup/inventory", { cache: "no-store" })
@@ -61,19 +67,33 @@ export default function SetupLab() {
   useEffect(() => {
     setActiveSetupId((current) => selected?.uploads.some((item) => item.id === current) ? current : selected?.uploads[0]?.id ?? "");
     setEngineerResult(null);
+    setBaseSetupId(selected?.uploads.find((item) => item.setup_kind === "fixed" || /fixed/i.test(item.filename))?.id ?? "");
+    setComparisonSetupId(selected?.uploads.find((item) => item.setup_kind === "commercial")?.id ?? "");
+    setCompareResult(null);
   }, [context, selected?.uploads]);
 
-  async function uploadCommercial(file: File) {
+  async function uploadSetup(file: File, setupKind: "commercial" | "fixed" | "open" | "unknown" = "commercial") {
     if (!selected) return;
     setUploading(true); setMessage("Enviando setup para o cofre privado...");
     try {
-      const form = new FormData(); form.set("file", file); form.set("carId", String(selected.car.id)); form.set("trackId", String(selected.track.id));
+      const form = new FormData(); form.set("file", file); form.set("carId", String(selected.car.id)); form.set("trackId", String(selected.track.id)); form.set("setupKind", setupKind);
       const response = await fetch("/api/setup/inventory", { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "Erro no upload");
       setMessage(`${file.name} armazenado com segurança.`); setActiveSetupId(result.setup.id); loadInventory(); return result.setup;
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     finally { setUploading(false); }
+  }
+
+  async function compareSetups() {
+    if (!selected) return;
+    setComparing(true); setCompareResult(null); setMessage("Decodificando e comparando os setups...");
+    try {
+      const response = await fetch("/api/setup/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseSetupId, comparisonSetupId, carId: selected.car.id, trackId: selected.track.id, consent: decodeConsent }) });
+      const result = await response.json(); if (!response.ok) throw new Error(result.message ?? "Erro no comparativo");
+      setCompareResult(result); setMessage(null);
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setComparing(false); }
   }
 
   async function runEngineer() {
@@ -101,14 +121,15 @@ export default function SetupLab() {
       </div>
 
       {mode === "generator" ? (
-        <div className="setup-grid">
-          <article className="panel setup-card"><span className="step-number">01 • GARAGE61</span><h3>Descoberta automática</h3><p>{selected ? `${selected.races} corrida(s) e ${selected.garage61.observedLaps} volta(s) observada(s) neste contexto.` : "Selecione um contexto."}</p><div className={`setup-access ${selected?.garage61.accessible ? "available" : "blocked"}`}>{selected?.garage61.accessible ? <CheckCircle2 /> : <FileLock2 />}<div><strong>{!selected?.garage61.scanned ? "Consultando Garage61..." : selected.garage61.accessible ? "Setup visualizável no Garage61" : "Nenhum setup liberado pela API"}</strong><span>{selected?.garage61.accessible ? "A volta poderá alimentar a etapa de comparação autorizada." : "Se for TS ou outro comercial, use o upload privado ao lado."}</span></div></div></article>
-          <article className="panel setup-card"><span className="step-number">02 • COMERCIAL</span><h3>Upload privado</h3><p>Use para TS e outros fornecedores quando o Garage61 bloquear o conteúdo. O arquivo fica privado e associado somente a este carro+pista.</p><label className={`setup-drop ${uploading ? "disabled" : ""}`}><FileUp size={22} /><strong>{uploading ? "Enviando..." : "Enviar setup comercial .sto"}</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadCommercial(file); event.target.value = ""; }} /></label></article>
-          <article className="panel setup-card setup-output"><span className="step-number">03 • COFRE</span><h3>Setups disponíveis</h3>{selected?.uploads.length ? <><strong>{selected.uploads.length} arquivo(s) privado(s)</strong><ul>{selected.uploads.map((file) => <li key={file.id}>{file.filename} <span>{Math.ceil(file.file_size / 1024)} KB</span></li>)}</ul></> : <p>Nenhum arquivo comercial enviado para este contexto.</p>}<p className="setup-guardrail">Acesso exclusivo server-side. O arquivo não é publicado nem compartilhado com outros usuários.</p></article>
+        <><div className="setup-grid">
+          <article className="panel setup-card"><span className="step-number">01 • FIXED</span><h3>Setup base do iRacing</h3><p>Selecione ou envie o fixed usado neste carro e pista.</p>{selected?.uploads.length ? <select className="setup-file-select" value={baseSetupId} onChange={(event) => setBaseSetupId(event.target.value)}><option value="">Selecionar setup base</option>{selected.uploads.map((file) => <option key={file.id} value={file.id}>{file.filename}</option>)}</select> : null}<label className={`setup-drop compact ${uploading ? "disabled" : ""}`}><FileUp size={20} /><strong>Enviar fixed .sto</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const saved = await uploadSetup(file, "fixed"); if (saved) setBaseSetupId(saved.id); } event.target.value = ""; }} /></label></article>
+          <article className="panel setup-card"><span className="step-number">02 • COMERCIAL</span><h3>Setup de comparação</h3><p>Selecione o TS ou outro setup comercial.</p>{selected?.uploads.length ? <select className="setup-file-select" value={comparisonSetupId} onChange={(event) => setComparisonSetupId(event.target.value)}><option value="">Selecionar setup comercial</option>{selected.uploads.map((file) => <option key={file.id} value={file.id}>{file.filename}</option>)}</select> : null}<label className={`setup-drop compact ${uploading ? "disabled" : ""}`}><FileUp size={20} /><strong>Enviar comercial .sto</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const saved = await uploadSetup(file, "commercial"); if (saved) setComparisonSetupId(saved.id); } event.target.value = ""; }} /></label></article>
+          <article className="panel setup-card setup-output"><span className="step-number">03 • COMPARAR</span><h3>Diferenças e motivos</h3><label className="decoder-consent"><input type="checkbox" checked={decodeConsent} onChange={(event) => setDecodeConsent(event.target.checked)} /><span>Autorizo o envio destes dois `.sto` ao SetupDelta para decodificação. O resultado será cacheado no cofre privado.</span></label><button className="primary-button setup-compare-button" disabled={!baseSetupId || !comparisonSetupId || !decodeConsent || comparing} onClick={compareSetups}>{comparing ? "Comparando..." : "Comparar fixed × comercial"}</button><p className="setup-guardrail">O iRacing criptografa o `.sto`; a decodificação externa é necessária para ler parâmetros reais.</p></article>
         </div>
+        {compareResult && <div className="panel setup-diff"><div className="panel-heading"><div><span className="section-kicker">SETUP DIFF</span><h3>{compareResult.summary}</h3><p>{compareResult.totalParameters} parâmetros mapeados foram verificados.</p></div></div>{compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}</span><strong>{change.label}</strong></div><div className="setup-values"><del>{change.before}</del><b>→</b><ins>{change.after}</ins></div><p>{change.explanation}</p></article>)}</div>}</>
       ) : (
         <div className="engineer-layout">
-          <article className="panel engineer-chat"><div className="engineer-message"><Bot size={18} /><div><strong>Engenheiro</strong><p>Conte o que o carro faz na entrada, meio e saída da curva. O plano sugere testes explicados e preserva o `.sto` original.</p></div></div>{selected?.uploads.length ? <label className="engineer-setup-select"><span>SETUP ATIVO</span><select value={activeSetupId} onChange={(event) => setActiveSetupId(event.target.value)}>{selected.uploads.map((setup) => <option key={setup.id} value={setup.id}>{setup.filename}</option>)}</select></label> : null}<textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Ex.: traseira escapa ao soltar o freio na entrada; quero mais confiança sem perder rotação no miolo..." /><div className="engineer-actions"><label className={`secondary-button ${uploading ? "disabled" : ""}`}>{uploading ? "Enviando..." : "Anexar setup"}<input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadCommercial(file); event.target.value = ""; }} /></label><button className="primary-button" disabled={analyzing || !activeSetupId} onClick={runEngineer}>{analyzing ? "Analisando..." : "Gerar recomendação"}</button></div>{engineerResult && <div className="engineer-result"><strong>{engineerResult.summary}</strong>{engineerResult.recommendations.map((item) => <article key={`${item.adjustment}-${item.direction}`}><h4>{item.adjustment}</h4><b>{item.direction}</b><p>{item.why}</p><small>Validar: {item.validate}</small></article>)}<p className="setup-guardrail">{engineerResult.limitation}</p></div>}</article>
+          <article className="panel engineer-chat"><div className="engineer-message"><Bot size={18} /><div><strong>Engenheiro</strong><p>Conte o que o carro faz na entrada, meio e saída da curva. O plano sugere testes explicados e preserva o `.sto` original.</p></div></div>{selected?.uploads.length ? <label className="engineer-setup-select"><span>SETUP ATIVO</span><select value={activeSetupId} onChange={(event) => setActiveSetupId(event.target.value)}>{selected.uploads.map((setup) => <option key={setup.id} value={setup.id}>{setup.filename}</option>)}</select></label> : null}<textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Ex.: traseira escapa ao soltar o freio na entrada; quero mais confiança sem perder rotação no miolo..." /><div className="engineer-actions"><label className={`secondary-button ${uploading ? "disabled" : ""}`}>{uploading ? "Enviando..." : "Anexar setup"}<input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadSetup(file, "commercial"); event.target.value = ""; }} /></label><button className="primary-button" disabled={analyzing || !activeSetupId} onClick={runEngineer}>{analyzing ? "Analisando..." : "Gerar recomendação"}</button></div>{engineerResult && <div className="engineer-result"><strong>{engineerResult.summary}</strong>{engineerResult.recommendations.map((item) => <article key={`${item.adjustment}-${item.direction}`}><h4>{item.adjustment}</h4><b>{item.direction}</b><p>{item.why}</p><small>Validar: {item.validate}</small></article>)}<p className="setup-guardrail">{engineerResult.limitation}</p></div>}</article>
           <aside className="panel engineer-context"><span className="section-kicker">CONTEXTO AUTOMÁTICO</span><h3>O que entra na análise</h3><ul><li>carro e pista da semana;</li><li>setup atual e padrão;</li><li>telemetria própria e referência ativa;</li><li>feedback de entrada, meio e saída;</li><li>efeito e risco de cada alteração.</li></ul></aside>
         </div>
       )}

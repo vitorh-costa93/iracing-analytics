@@ -83,8 +83,10 @@ export async function POST(request: NextRequest) {
   try {
     const form = await request.formData();
     const file = form.get("file"), carId = Number(form.get("carId")), trackId = Number(form.get("trackId"));
+    const setupKind = String(form.get("setupKind") ?? "commercial");
     if (!(file instanceof File) || !Number.isInteger(carId) || !Number.isInteger(trackId)) throw new Error("Arquivo, carro ou pista inválidos");
     if (!file.name.toLowerCase().endsWith(".sto")) throw new Error("Envie um arquivo .sto do iRacing");
+    if (!["commercial", "fixed", "open", "unknown"].includes(setupKind)) throw new Error("Tipo de setup inválido");
     if (file.size < 32 || file.size > 5 * 1024 * 1024) throw new Error("O setup deve ter entre 32 bytes e 5 MB");
     const { driverId, seasonId } = await context();
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
@@ -92,7 +94,7 @@ export async function POST(request: NextRequest) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const { error: storageError } = await supabaseAdmin.storage.from("private-setups").upload(path, bytes, { contentType: "application/octet-stream", upsert: true });
     if (storageError) throw storageError;
-    const { data, error } = await supabaseAdmin.from("setup_files").upsert({ driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, source: "manual_commercial", setup_kind: "commercial", filename: file.name, storage_path: path, file_size: file.size, updated_at: new Date().toISOString() }, { onConflict: "driver_id,season_id,car_id,track_id,filename" }).select("id,filename,file_size,created_at").single();
+    const { data, error } = await supabaseAdmin.from("setup_files").upsert({ driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, source: setupKind === "commercial" ? "manual_commercial" : "manual_upload", setup_kind: setupKind, filename: file.name, storage_path: path, file_size: file.size, decoded_params: null, decoded_at: null, decoder: null, external_decode_consent_at: null, updated_at: new Date().toISOString() }, { onConflict: "driver_id,season_id,car_id,track_id,filename" }).select("id,filename,file_size,setup_kind,created_at").single();
     if (error) { await supabaseAdmin.storage.from("private-setups").remove([path]); throw error; }
     return NextResponse.json({ status: "ok", setup: data });
   } catch (error) {
