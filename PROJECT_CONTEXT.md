@@ -102,6 +102,13 @@ Regras:
 
 Esse matching é uma aproximação. A iRacing Data API poderá fornecer `old_irating`, `new_irating` ou contexto oficial equivalente por subsession; quando validado, isso deve substituir ou ao menos auditar a associação probabilística.
 
+Auditoria executada em 19/08/2026 pela query versionada `supabase/queries/audit_irating_matching.sql`:
+
+- Formula Car: 166 corridas, 138 matches aceitos (83,1%), 7 sem candidato e 21 rejeitadas por conflito; 129 matches aceitos ocorreram em até 60 minutos.
+- Sports Car: 197 corridas, 181 matches aceitos (91,9%), 6 sem candidato e 10 rejeitadas por conflito; 167 matches aceitos ocorreram em até 60 minutos.
+- A disputa é material: 54 mudanças de Formula e 68 de Sports tinham mais de uma corrida candidata. A regra atual preservou o vínculo um-para-um ao deixar 31 corridas sem match por conflito.
+- Foi encontrado um match aceito de Sports a 323,8 minutos da corrida. Ele deve ser tratado como baixa confiança em uma evolução do modelo; não aumentar cobertura forçando casos distantes ou ambíguos.
+
 ## Categoria, série, classe e carro
 
 O modelo conceitual correto é:
@@ -216,10 +223,9 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 ## Próximos passos priorizados
 
 1. Abrir o repositório real, conferir branch/status, `package.json`, schema/migrations, rotas e contrato atual das views; alinhar este documento ao código se houver divergência.
-2. Auditar o matching corrida ↔ delta de iRating, cobertura, conflitos e confiança; não forçar associações ambíguas.
-3. Manter wins como pendente e acompanhar o registro OAuth do iRacing.
-4. Quando houver credenciais, implementar OAuth isoladamente e provar o fluxo com uma season pequena antes de criar backfill.
-5. Modelar `race_results` somente após observar payloads reais; então adicionar wins e métricas oficiais à UI.
-6. Construir a primeira versão de Active Week Telemetry: seletor carro+pista, telemetria Garage61, upload/validação/persistência de uma referência.
-7. Implementar normalização por distância e MVP de comparação (delta, speed, brake, throttle e maiores perdas), evoluindo depois para coaching por curva.
-8. A cada decisão ou mudança de schema/arquitetura, atualizar este arquivo no mesmo diff.
+2. Manter wins como pendente e acompanhar o registro OAuth do iRacing.
+3. Quando houver credenciais, implementar OAuth isoladamente e provar o fluxo com uma season pequena antes de criar backfill.
+4. Modelar `race_results` somente após observar payloads reais; então adicionar wins e métricas oficiais à UI.
+5. Construir a primeira versão de Active Week Telemetry: seletor carro+pista, telemetria Garage61, upload/validação/persistência de uma referência.
+6. Implementar normalização por distância e MVP de comparação (delta, speed, brake, throttle e maiores perdas), evoluindo depois para coaching por curva.
+7. A cada decisão ou mudança de schema/arquitetura, atualizar este arquivo no mesmo diff.
