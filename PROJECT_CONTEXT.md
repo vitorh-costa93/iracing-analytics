@@ -181,6 +181,10 @@ A comparação inicial interpola as duas voltas em uma grade comum de distância
 
 O upload também aceita arquivos binários `.ibt` nativos do iRacing. Como esses arquivos podem superar 100 MB e conter uma sessão inteira, a aplicação os decodifica localmente no navegador, valida o cabeçalho/canais, elimina voltas incompletas ou com passagem pelos boxes e extrai a volta completa mais rápida. Somente um CSV normalizado e reduzido dessa volta é enviado ao servidor; o IBT original não sai do computador e não fica armazenado. A seleção automática por enquanto não usa incident flags, combustível ou condição de pista para decidir a volta de referência, limitações que devem ser consideradas na análise.
 
+A análise detalhada passou a viver em `/telemetry`, mantendo o overview como porta de entrada. Os gráficos sincronizados cobrem velocidade, throttle, brake, steering, RPM e marcha, com tooltip das duas voltas em qualquer posição; a normalização preserva ainda clutch, aceleração lateral/longitudinal, yaw/yaw rate, latitude/longitude e estados ABS/DRS quando presentes nas duas fontes. O relatório divide a pista em segmentos de 5%, estima ganho e distância em metros quando GPS permite, compara pontos de frenagem, retomada, volante, marcha, RPM e aceleração lateral e lista métricas que sustentam cada hipótese. Não transformar correlação isolada em instrução categórica de pilotagem.
+
+O overview foi refinado para menor peso tipográfico e densidade visual mais próxima da UI do simulador. Rankings passaram a exibir Top 5 gains e Top 5 drops, com ícones de contexto e bandeiras conhecidas por pista. O logo oficial do iRacing não foi incorporado: a página de suporte da empresa exige permissão/licença escrita para uso; preservar marca própria até existir autorização.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada

@@ -34,7 +34,7 @@ export default function KpiCard({
 
   return (
     <article className="kpi-card">
-      <div className="kpi-label">{eyebrow}</div>
+      <div className="kpi-label"><span className="kpi-icon" aria-hidden>{mode === "delta" ? "↗" : "⌁"}</span>{eyebrow}</div>
       <div className={`kpi-main ${valueClass}`}>
         {available
           ? mode === "delta"

@@ -20,7 +20,7 @@
 }
 
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
-body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+body { font-family: "Arial Narrow", "Roboto Condensed", "Segoe UI", Arial, sans-serif; font-weight: 400; letter-spacing: .005em; }
 button, input, select { font: inherit; }
 button { -webkit-tap-highlight-color: transparent; }
 
@@ -59,6 +59,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .kpi-card { min-height: 142px; background: var(--surface); border: 1px solid var(--border); border-top: 3px solid #9aa4af; padding: 17px 18px 15px; box-shadow: var(--shadow); }
 .kpi-card:nth-child(1), .kpi-card:nth-child(2) { border-top-color: var(--blue); }
 .kpi-label { color: var(--muted); font-size: 10px; letter-spacing: .075em; font-weight: 800; text-transform: uppercase; }
+.kpi-icon { width: 25px; height: 25px; margin-right: 8px; display: inline-grid; place-items: center; border: 1px solid #c9d4dd; background: #eef5fa; color: var(--blue); font-size: 15px; vertical-align: middle; }
 .kpi-main { margin-top: 12px; font-size: 36px; line-height: 1; letter-spacing: -.045em; font-weight: 800; font-variant-numeric: tabular-nums; }
 .positive { color: var(--green); }
 .negative { color: var(--red); }
@@ -103,6 +104,9 @@ button { -webkit-tap-highlight-color: transparent; }
 .performance-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .ranking-panel { padding: 16px; min-height: 515px; }
 .performance-ranking { margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
+.ranking-split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.ranking-split h4 { margin: 16px 0 0; color: var(--soft); font-size: 9px; letter-spacing: .1em; font-weight: 600; }
+.context-icon { flex: 0 0 18px; font-size: 14px; filter: saturate(.85); }
 .performance-row-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 11px; }
 .performance-label-wrap { min-width: 0; display: flex; align-items: center; gap: 7px; }
 .performance-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: #3b444d; font-weight: 700; }
@@ -144,6 +148,26 @@ button { -webkit-tap-highlight-color: transparent; }
 .trace-throttle { stroke: var(--green); }
 .trace-brake { stroke: var(--red); opacity: .9; }
 .telemetry-caption { margin: 5px 0 0; color: var(--soft); font-size: 10px; text-align: right; }
+.telemetry-entry { margin-top: 18px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 20px; border-left: 3px solid var(--blue); }
+.telemetry-entry h2 { margin: 4px 0; font-size: 18px; }.telemetry-entry p { margin: 0; color: var(--muted); font-size: 12px; }
+.link-button { text-decoration: none; }.secondary-link { color: var(--blue-dark); font-size: 12px; text-decoration: none; }.compact-header { min-height: 88px; }.telemetry-page-frame { max-width: 1600px; }
+.channel-key { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--muted); font-size: 9px; }
+.channel-key span::before { content: ""; display: inline-block; width: 14px; height: 2px; margin-right: 5px; vertical-align: middle; background: currentColor; }
+.channel-key .speed { color: var(--blue); }.channel-key .throttle { color: var(--green); }.channel-key .brake { color: var(--red); }.channel-key .steering { color: #d17a22; }.channel-key .rpm { color: #7447aa; }.channel-key .gear { color: #4d5965; }.channel-key .clutch { color: #8c6d31; }.channel-key .dynamics { color: #287a87; }
+.interactive-chart { position: relative; }
+.channel-label { fill: #8a949e !important; font-size: 8px !important; letter-spacing: .08em; }
+.trace-speed { stroke: var(--blue); }.trace-throttle { stroke: var(--green); }.trace-brake { stroke: var(--red); }.trace-steering { stroke: #d17a22; }.trace-rpm { stroke: #7447aa; }.trace-gear { stroke: #4d5965; }.trace-clutch { stroke: #8c6d31; }.trace-latAccel, .trace-longAccel, .trace-yawRate { stroke: #287a87; }
+.reference-line { stroke-dasharray: 6 5; opacity: .55; }
+.hover-line { stroke: #20262d; stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.telemetry-hover { position: absolute; top: 24px; width: 270px; z-index: 5; padding: 10px 11px; background: rgba(28,34,40,.96); color: #fff; pointer-events: none; transform: translateX(-50%); box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+.telemetry-hover > strong { display: block; margin-bottom: 7px; font-size: 11px; }.telemetry-hover div { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; padding: 2px 0; font-size: 9px; }.telemetry-hover span { color: #aeb8c1; text-transform: uppercase; }.telemetry-hover b { font-weight: 500; }.telemetry-hover em { color: #c6a8e5; font-style: normal; }
+.insights-grid article ul { margin: 8px 0 0; padding-left: 15px; color: var(--muted); font-size: 9px; line-height: 1.6; }
+.channel-report { margin-top: 16px; padding: 14px; background: var(--surface-muted); border: 1px solid var(--border); }.channel-report h3 { margin: 0 0 8px; font-size: 14px; }.channel-report p { margin: 4px 0; color: var(--muted); font-size: 11px; }
+
+/* Visual mais próximo da UI do simulador: menos peso, superfícies frias e hierarquia compacta. */
+.brand-kicker, .section-kicker, .primary-button, .segmented-control button, .kpi-label, .performance-label, .performance-row-top strong { font-weight: 600; }
+.brand-block h1, .section-title-row h2, .panel-heading h2, .kpi-main { font-weight: 600; }
+.panel { border-color: #cfd4da; border-radius: 10px; }.kpi-card { border-radius: 8px; }.primary-button { border-radius: 5px; }
 .reference-bar { margin-top: 14px; padding: 13px 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid #cfe0ec; background: #f4f9fc; }
 .reference-bar div { display: flex; flex-direction: column; gap: 3px; }
 .reference-bar strong { font-size: 13px; }
@@ -176,6 +200,7 @@ footer { margin-top: 24px; color: #8a949e; font-size: 10px; text-align: center; 
 @media (max-width: 1080px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .performance-grid { grid-template-columns: 1fr; }
+  .ranking-split { grid-template-columns: 1fr; }
   .ranking-panel { min-height: auto; }
 }
 
