@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { garage61Get } from "@/lib/garage61";
 
-type Payload = { id?: string; startTime?: string; season?: { id?: string }; sessionType?: number; canViewSetup?: boolean };
+type Payload = { id?: string; startTime?: string; season?: { id?: string | number }; sessionType?: number; canViewSetup?: boolean };
 type Garage61Laps = { items?: Payload[] };
 
 async function context() {
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     let liveLaps: Payload[] | null = null;
     if (Number.isInteger(requestedCar) && Number.isInteger(requestedTrack) && pairMap.has(`${requestedCar}:${requestedTrack}`)) {
       const response = await garage61Get<Garage61Laps>("/laps", { cars: requestedCar, tracks: requestedTrack, drivers: "me", group: "none", unclean: "true", lapTypes: "1,2,3,4", limit: 250, offset: 0 });
-      liveLaps = (response.items ?? []).filter((lap) => lap.season?.id === seasonId);
+      liveLaps = (response.items ?? []).filter((lap) => String(lap.season?.id ?? "") === seasonId);
     }
 
     const contexts = [...pairMap.entries()].map(([key, pair]) => {
