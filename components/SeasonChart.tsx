@@ -38,8 +38,8 @@ export default function SeasonChart({ current, previous, currentName, previousNa
   const [hovered, setHovered] = useState<{ point: WeekPoint; series: "current" | "previous" } | null>(null);
 
   const width = 1000;
-  const height = 360;
-  const pad = { top: 28, right: 24, bottom: 44, left: 64 };
+  const height = 260;
+  const pad = { top: 22, right: 24, bottom: 38, left: 64 };
   const chartWidth = width - pad.left - pad.right;
   const chartHeight = height - pad.top - pad.bottom;
 
@@ -60,6 +60,12 @@ export default function SeasonChart({ current, previous, currentName, previousNa
     return available
       .map((p, index) => `${index === 0 ? "M" : "L"} ${x(p.week)} ${y(p.iratingEnd as number)}`)
       .join(" ");
+  }
+
+  function areaFor(points: WeekPoint[]) {
+    const available = points.filter((p) => p.iratingEnd !== null);
+    if (!available.length) return "";
+    return `${pathFor(points)} L ${x(available[available.length - 1].week)} ${height - pad.bottom} L ${x(available[0].week)} ${height - pad.bottom} Z`;
   }
 
   const ticks = Array.from({ length: 5 }, (_, index) => Math.round(max - (range / 4) * index));
@@ -84,6 +90,8 @@ export default function SeasonChart({ current, previous, currentName, previousNa
             <text key={week} x={x(week)} y={height - 15} textAnchor="middle" className="axis-label">W{week}</text>
           ))}
 
+          <path d={areaFor(previous)} className="season-area previous" />
+          <path d={areaFor(current)} className="season-area current" />
           <path d={pathFor(previous)} className="season-line previous" />
           <path d={pathFor(current)} className="season-line current" />
 

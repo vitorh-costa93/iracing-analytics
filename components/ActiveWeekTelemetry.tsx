@@ -264,7 +264,7 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
     if (item.latAccelGap > .5) observations.push("referência sustenta mais aceleração lateral");
     return {
       title: `${start}%–${end}% da volta${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
-      detail: observations.length ? observations.join("; ") + "." : "Perda concentrada em velocidade sustentada; examine a sequência completa de inputs.",
+      detail: `Você perde cerca de ${(item.gain * 10).toFixed(1)} décimos neste trecho porque ${observations.length ? observations.join("; ") : "mantém menos velocidade que a referência"}.`,
       gain: item.gain,
       metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ throttle ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
       start,
@@ -456,16 +456,12 @@ export default function ActiveWeekTelemetry() {
                 <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
-              <div className="insights-layout">
-                <div><div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde investigar primeiro</h3></div>
+              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3></div>
                   <div className="insights-grid">{comparison.opportunities.length ? comparison.opportunities.map((item) => (
                     <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance((item.start + item.end) / 2); }} key={item.title}>
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
                     </button>
                   )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos segmentos analisados.</p>}</div>
-                </div>
-                <div className="track-map-panel"><span className="section-kicker">TRACK POSITION</span><h3>Trecho selecionado</h3><TrackMap trace={trace} range={selectedRange} /><p>Clique em um insight para localizar a oportunidade.</p></div>
-              </div>
               <div className="channel-report"><h3>Relatório de inputs</h3>{comparison.channelInsights.map((insight) => <p key={insight}>{insight}</p>)}</div>
               <p className="comparison-note">Tempos e ganhos são estimados pela integração de velocidade normalizada por distância. Confirme cada hipótese nos traços; combustível, setup, clima e aderência podem explicar diferenças.</p>
             </div>
@@ -474,6 +470,8 @@ export default function ActiveWeekTelemetry() {
             <div className="telemetry-chart-wrap">
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
               <div className="channel-key"><span className="speed">Velocidade</span><span className="throttle">Acelerador</span><span className="brake">Freio</span><span className="steering">Volante</span><span className="rpm">RPM</span><span className="gear">Marcha</span><span className="clutch">Embreagem</span><span className="dynamics">Dinâmica</span></div>
+              <div className="telemetry-workspace">
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} /><p>Passe o mouse nos inputs ou clique em um insight.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" aria-label="Canais sincronizados das duas voltas por distância da pista"
                 onMouseLeave={() => setHoveredDistance(null)} onMouseMove={(event) => {
@@ -495,6 +493,7 @@ export default function ActiveWeekTelemetry() {
                 const format = (field: ChannelKey, value: number | null) => value === null ? "—" : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h` : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°` : field === "rpm" ? `${value.toFixed(0)}` : field === "gear" ? `${Math.round(value)}` : field === "latAccel" || field === "longAccel" ? `${value.toFixed(2)} m/s²` : field === "yawRate" ? `${value.toFixed(3)} rad/s` : `${(value * 100).toFixed(0)}%`;
                 return <div className="telemetry-hover" style={{ left: `${Math.min(82, Math.max(2, hoveredDistance))}%` }}><strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>{(["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate"] as ChannelKey[]).map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}</div>;
               })()}
+              </div>
               </div>
               <p className="telemetry-caption">{trace.points.length.toLocaleString("pt-BR")} amostras exibidas • volta de {new Date(selected.bestLap!.startTime).toLocaleString("pt-BR")}</p>
             </div>
