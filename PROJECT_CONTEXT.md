@@ -44,6 +44,8 @@ Em 19/08/2026, o repositório foi inicializado para desenvolvimento versionado c
 
 O sync do Garage61 foi desenvolvido para ser incremental e idempotente. Houve uma sincronização validada de car groups com 19 grupos, 72 associações e nenhum carro ausente. Backfills completos existem como operação excepcional; não devem rodar no caminho normal.
 
+Em 19/08/2026 foi identificado que o botão de atualização sincronizava catálogo, estatísticas e ratings, mas não alimentava `driving_sessions`, tabela consumida pelas views do dashboard. O fluxo recorrente passou a incluir um sync incremental de sessões: ele usa a sessão mais recente como cursor, relê uma sobreposição de 48 horas (limitada aos últimos 14 dias), consulta apenas pistas com atividade nesse período e consolida as voltas por identidade de evento/sessão/carro/pista antes do upsert. O Supabase Cron agenda esse fluxo a cada hora, no minuto 7, chamando um endpoint server-side protegido por um segredo compartilhado armazenado no Supabase Vault e em `CRON_SECRET` na Vercel. Backfills continuam separados desse caminho.
+
 ## Banco: estruturas principais conhecidas
 
 Tabelas identificadas no histórico:
