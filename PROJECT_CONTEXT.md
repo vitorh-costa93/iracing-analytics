@@ -185,6 +185,10 @@ A análise detalhada passou a viver em `/telemetry`, mantendo o overview como po
 
 O overview foi refinado para menor peso tipográfico e densidade visual mais próxima da UI do simulador. Rankings passaram a exibir Top 5 gains e Top 5 drops, com ícones de contexto e bandeiras conhecidas por pista. O logo oficial do iRacing não foi incorporado: a página de suporte da empresa exige permissão/licença escrita para uso; preservar marca própria até existir autorização.
 
+Após revisão visual, gains e drops voltaram a compartilhar um único ranking horizontal divergente: zero no centro, perdas à esquerda e ganhos à direita, mantendo cinco extremos de cada lado. A iconografia usa componentes SVG da biblioteca aberta Lucide e bandeiras raster pequenas do FlagCDN para países reconhecidos; quando o país não é mapeado, usa um ícone de localização.
+
+Os insights de telemetria aparecem antes dos traços. Latitude/longitude da volta própria geram um mapa local do traçado sem depender de um endpoint externo do Garage61. Cada insight é selecionável e destaca seu segmento de 5% no mapa e sobre todos os gráficos; se o CSV não tiver GPS, o destaque nos gráficos continua sendo o fallback obrigatório.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada

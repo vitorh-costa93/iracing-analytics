@@ -27,7 +27,7 @@ type Comparison = {
   estimatedReferenceTime: number;
   estimatedGap: number;
   averageSpeedDifference: number;
-  opportunities: { title: string; detail: string; gain: number; metrics: string[] }[];
+  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number }[];
   channelInsights: string[];
 };
 
@@ -267,6 +267,8 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
       detail: observations.length ? observations.join("; ") + "." : "Perda concentrada em velocidade sustentada; examine a sequência completa de inputs.",
       gain: item.gain,
       metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ throttle ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
+      start,
+      end,
     };
   });
   const avgAbs = (field: ChannelKey, source: Trace) => source.points.reduce((sum, point) => sum + Math.abs(point[field] ?? 0), 0) / source.points.length;
@@ -276,6 +278,24 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
     `Inputs: acelerador médio ${(avgAbs("throttle", own) * 100).toFixed(0)}% e freio médio ${(avgAbs("brake", own) * 100).toFixed(0)}%, contra ${(avgAbs("throttle", reference) * 100).toFixed(0)}% / ${(avgAbs("brake", reference) * 100).toFixed(0)}%.`,
   ];
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
+}
+
+function TrackMap({ trace, range }: { trace: Trace; range: [number, number] | null }) {
+  const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
+  if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
+  const lats = gps.map((point) => Number(point.lat)), lons = gps.map((point) => Number(point.lon));
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const project = (point: TracePoint) => {
+    const x = 18 + (Number(point.lon) - minLon) / Math.max(.000001, maxLon - minLon) * 264;
+    const y = 182 - (Number(point.lat) - minLat) / Math.max(.000001, maxLat - minLat) * 164;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+  const selected = range ? gps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
+  return <svg className="track-map" viewBox="0 0 300 200" role="img" aria-label="Mapa GPS da pista com trecho selecionado">
+    <polyline points={gps.map(project).join(" ")} className="track-outline" />
+    {selected.length > 1 && <polyline points={selected.map(project).join(" ")} className="track-highlight" />}
+    {selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
+  </svg>;
 }
 
 export default function ActiveWeekTelemetry() {
@@ -290,6 +310,7 @@ export default function ActiveWeekTelemetry() {
   const [uploading, setUploading] = useState(false);
   const [referenceMessage, setReferenceMessage] = useState<string | null>(null);
   const [hoveredDistance, setHoveredDistance] = useState<number | null>(null);
+  const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -312,6 +333,7 @@ export default function ActiveWeekTelemetry() {
     let active = true;
     setTrace(null);
     setError(null);
+    setSelectedRange(null);
     if (!selected?.bestLap) return () => { active = false; };
     setTraceLoading(true);
     fetch(selected.bestLap.telemetryUrl, { cache: "no-store" })
@@ -426,6 +448,28 @@ export default function ActiveWeekTelemetry() {
           {traceLoading && <div className="telemetry-state">Pré-carregando canais do Garage61...</div>}
           {error && <div className="telemetry-state error">{error}</div>}
           {!traceLoading && !error && !selected.bestLap && <div className="telemetry-state">Ainda não há uma volta limpa com telemetria disponível para esta combinação.</div>}
+          {referenceTrace && !comparison && <div className="telemetry-state error">Não foi possível alinhar amostras suficientes entre as duas voltas.</div>}
+          {comparison && trace && (
+            <div className="comparison-section insights-first">
+              <div className="comparison-summary">
+                <div><span>REFERÊNCIA ESTIMADA</span><strong>{formatLapTime(comparison.estimatedReferenceTime)}</strong></div>
+                <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
+                <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
+              </div>
+              <div className="insights-layout">
+                <div><div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde investigar primeiro</h3></div>
+                  <div className="insights-grid">{comparison.opportunities.length ? comparison.opportunities.map((item) => (
+                    <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance((item.start + item.end) / 2); }} key={item.title}>
+                      <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
+                    </button>
+                  )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos segmentos analisados.</p>}</div>
+                </div>
+                <div className="track-map-panel"><span className="section-kicker">TRACK POSITION</span><h3>Trecho selecionado</h3><TrackMap trace={trace} range={selectedRange} /><p>Clique em um insight para localizar a oportunidade.</p></div>
+              </div>
+              <div className="channel-report"><h3>Relatório de inputs</h3>{comparison.channelInsights.map((insight) => <p key={insight}>{insight}</p>)}</div>
+              <p className="comparison-note">Tempos e ganhos são estimados pela integração de velocidade normalizada por distância. Confirme cada hipótese nos traços; combustível, setup, clima e aderência podem explicar diferenças.</p>
+            </div>
+          )}
           {trace && (
             <div className="telemetry-chart-wrap">
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
@@ -442,6 +486,7 @@ export default function ActiveWeekTelemetry() {
                   <polyline points={polyline(trace.points, row.field, row.top, row.height, referenceTrace ? [...trace.points, ...referenceTrace.points] : trace.points)} className={`trace-${row.field}`} />
                   {referenceTrace && <polyline points={polyline(referenceTrace.points, row.field, row.top, row.height, [...trace.points, ...referenceTrace.points])} className={`trace-${row.field} reference-line`} />}
                 </g>)}
+                {selectedRange && <rect x={selectedRange[0] * 10} y="0" width={(selectedRange[1] - selectedRange[0]) * 10} height="925" className="selected-segment" />}
                 {hoveredDistance !== null && <line x1={hoveredDistance * 10} x2={hoveredDistance * 10} y1="0" y2="925" className="hover-line" />}
               </svg>
               {hoveredDistance !== null && (() => {
@@ -452,24 +497,6 @@ export default function ActiveWeekTelemetry() {
               })()}
               </div>
               <p className="telemetry-caption">{trace.points.length.toLocaleString("pt-BR")} amostras exibidas • volta de {new Date(selected.bestLap!.startTime).toLocaleString("pt-BR")}</p>
-            </div>
-          )}
-          {referenceTrace && !comparison && <div className="telemetry-state error">Não foi possível alinhar amostras suficientes entre as duas voltas.</div>}
-          {comparison && (
-            <div className="comparison-section">
-              <div className="comparison-summary">
-                <div><span>REFERÊNCIA ESTIMADA</span><strong>{formatLapTime(comparison.estimatedReferenceTime)}</strong></div>
-                <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
-                <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
-              </div>
-              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde investigar primeiro</h3></div>
-              <div className="insights-grid">
-                {comparison.opportunities.length ? comparison.opportunities.map((item) => (
-                  <article key={item.title}><strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul></article>
-                )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos dez segmentos analisados.</p>}
-              </div>
-              <div className="channel-report"><h3>Relatório de inputs</h3>{comparison.channelInsights.map((insight) => <p key={insight}>{insight}</p>)}</div>
-              <p className="comparison-note">Tempos e ganhos são estimados pela integração de velocidade normalizada por distância. Confirme cada hipótese nos traços; combustível, setup, clima e aderência podem explicar diferenças.</p>
             </div>
           )}
         </div>

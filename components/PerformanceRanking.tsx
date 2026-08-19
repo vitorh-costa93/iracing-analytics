@@ -1,58 +1,42 @@
-type RankingItem = {
-  label: string;
-  delta: number;
-  races: number;
-  group?: string | null;
-};
+import { CarFront, MapPin } from "lucide-react";
 
-type Props = {
-  items: RankingItem[];
-  emptyText?: string;
-  kind?: "car" | "track";
-};
+type RankingItem = { label: string; delta: number; races: number; group?: string | null };
+type Props = { items: RankingItem[]; emptyText?: string; kind?: "car" | "track" };
 
-function signed(value: number) {
-  return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR")}`;
-}
+function signed(value: number) { return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR")}`; }
 
-function trackFlag(label: string) {
+function countryCode(label: string) {
   const value = label.toLowerCase();
   const countries: [string[], string][] = [
-    [["monza", "imola", "mugello"], "🇮🇹"], [["spa", "zolder"], "🇧🇪"],
-    [["silverstone", "brands hatch", "donington", "oulton", "snetterton"], "🇬🇧"],
-    [["nürburgring", "nurburgring", "hockenheim", "sachsenring"], "🇩🇪"],
-    [["interlagos"], "🇧🇷"], [["suzuka", "fuji", "motegi", "okayama"], "🇯🇵"],
-    [["le mans", "magny", "paul ricard"], "🇫🇷"], [["barcelona", "jerez", "aragon"], "🇪🇸"],
-    [["mount panorama", "phillip island", "sandown", "oran park"], "🇦🇺"],
-    [["canadian tire", "mosport", "montreal"], "🇨🇦"],
+    [["monza", "imola", "mugello"], "it"], [["spa", "zolder"], "be"], [["silverstone", "brands hatch", "donington", "oulton", "snetterton"], "gb"],
+    [["nürburgring", "nurburgring", "hockenheim", "sachsenring"], "de"], [["interlagos", "josé carlos pace"], "br"], [["suzuka", "fuji", "motegi", "okayama"], "jp"],
+    [["le mans", "magny", "paul ricard"], "fr"], [["barcelona", "jerez", "aragon"], "es"], [["mount panorama", "phillip island", "sandown", "oran park"], "au"],
+    [["canadian tire", "mosport", "montreal"], "ca"], [["red bull ring"], "at"], [["zandvoort"], "nl"], [["portimão", "estoril"], "pt"],
   ];
-  return countries.find(([names]) => names.some((name) => value.includes(name)))?.[1] ?? "🏁";
-}
-
-function RankingList({ items, tone, kind }: { items: RankingItem[]; tone: "positive" | "negative"; kind: "car" | "track" }) {
-  const maxAbs = Math.max(...items.map((item) => Math.abs(item.delta)), 1);
-  return <div className="performance-ranking">{items.map((item) => {
-    const width = Math.max((Math.abs(item.delta) / maxAbs) * 100, 3);
-    return <div className="performance-row" key={`${tone}-${item.group ?? ""}-${item.label}`}>
-      <div className="performance-row-top"><div className="performance-label-wrap">
-        <span className="context-icon" aria-hidden>{kind === "track" ? trackFlag(item.label) : "◇"}</span>
-        {item.group && <span className="performance-badge">{item.group}</span>}<span className="performance-label">{item.label}</span>
-      </div><strong className={tone}>{signed(item.delta)}</strong></div>
-      <div className="performance-track"><div className={`performance-fill ${tone}`} style={{ width: `${width}%` }} /></div>
-      <div className="performance-meta">{item.races.toLocaleString("pt-BR")} corridas</div>
-    </div>;
-  })}</div>;
+  return countries.find(([names]) => names.some((name) => value.includes(name)))?.[1] ?? null;
 }
 
 export default function PerformanceRanking({ items, emptyText, kind = "car" }: Props) {
-  if (!items.length) {
-    return <div className="ranking-empty">{emptyText ?? "Sem dados"}</div>;
-  }
+  if (!items.length) return <div className="ranking-empty">{emptyText ?? "Sem dados"}</div>;
+  const gains = items.filter((item) => item.delta > 0).slice(0, 5);
+  const drops = [...items].filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5);
+  const rows = [...gains, ...drops].sort((a, b) => b.delta - a.delta);
+  const maxAbs = Math.max(...rows.map((item) => Math.abs(item.delta)), 1);
 
-  return (
-    <div className="ranking-split">
-      <div><h4>TOP 5 GAINS</h4><RankingList items={items.filter((item) => item.delta > 0).slice(0, 5)} tone="positive" kind={kind} /></div>
-      <div><h4>TOP 5 DROPS</h4><RankingList items={[...items].filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5)} tone="negative" kind={kind} /></div>
-    </div>
-  );
+  return <div className="diverging-ranking">
+    <div className="diverging-axis"><span>PERDAS</span><i /><span>GANHOS</span></div>
+    {rows.map((item) => {
+      const positive = item.delta > 0;
+      const width = Math.max(Math.abs(item.delta) / maxAbs * 48, 2);
+      const code = kind === "track" ? countryCode(item.label) : null;
+      return <div className="diverging-row" key={`${item.group ?? ""}-${item.label}`}>
+        <div className="diverging-label">
+          {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" /> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
+          {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas</small>
+        </div>
+        <div className="diverging-bar"><i className="center-line" /><span className={positive ? "positive" : "negative"} style={positive ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>
+        <b className={positive ? "positive" : "negative"}>{signed(item.delta)}</b>
+      </div>;
+    })}
+  </div>;
 }
