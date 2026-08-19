@@ -11,6 +11,7 @@ type SetupContext = {
   garage61: { scanned: boolean; accessible: boolean; observedLaps: number };
   uploads: { id: string; filename: string; file_size: number; created_at: string }[];
 };
+type EngineerResult = { summary: string; limitation: string; recommendations: { adjustment: string; direction: string; why: string; validate: string }[] };
 
 export default function SetupLab() {
   const [mode, setMode] = useState<"generator" | "engineer">("generator");
@@ -20,6 +21,9 @@ export default function SetupLab() {
   const [seasonName, setSeasonName] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [activeSetupId, setActiveSetupId] = useState("");
+  const [analyzing, setAnalyzing] = useState(false);
+  const [engineerResult, setEngineerResult] = useState<EngineerResult | null>(null);
 
   function loadInventory() {
     fetch("/api/setup/inventory", { cache: "no-store" })
@@ -54,6 +58,11 @@ export default function SetupLab() {
 
   const selected = contexts.find((item) => item.key === context) ?? null;
 
+  useEffect(() => {
+    setActiveSetupId((current) => selected?.uploads.some((item) => item.id === current) ? current : selected?.uploads[0]?.id ?? "");
+    setEngineerResult(null);
+  }, [context, selected?.uploads]);
+
   async function uploadCommercial(file: File) {
     if (!selected) return;
     setUploading(true); setMessage("Enviando setup para o cofre privado...");
@@ -62,9 +71,20 @@ export default function SetupLab() {
       const response = await fetch("/api/setup/inventory", { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "Erro no upload");
-      setMessage(`${file.name} armazenado com segurança.`); loadInventory();
+      setMessage(`${file.name} armazenado com segurança.`); setActiveSetupId(result.setup.id); loadInventory(); return result.setup;
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     finally { setUploading(false); }
+  }
+
+  async function runEngineer() {
+    if (!selected || !activeSetupId) { setMessage("Anexe ou selecione um setup antes de analisar."); return; }
+    setAnalyzing(true); setEngineerResult(null); setMessage("Analisando seu feedback e preparando um plano de testes...");
+    try {
+      const response = await fetch("/api/setup/engineer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ setupId: activeSetupId, carId: selected.car.id, trackId: selected.track.id, feedback }) });
+      const result = await response.json(); if (!response.ok) throw new Error(result.message ?? "Erro na análise");
+      setEngineerResult(result); setMessage(null);
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setAnalyzing(false); }
   }
 
   return (
@@ -88,7 +108,7 @@ export default function SetupLab() {
         </div>
       ) : (
         <div className="engineer-layout">
-          <article className="panel engineer-chat"><div className="engineer-message"><Bot size={18} /><div><strong>Engenheiro</strong><p>Conte o que o carro faz na entrada, meio e saída da curva. Se não houver feedback, a análise usará sua volta e a referência ativa da telemetria.</p></div></div><textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Ex.: traseira escapa ao soltar o freio na entrada; quero mais confiança sem perder rotação no miolo..." /><div className="engineer-actions"><label className="secondary-button">Anexar setup<input type="file" accept=".sto" /></label><button className="primary-button" disabled>Gerar recomendação</button></div><p className="setup-guardrail">O envio ao engenheiro será ativado após a validação do formato `.sto` e a configuração de um provedor de IA server-side. O botão permanece bloqueado para não inventar ajustes.</p></article>
+          <article className="panel engineer-chat"><div className="engineer-message"><Bot size={18} /><div><strong>Engenheiro</strong><p>Conte o que o carro faz na entrada, meio e saída da curva. O plano sugere testes explicados e preserva o `.sto` original.</p></div></div>{selected?.uploads.length ? <label className="engineer-setup-select"><span>SETUP ATIVO</span><select value={activeSetupId} onChange={(event) => setActiveSetupId(event.target.value)}>{selected.uploads.map((setup) => <option key={setup.id} value={setup.id}>{setup.filename}</option>)}</select></label> : null}<textarea value={feedback} onChange={(event) => setFeedback(event.target.value)} placeholder="Ex.: traseira escapa ao soltar o freio na entrada; quero mais confiança sem perder rotação no miolo..." /><div className="engineer-actions"><label className={`secondary-button ${uploading ? "disabled" : ""}`}>{uploading ? "Enviando..." : "Anexar setup"}<input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadCommercial(file); event.target.value = ""; }} /></label><button className="primary-button" disabled={analyzing || !activeSetupId} onClick={runEngineer}>{analyzing ? "Analisando..." : "Gerar recomendação"}</button></div>{engineerResult && <div className="engineer-result"><strong>{engineerResult.summary}</strong>{engineerResult.recommendations.map((item) => <article key={`${item.adjustment}-${item.direction}`}><h4>{item.adjustment}</h4><b>{item.direction}</b><p>{item.why}</p><small>Validar: {item.validate}</small></article>)}<p className="setup-guardrail">{engineerResult.limitation}</p></div>}</article>
           <aside className="panel engineer-context"><span className="section-kicker">CONTEXTO AUTOMÁTICO</span><h3>O que entra na análise</h3><ul><li>carro e pista da semana;</li><li>setup atual e padrão;</li><li>telemetria própria e referência ativa;</li><li>feedback de entrada, meio e saída;</li><li>efeito e risco de cada alteração.</li></ul></aside>
         </div>
       )}
