@@ -171,6 +171,10 @@ O dashboard olha a season; a telemetria olha o trabalho da semana vigente.
 - O upload deve detectar/validar carro e pista quando possível. Na ausência de metadados suficientes, usar o par selecionado e pedir confirmação.
 - Primeira versão: uma referência ativa por carro+pista, persistida para reutilização futura. CSV original no Supabase Storage; metadados e, se útil, formato normalizado no banco.
 
+Em 19/08/2026 foi implementada a primeira fatia funcional da telemetria própria. O dashboard identifica os pares carro+pista presentes em `driving_sessions` dentro dos limites da week vigente, consulta as voltas desse par no Garage61 e seleciona a melhor volta limpa com telemetria disponível. O seletor usa o rótulo concatenado `Carro — Pista`; com um único par ele fica desabilitado e atua como identificação do contexto. Ao trocar o par, o CSV é pré-carregado pela rota server-side existente e os canais reconhecidos de velocidade, acelerador e freio são desenhados por distância. O token do Garage61 permanece somente no servidor. Esta implementação não persiste nem reimporta voltas e não altera o sync incremental.
+
+O upload e a persistência de referência de Data Pack, normalização comparativa, delta e coaching continuam como roadmap; não fazem parte desta primeira fatia.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada

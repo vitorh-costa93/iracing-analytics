@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
 import SeasonChart from "@/components/SeasonChart";
+import ActiveWeekTelemetry from "@/components/ActiveWeekTelemetry";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -274,14 +275,7 @@ export default function Home() {
           </div>
         </section>
 
-        <section className="panel telemetry-placeholder">
-          <div>
-            <span className="section-kicker">ACTIVE WEEK TELEMETRY</span>
-            <h2>Telemetria da semana ativa</h2>
-            <p>A próxima etapa identifica a pista ativa e concentra a análise apenas nas atividades da semana atual.</p>
-          </div>
-          <span className="coming-soon">PRÓXIMA ETAPA</span>
-        </section>
+        <ActiveWeekTelemetry />
 
         <footer>
           Racing Analytics • dados pessoais sincronizados via Garage61
