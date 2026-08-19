@@ -60,6 +60,8 @@ type RatingRow = {
   recorded_at: string;
 };
 
+type SafetyHistoryRow = RatingRow;
+
 function normalizeSeasonId(value: string | number) {
   return String(value);
 }
@@ -160,6 +162,7 @@ export async function GET() {
       weeklyResult,
       historicalResult,
       ratingsResult,
+      safetyHistoryResult,
     ] = await Promise.all([
       supabaseAdmin
         .from("v_season_summary")
@@ -248,13 +251,17 @@ export async function GET() {
           "driver_id",
           driver.id
         )
-        .eq(
-          "rating_type",
-          "irating"
-        )
         .order("recorded_at", {
           ascending: false,
         }),
+
+      supabaseAdmin
+        .from("rating_history")
+        .select("category,rating_type,rating,rating_display,recorded_at")
+        .eq("driver_id", driver.id)
+        .eq("rating_type", "safety_rating")
+        .in("category", ["formula_car", "sports_car"])
+        .order("recorded_at", { ascending: true }),
     ]);
 
     // =====================================================
@@ -295,6 +302,7 @@ export async function GET() {
         ratingsResult.error
       );
     }
+    if (safetyHistoryResult.error) throwSupabaseError("rating_history safety_rating", safetyHistoryResult.error);
 
     // =====================================================
     // DADOS
@@ -319,6 +327,7 @@ export async function GET() {
     const ratings =
       (ratingsResult.data ??
         []) as RatingRow[];
+    const safetyHistory = (safetyHistoryResult.data ?? []) as SafetyHistoryRow[];
 
     // =====================================================
     // SEASONS
@@ -374,6 +383,7 @@ export async function GET() {
     };
 
     for (const row of ratings) {
+      if (row.rating_type !== "irating") continue;
       if (
         row.category !==
           "formula_car" &&
@@ -392,6 +402,33 @@ export async function GET() {
           row.category
         ] = row.rating;
       }
+    }
+
+    const safetyScore = (row: RatingRow) => {
+      const displayed = row.rating_display?.match(/([0-9]+(?:\.[0-9]+)?)$/)?.[1];
+      return displayed ? Number(displayed) : row.rating === null ? null : row.rating % 1000 / 100;
+    };
+    const latestSafety = { formula_car: null, sports_car: null } as Record<"formula_car" | "sports_car", number | null>;
+    const latestSafetyDisplay = { formula_car: null, sports_car: null } as Record<"formula_car" | "sports_car", string | null>;
+    for (const row of ratings) {
+      if (row.rating_type !== "safety_rating" || (row.category !== "formula_car" && row.category !== "sports_car")) continue;
+      if (latestSafety[row.category] === null) {
+        latestSafety[row.category] = safetyScore(row);
+        latestSafetyDisplay[row.category] = row.rating_display;
+      }
+    }
+
+    function safetyAt(category: "formula_car" | "sports_car", at: string) {
+      const cutoff = new Date(at).getTime();
+      const candidates = safetyHistory.filter((row) => row.category === category && new Date(row.recorded_at).getTime() <= cutoff);
+      return candidates.length ? safetyScore(candidates[candidates.length - 1]) : null;
+    }
+
+    function safetyWeeklyFor(seasonId: string, category: "formula_car" | "sports_car") {
+      return weeklyFor(seasonId, category).map((point) => ({
+        ...point,
+        safetyRatingEnd: safetyAt(category, point.weekEnd),
+      }));
     }
 
     // =====================================================
@@ -558,6 +595,8 @@ export async function GET() {
       ratings:
         latestRatings,
 
+      safetyRatings: latestSafety,
+
       kpis: {
         formula: {
           current:
@@ -576,6 +615,11 @@ export async function GET() {
             current: null,
             previous: null,
           },
+          safetyRating: {
+            current: latestSafety.formula_car,
+            currentDisplay: latestSafetyDisplay.formula_car,
+            previous: safetyAt("formula_car", weeklyFor(previousSeasonId, "formula_car").at(-1)?.weekEnd ?? new Date(0).toISOString()),
+          },
         },
 
         sports: {
@@ -595,19 +639,24 @@ export async function GET() {
             current: null,
             previous: null,
           },
+          safetyRating: {
+            current: latestSafety.sports_car,
+            currentDisplay: latestSafetyDisplay.sports_car,
+            previous: safetyAt("sports_car", weeklyFor(previousSeasonId, "sports_car").at(-1)?.weekEnd ?? new Date(0).toISOString()),
+          },
         },
       },
 
       weekly: {
         formula: {
           current:
-            weeklyFor(
+            safetyWeeklyFor(
               currentSeasonId,
               "formula_car"
             ),
 
           previous:
-            weeklyFor(
+            safetyWeeklyFor(
               previousSeasonId,
               "formula_car"
             ),
@@ -615,13 +664,13 @@ export async function GET() {
 
         sports: {
           current:
-            weeklyFor(
+            safetyWeeklyFor(
               currentSeasonId,
               "sports_car"
             ),
 
           previous:
-            weeklyFor(
+            safetyWeeklyFor(
               previousSeasonId,
               "sports_car"
             ),

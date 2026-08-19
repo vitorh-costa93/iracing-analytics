@@ -9,7 +9,7 @@ type Combination = {
   track: { id: number; name: string; variant: string | null };
   sessions: number;
   lapsFound: number;
-  bestLap: null | { id: string; lapTime: number; startTime: string; sessionType: number | null; telemetryUrl: string };
+  bestLap: null | { id: string; lapTime: number; startTime: string; sessionType: number | null; selectionReason: string; telemetryUrl: string };
 };
 
 type ActiveWeekData = {
@@ -18,7 +18,7 @@ type ActiveWeekData = {
   combinations: Combination[];
 };
 
-type ChannelKey = "speed" | "throttle" | "brake" | "steering" | "rpm" | "gear" | "clutch" | "latAccel" | "longAccel" | "yaw" | "yawRate" | "abs" | "drs" | "lat" | "lon";
+type ChannelKey = "speed" | "throttle" | "brake" | "steering" | "rpm" | "gear" | "clutch" | "latAccel" | "longAccel" | "yaw" | "yawRate" | "abs" | "drs" | "pushToPass" | "p2pStatus" | "p2pCount" | "lat" | "lon";
 type TracePoint = { distance: number } & Record<ChannelKey, number | null>;
 type Trace = { points: TracePoint[]; channels: string[]; trackLengthMeters: number | null };
 type Reference = { filename: string; uploadedAt: string; csv: string };
@@ -73,6 +73,7 @@ function parseTelemetryCsv(csv: string): Trace {
     rpm: find("rpm", "engine0rpm"), gear: find("gear"), clutch: find("clutch", "clutchraw"),
     latAccel: find("lataccel", "lateralacceleration"), longAccel: find("longaccel", "longitudinalacceleration"),
     yaw: find("yaw"), yawRate: find("yawrate"), abs: find("absactive", "brakeabsactive"), drs: find("drsactive", "drsstatus"),
+    pushToPass: find("pushtopass"), p2pStatus: find("p2pstatus"), p2pCount: find("p2pcount"),
     lat: find("lat", "latitude"), lon: find("lon", "longitude"),
   };
   if (distanceIndex < 0) throw new Error("O Garage61 não retornou um canal de distância reconhecido");
@@ -143,7 +144,7 @@ function ibtToBestLapCsv(buffer: ArrayBuffer) {
   }
   const required = ["SessionTime", "Lap", "LapDistPct", "Speed", "Brake", "Throttle"];
   for (const name of required) if (!variables.has(name)) throw new Error(`O IBT não contém o canal obrigatório ${name}`);
-  const exported = ["Speed", "Brake", "Throttle", "RPM", "SteeringWheelAngle", "Gear", "Clutch", "LatAccel", "LongAccel", "Yaw", "YawRate", "BrakeABSactive", "DRS_Status", "Lat", "Lon"];
+  const exported = ["Speed", "Brake", "Throttle", "RPM", "SteeringWheelAngle", "Gear", "Clutch", "LatAccel", "LongAccel", "Yaw", "YawRate", "BrakeABSactive", "DRS_Status", "PushToPass", "P2P_Status", "P2P_Count", "Lat", "Lon"];
   const value = (record: number, name: string) => {
     const variable = variables.get(name);
     if (!variable) return Number.NaN;
@@ -223,7 +224,7 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey) 
 
 function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Comparison | null {
   const bins = Array.from({ length: 401 }, (_, index) => index / 4);
-  const fields: ChannelKey[] = ["speed", "throttle", "brake", "steering", "rpm", "gear", "clutch", "latAccel", "longAccel", "yawRate", "abs", "drs"];
+  const fields: ChannelKey[] = ["speed", "throttle", "brake", "steering", "rpm", "gear", "clutch", "latAccel", "longAccel", "yawRate", "abs", "drs", "pushToPass", "p2pStatus", "p2pCount"];
   const samples = bins.map((distance) => {
     const values: Record<string, number | null> = { distance };
     for (const field of fields) { values[`own_${field}`] = interpolate(own.points, distance, field); values[`ref_${field}`] = interpolate(reference.points, distance, field); }
@@ -256,12 +257,12 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
     if (braking?.deltaMeters) observations.push(braking.deltaMeters < 0
       ? `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m antes; há espaço para testar uma frenagem progressivamente mais adiante se velocidade mínima e saída não piorarem`
       : `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m depois; confira se isso causa pico de freio, menor velocidade mínima ou atraso na retomada`);
-    if (item.throttleGap > .06) observations.push(`referência usa ${(item.throttleGap * 100).toFixed(0)} p.p. mais acelerador`);
-    if (item.brakeGap > .06) observations.push(`você aplica ${(item.brakeGap * 100).toFixed(0)} p.p. mais freio`);
-    if (Math.abs(item.steeringGap) > .03) observations.push(`${item.steeringGap > 0 ? "mais" : "menos"} ângulo de volante`);
-    if (Math.abs(item.gearGap) >= .45) observations.push(`referência usa marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"}`);
+    if (item.throttleGap > .06) observations.push(`a referência usa ${(item.throttleGap * 100).toFixed(0)} p.p. mais acelerador; priorize soltar o freio sem arrastar e abra o acelerador progressivamente assim que o carro apontar para a saída`);
+    if (item.brakeGap > .06) observations.push(`você aplica ${(item.brakeGap * 100).toFixed(0)} p.p. mais freio; teste menos pressão ou uma liberação mais contínua para preservar velocidade mínima`);
+    if (Math.abs(item.steeringGap) > .03) observations.push(item.steeringGap > 0 ? "você usa mais volante; faça a rotação com uma entrada única e reduza correções para não sobrecarregar o pneu dianteiro" : "a referência usa mais volante; experimente antecipar suavemente a rotação sem adicionar um segundo movimento");
+    if (Math.abs(item.gearGap) >= .45) observations.push(`a referência usa marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"}; teste essa marcha e compare rotação, tração e estabilidade antes de adotá-la`);
     if (item.rpmGap > 300) observations.push(`referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`);
-    if (item.latAccelGap > .5) observations.push("referência sustenta mais aceleração lateral");
+    if (item.latAccelGap > .5) observations.push("a referência sustenta mais aceleração lateral; carregue velocidade com uma entrada mais limpa, solte o freio progressivamente até o ápice e evite correções que saturam o pneu");
     return {
       title: `${start}%–${end}% da volta${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
       detail: `Você perde cerca de ${(item.gain * 10).toFixed(1)} décimos neste trecho porque ${observations.length ? observations.join("; ") : "mantém menos velocidade que a referência"}.`,
@@ -276,6 +277,9 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
     `Volante: média absoluta ${(avgAbs("steering", own) * 180 / Math.PI).toFixed(1)}° contra ${(avgAbs("steering", reference) * 180 / Math.PI).toFixed(1)}° na referência.`,
     `RPM: média ${avgAbs("rpm", own).toFixed(0)} contra ${avgAbs("rpm", reference).toFixed(0)}; diferenças podem indicar marcha ou ponto de troca distintos.`,
     `Inputs: acelerador médio ${(avgAbs("throttle", own) * 100).toFixed(0)}% e freio médio ${(avgAbs("brake", own) * 100).toFixed(0)}%, contra ${(avgAbs("throttle", reference) * 100).toFixed(0)}% / ${(avgAbs("brake", reference) * 100).toFixed(0)}%.`,
+    ...(reference.channels.some((channel) => /PushToPass|P2P_/i.test(channel))
+      ? [`Push-to-pass: a referência IBT contém os canais de acionamento, estado e contagem. Use o tooltip para separar ganho de potência de ganho de pilotagem.`]
+      : []),
   ];
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
 }
@@ -425,9 +429,9 @@ export default function ActiveWeekTelemetry() {
       {selected && (
         <div className="telemetry-content">
           <div className="telemetry-meta">
-            <div><span>MELHOR VOLTA LIMPA</span><strong>{selected.bestLap ? formatLapTime(selected.bestLap.lapTime) : "Indisponível"}</strong></div>
+            <div><span>{selected.bestLap?.selectionReason === "qualifying_without_race_push_to_pass" ? "MELHOR VOLTA DE QUALIFYING" : "MELHOR VOLTA LIMPA"}</span><strong>{selected.bestLap ? formatLapTime(selected.bestLap.lapTime) : "Indisponível"}</strong></div>
             <div><span>ATIVIDADE</span><strong>{selected.sessions} sessões • {selected.lapsFound} voltas</strong></div>
-            <div><span>FONTE</span><strong>Garage61 • pré-carregada</strong></div>
+            <div><span>FONTE</span><strong>{selected.bestLap?.selectionReason === "qualifying_without_race_push_to_pass" ? "Garage61 • Qualifying sem P2P de corrida" : "Garage61 • pré-carregada"}</strong></div>
           </div>
           <div className="reference-bar">
             <div>
@@ -490,8 +494,9 @@ export default function ActiveWeekTelemetry() {
               {hoveredDistance !== null && (() => {
                 const own = (field: ChannelKey) => interpolate(trace.points, hoveredDistance, field);
                 const ref = (field: ChannelKey) => referenceTrace ? interpolate(referenceTrace.points, hoveredDistance, field) : null;
-                const format = (field: ChannelKey, value: number | null) => value === null ? "—" : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h` : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°` : field === "rpm" ? `${value.toFixed(0)}` : field === "gear" ? `${Math.round(value)}` : field === "latAccel" || field === "longAccel" ? `${value.toFixed(2)} m/s²` : field === "yawRate" ? `${value.toFixed(3)} rad/s` : `${(value * 100).toFixed(0)}%`;
-                return <div className="telemetry-hover" style={{ left: `${Math.min(82, Math.max(2, hoveredDistance))}%` }}><strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>{(["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate"] as ChannelKey[]).map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}</div>;
+                const format = (field: ChannelKey, value: number | null) => value === null ? "—" : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h` : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°` : field === "rpm" ? `${value.toFixed(0)}` : field === "gear" || field === "p2pCount" || field === "p2pStatus" ? `${Math.round(value)}` : field === "pushToPass" ? (value ? "ATIVO" : "inativo") : field === "latAccel" || field === "longAccel" ? `${value.toFixed(2)} m/s²` : field === "yawRate" ? `${value.toFixed(3)} rad/s` : `${(value * 100).toFixed(0)}%`;
+                const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
+                return <div className="telemetry-hover" style={{ left: `${Math.min(82, Math.max(2, hoveredDistance))}%` }}><strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>{visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}</div>;
               })()}
               </div>
               </div>

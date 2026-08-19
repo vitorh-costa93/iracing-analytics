@@ -193,6 +193,12 @@ O workspace detalhado posiciona o mapa GPS ao lado da pilha de inputs e sincroni
 
 A fonte do produto passou a ser Manrope auto-hospedada via Fontsource. O gráfico semanal foi compactado e ganhou preenchimento de área. KPIs foram centralizados, receberam acento por categoria e ícones distintos para Formula, Sports e wins, mantendo a identidade própria.
 
+Em 19/08/2026, a regra da Super Formula SF23 passou a preferir explicitamente a melhor volta limpa de `Qualifying` (`session_type = 2`) na semana ativa, com fallback para a melhor volta limpa geral somente quando não houver volta classificatória. A inspeção de um IBT real confirmou os canais `PushToPass`, `P2P_Status` e `P2P_Count`; o conversor browser-side agora os preserva e o tooltip os exibe quando presentes. O CSV exportado pelo Garage61 observado não continha esses canais, portanto não se deve inferir P2P em voltas próprias vindas apenas desse CSV.
+
+O histórico real contém `safety_rating` para Formula Car e Sports Car. O overview passou a substituir wins indisponíveis por Safety Rating, usando `rating_display` para o card (por exemplo, licença + valor) e o valor decimal do display para a série semanal. A página mostra iRating e Safety Rating lado a lado; mudanças de classe/licença devem ser interpretadas junto do prefixo do card, pois a curva representa o componente decimal do SR.
+
+A navegação principal agora expõe Overview, Telemetria e Setup. `/setup` introduz as subáreas Gerador de setup e Engenheiro, populadas pelo carro+pista da semana. Nesta etapa, seleção local de arquivos e definição do contexto estão implementadas, mas comparação estrutural, regravação de `.sto` e recomendações por IA permanecem bloqueadas até receber amostras reais, validar o formato e configurar um provedor de IA exclusivamente server-side. Nunca inventar parâmetros nem gerar binário incompatível; setups comerciais devem permanecer privados e dentro da licença de uso do comprador.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada
