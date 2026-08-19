@@ -4,9 +4,6 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const OVERLAP_HOURS = 48;
 const INITIAL_LOOKBACK_DAYS = 14;
-// One request per recently active track prevents a busy track from consuming
-// the whole page and hiding another track in the same batch.
-const TRACK_BATCH_SIZE = 1;
 const PAGE_SIZE = 250;
 
 type Garage61Lap = {
@@ -37,12 +34,6 @@ type SessionRow = {
   ended_at: string;
   lap_count: number;
 };
-
-function chunks<T>(items: T[], size: number) {
-  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) =>
-    items.slice(index * size, (index + 1) * size)
-  );
-}
 
 async function runIncrementalSessionSync() {
   const startedAt = new Date().toISOString();
@@ -85,27 +76,31 @@ async function runIncrementalSessionSync() {
 
     const { data: stats, error: statsError } = await supabaseAdmin
       .from("daily_statistics")
-      .select("track_id")
+      .select("car_id, track_id")
       .eq("driver_id", driver.id)
       .gte("statistic_date", cutoffIso.slice(0, 10))
       .not("track_id", "is", null);
     if (statsError) throw statsError;
 
-    const trackIds = Array.from(
-      new Set(
+    const recentPairs = Array.from(
+      new Map(
         (stats ?? [])
-          .map((row) => row.track_id)
-          .filter((id): id is number => typeof id === "number")
-      )
+          .filter(
+            (row): row is { car_id: number; track_id: number } =>
+              typeof row.car_id === "number" && typeof row.track_id === "number"
+          )
+          .map((row) => [`${row.car_id}:${row.track_id}`, row])
+      ).values()
     );
 
     const sessions = new Map<string, SessionRow>();
     let lapsReceived = 0;
     let recentLaps = 0;
 
-    for (const batch of chunks(trackIds, TRACK_BATCH_SIZE)) {
+    for (const pair of recentPairs) {
       const response = await garage61Get<Garage61LapsResponse>("/laps", {
-        tracks: batch.join(","),
+        cars: pair.car_id,
+        tracks: pair.track_id,
         drivers: "me",
         group: "none",
         unclean: "true",
@@ -174,7 +169,7 @@ async function runIncrementalSessionSync() {
       status: "ok" as const,
       cutoff: cutoffIso,
       overlapHours: OVERLAP_HOURS,
-      tracksChecked: trackIds.length,
+      carTrackPairsChecked: recentPairs.length,
       lapsReceived,
       recentLaps,
       sessionsUpserted: rows.length,
