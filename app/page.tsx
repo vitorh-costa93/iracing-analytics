@@ -1,10 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
 import SeasonChart from "@/components/SeasonChart";
-import ActiveWeekTelemetry from "@/components/ActiveWeekTelemetry";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -248,7 +248,7 @@ export default function Home() {
                   <button className={trackCategory === "sports" ? "active" : ""} onClick={() => setTrackCategory("sports")}>Sports</button>
                 </div>
               </div>
-              <PerformanceRanking items={rankings.tracks} />
+              <PerformanceRanking items={rankings.tracks} kind="track" />
             </article>
 
             <article className="panel ranking-panel">
@@ -275,7 +275,10 @@ export default function Home() {
           </div>
         </section>
 
-        <ActiveWeekTelemetry />
+        <section className="panel telemetry-entry">
+          <div><span className="section-kicker">TELEMETRY LAB</span><h2>Análise detalhada de telemetria</h2><p>Compare volta própria e referência, inspecione inputs e leia as maiores oportunidades por trecho.</p></div>
+          <Link href="/telemetry" className="primary-button link-button">Abrir análise</Link>
+        </section>
 
         <footer>
           Racing Analytics • dados pessoais sincronizados via Garage61
