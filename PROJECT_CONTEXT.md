@@ -189,6 +189,10 @@ Após revisão visual, gains e drops voltaram a compartilhar um único ranking h
 
 Os insights de telemetria aparecem antes dos traços. Latitude/longitude da volta própria geram um mapa local do traçado sem depender de um endpoint externo do Garage61. Cada insight é selecionável e destaca seu segmento de 5% no mapa e sobre todos os gráficos; se o CSV não tiver GPS, o destaque nos gráficos continua sendo o fallback obrigatório.
 
+O workspace detalhado posiciona o mapa GPS ao lado da pilha de inputs e sincroniza a posição também durante hover, aproximando o modelo mental do Garage61 sem copiar sua interface. Os insights usam frases diretas de perda estimada, causa observada e teste recomendado. Rankings permitem quebra de linha e separam amostra da barra; a inferência de país inclui circuitos norte-americanos e latino-americanos comuns. Logos de fabricantes reconhecidos vêm do CDN versionado/aberto Simple Icons, com fallback Lucide.
+
+A fonte do produto passou a ser Manrope auto-hospedada via Fontsource. O gráfico semanal foi compactado e ganhou preenchimento de área. KPIs foram centralizados, receberam acento por categoria e ícones distintos para Formula, Sports e wins, mantendo a identidade própria.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada

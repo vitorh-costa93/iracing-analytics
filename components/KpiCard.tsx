@@ -1,4 +1,4 @@
-import { Gauge, Trophy } from "lucide-react";
+import { FlagTriangleRight, Gauge, Trophy } from "lucide-react";
 
 type Props = {
   eyebrow: string;
@@ -33,10 +33,11 @@ export default function KpiCard({
           ? "negative"
           : "neutral"
       : "neutral";
+  const category = eyebrow.includes("Formula") ? "formula" : eyebrow.includes("Sports") ? "sports" : "generic";
 
   return (
-    <article className="kpi-card">
-      <div className="kpi-label"><span className="kpi-icon" aria-hidden>{mode === "delta" ? <Gauge size={15} /> : <Trophy size={15} />}</span>{eyebrow}</div>
+    <article className={`kpi-card ${category}`}>
+      <div className="kpi-label"><span className="kpi-icon" aria-hidden>{mode === "count" ? <Trophy size={17} /> : category === "formula" ? <FlagTriangleRight size={17} /> : <Gauge size={17} />}</span>{eyebrow}</div>
       <div className={`kpi-main ${valueClass}`}>
         {available
           ? mode === "delta"
