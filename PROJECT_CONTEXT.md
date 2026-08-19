@@ -145,9 +145,9 @@ Com iRacing `/data`, podem entrar best/average finish, average start, posições
 
 O gráfico mostra iRating absoluto/evolução por week e categoria, com contexto da atividade no tooltip. A grade de 12 weeks preserva semanas sem mudança e permite comparação entre seasons.
 
-Bug conhecido: `races` estava filtrado por `session_type = 3`, mas arrays de `cars` e `tracks` agregavam todas as sessões. Isso fazia Practice aparecer no tooltip/pontos associados à evolução de iRating.
+Em 19/08/2026, a migration `20260819010000_fix_weekly_activity_race_only.sql` corrigiu a view semanal para que `races`, `cars` e `tracks` sejam derivados exclusivamente de `session_type = 3`. A validação antes/depois no endpoint de produção confirmou a remoção de atividade de Practice, incluindo uma semana que antes mostrava carros e pista apesar de `races = 0`, sem alterar as contagens de corrida.
 
-Regra correta: para esse gráfico, `races`, `cars` e `tracks` devem considerar somente `session_type = 3`. Idealmente, a atividade exibida deve ser ainda mais restrita às corridas efetivamente associadas ao movimento de rating; até essa associação ser confiável, nunca incluir Practice/Qualifying.
+Como evolução futura, a atividade exibida pode ser ainda mais restrita às corridas efetivamente associadas ao movimento de rating; até essa associação ser confiável, nunca incluir Practice/Qualifying.
 
 ## Telemetria da semana ativa
 
@@ -216,12 +216,10 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 ## Próximos passos priorizados
 
 1. Abrir o repositório real, conferir branch/status, `package.json`, schema/migrations, rotas e contrato atual das views; alinhar este documento ao código se houver divergência.
-2. Corrigir e validar o gráfico semanal/tooltip para Race-only (`session_type = 3`) em corridas, carros e pistas; testar semanas com Practice e Race.
-3. Rodar testes e `npm run build`, revisar diff pequeno e versionar a correção.
-4. Auditar o matching corrida ↔ delta de iRating, cobertura, conflitos e confiança; não forçar associações ambíguas.
-5. Manter wins como pendente e acompanhar o registro OAuth do iRacing.
-6. Quando houver credenciais, implementar OAuth isoladamente e provar o fluxo com uma season pequena antes de criar backfill.
-7. Modelar `race_results` somente após observar payloads reais; então adicionar wins e métricas oficiais à UI.
-8. Construir a primeira versão de Active Week Telemetry: seletor carro+pista, telemetria Garage61, upload/validação/persistência de uma referência.
-9. Implementar normalização por distância e MVP de comparação (delta, speed, brake, throttle e maiores perdas), evoluindo depois para coaching por curva.
-10. A cada decisão ou mudança de schema/arquitetura, atualizar este arquivo no mesmo diff.
+2. Auditar o matching corrida ↔ delta de iRating, cobertura, conflitos e confiança; não forçar associações ambíguas.
+3. Manter wins como pendente e acompanhar o registro OAuth do iRacing.
+4. Quando houver credenciais, implementar OAuth isoladamente e provar o fluxo com uma season pequena antes de criar backfill.
+5. Modelar `race_results` somente após observar payloads reais; então adicionar wins e métricas oficiais à UI.
+6. Construir a primeira versão de Active Week Telemetry: seletor carro+pista, telemetria Garage61, upload/validação/persistência de uma referência.
+7. Implementar normalização por distância e MVP de comparação (delta, speed, brake, throttle e maiores perdas), evoluindo depois para coaching por curva.
+8. A cada decisão ou mudança de schema/arquitetura, atualizar este arquivo no mesmo diff.
