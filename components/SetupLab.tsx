@@ -1,34 +1,65 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, FileUp, SlidersHorizontal } from "lucide-react";
+import { Bot, CheckCircle2, FileLock2, FileUp, SlidersHorizontal } from "lucide-react";
 
-type Combination = { key: string; label: string };
+type SetupContext = {
+  key: string;
+  car: { id: number; name: string };
+  track: { id: number; name: string; variant: string | null };
+  races: number;
+  garage61: { accessible: boolean; blockedCommercialDetected: boolean; observedLaps: number };
+  uploads: { id: string; filename: string; file_size: number; created_at: string }[];
+};
 
 export default function SetupLab() {
   const [mode, setMode] = useState<"generator" | "engineer">("generator");
-  const [combinations, setCombinations] = useState<Combination[]>([]);
+  const [contexts, setContexts] = useState<SetupContext[]>([]);
   const [context, setContext] = useState("");
-  const [files, setFiles] = useState<File[]>([]);
   const [feedback, setFeedback] = useState("");
+  const [seasonName, setSeasonName] = useState("");
+  const [message, setMessage] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
-  useEffect(() => {
-    fetch("/api/telemetry/active-week", { cache: "no-store" })
+  function loadInventory() {
+    fetch("/api/setup/inventory", { cache: "no-store" })
       .then((response) => response.json())
       .then((data) => {
-        const next = (data.combinations ?? []) as Combination[];
-        setCombinations(next);
-        setContext(next[0]?.key ?? "");
+        if (data.status !== "ok") throw new Error(data.message ?? "Erro ao carregar setups");
+        const next = (data.contexts ?? []) as SetupContext[];
+        setContexts(next);
+        setSeasonName(data.season?.name ?? "");
+        setContext((current) => next.some((item) => item.key === current) ? current : next[0]?.key ?? "");
       })
-      .catch(() => setCombinations([]));
+      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
+  }
+
+  useEffect(() => {
+    loadInventory();
   }, []);
+
+  const selected = contexts.find((item) => item.key === context) ?? null;
+
+  async function uploadCommercial(file: File) {
+    if (!selected) return;
+    setUploading(true); setMessage("Enviando setup para o cofre privado...");
+    try {
+      const form = new FormData(); form.set("file", file); form.set("carId", String(selected.car.id)); form.set("trackId", String(selected.track.id));
+      const response = await fetch("/api/setup/inventory", { method: "POST", body: form });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.message ?? "Erro no upload");
+      setMessage(`${file.name} armazenado com segurança.`); loadInventory();
+    } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
+    finally { setUploading(false); }
+  }
 
   return (
     <section className="setup-lab">
       <div className="setup-intro">
-        <div><span className="section-kicker">SETUP LAB</span><h2>Seu engenheiro de pista</h2><p>Compare famílias de setup e transforme sensação e telemetria em mudanças explicadas.</p></div>
-        <label className="setup-context"><span>CARRO + PISTA DA SEMANA</span><select value={context} onChange={(event) => setContext(event.target.value)}>{combinations.map((item) => <option key={item.key} value={item.key}>{item.label}</option>)}</select></label>
+        <div><span className="section-kicker">SETUP LAB</span><h2>Seu engenheiro de pista</h2><p>{seasonName || "Season atual"} • todos os carros e pistas com corridas registradas.</p></div>
+        <label className="setup-context"><span>CARRO + PISTA DA SEASON</span><select value={context} onChange={(event) => setContext(event.target.value)}>{contexts.map((item) => <option key={item.key} value={item.key}>{item.car.name} — {item.track.name}{item.track.variant ? ` (${item.track.variant})` : ""}</option>)}</select></label>
       </div>
+      {message && <div className="status-banner">{message}</div>}
 
       <div className="setup-subtabs">
         <button className={mode === "generator" ? "active" : ""} onClick={() => setMode("generator")}><SlidersHorizontal size={16} />Gerador de setup</button>
@@ -37,9 +68,9 @@ export default function SetupLab() {
 
       {mode === "generator" ? (
         <div className="setup-grid">
-          <article className="panel setup-card"><span className="step-number">01</span><h3>Setup padrão do iRacing</h3><p>Base de comparação da pista e do carro selecionados.</p><label className="setup-drop"><FileUp size={22} /><strong>Selecionar .sto padrão</strong><input type="file" accept=".sto" onChange={(event) => setFiles(event.target.files ? [...files, ...Array.from(event.target.files)] : files)} /></label></article>
-          <article className="panel setup-card"><span className="step-number">02</span><h3>Setups de referência</h3><p>Envie os setups usados na temporada; pista e versão ficam associados pelo nome do arquivo.</p><label className="setup-drop"><FileUp size={22} /><strong>Selecionar vários .sto</strong><input multiple type="file" accept=".sto" onChange={(event) => setFiles(event.target.files ? [...files, ...Array.from(event.target.files)] : files)} /></label></article>
-          <article className="panel setup-card setup-output"><span className="step-number">03</span><h3>Padrões e efeito esperado</h3>{files.length ? <><strong>{files.length} arquivo(s) preparado(s)</strong><ul>{files.map((file) => <li key={`${file.name}-${file.size}`}>{file.name} <span>{Math.ceil(file.size / 1024)} KB</span></li>)}</ul><p className="setup-guardrail">A comparação de parâmetros será habilitada depois de validar a estrutura real desses arquivos. Nenhum `.sto` será regravado às cegas.</p></> : <p>Envie pelo menos um padrão e um comprado para iniciar a comparação.</p>}</article>
+          <article className="panel setup-card"><span className="step-number">01 • GARAGE61</span><h3>Descoberta automática</h3><p>{selected ? `${selected.races} corrida(s) e ${selected.garage61.observedLaps} volta(s) catalogada(s) neste contexto.` : "Selecione um contexto."}</p><div className={`setup-access ${selected?.garage61.accessible ? "available" : "blocked"}`}>{selected?.garage61.accessible ? <CheckCircle2 /> : <FileLock2 />}<div><strong>{selected?.garage61.accessible ? "Setup visualizável no Garage61" : "Conteúdo não liberado pela API"}</strong><span>{selected?.garage61.blockedCommercialDetected ? "Há setup comercial protegido associado às voltas." : "Aguardando setup acessível ou upload."}</span></div></div></article>
+          <article className="panel setup-card"><span className="step-number">02 • COMERCIAL</span><h3>Upload privado</h3><p>Use para TS e outros fornecedores quando o Garage61 bloquear o conteúdo. O arquivo fica privado e associado somente a este carro+pista.</p><label className={`setup-drop ${uploading ? "disabled" : ""}`}><FileUp size={22} /><strong>{uploading ? "Enviando..." : "Enviar setup comercial .sto"}</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadCommercial(file); event.target.value = ""; }} /></label></article>
+          <article className="panel setup-card setup-output"><span className="step-number">03 • COFRE</span><h3>Setups disponíveis</h3>{selected?.uploads.length ? <><strong>{selected.uploads.length} arquivo(s) privado(s)</strong><ul>{selected.uploads.map((file) => <li key={file.id}>{file.filename} <span>{Math.ceil(file.file_size / 1024)} KB</span></li>)}</ul></> : <p>Nenhum arquivo comercial enviado para este contexto.</p>}<p className="setup-guardrail">Acesso exclusivo server-side. O arquivo não é publicado nem compartilhado com outros usuários.</p></article>
         </div>
       ) : (
         <div className="engineer-layout">

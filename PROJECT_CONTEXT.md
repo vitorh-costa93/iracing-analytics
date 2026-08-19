@@ -199,6 +199,8 @@ O histórico real contém `safety_rating` para Formula Car e Sports Car. O overv
 
 A navegação principal agora expõe Overview, Telemetria e Setup. `/setup` introduz as subáreas Gerador de setup e Engenheiro, populadas pelo carro+pista da semana. Nesta etapa, seleção local de arquivos e definição do contexto estão implementadas, mas comparação estrutural, regravação de `.sto` e recomendações por IA permanecem bloqueadas até receber amostras reais, validar o formato e configurar um provedor de IA exclusivamente server-side. Nunca inventar parâmetros nem gerar binário incompatível; setups comerciais devem permanecer privados e dentro da licença de uso do comprador.
 
+O Setup Lab passou a inventariar todos os pares carro+pista com corridas (`session_type = 3`) na season atual, não apenas a semana ativa. Para cada contexto ele mostra se alguma volta sincronizada sinaliza `can_view_setup`, se há conteúdo bloqueado e quais `.sto` comerciais foram enviados. Uploads manuais são limitados a 5 MB, armazenados no bucket privado `private-setups` e catalogados em `setup_files`; somente rotas server-side com service role acessam objetos e metadados. A presença de `can_view_setup` é evidência de acesso no Garage61, não de que o arquivo foi importado: a API pública documentada não oferece download de setup diretamente por lap. Downloads automáticos só podem ser marcados como concluídos quando um endpoint autorizado realmente devolver parâmetros ou binário.
+
 Modos considerados para a telemetria própria: melhor volta limpa como padrão, média das cinco melhores e race pace. Não comparar voltas incompatíveis sem expor diferenças relevantes de combustível/setup/condição.
 
 ### Proposta de análise detalhada
