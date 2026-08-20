@@ -1,0 +1,9 @@
+node_modules
+.next
+.env
+.env.local
+.env.*.local
+.vercel
+*.tsbuildinfo
+data/garage61-events-26S3/
+data/garage61-setups-26S3/
