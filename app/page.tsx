@@ -7,6 +7,7 @@ import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
+import OfficialResultsPanel from "@/components/OfficialResultsPanel";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -236,6 +237,12 @@ export default function Home() {
             <KpiCard eyebrow="Sports Car • Vitórias" value={data.kpis.sports.wins.current} previousValue={data.kpis.sports.wins.previous} previousLabel={previousLabel} mode="wins" />
           </div>
         </section>
+
+        <OfficialResultsPanel
+          lastCapturedAt={data.officialResults.lastCapturedAt}
+          series={data.officialResults.series}
+          onImported={loadDashboard}
+        />
 
         <section className="rating-chart-grid">
         <article className="panel large-panel">

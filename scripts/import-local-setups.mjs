@@ -33,24 +33,39 @@ for (const car of currentCars) {
   try { if ((await fs.stat(active)).isFile()) selected.push(active); } catch { /* no active setup */ }
 }
 
+const cachePath = path.join(projectRoot, "scripts", ".import-cache.json");
+let cache = {};
+try { cache = JSON.parse(await fs.readFile(cachePath, "utf8")); } catch { /* first run */ }
+const nextCache = {};
+
 const manifest = [];
 let uploaded = 0;
+let skipped = 0;
 for (const file of selected) {
+  const stat = await fs.stat(file);
+  nextCache[file] = stat.mtimeMs;
   const relative = path.relative(setupRoot, file);
   const [carFolder] = relative.split(path.sep);
   const originalName = path.basename(file);
   const filename = originalName === "-Current-" ? `${carFolder}-current.sto` : originalName;
   const storagePath = `local-library/${seasonCode}/${carFolder}/${filename}`.replace(/\\/g, "/");
-  const bytes = await fs.readFile(file);
-  const { error } = await supabase.storage.from("private-setups").upload(storagePath, bytes, { contentType: "application/octet-stream", upsert: true });
-  if (error) throw new Error(`${relative}: ${error.message}`);
-  const stat = await fs.stat(file);
+  const changed = cache[file] !== stat.mtimeMs;
+  if (changed) {
+    const bytes = await fs.readFile(file);
+    const { error } = await supabase.storage.from("private-setups").upload(storagePath, bytes, { contentType: "application/octet-stream", upsert: true });
+    if (error) throw new Error(`${relative}: ${error.message}`);
+    uploaded += 1;
+    if (uploaded % 25 === 0) console.log(`Importados ${uploaded}/${selected.length}`);
+  } else {
+    skipped += 1;
+  }
   manifest.push({ carFolder, filename, relativePath: relative, storagePath, provider: originalName === "-Current-" ? "iRacing — último carregado" : provider(originalName), kind: originalName === "-Current-" ? "current" : kind(originalName), condition: condition(originalName), track: inferredTrack(originalName), week: week(originalName), size: stat.size, modifiedAt: stat.mtime.toISOString() });
-  uploaded += 1;
-  if (uploaded % 25 === 0) console.log(`Importados ${uploaded}/${selected.length}`);
 }
 
-const payload = Buffer.from(JSON.stringify({ seasonCode, importedAt: new Date().toISOString(), total: manifest.length, items: manifest }, null, 2));
-const { error: manifestError } = await supabase.storage.from("private-setups").upload(`local-library/${seasonCode}/manifest.json`, payload, { contentType: "application/octet-stream", upsert: true });
-if (manifestError) throw manifestError;
-console.log(`Concluído: ${manifest.length} setups privados de ${currentCars.size} carros.`);
+if (uploaded > 0) {
+  const payload = Buffer.from(JSON.stringify({ seasonCode, importedAt: new Date().toISOString(), total: manifest.length, items: manifest }, null, 2));
+  const { error: manifestError } = await supabase.storage.from("private-setups").upload(`local-library/${seasonCode}/manifest.json`, payload, { contentType: "application/octet-stream", upsert: true });
+  if (manifestError) throw manifestError;
+}
+await fs.writeFile(cachePath, JSON.stringify(nextCache));
+console.log(`Concluído: ${manifest.length} setups na temporada (${uploaded} novos/alterados, ${skipped} sem mudança) de ${currentCars.size} carros.`);
