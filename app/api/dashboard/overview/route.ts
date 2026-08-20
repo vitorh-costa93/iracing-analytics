@@ -62,6 +62,17 @@ type RatingRow = {
 
 type SafetyHistoryRow = RatingRow;
 
+type OfficialSeriesResultRow = {
+  season_id: string | number;
+  season_name: string;
+  rating_category: "formula_car" | "sports_car";
+  series_name: string;
+  starts: number;
+  wins: number;
+  source: string;
+  captured_at: string;
+};
+
 function normalizeSeasonId(value: string | number) {
   return String(value);
 }
@@ -370,6 +381,36 @@ export async function GET() {
         previousSeason.season_id
       );
 
+    const officialResultsResult = await supabaseAdmin
+      .from("official_series_results")
+      .select("season_id,season_name,rating_category,series_name,starts,wins,source,captured_at")
+      .eq("driver_id", driver.id)
+      .in("season_id", [Number(currentSeasonId), Number(previousSeasonId)])
+      .order("wins", { ascending: false });
+
+    if (officialResultsResult.error) {
+      throwSupabaseError("official_series_results", officialResultsResult.error);
+    }
+
+    const officialResults = (officialResultsResult.data ?? []) as OfficialSeriesResultRow[];
+
+    function winsFor(seasonId: string, category: "formula_car" | "sports_car") {
+      return officialResults
+        .filter((row) => normalizeSeasonId(row.season_id) === seasonId && row.rating_category === category)
+        .reduce((total, row) => total + row.wins, 0);
+    }
+
+    const resultBreakdown = officialResults.map((row) => ({
+      seasonId: normalizeSeasonId(row.season_id),
+      seasonName: row.season_name,
+      category: row.rating_category,
+      series: row.series_name,
+      starts: row.starts,
+      wins: row.wins,
+      source: row.source,
+      capturedAt: row.captured_at,
+    }));
+
     // =====================================================
     // IRATING ATUAL
     // =====================================================
@@ -612,8 +653,8 @@ export async function GET() {
             ),
 
           wins: {
-            current: null,
-            previous: null,
+            current: winsFor(currentSeasonId, "formula_car"),
+            previous: winsFor(previousSeasonId, "formula_car"),
           },
           safetyRating: {
             current: latestSafety.formula_car,
@@ -636,8 +677,8 @@ export async function GET() {
             ),
 
           wins: {
-            current: null,
-            previous: null,
+            current: winsFor(currentSeasonId, "sports_car"),
+            previous: winsFor(previousSeasonId, "sports_car"),
           },
           safetyRating: {
             current: latestSafety.sports_car,
@@ -706,11 +747,17 @@ export async function GET() {
           })
         ),
 
+      officialResults: {
+        lastCapturedAt: resultBreakdown.reduce<string | null>((latest, row) =>
+          !latest || row.capturedAt > latest ? row.capturedAt : latest, null),
+        series: resultBreakdown,
+      },
+
       featureAvailability: {
-        wins: false,
+        wins: true,
 
         winsReason:
-          "Aguardando endpoint público de resultados do Garage61",
+          "Resultados oficiais persistidos por temporada; atualização automática aguardando OAuth do iRacing.",
       },
     });
   } catch (error) {
