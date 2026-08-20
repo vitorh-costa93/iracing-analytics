@@ -55,7 +55,7 @@ button { -webkit-tap-highlight-color: transparent; }
 .season-summary strong { color: var(--text); }
 .season-summary span { color: var(--border-strong); margin: 0 5px; }
 
-.kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .kpi-card { min-height: 154px; background: var(--surface); border: 1px solid var(--border); border-top: 4px solid #9aa4af; padding: 18px 20px 14px; box-shadow: var(--shadow); text-align: center; }
 .kpi-card:nth-child(1), .kpi-card:nth-child(2) { border-top-color: var(--blue); }
 .kpi-card.formula { border-top-color: #1678bd; }.kpi-card.sports { border-top-color: #c63f3f; }
@@ -239,6 +239,8 @@ footer { margin-top: 24px; color: #8a949e; font-size: 10px; text-align: center; 
 .results-row b { min-width: 28px; color: var(--blue-dark); font-size: 18px; text-align: right; }.results-category.sports .results-row b { color: var(--red); }
 .official-results-note { margin: 11px 0 0; color: var(--soft); font-size: 9px; }
 .rating-chart-grid .panel-heading h2 { font-size: 17px; }.rating-chart-grid .panel-heading p { font-size: 10px; }.rating-chart-grid .chart-canvas { min-height: 180px; }
+.scatter-wrap { position: relative; margin-top: 14px; }.scatter-wrap svg { width: 100%; min-height: 250px; overflow: visible; }.scatter-wrap text { fill: var(--soft); font-size: 9px; }.scatter-grid { stroke: #e5e9ed; stroke-width: 1; }.scatter-zero { stroke: #89939d; stroke-width: 1.5; }.scatter-positive { fill: var(--green); opacity: .78; cursor: pointer; }.scatter-negative { fill: var(--red); opacity: .78; cursor: pointer; }.scatter-wrap circle:hover { opacity: 1; stroke: #fff; stroke-width: 2; }.scatter-tooltip { position: absolute; right: 12px; top: 8px; display: grid; gap: 3px; max-width: 280px; padding: 10px 12px; border-radius: 5px; background: rgba(28,34,40,.94); color: #fff; pointer-events: none; }.scatter-tooltip strong { font-size: 13px; }.scatter-tooltip span { color: #cbd3db; font-size: 9px; }
+.season-races-panel { margin-top: 18px; padding: 20px; }.race-table-wrap { margin-top: 16px; overflow: auto; }.race-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-size: 10px; }.race-table th { padding: 9px 10px; background: var(--surface-muted); color: var(--soft); text-align: left; text-transform: uppercase; letter-spacing: .05em; }.race-table td { padding: 10px; border-top: 1px solid #e5e9ed; }.race-table td:nth-child(2), .race-table td:nth-child(3), .race-table td:nth-child(4) { white-space: normal; min-width: 150px; }
 
 .insights-grid button strong { font-size: 14px; }.insights-grid button span { font-size: 12px; }.insights-grid button p { font-size: 13px; line-height: 1.55; }.insights-grid button ul { font-size: 11px; }
 

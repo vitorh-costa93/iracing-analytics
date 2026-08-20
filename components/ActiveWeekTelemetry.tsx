@@ -253,6 +253,8 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
   const opportunities = segments.map((item) => {
     const start = item.index * 5, end = (item.index + 1) * 5;
     const braking = brakingDeltas.find((event) => event.position >= start - 2 && event.position <= end + 2);
+    const nearestBrake = ownBrakes.reduce((best, position) => Math.abs(position - (start + end) / 2) < Math.abs(best - (start + end) / 2) ? position : best, ownBrakes[0] ?? start);
+    const cornerNumber = ownBrakes.length && Math.abs(nearestBrake - (start + end) / 2) <= 8 ? ownBrakes.indexOf(nearestBrake) + 1 : null;
     const observations: string[] = [];
     if (braking?.deltaMeters) observations.push(braking.deltaMeters < 0
       ? `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m antes; há espaço para testar uma frenagem progressivamente mais adiante se velocidade mínima e saída não piorarem`
@@ -264,7 +266,7 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
     if (item.rpmGap > 300) observations.push(`referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`);
     if (item.latAccelGap > .5) observations.push("a referência sustenta mais aceleração lateral; carregue velocidade com uma entrada mais limpa, solte o freio progressivamente até o ápice e evite correções que saturam o pneu");
     return {
-      title: `${start}%–${end}% da volta${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
+      title: `${cornerNumber ? `Curva ${cornerNumber}` : "Trecho"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
       detail: `Você perde cerca de ${(item.gain * 10).toFixed(1)} décimos neste trecho porque ${observations.length ? observations.join("; ") : "mantém menos velocidade que a referência"}.`,
       gain: item.gain,
       metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ throttle ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],

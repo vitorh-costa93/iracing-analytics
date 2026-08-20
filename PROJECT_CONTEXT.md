@@ -139,6 +139,10 @@ A direção aprovada é uma interface **iRacing light**: clara, esportiva e téc
 
 O Overview é centrado em comparação Season × Season e mantém a análise profunda fora da página principal. A navegação analítica futura deve permitir descer por Categoria → Série → Classe → Carro → Pista, sempre mostrando tamanho da amostra para evitar conclusões enganosas.
 
+Em 20/08/2026 o Overview foi reduzido aos quatro KPIs principais: iRating e vitórias para Formula e Sports Car. O iRating compara o valor atual com o encerramento da mesma week da season anterior. Abaixo, um seletor único de categoria controla o gráfico de área e um scatter de corridas da season atual (duração da sessão × delta associado), sempre com `session_type = 3`. A tabela final lista todas as corridas; série, grid e chegada permanecem explicitamente ausentes quando o Garage61 não fornece esses campos, sem inferência. O primeiro ranking por pista é fixo em Formula; GT3 e IMSA preservam seus próprios recortes Sports Car.
+
+O comparador de setup permite selecionar livremente quaisquer dois setups do mesmo carro+pista. As explicações passaram a descrever direção e compromisso de mudanças conhecidas, como brake bias e asas, para alimentar o raciocínio da subaba Engenheiro. A telemetria identifica curvas pela sequência de zonas de frenagem detectadas; quando não há zona próxima, mantém o rótulo de trecho em vez de inventar um nome oficial.
+
 ### KPIs
 
 O conjunto discutido inclui, por Formula Car e Sports Car:

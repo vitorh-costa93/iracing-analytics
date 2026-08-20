@@ -73,6 +73,8 @@ type OfficialSeriesResultRow = {
   captured_at: string;
 };
 
+type RaceCandidateRow = { session_id: number; rating_category: "formula_car" | "sports_car"; car: string; track: string; started_at: string; ended_at: string; delta_irating: number; candidate_for_race: number; race_for_rating: number };
+
 function normalizeSeasonId(value: string | number) {
   return String(value);
 }
@@ -394,6 +396,45 @@ export async function GET() {
 
     const officialResults = (officialResultsResult.data ?? []) as OfficialSeriesResultRow[];
 
+    const { data: currentRaceSessions, error: raceSessionsError } = await supabaseAdmin
+      .from("driving_sessions")
+      .select("id,garage61_event_id,car_id,track_id,started_at,ended_at")
+      .eq("driver_id", driver.id).eq("season_id", currentSeasonId).eq("session_type", 3)
+      .order("started_at", { ascending: false });
+    if (raceSessionsError) throwSupabaseError("driving_sessions races", raceSessionsError);
+    const sessionIds = (currentRaceSessions ?? []).map((row) => Number(row.id));
+    const eventIds = (currentRaceSessions ?? []).map((row) => String(row.garage61_event_id));
+    const [{ data: raceCandidates, error: candidateError }, { data: raceLaps, error: raceLapsError }, { data: carRows }, { data: trackRows }] = await Promise.all([
+      sessionIds.length ? supabaseAdmin.from("v_race_irating_candidates").select("session_id,rating_category,car,track,started_at,ended_at,delta_irating,candidate_for_race,race_for_rating").in("session_id", sessionIds).eq("candidate_for_race", 1).eq("race_for_rating", 1) : Promise.resolve({ data: [], error: null }),
+      eventIds.length ? supabaseAdmin.from("laps").select("lap_time,clean,incomplete,garage61_payload").eq("driver_id", driver.id).in("garage61_payload->>event", eventIds).limit(10000) : Promise.resolve({ data: [], error: null }),
+      supabaseAdmin.from("cars").select("id,name"),
+      supabaseAdmin.from("tracks").select("id,name"),
+    ]);
+    if (candidateError) throwSupabaseError("v_race_irating_candidates current", candidateError);
+    if (raceLapsError) throwSupabaseError("laps current races", raceLapsError);
+    const candidatesBySession = new Map(((raceCandidates ?? []) as RaceCandidateRow[]).map((row) => [Number(row.session_id), row]));
+    const carsById = new Map((carRows ?? []).map((row) => [Number(row.id), row.name]));
+    const tracksById = new Map((trackRows ?? []).map((row) => [Number(row.id), row.name]));
+    const lapsByEvent = new Map<string, number[]>();
+    for (const lap of raceLaps ?? []) {
+      const payload = lap.garage61_payload as { event?: string; sessionType?: number } | null;
+      if (!payload?.event || payload.sessionType !== 3 || lap.incomplete || !Number.isFinite(Number(lap.lap_time)) || Number(lap.lap_time) <= 0) continue;
+      lapsByEvent.set(payload.event, [...(lapsByEvent.get(payload.event) ?? []), Number(lap.lap_time)]);
+    }
+    const races = (currentRaceSessions ?? []).map((session) => {
+      const candidate = candidatesBySession.get(Number(session.id));
+      const started = new Date(session.started_at).getTime(), ended = new Date(session.ended_at).getTime();
+      const lapTimes = lapsByEvent.get(session.garage61_event_id) ?? [];
+      return {
+        id: Number(session.id), startedAt: session.started_at, endedAt: session.ended_at,
+        durationMinutes: Math.max(0, (ended - started) / 60000), delta: candidate?.delta_irating ?? null,
+        ratingCategory: candidate?.rating_category ?? null, series: null,
+        car: candidate?.car ?? carsById.get(Number(session.car_id)) ?? `Carro ${session.car_id}`,
+        track: candidate?.track ?? tracksById.get(Number(session.track_id)) ?? `Pista ${session.track_id}`,
+        bestLap: lapTimes.length ? Math.min(...lapTimes) : null, startPosition: null, finishPosition: null,
+      };
+    });
+
     function winsFor(seasonId: string, category: "formula_car" | "sports_car") {
       return officialResults
         .filter((row) => normalizeSeasonId(row.season_id) === seasonId && row.rating_category === category)
@@ -470,6 +511,11 @@ export async function GET() {
         ...point,
         safetyRatingEnd: safetyAt(category, point.weekEnd),
       }));
+    }
+
+    const elapsedWeek = Math.max(1, Math.min(12, weeklyFor(currentSeasonId, "formula_car").findLast((point) => new Date(point.weekStart) <= new Date())?.week ?? 1));
+    function iratingAtSameWeek(category: "formula_car" | "sports_car") {
+      return weeklyFor(previousSeasonId, category).find((point) => point.week === elapsedWeek)?.iratingEnd ?? null;
     }
 
     // =====================================================
@@ -640,6 +686,7 @@ export async function GET() {
 
       kpis: {
         formula: {
+          irating: { current: latestRatings.formula_car, previousSameWeek: iratingAtSameWeek("formula_car"), week: elapsedWeek },
           current:
             categoryMetric(
               currentSeasonId,
@@ -664,6 +711,7 @@ export async function GET() {
         },
 
         sports: {
+          irating: { current: latestRatings.sports_car, previousSameWeek: iratingAtSameWeek("sports_car"), week: elapsedWeek },
           current:
             categoryMetric(
               currentSeasonId,
@@ -746,6 +794,8 @@ export async function GET() {
               0,
           })
         ),
+
+      races,
 
       officialResults: {
         lastCapturedAt: resultBreakdown.reduce<string | null>((latest, row) =>
