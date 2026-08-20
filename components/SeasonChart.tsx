@@ -14,7 +14,6 @@ import {
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
-// Registra os componentes necessários do Chart.js
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -27,7 +26,10 @@ ChartJS.register(
 
 export interface WeekPoint {
   week: number;
-  iRating: number;
+  iRating?: number;
+  irating?: number;
+  val?: number;
+  value?: number;
   [key: string]: any;
 }
 
@@ -44,15 +46,19 @@ export default function SeasonChart({
   currentName = 'Season Atual',
   previousName = 'Season Anterior'
 }: SeasonChartProps) {
-  // Coleta todas as semanas presentes nos dados para montar o eixo X
   const allWeeks = Array.from(
     new Set([...current.map((d) => d.week), ...previous.map((d) => d.week)])
   ).sort((a, b) => a - b);
 
   const labels = allWeeks.map((week) => `Semana ${week}`);
 
-  const currentDataMap = new Map(current.map((item) => [item.week, item.iRating]));
-  const previousDataMap = new Map(previous.map((item) => [item.week, item.iRating]));
+  const getValue = (item?: WeekPoint): number | null => {
+    if (!item) return null;
+    return item.iRating ?? item.irating ?? item.value ?? item.val ?? null;
+  };
+
+  const currentDataMap = new Map(current.map((item) => [item.week, getValue(item)]));
+  const previousDataMap = new Map(previous.map((item) => [item.week, getValue(item)]));
 
   const data = {
     labels,
@@ -60,7 +66,7 @@ export default function SeasonChart({
       {
         label: currentName,
         data: allWeeks.map((week) => currentDataMap.get(week) ?? null),
-        borderColor: 'rgb(59, 130, 246)', // Azul
+        borderColor: 'rgb(59, 130, 246)',
         backgroundColor: 'rgba(59, 130, 246, 0.5)',
         tension: 0.3,
         spanGaps: true,
@@ -68,7 +74,7 @@ export default function SeasonChart({
       {
         label: previousName,
         data: allWeeks.map((week) => previousDataMap.get(week) ?? null),
-        borderColor: 'rgb(156, 163, 175)', // Cinza
+        borderColor: 'rgb(156, 163, 175)',
         backgroundColor: 'rgba(156, 163, 175, 0.5)',
         borderDash: [5, 5],
         tension: 0.3,
@@ -83,9 +89,7 @@ export default function SeasonChart({
     plugins: {
       legend: {
         position: 'top' as const,
-        labels: {
-          color: '#e5e7eb',
-        },
+        labels: { color: '#e5e7eb' },
       },
       tooltip: {
         mode: 'index',
@@ -94,20 +98,12 @@ export default function SeasonChart({
     },
     scales: {
       x: {
-        grid: {
-          color: 'rgba(255, 255, 255, 0.1)',
-        },
-        ticks: {
-          color: '#9ca3af',
-        },
+        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+        ticks: { color: '#9ca3af' },
       },
       y: {
-        grid: {
-          color: 'rgba(255, 255, 255, 0.1)',
-        },
-        ticks: {
-          color: '#9ca3af',
-        },
+        grid: { color: 'rgba(255, 255, 255, 0.1)' },
+        ticks: { color: '#9ca3af' },
       },
     },
   };
