@@ -13,7 +13,7 @@ function parseNumericValue(val: string | number): number | null {
   return match ? parseFloat(match[0]) : null;
 }
 
-export function generateSetupInsight(item: SetupDiffItem): string {
+function generateSetupInsight(item: SetupDiffItem): string {
   const { parameter, category, oldValue, newValue } = item;
   const categoryLower = category.toLowerCase();
   const paramLower = parameter.toLowerCase();
