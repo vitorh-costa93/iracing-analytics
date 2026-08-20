@@ -10,10 +10,11 @@ import {
   Title,
   Tooltip,
   Legend,
-  Filler
+  ChartOptions
 } from 'chart.js';
 import { Line } from 'react-chartjs-2';
 
+// Registra os componentes necessários do Chart.js
 ChartJS.register(
   CategoryScale,
   LinearScale,
@@ -21,88 +22,99 @@ ChartJS.register(
   LineElement,
   Title,
   Tooltip,
-  Legend,
-  Filler
+  Legend
 );
 
-interface SeasonChartProps {
-  dataCurrent: number[];
-  dataPrevious: number[];
-  labels: string[];
+export interface WeekPoint {
+  week: number;
+  iRating: number;
+  [key: string]: any;
 }
 
-export default function SeasonChart({ dataCurrent, dataPrevious, labels }: SeasonChartProps) {
+export interface SeasonChartProps {
+  current: WeekPoint[];
+  previous: WeekPoint[];
+  currentName: string;
+  previousName: string;
+}
+
+export default function SeasonChart({
+  current = [],
+  previous = [],
+  currentName = 'Season Atual',
+  previousName = 'Season Anterior'
+}: SeasonChartProps) {
+  // Coleta todas as semanas presentes nos dados para montar o eixo X
+  const allWeeks = Array.from(
+    new Set([...current.map((d) => d.week), ...previous.map((d) => d.week)])
+  ).sort((a, b) => a - b);
+
+  const labels = allWeeks.map((week) => `Semana ${week}`);
+
+  const currentDataMap = new Map(current.map((item) => [item.week, item.iRating]));
+  const previousDataMap = new Map(previous.map((item) => [item.week, item.iRating]));
+
   const data = {
-    labels: labels && labels.length ? labels : ['W1', 'W2', 'W3', 'W4', 'W5', 'W6', 'W7', 'W8', 'W9', 'W10', 'W11', 'W12'],
+    labels,
     datasets: [
       {
-        label: '2026 S3',
-        data: dataCurrent,
-        borderColor: '#0284c7',
-        backgroundColor: 'rgba(2, 132, 199, 0.15)',
-        fill: true,
+        label: currentName,
+        data: allWeeks.map((week) => currentDataMap.get(week) ?? null),
+        borderColor: 'rgb(59, 130, 246)', // Azul
+        backgroundColor: 'rgba(59, 130, 246, 0.5)',
         tension: 0.3,
-        borderWidth: 3,
-        pointRadius: 3,
+        spanGaps: true,
       },
       {
-        label: '2026 S2',
-        data: dataPrevious,
-        borderColor: '#94a3b8',
+        label: previousName,
+        data: allWeeks.map((week) => previousDataMap.get(week) ?? null),
+        borderColor: 'rgb(156, 163, 175)', // Cinza
+        backgroundColor: 'rgba(156, 163, 175, 0.5)',
         borderDash: [5, 5],
-        fill: false,
         tension: 0.3,
-        borderWidth: 2,
-        pointRadius: 0,
+        spanGaps: true,
       },
     ],
   };
 
-  const options = {
+  const options: ChartOptions<'line'> = {
     responsive: true,
     maintainAspectRatio: false,
     plugins: {
       legend: {
         position: 'top' as const,
-        align: 'end' as const,
         labels: {
-          boxWidth: 12,
-          usePointStyle: true,
-          font: { size: 13, weight: 'bold' as const }
-        }
+          color: '#e5e7eb',
+        },
       },
       tooltip: {
-        padding: 10,
-        titleFont: { size: 14 },
-        bodyFont: { size: 13 }
-      }
+        mode: 'index',
+        intersect: false,
+      },
     },
     scales: {
       x: {
-        grid: { display: false },
-        ticks: { font: { size: 12 } }
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+        ticks: {
+          color: '#9ca3af',
+        },
       },
       y: {
-        grid: { color: '#f1f5f9' },
-        ticks: { font: { size: 12 } }
-      }
-    }
+        grid: {
+          color: 'rgba(255, 255, 255, 0.1)',
+        },
+        ticks: {
+          color: '#9ca3af',
+        },
+      },
+    },
   };
 
   return (
-    <div className="w-full bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-      <div className="flex justify-between items-start mb-4">
-        <div>
-          <span className="text-xs font-bold uppercase tracking-wider text-sky-600">iRating Evolution</span>
-          <h2 className="text-xl font-bold text-slate-800">Evolução semanal</h2>
-          <p className="text-sm text-slate-500">iRating absoluto por semana, comparando a Season atual com a anterior.</p>
-        </div>
-      </div>
-      
-      {/* Container ajustado para eliminar o espaço em branco no rodapé */}
-      <div className="w-full h-72 relative">
-        <Line data={data} options={options} />
-      </div>
+    <div style={{ width: '100%', height: '350px' }}>
+      <Line data={data} options={options} />
     </div>
   );
 }
