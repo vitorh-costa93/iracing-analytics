@@ -10,7 +10,10 @@ async function decode(setup: SetupRow) {
   if (error || !blob) throw new Error(`Não foi possível ler ${setup.filename} do cofre privado`);
   const form = new FormData(); form.set("file", new File([await blob.arrayBuffer()], setup.filename, { type: "application/octet-stream" }));
   const response = await fetch("https://www.setupdelta.com/api/setup/decode", { method: "POST", headers: { Origin: "https://www.setupdelta.com", Referer: "https://www.setupdelta.com/" }, body: form, signal: AbortSignal.timeout(25000), cache: "no-store" });
-  if (!response.ok) throw new Error(response.status === 422 ? `${setup.filename} não é suportado pelo decodificador` : `SetupDelta respondeu ${response.status} ao decodificar ${setup.filename}`);
+  if (!response.ok) {
+    if (response.status === 410) throw new Error("O decodificador externo do SetupDelta foi retirado. Seus arquivos continuam seguros no cofre; exporte também o Garage Setup em HTML no iRacing para habilitar um comparativo sem depender desse serviço.");
+    throw new Error(response.status === 422 ? `${setup.filename} não é suportado pelo decodificador` : `O decodificador externo respondeu ${response.status} para ${setup.filename}`);
+  }
   const result = await response.json() as { carName?: string; rows?: DecodedRow[] };
   if (!Array.isArray(result.rows) || !result.rows.length) throw new Error(`O decodificador não retornou parâmetros para ${setup.filename}`);
   const consentAt = new Date().toISOString();
