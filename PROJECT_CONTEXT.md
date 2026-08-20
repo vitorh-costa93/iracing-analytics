@@ -224,11 +224,15 @@ A saída deve gerar coaching contextual, não instruções simplistas. Exemplo: 
 
 A página detalhada proposta mostra seleção carro+pista, estado do sync Garage61, referência ativa/substituição, melhor volta, gap, gráfico de delta, maiores oportunidades e análise por curva. Isso é roadmap, não deve ser descrito como já implementado sem confirmação no código.
 
-## Limitação de wins e resposta do Garage61
+## Resultados oficiais e wins
 
 Simon, do Garage61, confirmou que resultados dos eventos não são armazenados. Os dados de Live Timing são temporários e não podem ser recuperados; persistir todo esse volume teria custo alto. A recomendação dele foi usar a iRacing `/data` API.
 
-Decisão: não tentar reconstruir wins históricos pelo endpoint interno de Live Timing. Garage61 continua sendo a fonte de telemetria/voltas; resultados, posição e wins virão da fonte oficial. Até lá, cards de wins devem ficar indisponíveis/aguardando integração, sem valores inferidos.
+Decisão: não tentar reconstruir wins históricos pelo endpoint interno de Live Timing. Garage61 continua sendo a fonte de telemetria/voltas; resultados, posição e wins vêm de evidência oficial do iRacing.
+
+Em 20/08/2026 foi criada a tabela `official_series_results`, que preserva snapshots auditáveis por piloto, season, categoria de rating e série. O overview passou a mostrar wins de Formula e SportsCar para a season atual e anterior, além do detalhamento de largadas e vitórias por série. A primeira carga foi validada diretamente em Series Standings e Results Archive para 2026 S3/S2. O total confirmado é 36 vitórias de Formula (20 em S3 e 16 em S2, incluindo uma vitória de Super Formula Lights Fixed na semana 11) e 3 de SportsCar (2 em S3 e 1 em S2).
+
+Esse snapshot remove a necessidade de consultar o site em cada abertura do painel, mas não deve ser descrito como sincronização automática completa. O refresh recorrente continuará pendente até existir OAuth oficial do iRacing; nessa etapa, a rota de sync deverá atualizar a mesma tabela incrementalmente e armazenar resultados individuais/deduplicados. Não automatizar scraping de sessão autenticada do navegador no Vercel nem armazenar cookies/senhas. Para correções pontuais antes do OAuth, atualizar apenas com evidência do Results Archive/Series Standings e registrar `captured_at`/`source`.
 
 ## iRacing Data API e OAuth
 
@@ -261,7 +265,7 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 ## Próximos passos priorizados
 
 1. Abrir o repositório real, conferir branch/status, `package.json`, schema/migrations, rotas e contrato atual das views; alinhar este documento ao código se houver divergência.
-2. Manter wins como pendente e acompanhar o registro OAuth do iRacing.
+2. Manter os snapshots de wins auditáveis e acompanhar o registro OAuth do iRacing para automatizar o refresh.
 3. Quando houver credenciais, implementar OAuth isoladamente e provar o fluxo com uma season pequena antes de criar backfill.
 4. Modelar `race_results` somente após observar payloads reais; então adicionar wins e métricas oficiais à UI.
 5. Construir a primeira versão de Active Week Telemetry: seletor carro+pista, telemetria Garage61, upload/validação/persistência de uma referência.

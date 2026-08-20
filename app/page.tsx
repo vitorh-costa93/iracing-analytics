@@ -65,6 +65,19 @@ type DashboardData = {
     sports: { current: WeekPoint[]; previous: WeekPoint[] };
   };
   historical: HistoricalRow[];
+  officialResults: {
+    lastCapturedAt: string | null;
+    series: Array<{
+      seasonId: string;
+      seasonName: string;
+      category: "formula_car" | "sports_car";
+      series: string;
+      starts: number;
+      wins: number;
+      source: string;
+      capturedAt: string;
+    }>;
+  };
   featureAvailability: { wins: boolean; winsReason: string };
 };
 
@@ -216,9 +229,38 @@ export default function Home() {
           <div className="kpi-grid">
             <KpiCard eyebrow="Formula Car • Δ iRating" value={data.kpis.formula.current.delta} previousValue={data.kpis.formula.previous.delta} previousLabel={previousLabel} />
             <KpiCard eyebrow="Sports Car • Δ iRating" value={data.kpis.sports.current.delta} previousValue={data.kpis.sports.previous.delta} previousLabel={previousLabel} />
+            <KpiCard eyebrow="Formula Car • Vitórias" value={data.kpis.formula.wins.current} previousValue={data.kpis.formula.wins.previous} previousLabel={previousLabel} mode="wins" />
+            <KpiCard eyebrow="Sports Car • Vitórias" value={data.kpis.sports.wins.current} previousValue={data.kpis.sports.wins.previous} previousLabel={previousLabel} mode="wins" />
             <KpiCard eyebrow="Formula Car • Safety Rating" value={data.kpis.formula.safetyRating.current} displayValue={data.kpis.formula.safetyRating.currentDisplay} previousValue={data.kpis.formula.safetyRating.previous} previousLabel={previousLabel} mode="safety" />
             <KpiCard eyebrow="Sports Car • Safety Rating" value={data.kpis.sports.safetyRating.current} displayValue={data.kpis.sports.safetyRating.currentDisplay} previousValue={data.kpis.sports.safetyRating.previous} previousLabel={previousLabel} mode="safety" />
           </div>
+        </section>
+
+        <section className="panel official-results-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="section-kicker">OFFICIAL RESULTS</span>
+              <h2>Vitórias por carteira e série</h2>
+              <p>Resultados oficiais das duas seasons do comparativo, preservados para não depender de nova consulta ao iRacing.</p>
+            </div>
+            <span className="results-freshness">{data.officialResults.lastCapturedAt ? `Validado em ${new Date(data.officialResults.lastCapturedAt).toLocaleDateString("pt-BR")}` : "Sem captura"}</span>
+          </div>
+          <div className="official-results-grid">
+            {(["formula_car", "sports_car"] as const).map((category) => {
+              const rows = data.officialResults.series.filter((row) => row.category === category);
+              const label = category === "formula_car" ? "Formula" : "SportsCar";
+              return <article key={category} className={`results-category ${category === "formula_car" ? "formula" : "sports"}`}>
+                <div className="results-category-heading"><strong>{label}</strong><span>{rows.reduce((sum, row) => sum + row.wins, 0)} vitórias • {rows.reduce((sum, row) => sum + row.starts, 0)} largadas</span></div>
+                <div className="results-table">
+                  {rows.map((row) => <div className="results-row" key={`${row.seasonId}-${row.series}`}>
+                    <div><strong>{row.series.replace(" by Fanatec", "")}</strong><span>{shortSeason(row.seasonName)} • {row.starts} largadas</span></div>
+                    <b>{row.wins}</b>
+                  </div>)}
+                </div>
+              </article>;
+            })}
+          </div>
+          <p className="official-results-note">Fonte: iRacing Results Archive / Series Standings. O próximo refresh automático será conectado à mesma base quando o OAuth oficial estiver disponível.</p>
         </section>
 
         <section className="rating-chart-grid">
