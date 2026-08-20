@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Combination = {
   key: string;
@@ -27,7 +27,7 @@ type Comparison = {
   estimatedReferenceTime: number;
   estimatedGap: number;
   averageSpeedDifference: number;
-  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number }[];
+  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; kind: "corner" | "straight"; cornerNumber: number | null; primaryType: string }[];
   channelInsights: string[];
 };
 
@@ -222,7 +222,45 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey) 
   return previous[field];
 }
 
-function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Comparison | null {
+type Corner = { number: number; distance: number; minSpeed: number };
+
+function detectCorners(points: TracePoint[]): Corner[] {
+  const speeds = points.map((point) => point.speed ?? 0);
+  const minimaIdx: number[] = [];
+  for (let i = 2; i < points.length - 2; i += 1) {
+    if (speeds[i] <= speeds[i - 1] && speeds[i] <= speeds[i + 1] && speeds[i] < speeds[i - 2] && speeds[i] < speeds[i + 2]) {
+      minimaIdx.push(i);
+    }
+  }
+  const merged: number[] = [];
+  for (const idx of minimaIdx) {
+    const last = merged[merged.length - 1];
+    if (last !== undefined && Math.abs(points[idx].distance - points[last].distance) < 3) {
+      if (speeds[idx] < speeds[last]) merged[merged.length - 1] = idx;
+    } else merged.push(idx);
+  }
+  const filtered = merged.filter((idx) => {
+    const nearby = points.filter((point) => Math.abs(point.distance - points[idx].distance) <= 8 || Math.abs(point.distance - points[idx].distance) >= 92);
+    const localMax = nearby.length ? Math.max(...nearby.map((point) => point.speed ?? 0)) : speeds[idx];
+    return localMax - speeds[idx] > 5;
+  });
+  return filtered
+    .sort((a, b) => points[a].distance - points[b].distance)
+    .map((idx, order) => ({ number: order + 1, distance: points[idx].distance, minSpeed: speeds[idx] }));
+}
+
+function nearestCorner(corners: Corner[], start: number, end: number): Corner | null {
+  const center = (start + end) / 2;
+  let best: Corner | null = null;
+  let bestDist = Infinity;
+  for (const corner of corners) {
+    const d = Math.min(Math.abs(corner.distance - center), 100 - Math.abs(corner.distance - center));
+    if (d < bestDist) { bestDist = d; best = corner; }
+  }
+  return best && bestDist <= 8 ? best : null;
+}
+
+function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners: Corner[]): Comparison | null {
   const bins = Array.from({ length: 401 }, (_, index) => index / 4);
   const fields: ChannelKey[] = ["speed", "throttle", "brake", "steering", "rpm", "gear", "clutch", "latAccel", "longAccel", "yawRate", "abs", "drs", "pushToPass", "p2pStatus", "p2pCount"];
   const samples = bins.map((distance) => {
@@ -249,31 +287,41 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
     const ownTime = rows.reduce((sum, item) => sum + 1 / Number(item.own_speed), 0) * scale;
     const refTime = rows.reduce((sum, item) => sum + 1 / Number(item.ref_speed), 0) * scale;
     return { index, gain: ownTime - refTime, speedGap: (avg("ref_speed") - avg("own_speed")) * 3.6, throttleGap: avg("ref_throttle") - avg("own_throttle"), brakeGap: avg("own_brake") - avg("ref_brake"), steeringGap: Math.abs(avg("own_steering")) - Math.abs(avg("ref_steering")), rpmGap: avg("ref_rpm") - avg("own_rpm"), gearGap: avg("ref_gear") - avg("own_gear"), latAccelGap: Math.abs(avg("ref_latAccel")) - Math.abs(avg("own_latAccel")) };
-  }).filter((item) => item.gain > 0.008).sort((a, b) => b.gain - a.gain).slice(0, 5);
+  }).filter((item) => item.gain > 0.008).sort((a, b) => b.gain - a.gain).slice(0, 6);
   const opportunities = segments.map((item) => {
     const start = item.index * 5, end = (item.index + 1) * 5;
     const braking = brakingDeltas.find((event) => event.position >= start - 2 && event.position <= end + 2);
-    const nearestBrake = ownBrakes.reduce((best, position) => Math.abs(position - (start + end) / 2) < Math.abs(best - (start + end) / 2) ? position : best, ownBrakes[0] ?? start);
-    const cornerNumber = ownBrakes.length && Math.abs(nearestBrake - (start + end) / 2) <= 8 ? ownBrakes.indexOf(nearestBrake) + 1 : null;
+    const corner = nearestCorner(corners, start, end);
+    const kind: "corner" | "straight" = corner ? "corner" : "straight";
     const observations: string[] = [];
-    if (braking?.deltaMeters) observations.push(braking.deltaMeters < 0
-      ? `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m antes; há espaço para testar uma frenagem progressivamente mais adiante se velocidade mínima e saída não piorarem`
-      : `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m depois; confira se isso causa pico de freio, menor velocidade mínima ou atraso na retomada`);
-    if (item.throttleGap > .06) observations.push(`a referência usa ${(item.throttleGap * 100).toFixed(0)} p.p. mais acelerador; priorize soltar o freio sem arrastar e abra o acelerador progressivamente assim que o carro apontar para a saída`);
-    if (item.brakeGap > .06) observations.push(`você aplica ${(item.brakeGap * 100).toFixed(0)} p.p. mais freio; teste menos pressão ou uma liberação mais contínua para preservar velocidade mínima`);
-    if (Math.abs(item.steeringGap) > .03) observations.push(item.steeringGap > 0 ? "você usa mais volante; faça a rotação com uma entrada única e reduza correções para não sobrecarregar o pneu dianteiro" : "a referência usa mais volante; experimente antecipar suavemente a rotação sem adicionar um segundo movimento");
-    if (Math.abs(item.gearGap) >= .45) observations.push(`a referência usa marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"}; teste essa marcha e compare rotação, tração e estabilidade antes de adotá-la`);
-    if (item.rpmGap > 300) observations.push(`referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`);
-    if (item.latAccelGap > .5) observations.push("a referência sustenta mais aceleração lateral; carregue velocidade com uma entrada mais limpa, solte o freio progressivamente até o ápice e evite correções que saturam o pneu");
+    let primaryType: "braking-early" | "braking-late" | "throttle" | "brake-pressure" | "steering" | "gear" | "rotation" | "speed" = "speed";
+    if (braking?.deltaMeters) {
+      primaryType = braking.deltaMeters < 0 ? "braking-early" : "braking-late";
+      observations.push(braking.deltaMeters < 0
+        ? `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m antes da referência; se a velocidade mínima e a saída não pioraram, dá para empurrar o ponto de freada mais para frente, décimo a décimo`
+        : `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m depois da referência; confira se isso está gerando pico de freio, menor velocidade mínima na curva ou atraso na retomada de acelerador`);
+    }
+    if (item.throttleGap > .06) { if (primaryType === "speed") primaryType = "throttle"; observations.push(`a referência já está com ${(item.throttleGap * 100).toFixed(0)} p.p. mais acelerador nesse ponto; solte o freio sem arrastar e reabra o pedal de forma progressiva assim que o carro apontar para a saída`); }
+    if (item.brakeGap > .06) { if (primaryType === "speed") primaryType = "brake-pressure"; observations.push(`você está aplicando ${(item.brakeGap * 100).toFixed(0)} p.p. a mais de freio; teste reduzir a pressão inicial ou fazer uma liberação mais contínua para preservar velocidade mínima`); }
+    if (Math.abs(item.steeringGap) > .03) { if (primaryType === "speed") primaryType = "steering"; observations.push(item.steeringGap > 0 ? "você está usando mais volante que a referência; busque uma entrada única e mais limpa, sem correções, para não sobrecarregar o pneu dianteiro" : "a referência usa mais volante que você aqui; ela provavelmente está rotacionando o carro mais cedo — experimente antecipar a virada suavemente"); }
+    if (Math.abs(item.gearGap) >= .45) { if (primaryType === "speed") primaryType = "gear"; observations.push(`a referência está usando marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"} nesse trecho; teste essa marcha e compare rotação, tração e estabilidade antes de adotá-la em corrida`); }
+    if (item.rpmGap > 300) observations.push(`a referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais, o que sugere marcha diferente ou ponto de troca mais tardio`);
+    if (item.latAccelGap > .5) { if (primaryType === "speed") primaryType = "rotation"; observations.push("a referência sustenta mais aceleração lateral no ápice; carregue mais velocidade com uma entrada limpa, solte o freio de forma progressiva até o ápice e evite correções que saturam o pneu dianteiro"); }
+    const engineerLine = observations.length
+      ? `${observations[0].charAt(0).toUpperCase()}${observations[0].slice(1)}.${observations.length > 1 ? ` Além disso, ${observations.slice(1).join("; ")}.` : ""}`
+      : "Você está mais lento que a referência aqui sem um padrão claro de freio, acelerador ou volante — pode ser uma questão de confiança ou de linha; compare o traçado no mapa.";
     return {
-      title: `${cornerNumber ? `Curva ${cornerNumber}` : "Trecho"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
-      detail: `Você perde cerca de ${(item.gain * 10).toFixed(1)} décimos neste trecho porque ${observations.length ? observations.join("; ") : "mantém menos velocidade que a referência"}.`,
+      title: `${corner ? `Curva ${corner.number}` : "Reta / transição"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
+      detail: `Você perde cerca de ${(item.gain * 10).toFixed(1)} décimos neste trecho. ${engineerLine}`,
       gain: item.gain,
       metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ throttle ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
       start,
       end,
+      kind,
+      cornerNumber: corner?.number ?? null,
+      primaryType,
     };
-  });
+  }).sort((a, b) => a.start - b.start);
   const avgAbs = (field: ChannelKey, source: Trace) => source.points.reduce((sum, point) => sum + Math.abs(point[field] ?? 0), 0) / source.points.length;
   const channelInsights = [
     `Volante: média absoluta ${(avgAbs("steering", own) * 180 / Math.PI).toFixed(1)}° contra ${(avgAbs("steering", reference) * 180 / Math.PI).toFixed(1)}° na referência.`,
@@ -304,6 +352,39 @@ function TrackMap({ trace, range }: { trace: Trace; range: [number, number] | nu
   </svg>;
 }
 
+function FocusedChart({ own, reference, range }: { own: Trace; reference: Trace | null; range: [number, number] }) {
+  const width = 480, height = 220;
+  const from = Math.max(0, range[0] - 3), to = Math.min(100, range[1] + 3);
+  const ownPts = own.points.filter((point) => point.distance >= from && point.distance <= to);
+  const refPts = reference ? reference.points.filter((point) => point.distance >= from && point.distance <= to) : [];
+  const all = [...ownPts, ...refPts];
+  const scaleX = (distance: number) => (distance - from) / Math.max(0.001, to - from) * width;
+  function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
+    const values = all.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
+    if (!values.length) return "";
+    const min = field === "speed" ? Math.min(...values) : 0;
+    const max = Math.max(...values);
+    const span = Math.max(0.0001, max - min);
+    return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
+      .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
+  }
+  return <svg viewBox={`0 0 ${width} ${height}`} className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado">
+    <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={height} className="focused-zone" />
+    <text x="4" y="14" className="channel-label">SPEED</text>
+    <polyline points={line(ownPts, "speed", 4, 66)} className="trace-speed" />
+    {reference && <polyline points={line(refPts, "speed", 4, 66)} className="trace-speed reference-line" />}
+    <text x="4" y="88" className="channel-label">THROTTLE</text>
+    <polyline points={line(ownPts, "throttle", 82, 46)} className="trace-throttle" />
+    {reference && <polyline points={line(refPts, "throttle", 82, 46)} className="trace-throttle reference-line" />}
+    <text x="4" y="146" className="channel-label">BRAKE</text>
+    <polyline points={line(ownPts, "brake", 140, 46)} className="trace-brake" />
+    {reference && <polyline points={line(refPts, "brake", 140, 46)} className="trace-brake reference-line" />}
+    <text x="4" y="204" className="channel-label">STEERING</text>
+    <polyline points={line(ownPts, "steering", 198, 20)} className="trace-steering" />
+    {reference && <polyline points={line(refPts, "steering", 198, 20)} className="trace-steering reference-line" />}
+  </svg>;
+}
+
 export default function ActiveWeekTelemetry() {
   const [data, setData] = useState<ActiveWeekData | null>(null);
   const [selectedKey, setSelectedKey] = useState("");
@@ -317,6 +398,21 @@ export default function ActiveWeekTelemetry() {
   const [referenceMessage, setReferenceMessage] = useState<string | null>(null);
   const [hoveredDistance, setHoveredDistance] = useState<number | null>(null);
   const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null);
+  const [focusedInsight, setFocusedInsight] = useState<Comparison["opportunities"][number] | null>(null);
+  const insightsRef = useRef<HTMLDivElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (insightsRef.current?.contains(target)) return;
+      if (popupRef.current?.contains(target)) return;
+      setFocusedInsight(null);
+      setSelectedRange(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -372,10 +468,12 @@ export default function ActiveWeekTelemetry() {
     return () => { active = false; };
   }, [selected]);
 
+  const corners = useMemo(() => trace ? detectCorners(trace.points) : [], [trace]);
+
   const comparison = useMemo(() => {
     if (!trace || !referenceTrace || !selected?.bestLap) return null;
-    return compareTraces(trace, referenceTrace, selected.bestLap.lapTime);
-  }, [trace, referenceTrace, selected]);
+    return compareTraces(trace, referenceTrace, selected.bestLap.lapTime, corners);
+  }, [trace, referenceTrace, selected, corners]);
 
   async function uploadReference(file: File) {
     if (!selected) return;
@@ -463,8 +561,8 @@ export default function ActiveWeekTelemetry() {
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
               <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3></div>
-                  <div className="insights-grid">{comparison.opportunities.length ? comparison.opportunities.map((item) => (
-                    <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance((item.start + item.end) / 2); }} key={item.title}>
+                  <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
+                    <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); }} key={item.title}>
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
                     </button>
                   )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos segmentos analisados.</p>}</div>
@@ -485,6 +583,7 @@ export default function ActiveWeekTelemetry() {
                   setHoveredDistance(Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100)));
                 }}>
                 {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1={value * 10} x2={value * 10} y1="0" y2="925" className="telemetry-grid" /><text x={value * 10} y="954" textAnchor={value === 0 ? "start" : value === 100 ? "end" : "middle"}>{value}%</text></g>)}
+                {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">C{corner.number}</text></g>)}
                 {([{"field":"speed","top":10,"height":140},{"field":"throttle","top":175,"height":65},{"field":"brake","top":265,"height":65},{"field":"steering","top":355,"height":65},{"field":"rpm","top":445,"height":65},{"field":"gear","top":535,"height":35},{"field":"clutch","top":595,"height":55},{"field":"latAccel","top":685,"height":55},{"field":"longAccel","top":775,"height":55},{"field":"yawRate","top":865,"height":55}] as {field:ChannelKey;top:number;height:number}[]).map((row) => <g key={row.field}>
                   <text x="8" y={row.top + 12} className="channel-label">{row.field === "speed" ? "SPEED" : row.field === "throttle" ? "THROTTLE" : row.field === "brake" ? "BRAKE" : row.field === "steering" ? "STEERING" : row.field.toUpperCase()}</text>
                   <polyline points={polyline(trace.points, row.field, row.top, row.height, referenceTrace ? [...trace.points, ...referenceTrace.points] : trace.points)} className={`trace-${row.field}`} />
@@ -493,16 +592,44 @@ export default function ActiveWeekTelemetry() {
                 {selectedRange && <rect x={selectedRange[0] * 10} y="0" width={(selectedRange[1] - selectedRange[0]) * 10} height="925" className="selected-segment" />}
                 {hoveredDistance !== null && <line x1={hoveredDistance * 10} x2={hoveredDistance * 10} y1="0" y2="925" className="hover-line" />}
               </svg>
-              {hoveredDistance !== null && (() => {
-                const own = (field: ChannelKey) => interpolate(trace.points, hoveredDistance, field);
-                const ref = (field: ChannelKey) => referenceTrace ? interpolate(referenceTrace.points, hoveredDistance, field) : null;
-                const format = (field: ChannelKey, value: number | null) => value === null ? "—" : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h` : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°` : field === "rpm" ? `${value.toFixed(0)}` : field === "gear" || field === "p2pCount" || field === "p2pStatus" ? `${Math.round(value)}` : field === "pushToPass" ? (value ? "ATIVO" : "inativo") : field === "latAccel" || field === "longAccel" ? `${value.toFixed(2)} m/s²` : field === "yawRate" ? `${value.toFixed(3)} rad/s` : `${(value * 100).toFixed(0)}%`;
-                const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
-                return <div className="telemetry-hover" style={{ left: `${Math.min(82, Math.max(2, hoveredDistance))}%` }}><strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>{visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}</div>;
-              })()}
               </div>
+              <aside className="telemetry-hover-panel">
+                {hoveredDistance !== null ? (() => {
+                  const own = (field: ChannelKey) => interpolate(trace.points, hoveredDistance, field);
+                  const ref = (field: ChannelKey) => referenceTrace ? interpolate(referenceTrace.points, hoveredDistance, field) : null;
+                  const format = (field: ChannelKey, value: number | null) => value === null ? "—" : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h` : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°` : field === "rpm" ? `${value.toFixed(0)}` : field === "gear" || field === "p2pCount" || field === "p2pStatus" ? `${Math.round(value)}` : field === "pushToPass" ? (value ? "ATIVO" : "inativo") : field === "latAccel" || field === "longAccel" ? `${value.toFixed(2)} m/s²` : field === "yawRate" ? `${value.toFixed(3)} rad/s` : `${(value * 100).toFixed(0)}%`;
+                  const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
+                  return <div className="telemetry-hover">
+                    <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
+                    <div className="telemetry-hover-map"><TrackMap trace={trace} range={[Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)]} /></div>
+                    {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
+                  </div>;
+                })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
+              </aside>
               </div>
               <p className="telemetry-caption">{trace.points.length.toLocaleString("pt-BR")} amostras exibidas • volta de {new Date(selected.bestLap!.startTime).toLocaleString("pt-BR")}</p>
+            </div>
+          )}
+          {focusedInsight && trace && (
+            <div className="insight-popup-backdrop">
+              <div className="insight-popup" ref={popupRef}>
+                <div className="insight-popup-head">
+                  <div>
+                    <span className="section-kicker">{focusedInsight.kind === "corner" ? `CURVA ${focusedInsight.cornerNumber}` : "TRECHO"}</span>
+                    <h3>{focusedInsight.title}</h3>
+                  </div>
+                  <button type="button" className="insight-popup-close" onClick={() => { setFocusedInsight(null); setSelectedRange(null); }}>Fechar ✕</button>
+                </div>
+                <p className="insight-popup-detail">{focusedInsight.detail}</p>
+                <div className="insight-popup-body">
+                  <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} />
+                  <div className="insight-popup-map">
+                    <span className="section-kicker">TRAÇADO</span>
+                    <TrackMap trace={trace} range={[focusedInsight.start, focusedInsight.end]} />
+                  </div>
+                </div>
+                <div className="insight-popup-metrics">{focusedInsight.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>
+              </div>
             </div>
           )}
         </div>
