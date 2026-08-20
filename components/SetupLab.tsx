@@ -9,7 +9,7 @@ type SetupContext = {
   track: { id: number; name: string; variant: string | null };
   races: number;
   garage61: { scanned: boolean; accessible: boolean; observedLaps: number };
-  uploads: { id: string; filename: string; file_size: number; setup_kind: "commercial" | "fixed" | "open" | "unknown"; created_at: string }[];
+  uploads: { id: string; filename: string; file_size: number; setup_kind: "commercial" | "fixed" | "open" | "unknown"; source: string; decoder: string | null; decoded_at: string | null; created_at: string }[];
 };
 type EngineerResult = { summary: string; limitation: string; recommendations: { adjustment: string; direction: string; why: string; validate: string }[] };
 type CompareResult = { summary: string; totalParameters: number; changes: { tab: string; section: string; label: string; before: string; after: string; explanation: string }[] };
@@ -28,7 +28,6 @@ export default function SetupLab() {
   const [engineerResult, setEngineerResult] = useState<EngineerResult | null>(null);
   const [baseSetupId, setBaseSetupId] = useState("");
   const [comparisonSetupId, setComparisonSetupId] = useState("");
-  const [decodeConsent, setDecodeConsent] = useState(false);
   const [comparing, setComparing] = useState(false);
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [library, setLibrary] = useState<{ total: number; importedAt: string | null; items: LibraryItem[] }>({ total: 0, importedAt: null, items: [] });
@@ -70,7 +69,7 @@ export default function SetupLab() {
   useEffect(() => {
     setActiveSetupId((current) => selected?.uploads.some((item) => item.id === current) ? current : selected?.uploads[0]?.id ?? "");
     setEngineerResult(null);
-    setBaseSetupId(selected?.uploads.find((item) => item.setup_kind === "fixed" || /fixed/i.test(item.filename))?.id ?? "");
+    setBaseSetupId(selected?.uploads.find((item) => item.setup_kind === "fixed" && /fixed/i.test(item.filename))?.id ?? selected?.uploads.find((item) => item.setup_kind === "fixed")?.id ?? "");
     setComparisonSetupId(selected?.uploads.find((item) => item.setup_kind === "commercial")?.id ?? "");
     setCompareResult(null);
   }, [context, selected?.uploads]);
@@ -92,7 +91,7 @@ export default function SetupLab() {
     if (!selected) return;
     setComparing(true); setCompareResult(null); setMessage("Decodificando e comparando os setups...");
     try {
-      const response = await fetch("/api/setup/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseSetupId, comparisonSetupId, carId: selected.car.id, trackId: selected.track.id, consent: decodeConsent }) });
+      const response = await fetch("/api/setup/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseSetupId, comparisonSetupId, carId: selected.car.id, trackId: selected.track.id }) });
       const result = await response.json(); if (!response.ok) throw new Error(result.message ?? "Erro no comparativo");
       setCompareResult(result); setMessage(null);
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
@@ -131,9 +130,9 @@ export default function SetupLab() {
 
       {mode === "generator" ? (
         <><div className="setup-grid">
-          <article className="panel setup-card"><span className="step-number">01 • FIXED</span><h3>Setup base do iRacing</h3><p>Selecione ou envie o fixed usado neste carro e pista.</p>{selected?.uploads.length ? <select className="setup-file-select" value={baseSetupId} onChange={(event) => setBaseSetupId(event.target.value)}><option value="">Selecionar setup base</option>{selected.uploads.map((file) => <option key={file.id} value={file.id}>{file.filename}</option>)}</select> : null}<label className={`setup-drop compact ${uploading ? "disabled" : ""}`}><FileUp size={20} /><strong>Enviar fixed .sto</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const saved = await uploadSetup(file, "fixed"); if (saved) setBaseSetupId(saved.id); } event.target.value = ""; }} /></label></article>
-          <article className="panel setup-card"><span className="step-number">02 • COMERCIAL</span><h3>Setup de comparação</h3><p>Selecione o TS ou outro setup comercial.</p>{selected?.uploads.length ? <select className="setup-file-select" value={comparisonSetupId} onChange={(event) => setComparisonSetupId(event.target.value)}><option value="">Selecionar setup comercial</option>{selected.uploads.map((file) => <option key={file.id} value={file.id}>{file.filename}</option>)}</select> : null}<label className={`setup-drop compact ${uploading ? "disabled" : ""}`}><FileUp size={20} /><strong>Enviar comercial .sto</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const saved = await uploadSetup(file, "commercial"); if (saved) setComparisonSetupId(saved.id); } event.target.value = ""; }} /></label></article>
-          <article className="panel setup-card setup-output"><span className="step-number">03 • COMPARAR</span><h3>Diferenças e motivos</h3><label className="decoder-consent"><input type="checkbox" checked={decodeConsent} onChange={(event) => setDecodeConsent(event.target.checked)} /><span>Autorizo a decodificação quando o serviço estiver disponível. O arquivo original permanece privado.</span></label><button className="primary-button setup-compare-button" disabled={!baseSetupId || !comparisonSetupId || !decodeConsent || comparing} onClick={compareSetups}>{comparing ? "Comparando..." : "Comparar fixed × open"}</button><p className="setup-guardrail">O endpoint antigo do SetupDelta foi retirado (410). Agora o app preserva os arquivos e explica como habilitar o comparativo por exportação HTML, sem falhar silenciosamente.</p></article>
+          <article className="panel setup-card"><span className="step-number">01 • FIXED</span><h3>Setup base do iRacing</h3><p>Selecione o fixed capturado nas suas sessões deste carro e pista.</p>{selected?.uploads.some((file) => file.setup_kind === "fixed") ? <select className="setup-file-select" value={baseSetupId} onChange={(event) => setBaseSetupId(event.target.value)}><option value="">Selecionar setup base</option>{selected.uploads.filter((file) => file.setup_kind === "fixed").map((file) => <option key={file.id} value={file.id}>{file.filename}</option>)}</select> : null}<label className={`setup-drop compact ${uploading ? "disabled" : ""}`}><FileUp size={20} /><strong>Enviar fixed .sto</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const saved = await uploadSetup(file, "fixed"); if (saved) setBaseSetupId(saved.id); } event.target.value = ""; }} /></label></article>
+          <article className="panel setup-card"><span className="step-number">02 • OPEN / COMERCIAL</span><h3>Setup de comparação</h3><p>Selecione o TS, P1Doks, HYMO ou outro setup usado.</p>{selected?.uploads.some((file) => file.setup_kind !== "fixed") ? <select className="setup-file-select" value={comparisonSetupId} onChange={(event) => setComparisonSetupId(event.target.value)}><option value="">Selecionar setup de comparação</option>{selected.uploads.filter((file) => file.setup_kind !== "fixed").map((file) => <option key={file.id} value={file.id}>{file.filename}</option>)}</select> : null}<label className={`setup-drop compact ${uploading ? "disabled" : ""}`}><FileUp size={20} /><strong>Enviar comercial .sto</strong><input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={async (event) => { const file = event.target.files?.[0]; if (file) { const saved = await uploadSetup(file, "commercial"); if (saved) setComparisonSetupId(saved.id); } event.target.value = ""; }} /></label></article>
+          <article className="panel setup-card setup-output"><span className="step-number">03 • COMPARAR</span><h3>Diferenças e motivos</h3><div className="setup-access available"><SlidersHorizontal size={20} /><div><strong>Parâmetros disponíveis</strong><span>O Garage61 já decodificou os setups usados nas suas corridas. Nenhum arquivo é enviado a um serviço externo.</span></div></div><button className="primary-button setup-compare-button" disabled={!baseSetupId || !comparisonSetupId || comparing} onClick={compareSetups}>{comparing ? "Comparando..." : "Comparar fixed × open"}</button><p className="setup-guardrail">Comparação privada baseada nos parâmetros registrados na temporada atual.</p></article>
         </div>
         {compareResult && <div className="panel setup-diff"><div className="panel-heading"><div><span className="section-kicker">SETUP DIFF</span><h3>{compareResult.summary}</h3><p>{compareResult.totalParameters} parâmetros mapeados foram verificados.</p></div></div>{compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}</span><strong>{change.label}</strong></div><div className="setup-values"><del>{change.before}</del><b>→</b><ins>{change.after}</ins></div><p>{change.explanation}</p></article>)}</div>}</>
       ) : (

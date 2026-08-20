@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     const { driverId, seasonId, seasonName } = await context();
     const [sessionsResult, setupsResult, lapsResult] = await Promise.all([
       supabaseAdmin.from("driving_sessions").select("car_id,track_id,started_at,session_type").eq("driver_id", driverId).eq("season_id", seasonId).eq("session_type", 3),
-      supabaseAdmin.from("setup_files").select("id,car_id,track_id,source,setup_kind,filename,file_size,created_at").eq("driver_id", driverId).eq("season_id", seasonId).order("created_at", { ascending: false }),
+      supabaseAdmin.from("setup_files").select("id,car_id,track_id,source,setup_kind,filename,file_size,created_at,decoded_at,decoder").eq("driver_id", driverId).eq("season_id", seasonId).order("created_at", { ascending: false }),
       supabaseAdmin.from("laps").select("id,car_id,track_id,can_view_setup,garage61_payload").eq("driver_id", driverId).limit(5000),
     ]);
     if (sessionsResult.error) throw sessionsResult.error;

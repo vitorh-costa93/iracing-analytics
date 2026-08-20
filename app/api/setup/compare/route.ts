@@ -6,20 +6,7 @@ type DecodedRow = { tab?: string; section?: string; label?: string; metric_value
 
 async function decode(setup: SetupRow) {
   if (Array.isArray(setup.decoded_params)) return { carName: setup.decoded_car_name, rows: setup.decoded_params as DecodedRow[] };
-  const { data: blob, error } = await supabaseAdmin.storage.from("private-setups").download(setup.storage_path);
-  if (error || !blob) throw new Error(`Não foi possível ler ${setup.filename} do cofre privado`);
-  const form = new FormData(); form.set("file", new File([await blob.arrayBuffer()], setup.filename, { type: "application/octet-stream" }));
-  const response = await fetch("https://www.setupdelta.com/api/setup/decode", { method: "POST", headers: { Origin: "https://www.setupdelta.com", Referer: "https://www.setupdelta.com/" }, body: form, signal: AbortSignal.timeout(25000), cache: "no-store" });
-  if (!response.ok) {
-    if (response.status === 410) throw new Error("O decodificador externo do SetupDelta foi retirado. Seus arquivos continuam seguros no cofre; exporte também o Garage Setup em HTML no iRacing para habilitar um comparativo sem depender desse serviço.");
-    throw new Error(response.status === 422 ? `${setup.filename} não é suportado pelo decodificador` : `O decodificador externo respondeu ${response.status} para ${setup.filename}`);
-  }
-  const result = await response.json() as { carName?: string; rows?: DecodedRow[] };
-  if (!Array.isArray(result.rows) || !result.rows.length) throw new Error(`O decodificador não retornou parâmetros para ${setup.filename}`);
-  const consentAt = new Date().toISOString();
-  const { error: updateError } = await supabaseAdmin.from("setup_files").update({ decoded_car_name: result.carName ?? null, decoded_params: result.rows, decoded_at: consentAt, decoder: "setupdelta.com", external_decode_consent_at: consentAt }).eq("id", setup.id);
-  if (updateError) throw updateError;
-  return { carName: result.carName ?? null, rows: result.rows };
+  throw new Error(`${setup.filename} ainda não possui parâmetros capturados pelo Garage61. Use uma sessão registrada com esse setup antes de compará-lo.`);
 }
 
 function effect(label: string, before: string, after: string) {
@@ -40,8 +27,7 @@ function effect(label: string, before: string, after: string) {
 
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { baseSetupId?: string; comparisonSetupId?: string; carId?: number; trackId?: number; consent?: boolean };
-    if (!body.consent) throw new Error("É necessário autorizar o envio dos dois arquivos ao SetupDelta");
+    const body = await request.json() as { baseSetupId?: string; comparisonSetupId?: string; carId?: number; trackId?: number };
     if (!body.baseSetupId || !body.comparisonSetupId || body.baseSetupId === body.comparisonSetupId) throw new Error("Selecione dois setups diferentes");
     const { data: driver } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (!driver) throw new Error("Piloto não encontrado");
