@@ -13,6 +13,6 @@ export default function KpiCard({ eyebrow, value, previousValue, previousLabel, 
     <div className="kpi-card-top"><span className="kpi-label">{eyebrow}</span><span className="kpi-icon"><RaceCarIcon formula={formula} /></span></div>
     <div className="kpi-main">{display}</div>
     <div className={`kpi-trend ${comparison !== null && comparison < 0 ? "negative" : "positive"}`}>{comparison === null ? "Sem comparação anterior" : `${comparison >= 0 ? "↗" : "↘"} ${signed(comparison)} vs. ${previousLabel}`}</div>
-    <div className="kpi-description">{mode === "wins" ? `Vitórias Season to Date • ${previousLabel}: ${previousValue?.toLocaleString("pt-BR") ?? "—"}` : `iRating atual • ${previousLabel} na mesma week: ${previousValue?.toLocaleString("pt-BR") ?? "—"}`}</div>
+    <div className="kpi-description">{mode === "wins" ? `Vitórias registradas • ${previousLabel}: ${previousValue?.toLocaleString("pt-BR") ?? "—"}` : `iRating atual • ${previousLabel} na mesma week: ${previousValue?.toLocaleString("pt-BR") ?? "—"}`}</div>
   </article>;
 }
