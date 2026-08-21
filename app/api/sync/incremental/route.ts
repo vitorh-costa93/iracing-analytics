@@ -13,10 +13,19 @@ type Garage61Lap = {
   session?: number;
   sessionType?: number;
   startTime?: string;
+  lapTime?: number;
   season?: { id?: string; name?: string };
   car?: { id?: number };
   track?: { id?: number };
 };
+
+/** The lap's own end time (start + duration), not just its start — a session's real end is the
+ * end of its LAST lap, otherwise a 1-lap race (early DNF) always looks like it lasted 0 minutes. */
+function lapEndTime(lap: Garage61Lap): string {
+  if (!lap.startTime) return lap.startTime as unknown as string;
+  if (!Number.isFinite(lap.lapTime) || Number(lap.lapTime) <= 0) return lap.startTime;
+  return new Date(new Date(lap.startTime).getTime() + Number(lap.lapTime) * 1000).toISOString();
+}
 
 type Garage61LapsResponse = { items?: Garage61Lap[]; total?: number };
 
@@ -122,10 +131,11 @@ async function runIncrementalSessionSync() {
         const key = `${eventId}:${sessionId}:${lap.car.id}:${lap.track.id}`;
         const existing = sessions.get(key);
 
+        const lapEnd = lapEndTime(lap);
         if (existing) {
           existing.lap_count += 1;
           if (lap.startTime < existing.started_at) existing.started_at = lap.startTime;
-          if (lap.startTime > existing.ended_at) existing.ended_at = lap.startTime;
+          if (lapEnd > existing.ended_at) existing.ended_at = lapEnd;
         } else {
           sessions.set(key, {
             driver_id: driver.id,
@@ -138,7 +148,7 @@ async function runIncrementalSessionSync() {
             session_type: lap.sessionType ?? null,
             event_type: lap.eventType ?? null,
             started_at: lap.startTime,
-            ended_at: lap.startTime,
+            ended_at: lapEnd,
             lap_count: 1,
           });
         }
