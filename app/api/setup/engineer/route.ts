@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { DecodedRow, diffSetups } from "@/lib/setup-diff";
+import { DecodedRow, comparativeSummary, diffSetups } from "@/lib/setup-diff";
 
 type ParamHit = { tab: string; section: string; label: string; current: string };
 type Recommendation = { adjustment: string; direction: string; why: string; validate: string; parameter: { label: string; current: string } | null };
@@ -114,10 +114,15 @@ async function blendSetups(driverId: string, setupIdA: string, setupIdB: string,
     parameter: null,
   }));
 
+  // Síntese do balanço geral (ex.: "um setup pende mais pra dianteira, o outro mais pra traseira")
+  // por categoria, antes de listar parâmetro a parâmetro — isso é o "meio-termo conceitual" que
+  // explica ONDE cada setup pende, para o piloto decidir para qual lado ir em cada trecho.
+  const balanceNarrative = comparativeSummary(changes, a.filename, b.filename);
+
   return {
     status: "ok" as const,
     setup: { id: a.id, filename: `${a.filename} × ${b.filename} (meio-termo)` },
-    summary: `Meio-termo entre ${a.filename} e ${b.filename}: ${recommendations.length} parâmetro(s) diferem entre os dois com efeito prático.${feedback ? ` Sobre o que você pediu ("${feedback.replace(/\[\[([^\]]+)\]\]/g, "$1")}"): use as diferenças abaixo para decidir, trecho a trecho, para qual lado pender.` : ""}`,
+    summary: `${balanceNarrative}${feedback ? ` Sobre o que você pediu ("${feedback.replace(/\[\[([^\]]+)\]\]/g, "$1")}"): use isso para decidir, categoria a categoria, para qual lado pender — os valores exatos de cada parâmetro estão detalhados abaixo.` : ""}`,
     recommendations,
     hasDecodedParameters: true,
     limitation: "Isso é uma comparação estrutural entre os dois setups, não uma mistura calculada automaticamente — o valor exato do meio-termo precisa ser escolhido por você no menu do carro, porque cada carro só aceita certos valores fixos (não é um intervalo contínuo).",

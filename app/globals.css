@@ -361,3 +361,29 @@ footer { margin-top: 24px; color: #8a949e; font-size: 12px; text-align: center; 
   .setup-intro, .engineer-layout { display: flex; flex-direction: column; align-items: stretch; }.app-tabs { overflow-x: auto; }.library-groups { grid-template-columns: 1fr; }
   .setup-diff article { grid-template-columns: 1fr; gap: 8px; }
 }
+
+.race-debrief { margin-top: 18px; }
+.race-debrief-header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.race-debrief-summary { margin-top: 14px; padding: 16px; background: var(--blue-pale); border: 1px solid #bcdcf0; border-radius: 6px; }
+.race-debrief-summary > p { margin: 0; color: #17435f; font-size: 14px; line-height: 1.55; }
+.race-debrief-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
+.race-debrief-metrics div { padding: 10px 12px; background: var(--surface); border: 1px solid #cfe0ec; border-radius: 4px; text-align: center; }
+.race-debrief-metrics span { display: block; color: var(--soft); font-size: 10px; font-weight: 800; letter-spacing: .05em; }
+.race-debrief-metrics strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.race-debrief-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
+.race-debrief-col { padding: 16px; border-radius: 6px; border: 1px solid var(--border); }
+.race-debrief-col.strengths { background: var(--green-pale); border-color: #badfcb; }
+.race-debrief-col.improvements { background: #fff8e9; border-color: #ead6ac; }
+.race-debrief-col h4 { margin: 4px 0 10px; font-size: 15px; }
+.race-debrief-col p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: var(--text); }
+.race-debrief-channels { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-muted); }
+.race-debrief-channels-note { margin: 4px 0 12px; color: var(--muted); font-size: 12px; }
+.race-debrief-channel-bars { display: grid; gap: 8px; }
+.race-debrief-channel-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; }
+.race-debrief-channel-row span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.race-debrief-channel-track { height: 10px; background: #e5e9ed; border-radius: 5px; overflow: hidden; }
+.race-debrief-channel-track div { height: 100%; background: var(--blue); border-radius: 5px; }
+
+@media (max-width: 720px) {
+  .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
+}
