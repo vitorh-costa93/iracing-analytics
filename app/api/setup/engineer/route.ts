@@ -19,24 +19,28 @@ function parseValueUnit(value: string): { number: number; unit: string } | null 
 }
 
 /**
- * Describes a "make it softer/harder" adjustment without inventing a numeric target.
- * Each car has its own discrete step table in iRacing (spring rates, ARB diameters etc. only
- * come in specific catalog values) that we don't have access to, so guessing an arithmetic
- * target (e.g. "170 * 0.9") could suggest a value that isn't even selectable in the game.
- * The one exception is damper clicks, where ±1 click is always how the in-game adjustment works.
+ * Describes an adjustment as an explicit "aumente" or "diminua" the on-screen number, so the
+ * driver always knows which arrow/dropdown direction to click — never just "mais macio", which
+ * doesn't say whether that means a higher or lower number for this specific parameter.
+ * We don't guess an arithmetic target for continuous values (N/mm, mm, deg, %) because each car
+ * only accepts specific catalog steps that we don't have mapped, and a made-up number could be
+ * impossible to select in the game. Damper clicks are the one exception: ±1 click always works.
+ * `raise === null` means the direction genuinely depends on the differential/car and we say so
+ * instead of guessing.
  */
-function concreteTarget(hit: ParamHit, softer: boolean): string {
+function concreteTarget(hit: ParamHit, raise: boolean | null): string {
   const parsed = parseValueUnit(hit.current);
-  const softHard = softer ? "mais macio" : "mais rígido";
-  if (!parsed) return `um passo ${softHard} a partir do valor atual (${hit.current})`;
+  if (raise === null) return `valor atual ${hit.current} — a direção certa depende do tipo de diferencial deste carro; teste um passo em cada sentido no menu e compare qual reduz o problema`;
+  const verb = raise ? "Aumente" : "Diminua";
+  if (!parsed) return `${verb} o valor a partir do atual (${hit.current}) no menu do carro`;
   const { number, unit } = parsed;
   if (/clicks|click/i.test(unit)) {
-    const target = softer ? number - 1 : number + 1;
-    return `${hit.current} → ${target >= 0 ? "+" : ""}${target} clicks (${softer ? "1 clique mais macio" : "1 clique mais rígido"}; confirme se essa é a direção certa no texto de ajuda do próprio menu de setup, pois o sentido do clique varia por carro)`;
+    const target = raise ? number + 1 : number - 1;
+    return `${hit.current} → ${target >= 0 ? "+" : ""}${target} clicks (1 clique ${raise ? "a mais" : "a menos"})`;
   }
-  // Continuous-looking values (N/mm, mm, deg, %) only accept specific catalog steps per carro,
-  // que não temos mapeados — em vez de chutar um número, aponta a direção e o valor atual.
-  return `um passo ${softHard} que o atual (${hit.current}) — use a seta/dropdown do próprio jogo para o próximo valor disponível nessa direção, ele já respeita os limites do carro`;
+  // Continuous-looking values (N/mm, mm, deg, %) só aceitam degraus específicos do catálogo do
+  // carro, que não temos mapeados — por isso apontamos a direção sem inventar o número exato.
+  return `${verb} o valor a partir do atual (${hit.current}) — use a seta/dropdown do próprio jogo para o próximo valor disponível nessa direção, ele já respeita os limites do carro`;
 }
 
 function describeParams(hits: ParamHit[]): { label: string; current: string } | null {
@@ -69,31 +73,31 @@ export async function POST(request: NextRequest) {
     const traction = /patina|tracao|wheelspin|perde aderencia/.test(feedback);
     const recommendations: Recommendation[] = [];
 
-    /** Builds a recommendation whose "direction" text always states a concrete, unambiguous target (not just "amoleça"). */
-    const push = (adjustment: string, why: string, validate: string, pattern: RegExp, sectionPattern: RegExp | undefined, softer: boolean, fallbackDirection: string) => {
+    /** Builds a recommendation whose "direction" text always says explicitly to raise or lower the on-screen value. */
+    const push = (adjustment: string, why: string, validate: string, pattern: RegExp, sectionPattern: RegExp | undefined, raise: boolean | null, fallbackDirection: string) => {
       const hits = hasDecoded ? findParams(decodedRows, pattern, sectionPattern) : [];
       const parameter = describeParams(hits);
-      const direction = hits.length ? concreteTarget(hits[0], softer) : fallbackDirection;
+      const direction = hits.length ? concreteTarget(hits[0], raise) : fallbackDirection;
       recommendations.push({ adjustment, direction, why, validate, parameter });
     };
 
     if (understeer && entry) {
-      push("Brake bias", "Ajuda o carro a rotacionar na fase inicial sem pedir mais volante.", "Compare yaw rate, pico de volante e estabilidade da traseira na frenagem.", /brake.*bias|bias/i, undefined, true, "Teste 0,25–0,50 p.p. para trás (menos bias dianteiro)");
-      push("Barra estabilizadora dianteira", "Aumenta aderência mecânica dianteira no turn-in e meio da curva.", "Confirme menor correção de volante sem piorar apoio em curva rápida.", /arb.*diameter|diameter.*arb/i, /front|diant/i, true, "Amoleça (reduza a rigidez) um passo");
+      push("Brake bias", "Ajuda o carro a rotacionar na fase inicial sem pedir mais volante.", "Compare yaw rate, pico de volante e estabilidade da traseira na frenagem.", /brake.*bias|bias/i, undefined, false, "Diminua 0,25–0,50 p.p. (menos bias dianteiro)");
+      push("Barra estabilizadora dianteira", "Aumenta aderência mecânica dianteira no turn-in e meio da curva.", "Confirme menor correção de volante sem piorar apoio em curva rápida.", /arb.*diameter|diameter.*arb/i, /front|diant/i, false, "Diminua (barra mais fina/macia)");
     }
     if (understeer && !entry) {
-      push("Barra estabilizadora dianteira", "Desloca equilíbrio lateral para permitir mais rotação no meio da curva.", "Procure maior aceleração lateral com o mesmo ângulo de volante.", /arb.*diameter|diameter.*arb/i, /front|diant/i, true, "Amoleça (reduza a rigidez) um passo");
-      push("Diferencial em potência (power)", "Pode diminuir a tendência de abrir a trajetória durante a retomada.", "Compare throttle, yaw rate e wheelspin na saída.", /power/i, undefined, true, "Reduza o bloqueio em power um passo");
+      push("Barra estabilizadora dianteira", "Desloca equilíbrio lateral para permitir mais rotação no meio da curva.", "Procure maior aceleração lateral com o mesmo ângulo de volante.", /arb.*diameter|diameter.*arb/i, /front|diant/i, false, "Diminua (barra mais fina/macia)");
+      push("Diferencial em potência (power)", "Pode diminuir a tendência de abrir a trajetória durante a retomada.", "Compare throttle, yaw rate e wheelspin na saída.", /power/i, undefined, null, "Reduza o bloqueio em power um passo (confirme o sentido no menu do carro)");
     }
     if (oversteer && entry) {
-      push("Brake bias", "Reduz a rotação da traseira durante trail braking.", "Confirme estabilidade sem criar subesterço excessivo na entrada.", /brake.*bias|bias/i, undefined, false, "Teste 0,25–0,50 p.p. para frente (mais bias dianteiro)");
-      push("Diferencial em coast", "Estabiliza o eixo traseiro na desaceleração.", "Observe yaw rate ao soltar o freio e velocidade mínima.", /coast/i, undefined, false, "Aumente o bloqueio em coast um passo");
+      push("Brake bias", "Reduz a rotação da traseira durante trail braking.", "Confirme estabilidade sem criar subesterço excessivo na entrada.", /brake.*bias|bias/i, undefined, true, "Aumente 0,25–0,50 p.p. (mais bias dianteiro)");
+      push("Diferencial em coast", "Estabiliza o eixo traseiro na desaceleração.", "Observe yaw rate ao soltar o freio e velocidade mínima.", /coast/i, undefined, null, "Aumente o bloqueio em coast um passo (confirme o sentido no menu do carro)");
     }
     if (oversteer && !entry) {
-      push("Barra estabilizadora traseira", "Entrega mais aderência mecânica atrás e reduz sobresterço sustentado.", "Compare aceleração lateral, correções e temperatura dos pneus entre os dois lados.", /arb.*diameter|diameter.*arb/i, /rear|trase/i, true, "Amoleça (reduza a rigidez) um passo");
+      push("Barra estabilizadora traseira", "Entrega mais aderência mecânica atrás e reduz sobresterço sustentado.", "Compare aceleração lateral, correções e temperatura dos pneus entre os dois lados.", /arb.*diameter|diameter.*arb/i, /rear|trase/i, false, "Diminua (barra mais fina/macia)");
     }
     if (traction || (oversteer && exit)) {
-      push("Mola traseira (ambos os lados)", "A prioridade é aumentar contato mecânico sem mascarar o problema com diferencial excessivo.", "Use throttle, LongAccel, Steering e diferença de rotação das rodas quando disponível; ajuste os dois lados juntos, não só um.", /spring.?rate/i, /^(left rear|right rear)$/i, true, "Reduza um passo (mola mais macia)");
+      push("Mola traseira (ambos os lados)", "A prioridade é aumentar contato mecânico sem mascarar o problema com diferencial excessivo.", "Use throttle, LongAccel, Steering e diferença de rotação das rodas quando disponível; ajuste os dois lados juntos, não só um.", /spring.?rate/i, /^(left rear|right rear)$/i, false, "Diminua (mola mais macia)");
     }
     if (!recommendations.length) {
       recommendations.push({ adjustment: "Teste A/B controlado", direction: "Descreva entrada, meio ou saída e se o problema é frente, traseira ou tração", why: "Sem localizar a fase da curva, uma mudança de setup pode corrigir um trecho e piorar outro.", validate: "Faça três voltas consistentes, altere um item por vez e compare telemetria no mesmo combustível.", parameter: null });
