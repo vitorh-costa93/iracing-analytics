@@ -28,11 +28,11 @@ function parseValueUnit(value: string): { number: number; unit: string } | null 
  * `raise === null` means the direction genuinely depends on the differential/car and we say so
  * instead of guessing.
  */
-function concreteTarget(hit: ParamHit, raise: boolean | null): string {
+function concreteTarget(hit: ParamHit, raise: boolean | null, note = ""): string {
   const parsed = parseValueUnit(hit.current);
   if (raise === null) return `valor atual ${hit.current} — a direção certa depende do tipo de diferencial deste carro; teste um passo em cada sentido no menu e compare qual reduz o problema`;
   const verb = raise ? "Aumente" : "Diminua";
-  if (!parsed) return `${verb} o valor a partir do atual (${hit.current}) no menu do carro`;
+  if (!parsed) return `${verb} o valor a partir do atual (${hit.current}) no menu do carro${note}`;
   const { number, unit } = parsed;
   if (/clicks|click/i.test(unit)) {
     const target = raise ? number + 1 : number - 1;
@@ -40,7 +40,7 @@ function concreteTarget(hit: ParamHit, raise: boolean | null): string {
   }
   // Continuous-looking values (N/mm, mm, deg, %) só aceitam degraus específicos do catálogo do
   // carro, que não temos mapeados — por isso apontamos a direção sem inventar o número exato.
-  return `${verb} o valor a partir do atual (${hit.current}) — use a seta/dropdown do próprio jogo para o próximo valor disponível nessa direção, ele já respeita os limites do carro`;
+  return `${verb} o valor a partir do atual (${hit.current}) — use a seta/dropdown do próprio jogo para o próximo valor disponível nessa direção, ele já respeita os limites do carro${note}`;
 }
 
 function describeParams(hits: ParamHit[]): { label: string; current: string } | null {
@@ -51,6 +51,50 @@ function describeParams(hits: ParamHit[]): { label: string; current: string } | 
     label: `${hits[0].tab} • ${hits.map((hit) => hit.section).join(" / ")} • ${hits[0].label}`,
     current: sameValue ? hits[0].current : hits.map((hit) => `${hit.section}: ${hit.current}`).join(" | "),
   };
+}
+
+/**
+ * Anti-roll bar stiffness, aware of the two naming/unit conventions iRacing actually uses
+ * (confirmed against the official Super Formula SF23 and McLaren 720S GT3 EVO manuals):
+ *  - "ARB Diameter" (mm) — larger diameter = stiffer. Only a handful of discrete sizes exist
+ *    per car (e.g. SF23 front is 15/18/30mm only), never a continuous range.
+ *  - "ARB Blades" (numbered) — higher number = stiffer, per the GT3 manual.
+ * Both conventions agree that a higher on-screen number means stiffer, so `raise` maps directly.
+ */
+function arbTarget(rows: DecodedRow[], axlePattern: RegExp, wantStiffer: boolean) {
+  const diameterHits = findParams(rows, /arb.*diameter|diameter.*arb/i, axlePattern);
+  if (diameterHits.length) return { parameter: describeParams(diameterHits), direction: concreteTarget(diameterHits[0], wantStiffer, " (esse carro só aceita algumas opções fixas de diâmetro, ex.: 15/18/30mm — não é um valor contínuo)") };
+  const bladeHits = findParams(rows, /arb.*blades?/i, axlePattern);
+  if (bladeHits.length) return { parameter: describeParams(bladeHits), direction: concreteTarget(bladeHits[0], wantStiffer) };
+  return { parameter: null, direction: null };
+}
+
+type DiffGoal = "more-lock-entry" | "less-lock-exit";
+
+/**
+ * Differential lock, aware of the two architectures we have official documentation for:
+ *  - SF23-style: independent "Coast Angle" (braking/lift-off) and "Drive Angle" (throttle).
+ *    Per the manual, HIGHER angle = LESS force = more oversteer; LOWER angle = MORE force =
+ *    more understeer/stability. This is the opposite of a naive "higher number = more lock".
+ *  - GT3-style: a single "Diff Preload" (ft-lbs). Per the manual, increasing preload adds
+ *    understeer off-throttle (more stable entry) AND more snap oversteer on throttle — it's
+ *    one dial with a trade-off in both directions, not two independent adjustments.
+ * For other cars (GTP, LMP2 prototypes) we don't have official documentation yet, so we fall
+ * back to an honest "test both directions" instead of guessing.
+ */
+function differentialTarget(rows: DecodedRow[], goal: DiffGoal) {
+  if (goal === "more-lock-entry") {
+    const coastHits = findParams(rows, /coast.*angle/i);
+    if (coastHits.length) return { parameter: describeParams(coastHits), direction: concreteTarget(coastHits[0], false), tradeoff: "" };
+    const preloadHits = findParams(rows, /diff.*preload|^preload$/i);
+    if (preloadHits.length) return { parameter: describeParams(preloadHits), direction: concreteTarget(preloadHits[0], true), tradeoff: " Atenção: nesse carro o preload é um dial só — aumentar também deixa a saída mais propensa a sobresterço de \"snap\" se você acelerar de forma agressiva." };
+    return { parameter: null, direction: "valor atual — a direção certa depende do tipo de diferencial deste carro; teste um passo em cada sentido no menu e compare qual reduz o problema", tradeoff: "" };
+  }
+  const driveHits = findParams(rows, /drive.*angle/i);
+  if (driveHits.length) return { parameter: describeParams(driveHits), direction: concreteTarget(driveHits[0], true), tradeoff: "" };
+  const preloadHits = findParams(rows, /diff.*preload|^preload$/i);
+  if (preloadHits.length) return { parameter: describeParams(preloadHits), direction: concreteTarget(preloadHits[0], false), tradeoff: " Atenção: nesse carro o preload é um dial só — reduzir também deixa a entrada/desaceleração menos estável (mais sobresterço fora do acelerador)." };
+  return { parameter: null, direction: "valor atual — a direção certa depende do tipo de diferencial deste carro; teste um passo em cada sentido no menu e compare qual reduz o problema", tradeoff: "" };
 }
 
 export async function POST(request: NextRequest) {
@@ -83,25 +127,35 @@ export async function POST(request: NextRequest) {
       recommendations.push({ adjustment, direction, why, validate, parameter });
     };
 
+    const pushArb = (adjustment: string, why: string, validate: string, axlePattern: RegExp, wantStiffer: boolean, fallbackDirection: string) => {
+      const result = hasDecoded ? arbTarget(decodedRows, axlePattern, wantStiffer) : { parameter: null, direction: null };
+      recommendations.push({ adjustment, direction: result.direction ?? fallbackDirection, why, validate, parameter: result.parameter });
+    };
+
+    const pushDiff = (adjustment: string, why: string, validate: string, goal: DiffGoal, fallbackDirection: string) => {
+      const result = hasDecoded ? differentialTarget(decodedRows, goal) : { parameter: null, direction: null, tradeoff: "" };
+      recommendations.push({ adjustment, direction: result.direction ?? fallbackDirection, why: `${why}${result.tradeoff ?? ""}`, validate, parameter: result.parameter });
+    };
+
     if (understeer && entry) {
       push("Brake bias", "Ajuda o carro a rotacionar na fase inicial sem pedir mais volante.", "Compare yaw rate, pico de volante e estabilidade da traseira na frenagem.", /brake.*bias|bias/i, undefined, false, "Diminua 0,25–0,50 p.p. (menos bias dianteiro)");
-      push("Barra estabilizadora dianteira", "Aumenta aderência mecânica dianteira no turn-in e meio da curva.", "Confirme menor correção de volante sem piorar apoio em curva rápida.", /arb.*diameter|diameter.*arb/i, /front|diant/i, false, "Diminua (barra mais fina/macia)");
+      pushArb("Barra estabilizadora dianteira", "Aumenta aderência mecânica dianteira no turn-in e meio da curva.", "Confirme menor correção de volante sem piorar apoio em curva rápida.", /front|diant/i, false, "Diminua (barra mais fina/macia)");
     }
     if (understeer && !entry) {
-      push("Barra estabilizadora dianteira", "Desloca equilíbrio lateral para permitir mais rotação no meio da curva.", "Procure maior aceleração lateral com o mesmo ângulo de volante.", /arb.*diameter|diameter.*arb/i, /front|diant/i, false, "Diminua (barra mais fina/macia)");
-      push("Diferencial em potência (power)", "Pode diminuir a tendência de abrir a trajetória durante a retomada.", "Compare throttle, yaw rate e wheelspin na saída.", /power/i, undefined, null, "Reduza o bloqueio em power um passo (confirme o sentido no menu do carro)");
+      pushArb("Barra estabilizadora dianteira", "Desloca equilíbrio lateral para permitir mais rotação no meio da curva.", "Procure maior aceleração lateral com o mesmo ângulo de volante.", /front|diant/i, false, "Diminua (barra mais fina/macia)");
+      pushDiff("Diferencial (lado saída/potência)", "Pode diminuir a tendência de abrir a trajetória durante a retomada.", "Compare throttle, yaw rate e wheelspin na saída.", "less-lock-exit", "Reduza o bloqueio um passo (confirme o sentido no menu do carro)");
     }
     if (oversteer && entry) {
       push("Brake bias", "Reduz a rotação da traseira durante trail braking.", "Confirme estabilidade sem criar subesterço excessivo na entrada.", /brake.*bias|bias/i, undefined, true, "Aumente 0,25–0,50 p.p. (mais bias dianteiro)");
-      push("Diferencial em coast", "Estabiliza o eixo traseiro na desaceleração.", "Observe yaw rate ao soltar o freio e velocidade mínima.", /coast/i, undefined, null, "Aumente o bloqueio em coast um passo (confirme o sentido no menu do carro)");
+      pushDiff("Diferencial (lado entrada/desaceleração)", "Estabiliza o eixo traseiro na desaceleração.", "Observe yaw rate ao soltar o freio e velocidade mínima.", "more-lock-entry", "Aumente o bloqueio um passo (confirme o sentido no menu do carro)");
     }
     if (oversteer && !entry) {
-      push("Barra estabilizadora traseira", "Entrega mais aderência mecânica atrás e reduz sobresterço sustentado.", "Compare aceleração lateral, correções e temperatura dos pneus entre os dois lados.", /arb.*diameter|diameter.*arb/i, /rear|trase/i, false, "Diminua (barra mais fina/macia)");
+      pushArb("Barra estabilizadora traseira", "Entrega mais aderência mecânica atrás e reduz sobresterço sustentado.", "Compare aceleração lateral, correções e temperatura dos pneus entre os dois lados.", /rear|trase/i, false, "Diminua (barra mais fina/macia)");
     }
     if ((traction || (oversteer && exit)) && (alreadyTooLow || springAlreadySofter)) {
       // O piloto já relatou que amolecer a mola traseira deixou o carro baixo demais — não repetir a mesma sugestão.
       push("Altura traseira", "Você já relatou que a mola mais macia deixou o carro baixo demais; suba a altura para recuperar folga sem endurecer a mola de volta.", "Confira se ainda bate no chão nas zebras/ondulações mais fortes da pista antes de levar pra corrida.", /ride.?height/i, /^(left rear|right rear)$/i, true, "Aumente um passo");
-      push("Barra estabilizadora traseira", "Como a mola já está mais macia, use a barra para controlar a tração/rotação na saída sem depender de baixar o carro de novo.", "Compare aceleração lateral e patinagem de uma roda na saída antes e depois do ajuste.", /arb.*diameter|diameter.*arb/i, /rear|trase/i, false, "Diminua (barra mais fina/macia)");
+      pushArb("Barra estabilizadora traseira", "Como a mola já está mais macia, use a barra para controlar a tração/rotação na saída sem depender de baixar o carro de novo.", "Compare aceleração lateral e patinagem de uma roda na saída antes e depois do ajuste.", /rear|trase/i, false, "Diminua (barra mais fina/macia)");
     } else if (traction || (oversteer && exit)) {
       push("Mola traseira (ambos os lados)", "A prioridade é aumentar contato mecânico sem mascarar o problema com diferencial excessivo.", "Use throttle, LongAccel, Steering e diferença de rotação das rodas quando disponível; ajuste os dois lados juntos, não só um. Se isso já deixou o carro baixo demais em algum teste anterior, compense subindo a altura em vez de voltar a mola.", /spring.?rate/i, /^(left rear|right rear)$/i, false, "Diminua (mola mais macia)");
     }
@@ -116,7 +170,7 @@ export async function POST(request: NextRequest) {
       recommendations,
       hasDecodedParameters: hasDecoded,
       limitation: hasDecoded
-        ? "O formato binário .sto ainda não é regravado pelo servidor. Aplique um ajuste por vez no iRacing e valide na telemetria antes de consolidar."
+        ? "O formato binário .sto ainda não é regravado pelo servidor. Aplique um ajuste por vez no iRacing e valide na telemetria antes de consolidar. As direções de barra/diferencial acima usam os manuais oficiais do Super Formula SF23 e McLaren 720S GT3 EVO; outros carros (GTP, LMP2) ainda não têm essa confirmação."
         : "Este setup ainda não tem parâmetros decodificados (só chega via Garage61), então as sugestões abaixo são genéricas — não apontam o valor exato do seu setup. Use um setup já usado em corrida para recomendações com o parâmetro e valor atual citados.",
     });
   } catch (error) {
