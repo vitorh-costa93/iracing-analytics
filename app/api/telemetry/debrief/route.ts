@@ -29,7 +29,7 @@ async function fetchAllLaps(carId: number, trackId: number): Promise<Garage61Lap
   return all;
 }
 
-type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm";
+type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm" | "speed";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
 
 function normalizedHeader(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -59,6 +59,7 @@ function parseLapCsv(csv: string): { points: TracePoint[]; hasOvertakeChannel: b
     brake: find("brake", "brakeraw", "brakepressure", "brakeinput"),
     steering: find("steeringwheelangle", "steeringangle"),
     gear: find("gear"), rpm: find("rpm", "engine0rpm"),
+    speed: find("speed", "speedms", "speedkph", "carspeed"),
   };
   const hasOvertakeChannel = find("pushtopass") >= 0 || find("p2pstatus") >= 0;
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
@@ -93,14 +94,106 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey):
   return value === undefined ? null : value;
 }
 
-const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM" };
-const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "o mesmo acelerador", brake: "o mesmo freio", steering: "o mesmo ângulo de volante", gear: "a mesma marcha", rpm: "a mesma rotação" };
+const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade" };
+const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "o mesmo acelerador", brake: "o mesmo freio", steering: "o mesmo ângulo de volante", gear: "a mesma marcha", rpm: "a mesma rotação", speed: "a mesma velocidade" };
 const CHART_CHANNELS: ChannelKey[] = ["throttle", "brake", "steering"];
 
 function formatLapTime(value: number) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
 
 function mean(values: number[]) { return values.reduce((sum, value) => sum + value, 0) / values.length; }
 function stddev(values: number[], avg: number) { return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length); }
+function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2; }
+
+/**
+ * Flags statistically anomalous lap times using a robust median + MAD (median absolute deviation)
+ * z-score instead of mean/stddev, since a single overtake-boosted lap is exactly the kind of point
+ * that would otherwise skew a plain mean/stddev calculation and hide itself. Garage61's lap CSV
+ * export has no push-to-pass/overtake channel at all (confirmed by inspecting real headers), so this
+ * is the only available proxy: an abnormally FAST lap relative to the rest of the pool is flagged as
+ * a likely-overtake outlier and excluded from the consistency analysis rather than silently kept.
+ */
+function findOutlierLaps<T extends { lapTime: number }>(items: T[], zThreshold = 2.5) {
+  if (items.length < 5) return { kept: items, outliers: [] as (T & { zScore: number })[] };
+  const times = items.map((item) => item.lapTime);
+  const med = median(times);
+  const mad = median(times.map((value) => Math.abs(value - med))) || 0.001;
+  const scaled = mad * 1.4826; // scale MAD to be comparable to stddev under normality
+  const withScore = items.map((item) => ({ ...item, zScore: (item.lapTime - med) / scaled }));
+  const outliers = withScore.filter((item) => item.zScore < -zThreshold);
+  const outlierIds = new Set(outliers.map((item) => item));
+  const kept = withScore.filter((item) => !outlierIds.has(item));
+  return { kept, outliers };
+}
+
+const CORNER_WINDOW = 7; // % of lap distance searched around each corner apex for onset/reapply crossings
+const CORNER_MERGE_MIN_GAP = 9; // must exceed 2*CORNER_WINDOW minus overlap slack, or adjacent corners' search windows collapse onto the same apex and report as duplicates
+const BRAKE_THRESHOLD = 0.15;
+const THROTTLE_THRESHOLD = 0.2;
+
+/** Detects corners as local minima in speed along the reference (fastest) lap's trace, merging
+ * minima that are too close together to be distinct braking zones. Reused pattern from the
+ * "Zona de frenagem" detection in ActiveWeekTelemetry.tsx, adapted to operate on percent-distance bins. */
+function detectCorners(referencePoints: TracePoint[]): number[] {
+  const bins = Array.from({ length: 101 }, (_, index) => index);
+  const speedAt = bins.map((distance) => interpolate(referencePoints, distance, "speed"));
+  const minimaDistances: number[] = [];
+  const PROMINENCE = 3;
+  for (let index = 2; index < bins.length - 2; index += 1) {
+    const value = speedAt[index];
+    if (value === null) continue;
+    const window = speedAt.slice(Math.max(0, index - 4), index + 5).filter((v): v is number => v !== null);
+    if (!window.length) continue;
+    const localMin = Math.min(...window);
+    if (value !== localMin) continue;
+    const localMax = Math.max(...window);
+    if (localMax - value < PROMINENCE) continue;
+    minimaDistances.push(bins[index]);
+  }
+  const merged: number[] = [];
+  for (const distance of minimaDistances) {
+    if (merged.length && distance - merged[merged.length - 1] < CORNER_MERGE_MIN_GAP) continue;
+    merged.push(distance);
+  }
+  return merged;
+}
+
+type CornerPointMetrics = { brakeOnset: number | null; apexSpeed: number | null; apexDistance: number | null; throttleReapply: number | null };
+
+function analyzeCornerForLap(points: TracePoint[], cornerDistance: number): CornerPointMetrics {
+  const windowStart = cornerDistance - CORNER_WINDOW;
+  const windowEnd = cornerDistance + CORNER_WINDOW;
+  const step = 0.5;
+  const samples: { distance: number; speed: number | null; brake: number | null; throttle: number | null }[] = [];
+  for (let distance = windowStart; distance <= windowEnd; distance += step) {
+    const wrapped = ((distance % 100) + 100) % 100;
+    samples.push({ distance, speed: interpolate(points, wrapped, "speed"), brake: interpolate(points, wrapped, "brake"), throttle: interpolate(points, wrapped, "throttle") });
+  }
+  let apexSpeed: number | null = null, apexDistance: number | null = null;
+  for (const sample of samples) {
+    if (sample.speed === null) continue;
+    if (apexSpeed === null || sample.speed < apexSpeed) { apexSpeed = sample.speed; apexDistance = sample.distance; }
+  }
+  let brakeOnset: number | null = null;
+  if (apexDistance !== null) {
+    for (const sample of samples) {
+      if (sample.distance > apexDistance) break;
+      if (sample.brake !== null && sample.brake >= BRAKE_THRESHOLD) { brakeOnset = sample.distance; break; }
+    }
+  }
+  let throttleReapply: number | null = null;
+  if (apexDistance !== null) {
+    for (const sample of samples) {
+      if (sample.distance < apexDistance) continue;
+      if (sample.throttle !== null && sample.throttle >= THROTTLE_THRESHOLD) { throttleReapply = sample.distance; break; }
+    }
+  }
+  return { brakeOnset, apexSpeed, apexDistance, throttleReapply };
+}
+
+function consistencyLabel(sd: number, scale: number) {
+  const ratio = sd / scale;
+  return ratio < 0.4 ? "muito consistente" : ratio < 1 ? "consistente" : ratio < 2 ? "variável" : "muito inconsistente";
+}
 
 async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCategory>) {
   const carIdsForCategory = new Map<RatingCategory, number[]>();
@@ -153,7 +246,10 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     Number.isFinite(lap.lapTime) && Number(lap.lapTime) > 0 &&
     !lap.incomplete && !lap.missing && !lap.pitLane && !lap.pitIn && !lap.pitOut
   );
-  const candidateLaps = [...eventLaps].sort((a, b) => Number(a.lapTime) - Number(b.lapTime)).slice(0, MAX_LAPS);
+  // Fetches a pool larger than MAX_LAPS so that, after excluding statistical outlier laps
+  // (likely-overtake proxy, see findOutlierLaps), MAX_LAPS clean laps still remain for analysis.
+  const OUTLIER_POOL_EXTRA = 5;
+  const candidateLaps = [...eventLaps].sort((a, b) => Number(a.lapTime) - Number(b.lapTime)).slice(0, MAX_LAPS + OUTLIER_POOL_EXTRA);
   if (candidateLaps.length < 3) return { status: "ok", session: null, message: "Poucas voltas com telemetria disponível nessa corrida para uma análise de consistência confiável (mínimo 3)." };
 
   const token = process.env.GARAGE61_API_TOKEN;
@@ -164,14 +260,18 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     if (!response.ok) return null;
     const csv = await response.text();
     const parsed = parseLapCsv(csv);
-    return { lap, ...parsed };
+    return { lap, lapTime: Number(lap.lapTime), ...parsed };
   }));
-  const validTraces = traces.filter((item): item is { lap: Garage61Lap; points: TracePoint[]; hasOvertakeChannel: boolean } => !!item && item.points.length > 20);
-  if (validTraces.length < 3) throw new Error("Não foi possível baixar telemetria suficiente para essas voltas");
+  const downloadedTraces = traces.filter((item): item is { lap: Garage61Lap; lapTime: number; points: TracePoint[]; hasOvertakeChannel: boolean } => !!item && item.points.length > 20);
+  if (downloadedTraces.length < 3) throw new Error("Não foi possível baixar telemetria suficiente para essas voltas");
 
   // A Garage61 não exporta um canal de overtake/push-to-pass no CSV de volta (testado e confirmado
   // ausente em todas as voltas), então não há como filtrar voltas com overtake automaticamente hoje.
-  const overtakeChannelAvailable = validTraces.some((item) => item.hasOvertakeChannel);
+  const overtakeChannelAvailable = downloadedTraces.some((item) => item.hasOvertakeChannel);
+
+  const { kept, outliers } = findOutlierLaps(downloadedTraces);
+  const validTraces = kept.sort((a, b) => a.lapTime - b.lapTime).slice(0, MAX_LAPS);
+  const excludedOutliers = outliers.map((item) => ({ lapNumber: item.lap.lapNumber ?? null, lapTime: formatLapTime(item.lapTime), zScore: Number(item.zScore.toFixed(2)) }));
 
   const bins = Array.from({ length: 51 }, (_, index) => index * 2);
   const channels: ChannelKey[] = ["throttle", "brake", "steering", "gear", "rpm"];
@@ -202,6 +302,39 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
   const chronological = [...validTraces].sort((a, b) => (a.lap.lapNumber ?? 0) - (b.lap.lapNumber ?? 0));
   const lapScatter = chronological.map(({ lap }) => ({ lapNumber: lap.lapNumber ?? null, lapTime: Number(lap.lapTime), deltaFromBest: Number((Number(lap.lapTime) - sortedLapTimes[0]).toFixed(3)) }));
 
+  // Análise por curva: para cada zona de frenagem detectada na volta mais rápida, compara ponto de
+  // frenagem, velocidade de ápice e ponto de reabertura do acelerador entre TODAS as voltas válidas,
+  // como pedido explicitamente — a mesma curva analisada em contextos (voltas) diferentes.
+  const referenceTrace = validTraces.reduce((fastest, item) => (item.lapTime < fastest.lapTime ? item : fastest), validTraces[0]);
+  const cornerDistances = referenceTrace.points.some((point) => point.speed !== undefined) ? detectCorners(referenceTrace.points) : [];
+  const cornerReports = cornerDistances.map((distance, index) => {
+    const perLap = validTraces.map(({ lap, points }) => ({ lapNumber: lap.lapNumber ?? null, ...analyzeCornerForLap(points, distance) }));
+    const brakeOnsets = perLap.map((item) => item.brakeOnset).filter((value): value is number => value !== null);
+    const apexSpeeds = perLap.map((item) => item.apexSpeed).filter((value): value is number => value !== null);
+    const reapplies = perLap.map((item) => item.throttleReapply).filter((value): value is number => value !== null);
+    const brakeMean = brakeOnsets.length ? mean(brakeOnsets) : null;
+    const brakeSd = brakeOnsets.length >= 3 ? stddev(brakeOnsets, brakeMean!) : null;
+    const apexMean = apexSpeeds.length ? mean(apexSpeeds) : null;
+    const apexSd = apexSpeeds.length >= 3 ? stddev(apexSpeeds, apexMean!) : null;
+    const reapplyMean = reapplies.length ? mean(reapplies) : null;
+    const reapplySd = reapplies.length >= 3 ? stddev(reapplies, reapplyMean!) : null;
+    return {
+      cornerNumber: index + 1,
+      distancePct: distance,
+      sampleSize: perLap.length,
+      braking: brakeSd === null ? null : { meanDistancePct: Number(brakeMean!.toFixed(1)), stddev: Number(brakeSd.toFixed(2)), consistency: consistencyLabel(brakeSd, 1.5) },
+      apexSpeed: apexSd === null ? null : { mean: Number(apexMean!.toFixed(1)), stddev: Number(apexSd.toFixed(2)), consistency: consistencyLabel(apexSd, 3) },
+      throttleReapply: reapplySd === null ? null : { meanDistancePct: Number(reapplyMean!.toFixed(1)), stddev: Number(reapplySd.toFixed(2)), consistency: consistencyLabel(reapplySd, 1.5) },
+    };
+  });
+  const cornerNarratives = cornerReports.map((corner) => {
+    const parts: string[] = [];
+    if (corner.braking) parts.push(`ponto de frenagem ${corner.braking.consistency} (desvio de ${corner.braking.stddev}% da pista, freando em média aos ${corner.braking.meanDistancePct}%)`);
+    if (corner.apexSpeed) parts.push(`velocidade de ápice ${corner.apexSpeed.consistency} (média ${corner.apexSpeed.mean} un., desvio ${corner.apexSpeed.stddev})`);
+    if (corner.throttleReapply) parts.push(`reabertura do acelerador ${corner.throttleReapply.consistency} (aos ${corner.throttleReapply.meanDistancePct}% da pista em média, desvio ${corner.throttleReapply.stddev}%)`);
+    return `Curva ${corner.cornerNumber} (~${corner.distancePct}% da volta): ${parts.join("; ")}.`;
+  });
+
   const ranked = [...channelStats].sort((a, b) => a.avgScore - b.avgScore);
   const strengths = ranked.slice(0, 2).map((item) => `${item.label}: você repete o mesmo padrão em quase toda a volta — essa é uma das suas maiores forças agora, não mexa nisso sem motivo.`);
   const improvements = ranked.slice(-3).reverse().map((item) => {
@@ -223,12 +356,15 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     },
     lapsAnalyzed: validTraces.length,
     overtakeChannelAvailable,
+    excludedOutliers,
     bestLap: formatLapTime(sortedLapTimes[0]),
     worstLap: formatLapTime(sortedLapTimes[sortedLapTimes.length - 1]),
     lapTimeSpread: spread.toFixed(3),
     lapTimeStddev: lapTimeStddev.toFixed(3),
     lapScatter,
-    summary: `Analisei suas ${validTraces.length} voltas mais rápidas dessa corrida (${formatLapTime(sortedLapTimes[0])} a ${formatLapTime(sortedLapTimes[sortedLapTimes.length - 1])}, desvio padrão de ${lapTimeStddev.toFixed(3)}s). Seu ritmo foi ${consistencyWord} entre as voltas.${trendText}${!overtakeChannelAvailable && isSuperFormula ? " Aviso: a Garage61 não exporta o canal de overtake/push-to-pass nessas voltas, então não foi possível descartar automaticamente voltas em que você usou overtake — se sabe que usou em alguma das voltas listadas, desconsidere-a manualmente." : ""}`,
+    corners: cornerReports,
+    cornerNarratives,
+    summary: `Analisei suas ${validTraces.length} voltas mais rápidas dessa corrida (${formatLapTime(sortedLapTimes[0])} a ${formatLapTime(sortedLapTimes[sortedLapTimes.length - 1])}, desvio padrão de ${lapTimeStddev.toFixed(3)}s), com ${cornerReports.length} curvas identificadas e comparadas volta a volta. Seu ritmo foi ${consistencyWord} entre as voltas.${trendText}${excludedOutliers.length ? ` Descartei ${excludedOutliers.length} volta(s) estatisticamente anômala(s) (rápida(s) demais para o seu ritmo real, provável overtake): ${excludedOutliers.map((item) => `volta ${item.lapNumber ?? "?"} em ${item.lapTime}`).join(", ")}.` : ""}${!overtakeChannelAvailable && isSuperFormula ? " Aviso: a Garage61 não exporta o canal de overtake/push-to-pass nessas voltas, então a detecção acima é estatística (outlier de tempo), não uma leitura direta do overtake — confira manualmente se restar dúvida." : ""}`,
     strengths,
     improvements,
     channelStats: channelStats.map((item) => ({ channel: item.channel, label: item.label, avgScore: Number(item.avgScore.toFixed(2)), binStats: CHART_CHANNELS.includes(item.channel) ? item.binStats : undefined })),

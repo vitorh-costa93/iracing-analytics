@@ -401,6 +401,22 @@ footer { margin-top: 24px; color: #8a949e; font-size: 12px; text-align: center; 
 .race-debrief-channel-track { height: 10px; background: #e5e9ed; border-radius: 5px; overflow: hidden; }
 .race-debrief-channel-track div { height: 100%; background: var(--blue); border-radius: 5px; }
 
+.race-debrief-outlier-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text); line-height: 1.6; }
+
+.race-debrief-corner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.race-debrief-corner-card { padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-muted); }
+.race-debrief-corner-card h5 { margin: 0 0 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; }
+.race-debrief-corner-card h5 span { font-size: 11px; color: var(--soft); font-weight: 600; }
+.corner-metric { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
+.corner-metric:first-of-type { border-top: 0; }
+.corner-metric span { font-size: 11px; color: var(--muted); }
+.corner-metric strong { font-size: 12px; font-weight: 800; text-align: right; }
+.corner-metric small { grid-column: 1 / -1; color: var(--soft); font-size: 10px; }
+.corner-metric.great strong { color: #1c7d4d; }
+.corner-metric.good strong { color: #2a6f97; }
+.corner-metric.warn strong { color: #a8710a; }
+.corner-metric.bad strong { color: #b3392c; }
+
 @media (max-width: 720px) {
   .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
 }

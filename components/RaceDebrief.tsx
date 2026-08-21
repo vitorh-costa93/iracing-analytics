@@ -5,11 +5,15 @@ import { useEffect, useState } from "react";
 type BinStat = { distance: number; mean: number; stddev: number };
 type ChannelStat = { channel: string; label: string; avgScore: number; binStats?: BinStat[] };
 type LapScatterPoint = { lapNumber: number | null; lapTime: number; deltaFromBest: number };
+type ExcludedOutlier = { lapNumber: number | null; lapTime: string; zScore: number };
+type CornerMetric = { meanDistancePct?: number; mean?: number; stddev: number; consistency: string };
+type CornerReport = { cornerNumber: number; distancePct: number; sampleSize: number; braking: CornerMetric | null; apexSpeed: CornerMetric | null; throttleReapply: CornerMetric | null };
 type CategoryDebrief = {
   session: { startedAt: string; endedAt: string; durationMinutes: number; car: string; track: string } | null;
   message?: string;
   lapsAnalyzed?: number;
   overtakeChannelAvailable?: boolean;
+  excludedOutliers?: ExcludedOutlier[];
   bestLap?: string;
   worstLap?: string;
   lapTimeSpread?: string;
@@ -19,7 +23,11 @@ type CategoryDebrief = {
   improvements?: string[];
   channelStats?: ChannelStat[];
   lapScatter?: LapScatterPoint[];
+  corners?: CornerReport[];
+  cornerNarratives?: string[];
 };
+
+const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
 type Category = "formula_car" | "sports_car";
 const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car" };
 
@@ -160,6 +168,50 @@ export default function RaceDebrief() {
               })}
             </div>
           </div>
+
+          {data.excludedOutliers && data.excludedOutliers.length > 0 && (
+            <div className="race-debrief-chart-block">
+              <span className="section-kicker">VOLTAS DESCARTADAS</span>
+              <h4>Outliers estatísticos (provável overtake)</h4>
+              <p className="race-debrief-channels-note">Essas voltas foram rápidas demais em relação ao seu ritmo real (detecção estatística por desvio robusto, já que a Garage61 não exporta o canal de overtake) e não entraram na análise de consistência.</p>
+              <ul className="race-debrief-outlier-list">
+                {data.excludedOutliers.map((item) => <li key={`${item.lapNumber}-${item.lapTime}`}>Volta {item.lapNumber ?? "?"} — {item.lapTime} (z-score {item.zScore})</li>)}
+              </ul>
+            </div>
+          )}
+
+          {data.corners && data.corners.length > 0 && (
+            <div className="race-debrief-chart-block">
+              <span className="section-kicker">ANÁLISE POR CURVA</span>
+              <h4>Consistência de frenagem, ápice e reabertura — curva a curva</h4>
+              <p className="race-debrief-channels-note">Para cada zona de frenagem detectada na sua volta mais rápida, comparo onde você freou, a que velocidade fez o ápice e onde reabriu o acelerador em todas as voltas analisadas.</p>
+              <div className="race-debrief-corner-grid">
+                {data.corners.map((corner) => (
+                  <div className="race-debrief-corner-card" key={corner.cornerNumber}>
+                    <h5>Curva {corner.cornerNumber} <span>~{corner.distancePct}% da volta</span></h5>
+                    {corner.braking && (
+                      <div className={`corner-metric ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>
+                        <span>Frenagem</span><strong>{corner.braking.consistency}</strong>
+                        <small>ponto médio {corner.braking.meanDistancePct}% • desvio {corner.braking.stddev}</small>
+                      </div>
+                    )}
+                    {corner.apexSpeed && (
+                      <div className={`corner-metric ${CONSISTENCY_CLASS[corner.apexSpeed.consistency] ?? ""}`}>
+                        <span>Velocidade de ápice</span><strong>{corner.apexSpeed.consistency}</strong>
+                        <small>média {corner.apexSpeed.mean} • desvio {corner.apexSpeed.stddev}</small>
+                      </div>
+                    )}
+                    {corner.throttleReapply && (
+                      <div className={`corner-metric ${CONSISTENCY_CLASS[corner.throttleReapply.consistency] ?? ""}`}>
+                        <span>Reabertura do acelerador</span><strong>{corner.throttleReapply.consistency}</strong>
+                        <small>ponto médio {corner.throttleReapply.meanDistancePct}% • desvio {corner.throttleReapply.stddev}</small>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {data.channelStats?.some((item) => item.binStats?.length) && (
             <div className="race-debrief-chart-block">
