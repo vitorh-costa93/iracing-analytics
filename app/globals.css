@@ -363,6 +363,10 @@ footer { margin-top: 24px; color: #8a949e; font-size: 12px; text-align: center; 
 }
 
 .race-debrief { margin-top: 18px; }
+.race-debrief-category-toggle { display: inline-flex; border: 1px solid var(--border-strong); background: var(--surface-muted); border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
+.race-debrief-category-toggle button { border: 0; border-right: 1px solid var(--border); padding: 9px 16px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 800; cursor: pointer; }
+.race-debrief-category-toggle button:last-child { border-right: 0; }
+.race-debrief-category-toggle button.active { background: var(--blue); color: #fff; }
 .race-debrief-header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
 .race-debrief-summary { margin-top: 14px; padding: 16px; background: var(--blue-pale); border: 1px solid #bcdcf0; border-radius: 6px; }
 .race-debrief-summary > p { margin: 0; color: #17435f; font-size: 14px; line-height: 1.55; }
