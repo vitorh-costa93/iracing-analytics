@@ -288,31 +288,74 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     const refTime = rows.reduce((sum, item) => sum + 1 / Number(item.ref_speed), 0) * scale;
     return { index, gain: ownTime - refTime, speedGap: (avg("ref_speed") - avg("own_speed")) * 3.6, throttleGap: avg("ref_throttle") - avg("own_throttle"), brakeGap: avg("own_brake") - avg("ref_brake"), steeringGap: Math.abs(avg("own_steering")) - Math.abs(avg("ref_steering")), rpmGap: avg("ref_rpm") - avg("own_rpm"), gearGap: avg("ref_gear") - avg("own_gear"), latAccelGap: Math.abs(avg("ref_latAccel")) - Math.abs(avg("own_latAccel")) };
   }).filter((item) => item.gain > 0.008).sort((a, b) => b.gain - a.gain).slice(0, 6);
-  const opportunities = segments.map((item) => {
+  const opportunities = segments.map((item, rankIndex) => {
     const start = item.index * 5, end = (item.index + 1) * 5;
     const braking = brakingDeltas.find((event) => event.position >= start - 2 && event.position <= end + 2);
     const corner = nearestCorner(corners, start, end);
     const kind: "corner" | "straight" = corner ? "corner" : "straight";
-    const observations: string[] = [];
-    let primaryType: "braking-early" | "braking-late" | "throttle" | "brake-pressure" | "steering" | "gear" | "rotation" | "speed" = "speed";
+    const place = corner ? `na zona de frenagem ${corner.number}` : "neste trecho";
+
+    type Finding = { type: string; weight: number; clause: string; instruction: string };
+    const findings: Finding[] = [];
     if (braking?.deltaMeters) {
-      primaryType = braking.deltaMeters < 0 ? "braking-early" : "braking-late";
-      observations.push(braking.deltaMeters < 0
-        ? `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m antes da referência; se a velocidade mínima e a saída não pioraram, dá para empurrar o ponto de freada mais para frente, décimo a décimo`
-        : `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m depois da referência; confira se isso está gerando pico de freio, menor velocidade mínima na curva ou atraso na retomada de acelerador`);
+      const early = braking.deltaMeters < 0;
+      findings.push({
+        type: early ? "braking-early" : "braking-late", weight: Math.abs(braking.deltaMeters) * 1.5,
+        clause: early ? `você está freando ${Math.abs(braking.deltaMeters).toFixed(0)} m antes da referência` : `você está freando ${Math.abs(braking.deltaMeters).toFixed(0)} m depois da referência`,
+        instruction: early ? `se a velocidade mínima e a saída não pioraram, empurre o ponto de freada progressivamente, décimo a décimo, até achar o limite` : `confira na telemetria se isso está gerando pico de freio, menor velocidade mínima ou atraso na retomada do acelerador — pode ser oportunidade, ou pode ser o seu limite de segurança`,
+      });
     }
-    if (item.throttleGap > .06) { if (primaryType === "speed") primaryType = "throttle"; observations.push(`a referência já está com ${(item.throttleGap * 100).toFixed(0)} p.p. mais acelerador nesse ponto; solte o freio sem arrastar e reabra o pedal de forma progressiva assim que o carro apontar para a saída`); }
-    if (item.brakeGap > .06) { if (primaryType === "speed") primaryType = "brake-pressure"; observations.push(`você está aplicando ${(item.brakeGap * 100).toFixed(0)} p.p. a mais de freio; teste reduzir a pressão inicial ou fazer uma liberação mais contínua para preservar velocidade mínima`); }
-    if (Math.abs(item.steeringGap) > .03) { if (primaryType === "speed") primaryType = "steering"; observations.push(item.steeringGap > 0 ? "você está usando mais volante que a referência; busque uma entrada única e mais limpa, sem correções, para não sobrecarregar o pneu dianteiro" : "a referência usa mais volante que você aqui; ela provavelmente está rotacionando o carro mais cedo — experimente antecipar a virada suavemente"); }
-    if (Math.abs(item.gearGap) >= .45) { if (primaryType === "speed") primaryType = "gear"; observations.push(`a referência está usando marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"} nesse trecho; teste essa marcha e compare rotação, tração e estabilidade antes de adotá-la em corrida`); }
-    if (item.rpmGap > 300) observations.push(`a referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais, o que sugere marcha diferente ou ponto de troca mais tardio`);
-    if (item.latAccelGap > .5) { if (primaryType === "speed") primaryType = "rotation"; observations.push("a referência sustenta mais aceleração lateral no ápice; carregue mais velocidade com uma entrada limpa, solte o freio de forma progressiva até o ápice e evite correções que saturam o pneu dianteiro"); }
-    const engineerLine = observations.length
-      ? `${observations[0].charAt(0).toUpperCase()}${observations[0].slice(1)}.${observations.length > 1 ? ` Além disso, ${observations.slice(1).join("; ")}.` : ""}`
-      : "Você está mais lento que a referência aqui sem um padrão claro de freio, acelerador ou volante — pode ser uma questão de confiança ou de linha; compare o traçado no mapa.";
+    if (item.throttleGap > .06) findings.push({
+      type: "throttle", weight: item.throttleGap * 200,
+      clause: `a referência já está com ${(item.throttleGap * 100).toFixed(0)} pontos percentuais a mais de acelerador aqui`,
+      instruction: "solte o freio sem arrastar e reabra o pedal de forma progressiva assim que o carro apontar para a saída, em vez de esperar o carro estabilizar todo",
+    });
+    if (item.brakeGap > .06) findings.push({
+      type: "brake-pressure", weight: item.brakeGap * 180,
+      clause: `você está aplicando ${(item.brakeGap * 100).toFixed(0)} pontos percentuais a mais de freio que a referência`,
+      instruction: "teste uma pressão inicial menor ou uma liberação mais contínua — isso preserva velocidade mínima sem perder segurança na entrada",
+    });
+    if (Math.abs(item.steeringGap) > .03) findings.push({
+      type: "steering", weight: Math.abs(item.steeringGap) * 300,
+      clause: item.steeringGap > 0 ? "você está usando mais volante que a referência" : "a referência usa mais volante que você aqui, provavelmente rotacionando o carro mais cedo",
+      instruction: item.steeringGap > 0 ? "busque uma entrada única e limpa, sem correções — cada correção extra sobrecarrega o pneu dianteiro e custa tempo" : "experimente antecipar a virada de forma suave, sem adicionar um segundo movimento de volante",
+    });
+    if (Math.abs(item.gearGap) >= .45) findings.push({
+      type: "gear", weight: Math.abs(item.gearGap) * 20,
+      clause: `a referência usa marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"} nesse trecho`,
+      instruction: "teste essa marcha e compare rotação, tração e estabilidade antes de levar pra corrida",
+    });
+    if (item.latAccelGap > .5) findings.push({
+      type: "rotation", weight: item.latAccelGap * 20,
+      clause: "a referência sustenta mais aceleração lateral no ápice",
+      instruction: "carregue mais velocidade com uma entrada limpa, solte o freio de forma progressiva até o ápice, e evite correções que saturam o pneu dianteiro",
+    });
+    if (item.rpmGap > 300) findings.push({
+      type: "rpm", weight: item.rpmGap / 30,
+      clause: `a referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`,
+      instruction: "isso sugere marcha diferente ou ponto de troca mais tardio — cruze com a informação de marcha antes de mudar qualquer coisa",
+    });
+    findings.sort((a, b) => b.weight - a.weight);
+    const primaryType = (findings[0]?.type ?? "speed") as "braking-early" | "braking-late" | "throttle" | "brake-pressure" | "steering" | "gear" | "rotation" | "speed";
+
+    const tenths = item.gain * 10;
+    const magnitude = rankIndex === 0 && tenths >= 0.15 ? "Essa é a maior oportunidade da volta: " : tenths >= 0.12 ? "Ganho relevante aqui: " : "";
+    let narrative: string;
+    if (findings.length === 0) {
+      narrative = `${magnitude}você está ${(item.speedGap).toFixed(1)} km/h mais lento que a referência ${place} sem um padrão claro de freio, acelerador ou volante — pode ser confiança ou linha. Compare o seu traçado com o da referência no mapa ao lado e veja se está tocando o mesmo ápice.`;
+    } else {
+      const primary = findings[0];
+      const secondary = findings.slice(1, 3);
+      const secondaryText = secondary.length
+        ? ` Também reparei que ${secondary.map((finding) => finding.clause).join(" e ")}${secondary.length === 1 ? `; ${secondary[0].instruction}.` : "."}`
+        : "";
+      const cap = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+      narrative = `${magnitude}${cap(primary.clause)} ${place}. ${cap(primary.instruction)}.${secondaryText}`;
+    }
+
     return {
-      title: `${corner ? `Curva ${corner.number}` : "Reta / transição"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
-      detail: `Você perde cerca de ${(item.gain * 10).toFixed(1)} décimos neste trecho. ${engineerLine}`,
+      title: `${corner ? `Zona de frenagem ${corner.number}` : "Reta / transição"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
+      detail: `Você perde cerca de ${tenths.toFixed(1)} décimos aqui. ${narrative}`,
       gain: item.gain,
       metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ throttle ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
       start,
@@ -572,7 +615,7 @@ export default function ActiveWeekTelemetry() {
                 <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
-              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3></div>
+              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As zonas de frenagem são numeradas na ordem em que aparecem na volta (1 = primeira frenagem forte), não o número oficial da curva na pista.</p></div>
                   <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
                     <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); }} key={item.title}>
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
@@ -595,7 +638,7 @@ export default function ActiveWeekTelemetry() {
                   setHoveredDistance(Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100)));
                 }}>
                 {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1={value * 10} x2={value * 10} y1="0" y2="925" className="telemetry-grid" /><text x={value * 10} y="954" textAnchor={value === 0 ? "start" : value === 100 ? "end" : "middle"}>{value}%</text></g>)}
-                {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">C{corner.number}</text></g>)}
+                {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">Z{corner.number}</text></g>)}
                 {([{"field":"speed","top":10,"height":140},{"field":"throttle","top":175,"height":65},{"field":"brake","top":265,"height":65},{"field":"steering","top":355,"height":65},{"field":"rpm","top":445,"height":65},{"field":"gear","top":535,"height":35},{"field":"clutch","top":595,"height":55},{"field":"latAccel","top":685,"height":55},{"field":"longAccel","top":775,"height":55},{"field":"yawRate","top":865,"height":55}] as {field:ChannelKey;top:number;height:number}[]).map((row) => <g key={row.field}>
                   <text x="8" y={row.top + 12} className="channel-label">{row.field === "speed" ? "SPEED" : row.field === "throttle" ? "THROTTLE" : row.field === "brake" ? "BRAKE" : row.field === "steering" ? "STEERING" : row.field.toUpperCase()}</text>
                   <polyline points={polyline(trace.points, row.field, row.top, row.height, referenceTrace ? [...trace.points, ...referenceTrace.points] : trace.points)} className={`trace-${row.field}`} />
@@ -627,7 +670,7 @@ export default function ActiveWeekTelemetry() {
               <div className="insight-popup" ref={popupRef}>
                 <div className="insight-popup-head">
                   <div>
-                    <span className="section-kicker">{focusedInsight.kind === "corner" ? `CURVA ${focusedInsight.cornerNumber}` : "TRECHO"}</span>
+                    <span className="section-kicker">{focusedInsight.kind === "corner" ? `ZONA DE FRENAGEM ${focusedInsight.cornerNumber}` : "TRECHO"}</span>
                     <h3>{focusedInsight.title}</h3>
                   </div>
                   <button type="button" className="insight-popup-close" onClick={() => { setFocusedInsight(null); setSelectedRange(null); }}>Fechar ✕</button>

@@ -285,7 +285,7 @@ export default function Home() {
                   <button className={gt3Mode === "track" ? "active" : ""} onClick={() => setGt3Mode("track")}>Pista</button>
                 </div>
               </div>
-              <PerformanceRanking items={rankings.gt3} />
+              <PerformanceRanking items={rankings.gt3} kind={gt3Mode} />
             </article>
 
             <article className="panel ranking-panel">
@@ -296,7 +296,7 @@ export default function Home() {
                   <button className={imsaMode === "track" ? "active" : ""} onClick={() => setImsaMode("track")}>Pista</button>
                 </div>
               </div>
-              <PerformanceRanking items={rankings.imsa} />
+              <PerformanceRanking items={rankings.imsa} kind={imsaMode} />
             </article>
           </div>
         </section>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Bot, FileUp, FolderSearch, SlidersHorizontal, Wand2 } from "lucide-react";
+import { Bot, FileUp, FolderSearch, SlidersHorizontal } from "lucide-react";
 
 type SetupContext = {
   key: string;
@@ -17,16 +17,9 @@ type CompareChange = { tab: string; section: string; label: string; before: stri
 type CompareAnalysis = { topCategories: { category: string; label: string; count: number }[]; topContributors: { label: string; before: string; after: string; category: string }[] };
 type CompareResult = { summary: string; totalParameters: number; skippedCount: number; changes: CompareChange[]; analysis: CompareAnalysis };
 type LibraryItem = { carFolder: string; filename: string; provider: string; kind: string; condition: string; track: string; week: number | null; size: number; modifiedAt: string };
-type PatternParam = { tab: string; section: string; label: string; category: string; categoryLabel: string; occurrences: number; tracksAnalyzed: number; coveragePct: number; direction: "increase" | "decrease" | "mixed" | "enum"; consistencyPct: number | null; examples: { track: string; before: string; after: string }[] };
-type PatternsResult = {
-  cars: { carId: number; carName: string; pairedTracks: number; totalSetups: number }[];
-  selected: { carId: number; carName: string; tracksAnalyzed: number; trackPairs: { trackId: number; trackName: string; fixedFile: string; comparisonFile: string; comparisonKind: string }[]; parameters: PatternParam[]; strongPatternsCount: number } | null;
-};
-
-const DIRECTION_LABEL: Record<PatternParam["direction"], string> = { increase: "sempre aumenta", decrease: "sempre reduz", mixed: "varia por pista", enum: "muda de forma não numérica" };
 
 export default function SetupLab() {
-  const [mode, setMode] = useState<"analysis" | "generator" | "engineer">("analysis");
+  const [mode, setMode] = useState<"analysis" | "engineer">("analysis");
   const [contexts, setContexts] = useState<SetupContext[]>([]);
   const [context, setContext] = useState("");
   const [feedback, setFeedback] = useState("");
@@ -41,9 +34,6 @@ export default function SetupLab() {
   const [comparing, setComparing] = useState(false);
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [library, setLibrary] = useState<{ total: number; importedAt: string | null; items: LibraryItem[] }>({ total: 0, importedAt: null, items: [] });
-  const [patterns, setPatterns] = useState<PatternsResult | null>(null);
-  const [patternsLoading, setPatternsLoading] = useState(false);
-  const [patternsCarId, setPatternsCarId] = useState<number | null>(null);
 
   function loadInventory() {
     fetch("/api/setup/inventory", { cache: "no-store" })
@@ -62,21 +52,6 @@ export default function SetupLab() {
     loadInventory();
     fetch("/api/setup/library", { cache: "no-store" }).then((response) => response.json()).then((data) => { if (data.status === "ok") setLibrary({ total: data.total ?? 0, importedAt: data.importedAt ?? null, items: data.items ?? [] }); });
   }, []);
-
-  useEffect(() => {
-    if (mode !== "generator") return;
-    setPatternsLoading(true);
-    const query = patternsCarId ? `?carId=${patternsCarId}` : "";
-    fetch(`/api/setup/patterns${query}`, { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.status !== "ok") throw new Error(data.message ?? "Erro ao analisar padrões");
-        setPatterns(data);
-        if (!patternsCarId && data.selected) setPatternsCarId(data.selected.carId);
-      })
-      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)))
-      .finally(() => setPatternsLoading(false));
-  }, [mode, patternsCarId]);
 
   useEffect(() => {
     if (!context) return;
@@ -154,7 +129,6 @@ export default function SetupLab() {
 
       <div className="setup-subtabs">
         <button className={mode === "analysis" ? "active" : ""} onClick={() => setMode("analysis")}><SlidersHorizontal size={16} />Análise de setup</button>
-        <button className={mode === "generator" ? "active" : ""} onClick={() => setMode("generator")}><Wand2 size={16} />Gerador de Setup</button>
         <button className={mode === "engineer" ? "active" : ""} onClick={() => setMode("engineer")}><Bot size={16} />Engenheiro</button>
       </div>
 
@@ -182,43 +156,6 @@ export default function SetupLab() {
             {compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}</span><strong>{change.label}</strong></div><div className="setup-values"><del>{change.before}</del><b>→</b><ins>{change.after}</ins></div><p>{change.explanation}</p></article>)}
           </div>
         )}</>
-      )}
-
-      {mode === "generator" && (
-        <div className="panel setup-patterns">
-          <div className="panel-heading">
-            <div><span className="section-kicker">GERADOR DE SETUP</span><h3>Padrões entre setups fixed e comerciais</h3><p>Compara, pista a pista, o que os setups comerciais mudam em relação ao fixed do mesmo carro — para você entender a receita e um dia montar o seu.</p></div>
-            {patterns && patterns.cars.length > 1 && (
-              <select className="setup-file-select" value={patternsCarId ?? ""} onChange={(event) => setPatternsCarId(Number(event.target.value))}>
-                {patterns.cars.map((car) => <option key={car.carId} value={car.carId}>{car.carName} ({car.pairedTracks} pistas)</option>)}
-              </select>
-            )}
-          </div>
-          {patternsLoading && <p className="comparison-note">Comparando setups fixed × comerciais em todas as pistas disponíveis...</p>}
-          {!patternsLoading && patterns && !patterns.selected && <p className="comparison-note">Ainda não há setups fixed e comerciais decodificados (via Garage61) da mesma pista para comparar. Use o carro nas corridas para o Garage61 capturar os parâmetros.</p>}
-          {!patternsLoading && patterns?.selected && (
-            <>
-              <p className="setup-patterns-meta">{patterns.selected.carName} • {patterns.selected.tracksAnalyzed} pista(s) comparadas • {patterns.selected.strongPatternsCount} padrão(ões) consistente(s) encontrados.</p>
-              <div className="setup-patterns-list">
-                {patterns.selected.parameters.map((param) => (
-                  <article key={`${param.tab}-${param.section}-${param.label}`} className={`setup-pattern-card ${param.direction}`}>
-                    <div className="setup-pattern-head">
-                      <div><span>{param.tab} • {param.section}</span><strong>{param.label}</strong></div>
-                      <span className="performance-badge">{param.categoryLabel}</span>
-                    </div>
-                    <p className="setup-pattern-summary">
-                      {param.direction === "mixed" ? "Muda de forma inconsistente entre pistas — não parece ser uma regra fixa do preparador." :
-                       param.direction === "enum" ? `Muda em ${param.occurrences} de ${param.tracksAnalyzed} pistas (${param.coveragePct}%), mas não é um valor numérico direto — compare os exemplos.` :
-                       `${DIRECTION_LABEL[param.direction]} no comercial em relação ao fixed, em ${param.occurrences} de ${param.tracksAnalyzed} pistas analisadas (${param.consistencyPct}% de consistência, presente em ${param.coveragePct}% das pistas).`}
-                    </p>
-                    <div className="setup-pattern-examples">{param.examples.map((example) => <span key={example.track}>{example.track}: <del>{example.before}</del> → <ins>{example.after}</ins></span>)}</div>
-                  </article>
-                ))}
-                {!patterns.selected.parameters.length && <p className="comparison-note">Nenhuma diferença com efeito prático encontrada entre os setups fixed e comerciais deste carro.</p>}
-              </div>
-            </>
-          )}
-        </div>
       )}
 
       {mode === "engineer" && (
