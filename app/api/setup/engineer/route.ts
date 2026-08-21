@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { DecodedRow } from "@/lib/setup-diff";
+import { DecodedRow, diffSetups } from "@/lib/setup-diff";
 
 type ParamHit = { tab: string; section: string; label: string; current: string };
 type Recommendation = { adjustment: string; direction: string; why: string; validate: string; parameter: { label: string; current: string } | null };
@@ -97,12 +97,45 @@ function differentialTarget(rows: DecodedRow[], goal: DiffGoal) {
   return { parameter: null, direction: "valor atual — a direção certa depende do tipo de diferencial deste carro; teste um passo em cada sentido no menu e compare qual reduz o problema", tradeoff: "" };
 }
 
+async function blendSetups(driverId: string, setupIdA: string, setupIdB: string, carId: number, trackId: number, feedback: string) {
+  const { data, error } = await supabaseAdmin.from("setup_files").select("id,filename,decoded_params").eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).in("id", [setupIdA, setupIdB]);
+  if (error || !data || data.length !== 2) throw new Error("Um dos setups mencionados não foi encontrado neste carro/pista");
+  const a = data.find((row) => row.id === setupIdA)!, b = data.find((row) => row.id === setupIdB)!;
+  const rowsA: DecodedRow[] = Array.isArray(a.decoded_params) ? (a.decoded_params as DecodedRow[]) : [];
+  const rowsB: DecodedRow[] = Array.isArray(b.decoded_params) ? (b.decoded_params as DecodedRow[]) : [];
+  if (!rowsA.length || !rowsB.length) throw new Error(`${!rowsA.length ? a.filename : b.filename} ainda não tem parâmetros decodificados pelo Garage61`);
+
+  const changes = diffSetups(rowsA, rowsB).filter((change) => change.actionable);
+  const recommendations = changes.map((change) => ({
+    adjustment: `${change.tab} • ${change.section} • ${change.label}`,
+    direction: `${a.filename}: ${change.before}  ×  ${b.filename}: ${change.after} — teste um valor no menu entre os dois; comece mais perto do lado cuja característica você quer priorizar aqui`,
+    why: change.explanation,
+    validate: "Compare telemetria (freio, rotação e tração) contra as duas voltas de referência para ver se ficou de fato no meio-termo.",
+    parameter: null,
+  }));
+
+  return {
+    status: "ok" as const,
+    setup: { id: a.id, filename: `${a.filename} × ${b.filename} (meio-termo)` },
+    summary: `Meio-termo entre ${a.filename} e ${b.filename}: ${recommendations.length} parâmetro(s) diferem entre os dois com efeito prático.${feedback ? ` Sobre o que você pediu ("${feedback.replace(/\[\[([^\]]+)\]\]/g, "$1")}"): use as diferenças abaixo para decidir, trecho a trecho, para qual lado pender.` : ""}`,
+    recommendations,
+    hasDecodedParameters: true,
+    limitation: "Isso é uma comparação estrutural entre os dois setups, não uma mistura calculada automaticamente — o valor exato do meio-termo precisa ser escolhido por você no menu do carro, porque cada carro só aceita certos valores fixos (não é um intervalo contínuo).",
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const body = await request.json() as { setupId?: string; carId?: number; trackId?: number; feedback?: string };
+    const body = await request.json() as { setupId?: string; blendWithSetupId?: string; carId?: number; trackId?: number; feedback?: string };
     if (!body.setupId || !Number.isInteger(body.carId) || !Number.isInteger(body.trackId)) throw new Error("Selecione um setup, carro e pista");
     const { data: driver } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (!driver) throw new Error("Piloto não encontrado");
+
+    if (body.blendWithSetupId && body.blendWithSetupId !== body.setupId) {
+      const result = await blendSetups(driver.id, body.setupId, body.blendWithSetupId, body.carId as number, body.trackId as number, body.feedback?.trim() ?? "");
+      return NextResponse.json(result);
+    }
+
     const { data: setup, error } = await supabaseAdmin.from("setup_files").select("id,filename,setup_kind,car_id,track_id,decoded_params").eq("id", body.setupId).eq("driver_id", driver.id).eq("car_id", body.carId).eq("track_id", body.trackId).single();
     if (error || !setup) throw new Error("Setup não encontrado neste contexto");
 
