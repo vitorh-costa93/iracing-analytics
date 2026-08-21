@@ -107,18 +107,25 @@ async function runIncrementalSessionSync() {
     let recentLaps = 0;
 
     for (const pair of recentPairs) {
-      const response = await garage61Get<Garage61LapsResponse>("/laps", {
-        cars: pair.car_id,
-        tracks: pair.track_id,
-        drivers: "me",
-        group: "none",
-        unclean: "true",
-        lapTypes: "1,2,3,4",
-        limit: PAGE_SIZE,
-        offset: 0,
-      });
-
-      const laps = response.items ?? [];
+      // Paginação completa: alguns pares carro+pista já passam de 250 voltas na season, e
+      // buscar só offset=0 descartava silenciosamente as voltas mais antigas (ou mais novas,
+      // dependendo da ordenação) — inclusive sessões de corrida inteiras.
+      const laps: Garage61Lap[] = [];
+      for (let offset = 0; ; offset += PAGE_SIZE) {
+        const response = await garage61Get<Garage61LapsResponse>("/laps", {
+          cars: pair.car_id,
+          tracks: pair.track_id,
+          drivers: "me",
+          group: "none",
+          unclean: "true",
+          lapTypes: "1,2,3,4",
+          limit: PAGE_SIZE,
+          offset,
+        });
+        const batch = response.items ?? [];
+        laps.push(...batch);
+        if (batch.length < PAGE_SIZE) break;
+      }
       lapsReceived += laps.length;
 
       for (const lap of laps) {

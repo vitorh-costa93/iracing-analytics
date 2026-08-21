@@ -2,12 +2,14 @@
 
 import { useEffect, useState } from "react";
 
-type ChannelStat = { channel: string; label: string; avgScore: number };
+type BinStat = { distance: number; mean: number; stddev: number };
+type ChannelStat = { channel: string; label: string; avgScore: number; binStats?: BinStat[] };
+type LapScatterPoint = { lapNumber: number | null; lapTime: number; deltaFromBest: number };
 type CategoryDebrief = {
   session: { startedAt: string; endedAt: string; durationMinutes: number; car: string; track: string } | null;
   message?: string;
   lapsAnalyzed?: number;
-  overtakeExcluded?: number;
+  overtakeChannelAvailable?: boolean;
   bestLap?: string;
   worstLap?: string;
   lapTimeSpread?: string;
@@ -16,9 +18,53 @@ type CategoryDebrief = {
   strengths?: string[];
   improvements?: string[];
   channelStats?: ChannelStat[];
+  lapScatter?: LapScatterPoint[];
 };
 type Category = "formula_car" | "sports_car";
 const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car" };
+
+function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
+  const width = 560, height = 200, pad = { left: 46, right: 12, top: 14, bottom: 28 };
+  const times = points.map((p) => p.lapTime);
+  const min = Math.min(...times), max = Math.max(...times);
+  const span = Math.max(0.05, max - min);
+  const x = (index: number) => pad.left + (index / Math.max(1, points.length - 1)) * (width - pad.left - pad.right);
+  const y = (time: number) => pad.top + (1 - (time - min) / span) * (height - pad.top - pad.bottom);
+  const avg = times.reduce((sum, t) => sum + t, 0) / times.length;
+  const ticks = [min, min + span / 2, max];
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="debrief-chart" role="img" aria-label="Dispersão do tempo de volta ao longo do stint">
+      {ticks.map((tick) => <g key={tick}><line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} className="debrief-grid" /><text x={pad.left - 6} y={y(tick) + 3} textAnchor="end" className="debrief-axis">{tick.toFixed(2)}s</text></g>)}
+      <line x1={pad.left} x2={width - pad.right} y1={y(avg)} y2={y(avg)} className="debrief-avg-line" />
+      {points.map((point, index) => (
+        <circle key={index} cx={x(index)} cy={y(point.lapTime)} r="5" className={point.lapTime <= min + 0.02 ? "debrief-dot best" : "debrief-dot"} />
+      ))}
+      {points.map((point, index) => <text key={`n${index}`} x={x(index)} y={height - 10} textAnchor="middle" className="debrief-axis">{point.lapNumber ?? index + 1}</text>)}
+    </svg>
+  );
+}
+
+function ChannelBandChart({ label, binStats }: { label: string; binStats: BinStat[] }) {
+  const width = 560, height = 130, pad = { left: 6, right: 6, top: 10, bottom: 16 };
+  const means = binStats.map((b) => b.mean);
+  const uppers = binStats.map((b) => b.mean + b.stddev);
+  const lowers = binStats.map((b) => b.mean - b.stddev);
+  const min = Math.min(...lowers), max = Math.max(...uppers);
+  const span = Math.max(0.001, max - min);
+  const x = (distance: number) => pad.left + (distance / 100) * (width - pad.left - pad.right);
+  const y = (value: number) => pad.top + (1 - (value - min) / span) * (height - pad.top - pad.bottom);
+  const bandPath = `${binStats.map((b, i) => `${i === 0 ? "M" : "L"} ${x(b.distance).toFixed(1)} ${y(b.mean + b.stddev).toFixed(1)}`).join(" ")} ${[...binStats].reverse().map((b) => `L ${x(b.distance).toFixed(1)} ${y(b.mean - b.stddev).toFixed(1)}`).join(" ")} Z`;
+  const meanPath = means.map((m, i) => `${i === 0 ? "M" : "L"} ${x(binStats[i].distance).toFixed(1)} ${y(m).toFixed(1)}`).join(" ");
+  return (
+    <div className="debrief-band-row">
+      <span>{label}</span>
+      <svg viewBox={`0 0 ${width} ${height}`} className="debrief-chart band" role="img" aria-label={`Consistência de ${label} ao longo da pista, média e desvio padrão entre as voltas`}>
+        <path d={bandPath} className="debrief-band-fill" />
+        <path d={meanPath} className="debrief-band-line" />
+      </svg>
+    </div>
+  );
+}
 
 export default function RaceDebrief() {
   const [categories, setCategories] = useState<Record<Category, CategoryDebrief> | null>(null);
@@ -63,7 +109,7 @@ export default function RaceDebrief() {
             <div>
               <span className="section-kicker">DEBRIEF DA CORRIDA</span>
               <h3>{data.session.car} — {data.session.track}</h3>
-              <p>{new Date(data.session.startedAt).toLocaleString("pt-BR")} • {data.session.durationMinutes} min de corrida • {data.lapsAnalyzed} voltas analisadas{data.overtakeExcluded ? ` • ${data.overtakeExcluded} com overtake descartada(s)` : ""}</p>
+              <p>{new Date(data.session.startedAt).toLocaleString("pt-BR")} • {data.session.durationMinutes} min de corrida • {data.lapsAnalyzed} voltas analisadas</p>
             </div>
           </div>
 
@@ -76,6 +122,15 @@ export default function RaceDebrief() {
               <div><span>DESVIO PADRÃO</span><strong>{data.lapTimeStddev}s</strong></div>
             </div>
           </div>
+
+          {data.lapScatter && data.lapScatter.length > 2 && (
+            <div className="race-debrief-chart-block">
+              <span className="section-kicker">DISPERSÃO DO RITMO</span>
+              <h4>Tempo de volta ao longo do stint</h4>
+              <p className="race-debrief-channels-note">Cada ponto é uma volta, na ordem em que aconteceram na corrida. A linha tracejada é a média. O ponto destacado é a mais rápida.</p>
+              <LapScatterChart points={data.lapScatter} />
+            </div>
+          )}
 
           <div className="race-debrief-columns">
             <div className="race-debrief-col strengths">
@@ -105,6 +160,15 @@ export default function RaceDebrief() {
               })}
             </div>
           </div>
+
+          {data.channelStats?.some((item) => item.binStats?.length) && (
+            <div className="race-debrief-chart-block">
+              <span className="section-kicker">BANDA DE CONSISTÊNCIA</span>
+              <h4>Média ± desvio padrão por trecho da pista</h4>
+              <p className="race-debrief-channels-note">A faixa sombreada mostra o quanto cada canal variou entre as 10 voltas em cada ponto da pista (0–100%). Faixa estreita = repetição consistente; faixa larga = inconsistência ali.</p>
+              {data.channelStats.filter((item) => item.binStats?.length).map((item) => <ChannelBandChart key={item.channel} label={item.label} binStats={item.binStats as BinStat[]} />)}
+            </div>
+          )}
         </>
       )}
     </div>

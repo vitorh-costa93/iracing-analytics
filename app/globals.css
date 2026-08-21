@@ -381,6 +381,19 @@ footer { margin-top: 24px; color: #8a949e; font-size: 12px; text-align: center; 
 .race-debrief-col h4 { margin: 4px 0 10px; font-size: 15px; }
 .race-debrief-col p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: var(--text); }
 .race-debrief-channels { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-muted); }
+.race-debrief-chart-block { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface); }
+.race-debrief-chart-block h4 { margin: 4px 0 6px; font-size: 15px; }
+.debrief-chart { width: 100%; height: auto; display: block; margin-top: 8px; }
+.debrief-grid { stroke: #e7ebef; stroke-width: 1; }
+.debrief-axis { fill: var(--soft); font-size: 10px; font-weight: 600; }
+.debrief-avg-line { stroke: #9aa4af; stroke-width: 1.5; stroke-dasharray: 5 4; }
+.debrief-dot { fill: var(--blue); opacity: .85; }
+.debrief-dot.best { fill: var(--green); r: 6; }
+.debrief-band-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; margin-top: 12px; }
+.debrief-band-row span { font-size: 12px; font-weight: 700; color: var(--muted); }
+.debrief-chart.band { height: 60px; margin-top: 0; }
+.debrief-band-fill { fill: rgba(8,119,201,.18); stroke: none; }
+.debrief-band-line { fill: none; stroke: var(--blue); stroke-width: 1.5; }
 .race-debrief-channels-note { margin: 4px 0 12px; color: var(--muted); font-size: 12px; }
 .race-debrief-channel-bars { display: grid; gap: 8px; }
 .race-debrief-channel-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; }
