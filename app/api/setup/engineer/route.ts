@@ -71,6 +71,8 @@ export async function POST(request: NextRequest) {
     const understeer = /subester|sai de frente|frente escapa|nao vira|nao aponta/.test(feedback);
     const oversteer = /sobrester|traseira|rodar|escapa de traseira|instavel/.test(feedback);
     const traction = /patina|tracao|wheelspin|perde aderencia/.test(feedback);
+    const alreadyTooLow = /muito baixo|baixo demais|deixou.*baixo|raspa|raspando|bateu no chao|no fundo|bottoming|toca o chao|encostou no chao/.test(feedback);
+    const springAlreadySofter = /diminui.*spring|reduzi.*spring|amoleci.*mola|diminui.*mola|reduzi.*mola|mola.*mais macia/.test(feedback);
     const recommendations: Recommendation[] = [];
 
     /** Builds a recommendation whose "direction" text always says explicitly to raise or lower the on-screen value. */
@@ -96,8 +98,12 @@ export async function POST(request: NextRequest) {
     if (oversteer && !entry) {
       push("Barra estabilizadora traseira", "Entrega mais aderência mecânica atrás e reduz sobresterço sustentado.", "Compare aceleração lateral, correções e temperatura dos pneus entre os dois lados.", /arb.*diameter|diameter.*arb/i, /rear|trase/i, false, "Diminua (barra mais fina/macia)");
     }
-    if (traction || (oversteer && exit)) {
-      push("Mola traseira (ambos os lados)", "A prioridade é aumentar contato mecânico sem mascarar o problema com diferencial excessivo.", "Use throttle, LongAccel, Steering e diferença de rotação das rodas quando disponível; ajuste os dois lados juntos, não só um.", /spring.?rate/i, /^(left rear|right rear)$/i, false, "Diminua (mola mais macia)");
+    if ((traction || (oversteer && exit)) && (alreadyTooLow || springAlreadySofter)) {
+      // O piloto já relatou que amolecer a mola traseira deixou o carro baixo demais — não repetir a mesma sugestão.
+      push("Altura traseira", "Você já relatou que a mola mais macia deixou o carro baixo demais; suba a altura para recuperar folga sem endurecer a mola de volta.", "Confira se ainda bate no chão nas zebras/ondulações mais fortes da pista antes de levar pra corrida.", /ride.?height/i, /^(left rear|right rear)$/i, true, "Aumente um passo");
+      push("Barra estabilizadora traseira", "Como a mola já está mais macia, use a barra para controlar a tração/rotação na saída sem depender de baixar o carro de novo.", "Compare aceleração lateral e patinagem de uma roda na saída antes e depois do ajuste.", /arb.*diameter|diameter.*arb/i, /rear|trase/i, false, "Diminua (barra mais fina/macia)");
+    } else if (traction || (oversteer && exit)) {
+      push("Mola traseira (ambos os lados)", "A prioridade é aumentar contato mecânico sem mascarar o problema com diferencial excessivo.", "Use throttle, LongAccel, Steering e diferença de rotação das rodas quando disponível; ajuste os dois lados juntos, não só um. Se isso já deixou o carro baixo demais em algum teste anterior, compense subindo a altura em vez de voltar a mola.", /spring.?rate/i, /^(left rear|right rear)$/i, false, "Diminua (mola mais macia)");
     }
     if (!recommendations.length) {
       recommendations.push({ adjustment: "Teste A/B controlado", direction: "Descreva entrada, meio ou saída e se o problema é frente, traseira ou tração", why: "Sem localizar a fase da curva, uma mudança de setup pode corrigir um trecho e piorar outro.", validate: "Faça três voltas consistentes, altere um item por vez e compare telemetria no mesmo combustível.", parameter: null });
