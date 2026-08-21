@@ -18,6 +18,11 @@ function countryCode(label: string) {
   return countries.find(([names]) => names.some((name) => value.includes(name)))?.[1] ?? null;
 }
 
+const BRAND_LOGO_OVERRIDES: Record<string, string> = {
+  mercedes: "https://upload.wikimedia.org/wikipedia/commons/b/b8/Mercedes-Benz_Star.svg",
+  dallara: "https://upload.wikimedia.org/wikipedia/commons/6/60/Dallara_logo.svg",
+};
+
 function manufacturerSlug(label: string) {
   const value = label.toLowerCase();
   const brands: [string[], string][] = [
@@ -44,7 +49,7 @@ export default function PerformanceRanking({ items, emptyText, kind = "car" }: P
       const brand = kind === "car" ? manufacturerSlug(item.label) : null;
       return <div className="diverging-row" key={`${item.group ?? ""}-${item.label}`}>
         <div className="diverging-label">
-          {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" /> : brand && !["mercedes", "dallara"].includes(brand) ? <img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1f2933`} alt={`Marca ${brand}`} width="20" height="20" /> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
+          {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" /> : brand && BRAND_LOGO_OVERRIDES[brand] ? <img className="brand-icon" src={BRAND_LOGO_OVERRIDES[brand]} alt={`Marca ${brand}`} width="20" height="20" /> : brand ? <img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1f2933`} alt={`Marca ${brand}`} width="20" height="20" /> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
           {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas</small>
         </div>
         <div className="diverging-bar"><i className="center-line" /><span className={positive ? "positive" : "negative"} style={positive ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>

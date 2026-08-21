@@ -334,17 +334,29 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
 }
 
-function TrackMap({ trace, range }: { trace: Trace; range: [number, number] | null }) {
+function TrackMap({ trace, range, zoom }: { trace: Trace; range: [number, number] | null; zoom?: boolean }) {
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
-  const lats = gps.map((point) => Number(point.lat)), lons = gps.map((point) => Number(point.lon));
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const selected = range ? gps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
+
+  let boundsPoints = gps;
+  if (zoom && selected.length >= 2) {
+    boundsPoints = selected;
+  } else if (zoom && range) {
+    const center = (range[0] + range[1]) / 2;
+    boundsPoints = [...gps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 12);
+  }
+  const lats = boundsPoints.map((point) => Number(point.lat)), lons = boundsPoints.map((point) => Number(point.lon));
+  const rawMinLat = Math.min(...lats), rawMaxLat = Math.max(...lats), rawMinLon = Math.min(...lons), rawMaxLon = Math.max(...lons);
+  const zoomPad = zoom ? 0.35 : 0;
+  const latSpan = Math.max(rawMaxLat - rawMinLat, 0.00005), lonSpan = Math.max(rawMaxLon - rawMinLon, 0.00005);
+  const minLat = rawMinLat - latSpan * zoomPad, maxLat = rawMaxLat + latSpan * zoomPad;
+  const minLon = rawMinLon - lonSpan * zoomPad, maxLon = rawMaxLon + lonSpan * zoomPad;
   const project = (point: TracePoint) => {
     const x = 18 + (Number(point.lon) - minLon) / Math.max(.000001, maxLon - minLon) * 264;
     const y = 182 - (Number(point.lat) - minLat) / Math.max(.000001, maxLat - minLat) * 164;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   };
-  const selected = range ? gps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
   return <svg className="track-map" viewBox="0 0 300 200" role="img" aria-label="Mapa GPS da pista com trecho selecionado">
     <polyline points={gps.map(project).join(" ")} className="track-outline" />
     {selected.length > 1 && <polyline points={selected.map(project).join(" ")} className="track-highlight" />}
@@ -601,7 +613,7 @@ export default function ActiveWeekTelemetry() {
                   const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
                   return <div className="telemetry-hover">
                     <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
-                    <div className="telemetry-hover-map"><TrackMap trace={trace} range={[Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)]} /></div>
+                    <div className="telemetry-hover-map"><TrackMap trace={trace} range={[Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)]} zoom /></div>
                     {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
                   </div>;
                 })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
@@ -625,7 +637,7 @@ export default function ActiveWeekTelemetry() {
                   <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} />
                   <div className="insight-popup-map">
                     <span className="section-kicker">TRAÇADO</span>
-                    <TrackMap trace={trace} range={[focusedInsight.start, focusedInsight.end]} />
+                    <TrackMap trace={trace} range={[focusedInsight.start, focusedInsight.end]} zoom />
                   </div>
                 </div>
                 <div className="insight-popup-metrics">{focusedInsight.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>
