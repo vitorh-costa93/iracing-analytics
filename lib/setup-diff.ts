@@ -82,3 +82,85 @@ export const CATEGORY_LABELS: Record<string, string> = {
   ride_height: "Altura do carro", alignment: "Geometria/alinhamento", dampers: "Amortecedores",
   differential: "Diferencial", tires: "Pneus/pressão", gearing: "Relação de marcha", display: "Display", other: "Outros",
 };
+
+type Direction = "increase" | "decrease" | "mixed";
+
+/** Short trade-off sentence for a whole category of changes, used to build a comparative narrative between two setups. */
+function categoryTradeoff(category: string, direction: Direction): string {
+  const phrases: Record<string, Record<Direction, string>> = {
+    aero: {
+      increase: "carrega mais asa — mais apoio em curva rápida, mas mais arrasto e menos velocidade de reta",
+      decrease: "carrega menos asa — mais velocidade de reta e menos arrasto, à custa de apoio em curva rápida",
+      mixed: "mexe na aerodinâmica em direções diferentes por eixo — o balanço dianteiro/traseiro muda, não só a carga total",
+    },
+    brakes: {
+      increase: "desloca o brake bias para a dianteira — frenagem mais estável, mas mais tendência a subesterço na entrada",
+      decrease: "desloca o brake bias para a traseira — carro mais fácil de rotacionar na entrada, mas com mais risco de instabilidade",
+      mixed: "ajusta o freio de forma pontual, sem uma direção única clara",
+    },
+    arb: {
+      increase: "endurece as barras estabilizadoras — resposta mais rápida e menos rolagem, mas menos aderência mecânica em pista irregular",
+      decrease: "amolece as barras estabilizadoras — mais aderência mecânica e tolerância a zebra, com resposta mais lenta",
+      mixed: "endurece um eixo e amolece o outro nas barras — muda o balanço entre sub e sobresterço, não só a rigidez geral",
+    },
+    springs: {
+      increase: "usa molas mais duras — plataforma mais estável sob carga aerodinâmica e frenagem, mas transmite mais impacto de zebra",
+      decrease: "usa molas mais macias — melhor absorção de zebra e aderência mecânica, com mais variação de altura sob carga",
+      mixed: "mistura molas mais duras e mais macias entre os eixos — prioriza plataforma num eixo e mecânica no outro",
+    },
+    ride_height: {
+      increase: "sobe a altura do carro — mais curso de suspensão e folga, mas perde parte da plataforma aerodinâmica",
+      decrease: "abaixa a altura do carro — mais carga aerodinâmica, com mais risco de bater o fundo em zebra/ondulação",
+      mixed: "muda a altura de forma assimétrica entre os eixos — isso altera o rake do carro, não só a altura geral",
+    },
+    alignment: {
+      increase: "aumenta cambagem/toe — mais área de contato em apoio lateral sustentado, à custa de desgaste e tração em reta",
+      decrease: "reduz cambagem/toe — mais vida útil e tração em linha reta, com um pouco menos de apoio no ápice",
+      mixed: "ajusta a geometria de forma distinta entre os lados/eixos, não como um pacote único",
+    },
+    dampers: {
+      increase: "usa amortecedores mais rígidos — controla melhor a transferência de carga, mas responde pior a zebra e ondulação",
+      decrease: "usa amortecedores mais macios — absorve melhor irregularidades, com mais movimento de carroceria sob carga",
+      mixed: "mistura amortecimento mais rígido e mais macio entre bump/rebound ou eixos",
+    },
+    differential: {
+      increase: "trava mais o diferencial — mais estabilidade em reta e tração ao sair, com mais resistência a girar na entrada",
+      decrease: "libera mais o diferencial — mais fácil de rotacionar na entrada, com mais risco de patinar uma roda na saída",
+      mixed: "ajusta coast e power em direções diferentes — muda o comportamento de entrada e saída de forma distinta",
+    },
+    tires: {
+      increase: "sobe a pressão dos pneus — resposta mais direta, com menos área de contato se passar do ideal",
+      decrease: "reduz a pressão dos pneus — mais área de contato e tração, com risco de superaquecer o pneu",
+      mixed: "ajusta a pressão de forma diferente por pneu, não um pacote uniforme",
+    },
+    gearing: {
+      increase: "usa marchas mais altas — mais velocidade final, com aceleração mais lenta",
+      decrease: "usa marchas mais curtas — aceleração mais forte, com menos velocidade máxima",
+      mixed: "reescalona a caixa de forma não uniforme entre os estágios",
+    },
+  };
+  return phrases[category]?.[direction] ?? "muda parâmetros nessa categoria sem um padrão único";
+}
+
+/** Builds a comparative narrative explaining, category by category, what the comparison setup does differently from the base one. */
+export function comparativeSummary(changes: ParsedChange[], baseLabel: string, comparisonLabel: string): string {
+  const actionable = changes.filter((change) => change.actionable);
+  if (!actionable.length) return `Não encontrei diferenças com efeito prático mapeado entre ${baseLabel} e ${comparisonLabel}.`;
+
+  const byCategory = new Map<string, ParsedChange[]>();
+  for (const change of actionable) byCategory.set(change.category, [...(byCategory.get(change.category) ?? []), change]);
+
+  const categoryStats = [...byCategory.entries()].map(([category, items]) => {
+    const numeric = items.filter((item) => item.numericDelta !== null && item.numericDelta !== 0);
+    const increases = numeric.filter((item) => (item.numericDelta as number) > 0).length;
+    const decreases = numeric.length - increases;
+    const direction: Direction = numeric.length === 0 ? "mixed" : increases === decreases ? "mixed" : increases > decreases ? "increase" : "decrease";
+    return { category, count: items.length, direction };
+  }).sort((a, b) => b.count - a.count);
+
+  const top = categoryStats.slice(0, 3);
+  const sentences = top.map((stat) => `Em ${(CATEGORY_LABELS[stat.category] ?? stat.category).toLowerCase()} (${stat.count} parâmetro${stat.count > 1 ? "s" : ""}), ${comparisonLabel} ${categoryTradeoff(stat.category, stat.direction)}.`);
+
+  const intro = `Comparando ${baseLabel} com ${comparisonLabel}: ${actionable.length} parâmetro${actionable.length > 1 ? "s" : ""} com efeito prático diferem.`;
+  return `${intro} ${sentences.join(" ")}`;
+}

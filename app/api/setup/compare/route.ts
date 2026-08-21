@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { CATEGORY_LABELS, DecodedRow, diffSetups } from "@/lib/setup-diff";
+import { CATEGORY_LABELS, DecodedRow, comparativeSummary, diffSetups } from "@/lib/setup-diff";
 
 type SetupRow = { id: string; filename: string; storage_path: string; car_id: number; track_id: number; decoded_params: unknown; decoded_car_name: string | null };
 
@@ -35,10 +35,7 @@ export async function POST(request: NextRequest) {
     const topContributors = [...numericChanges].sort((a, b) => Math.abs(b.numericDelta as number) - Math.abs(a.numericDelta as number)).slice(0, 5)
       .map((change) => ({ label: `${change.tab} • ${change.section} • ${change.label}`, before: change.before, after: change.after, category: change.category }));
 
-    const summaryParts: string[] = [];
-    summaryParts.push(actionable.length ? `${actionable.length} parâmetro(s) com efeito prático diferem entre os setups.` : "Nenhuma diferença com efeito prático mapeado foi encontrada.");
-    if (topCategories.length) summaryParts.push(`A maior concentração de mudanças está em ${topCategories.slice(0, 2).map((item) => `${item.label.toLowerCase()} (${item.count})`).join(" e ")}.`);
-    if (skipped > 0) summaryParts.push(`${skipped} parâmetro(s) sem regra de efeito específica foram omitidos da lista abaixo.`);
+    const summary = `${comparativeSummary(changes, base.filename, comparison.filename)}${skipped > 0 ? ` (${skipped} parâmetro(s) sem regra de efeito específica foram omitidos da lista abaixo.)` : ""}`;
 
     return NextResponse.json({
       status: "ok",
@@ -48,7 +45,7 @@ export async function POST(request: NextRequest) {
       totalParameters: changes.length,
       changes: actionable,
       skippedCount: skipped,
-      summary: summaryParts.join(" "),
+      summary,
       analysis: { topCategories, topContributors },
     });
   } catch (error) {

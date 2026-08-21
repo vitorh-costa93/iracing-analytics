@@ -18,28 +18,25 @@ function parseValueUnit(value: string): { number: number; unit: string } | null 
   return { number: Number(match[1]), unit: match[2].trim() };
 }
 
-/** Describes a concrete, unambiguous target for "make it softer/harder" style adjustments, based on the parameter's real unit. */
+/**
+ * Describes a "make it softer/harder" adjustment without inventing a numeric target.
+ * Each car has its own discrete step table in iRacing (spring rates, ARB diameters etc. only
+ * come in specific catalog values) that we don't have access to, so guessing an arithmetic
+ * target (e.g. "170 * 0.9") could suggest a value that isn't even selectable in the game.
+ * The one exception is damper clicks, where ±1 click is always how the in-game adjustment works.
+ */
 function concreteTarget(hit: ParamHit, softer: boolean): string {
   const parsed = parseValueUnit(hit.current);
-  if (!parsed) return softer ? "mais macio" : "mais rígido";
+  const softHard = softer ? "mais macio" : "mais rígido";
+  if (!parsed) return `um passo ${softHard} a partir do valor atual (${hit.current})`;
   const { number, unit } = parsed;
-  if (unit === "N/mm") {
-    const target = softer ? number * 0.9 : number * 1.1;
-    return `de ${hit.current} para ~${target.toFixed(0)} N/mm (${softer ? "mais macia" : "mais dura"})`;
-  }
-  if (unit === "mm" && /diameter|diametro/i.test(hit.label)) {
-    const target = softer ? Math.max(1, number - 1) : number + 1;
-    return `de ${hit.current} para ~${target.toFixed(0)} mm de diâmetro (${softer ? "mais fina/macia" : "mais grossa/rígida"})`;
-  }
   if (/clicks|click/i.test(unit)) {
     const target = softer ? number - 1 : number + 1;
-    return `de ${hit.current} para ${target >= 0 ? "+" : ""}${target} clicks (${softer ? "mais macio" : "mais rígido"} — confirme o sentido no texto de ajuda do próprio setup, pois varia por carro)`;
+    return `${hit.current} → ${target >= 0 ? "+" : ""}${target} clicks (${softer ? "1 clique mais macio" : "1 clique mais rígido"}; confirme se essa é a direção certa no texto de ajuda do próprio menu de setup, pois o sentido do clique varia por carro)`;
   }
-  if (unit === "deg") {
-    const target = softer ? number - 0.3 : number + 0.3;
-    return `de ${hit.current} para ~${target.toFixed(2)} deg`;
-  }
-  return softer ? `${hit.current} → um passo mais macio` : `${hit.current} → um passo mais rígido`;
+  // Continuous-looking values (N/mm, mm, deg, %) only accept specific catalog steps per carro,
+  // que não temos mapeados — em vez de chutar um número, aponta a direção e o valor atual.
+  return `um passo ${softHard} que o atual (${hit.current}) — use a seta/dropdown do próprio jogo para o próximo valor disponível nessa direção, ele já respeita os limites do carro`;
 }
 
 function describeParams(hits: ParamHit[]): { label: string; current: string } | null {

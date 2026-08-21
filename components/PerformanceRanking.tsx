@@ -8,12 +8,16 @@ function signed(value: number) { return `${value > 0 ? "+" : ""}${value.toLocale
 function countryCode(label: string) {
   const value = label.toLowerCase();
   const countries: [string[], string][] = [
-    [["monza", "imola", "mugello"], "it"], [["spa", "zolder"], "be"], [["silverstone", "brands hatch", "donington", "oulton", "snetterton"], "gb"],
-    [["nürburgring", "nurburgring", "hockenheim", "sachsenring"], "de"], [["interlagos", "josé carlos pace"], "br"], [["suzuka", "fuji", "motegi", "okayama"], "jp"],
-    [["le mans", "magny", "paul ricard"], "fr"], [["barcelona", "jerez", "aragon"], "es"], [["mount panorama", "phillip island", "sandown", "oran park"], "au"],
-    [["canadian tire", "mosport", "montreal", "gilles villeneuve"], "ca"], [["red bull ring"], "at"], [["zandvoort"], "nl"], [["portimão", "estoril"], "pt"],
-    [["miami", "daytona", "sebring", "watkins glen", "road america", "road atlanta", "indianapolis", "laguna seca", "virginia international"], "us"],
-    [["hermanos rodríguez", "hermanos rodriguez"], "mx"], [["hungaroring"], "hu"], [["motorsport arena oschersleben"], "de"],
+    [["monza", "imola", "mugello", "vallelunga", "misano"], "it"], [["spa", "zolder"], "be"], [["silverstone", "brands hatch", "donington", "oulton", "snetterton", "knockhill", "thruxton", "cadwell"], "gb"],
+    [["nürburgring", "nurburgring", "hockenheim", "sachsenring", "motorsport arena oschersleben"], "de"], [["interlagos", "josé carlos pace"], "br"], [["suzuka", "fuji", "motegi", "okayama", "twin ring"], "jp"],
+    [["le mans", "24 heures du mans", "magny", "paul ricard", "dijon"], "fr"], [["barcelona", "jerez", "aragon", "catalunya"], "es"],
+    [["mount panorama", "bathurst", "phillip island", "sandown", "oran park", "the bend", "queensland raceway", "winton"], "au"],
+    [["canadian tire", "mosport", "montreal", "gilles villeneuve"], "ca"], [["red bull ring"], "at"], [["zandvoort", "assen"], "nl"],
+    [["portimão", "portimao", "estoril", "algarve"], "pt"],
+    [["miami", "daytona", "sebring", "watkins glen", "road america", "road atlanta", "indianapolis", "laguna seca", "virginia international",
+      "sonoma", "lime rock", "long beach", "charlotte", "talladega", "phoenix", "circuit of the americas", "cota", "willow springs",
+      "summit point", "detroit", "mid-ohio", "iowa", "gateway", "richmond", "homestead", "kansas", "michigan", "texas motor", "new hampshire"], "us"],
+    [["hermanos rodríguez", "hermanos rodriguez"], "mx"], [["hungaroring"], "hu"], [["kyalami"], "za"],
   ];
   return countries.find(([names]) => names.some((name) => value.includes(name)))?.[1] ?? null;
 }
