@@ -62,8 +62,11 @@ function describeParams(hits: ParamHit[]): { label: string; current: string } | 
  * Both conventions agree that a higher on-screen number means stiffer, so `raise` maps directly.
  */
 function arbTarget(rows: DecodedRow[], axlePattern: RegExp, wantStiffer: boolean) {
-  const diameterHits = findParams(rows, /arb.*diameter|diameter.*arb/i, axlePattern);
-  if (diameterHits.length) return { parameter: describeParams(diameterHits), direction: concreteTarget(diameterHits[0], wantStiffer, " (esse carro só aceita algumas opções fixas de diâmetro, ex.: 15/18/30mm — não é um valor contínuo)") };
+  // "ARB Diameter" (SF23/GT3) and "ARB Size" (GTP — Acura/BMW/Porsche/Cadillac manuals all use this
+  // exact wording, confirmed byte-identical across all four, so it's a class-wide spec convention)
+  // both mean the same thing: bigger number = stiffer, only a few fixed options, never continuous.
+  const diameterHits = findParams(rows, /arb.*(diameter|size)|(diameter|size).*arb/i, axlePattern);
+  if (diameterHits.length) return { parameter: describeParams(diameterHits), direction: concreteTarget(diameterHits[0], wantStiffer, " (esse carro só aceita algumas opções fixas de diâmetro/tamanho — não é um valor contínuo)") };
   const bladeHits = findParams(rows, /arb.*blades?/i, axlePattern);
   if (bladeHits.length) return { parameter: describeParams(bladeHits), direction: concreteTarget(bladeHits[0], wantStiffer) };
   return { parameter: null, direction: null };
@@ -72,29 +75,65 @@ function arbTarget(rows: DecodedRow[], axlePattern: RegExp, wantStiffer: boolean
 type DiffGoal = "more-lock-entry" | "less-lock-exit";
 
 /**
- * Differential lock, aware of the two architectures we have official documentation for:
+ * Differential lock, aware of the three architectures we have official documentation for:
  *  - SF23-style: independent "Coast Angle" (braking/lift-off) and "Drive Angle" (throttle).
  *    Per the manual, HIGHER angle = LESS force = more oversteer; LOWER angle = MORE force =
  *    more understeer/stability. This is the opposite of a naive "higher number = more lock".
  *  - GT3-style: a single "Diff Preload" (ft-lbs). Per the manual, increasing preload adds
  *    understeer off-throttle (more stable entry) AND more snap oversteer on throttle — it's
  *    one dial with a trade-off in both directions, not two independent adjustments.
- * For other cars (GTP, LMP2 prototypes) we don't have official documentation yet, so we fall
- * back to an honest "test both directions" instead of guessing.
+ *  - GTP-style (Acura ARX-06, BMW M Hybrid V8, Porsche 963, Cadillac V-Series.R — confirmed via
+ *    all four official manuals, whose "Systems"/differential pages are byte-identical, so this is a
+ *    class-wide LMDh spec convention, not a one-off): "Diff Ramp Angles" behave like SF23's
+ *    coast/drive angle (lower angle = more locking force, inverted from a naive reading) but the
+ *    manual describes them affecting both braking AND acceleration phases together rather than two
+ *    independent dials, plus a separate "Preload" (direct: more = more lock, same as GT3) and
+ *    "Clutch Friction Plates" (a plate-count multiplier — more plates = more lock in ALL
+ *    conditions, always). The Ferrari 499P has no published manual yet, but it races in the same
+ *    GTP class under the same converged regs — this GTP branch is applied to it too on that basis,
+ *    which we say explicitly rather than pretend it's confirmed for that specific car.
  */
 function differentialTarget(rows: DecodedRow[], goal: DiffGoal) {
   if (goal === "more-lock-entry") {
     const coastHits = findParams(rows, /coast.*angle/i);
     if (coastHits.length) return { parameter: describeParams(coastHits), direction: concreteTarget(coastHits[0], false), tradeoff: "" };
+    const rampHits = findParams(rows, /ramp.*angle/i);
+    if (rampHits.length) return { parameter: describeParams(rampHits), direction: concreteTarget(rampHits[0], false), tradeoff: " Atenção: nesse carro (arquitetura GTP) o ramp angle afeta frenagem E aceleração juntos, não só a entrada — pode aumentar o sobresterço na saída também." };
     const preloadHits = findParams(rows, /diff.*preload|^preload$/i);
     if (preloadHits.length) return { parameter: describeParams(preloadHits), direction: concreteTarget(preloadHits[0], true), tradeoff: " Atenção: nesse carro o preload é um dial só — aumentar também deixa a saída mais propensa a sobresterço de \"snap\" se você acelerar de forma agressiva." };
+    const plateHits = findParams(rows, /clutch.*(plate|face)/i);
+    if (plateHits.length) return { parameter: describeParams(plateHits), direction: concreteTarget(plateHits[0], true), tradeoff: " Isso é um multiplicador de bloqueio que vale para toda a volta (entrada e saída), não só para a frenagem — mude só um passo e compare os dois trechos." };
     return { parameter: null, direction: "valor atual — a direção certa depende do tipo de diferencial deste carro; teste um passo em cada sentido no menu e compare qual reduz o problema", tradeoff: "" };
   }
   const driveHits = findParams(rows, /drive.*angle/i);
   if (driveHits.length) return { parameter: describeParams(driveHits), direction: concreteTarget(driveHits[0], true), tradeoff: "" };
+  const rampHits = findParams(rows, /ramp.*angle/i);
+  if (rampHits.length) return { parameter: describeParams(rampHits), direction: concreteTarget(rampHits[0], true), tradeoff: " Atenção: nesse carro (arquitetura GTP) o ramp angle afeta frenagem E aceleração juntos, não só a saída — pode deixar a entrada mais instável também." };
   const preloadHits = findParams(rows, /diff.*preload|^preload$/i);
   if (preloadHits.length) return { parameter: describeParams(preloadHits), direction: concreteTarget(preloadHits[0], false), tradeoff: " Atenção: nesse carro o preload é um dial só — reduzir também deixa a entrada/desaceleração menos estável (mais sobresterço fora do acelerador)." };
+  const plateHits = findParams(rows, /clutch.*(plate|face)/i);
+  if (plateHits.length) return { parameter: describeParams(plateHits), direction: concreteTarget(plateHits[0], false), tradeoff: " Isso é um multiplicador de bloqueio que vale para toda a volta (entrada e saída), não só para a saída — mude só um passo e compare os dois trechos." };
   return { parameter: null, direction: "valor atual — a direção certa depende do tipo de diferencial deste carro; teste um passo em cada sentido no menu e compare qual reduz o problema", tradeoff: "" };
+}
+
+/**
+ * Rear spring stiffness, aware of two different suspension architectures:
+ *  - Conventional (SF23, GT3): a per-corner "Spring Rate" you set independently for Left Rear and
+ *    Right Rear.
+ *  - GTP/LMDh (Acura, BMW, Porsche, Cadillac — same class-wide spec confirmed across all four
+ *    manuals): a single central "Heave Spring" instead, decoupled from roll stiffness by design
+ *    (that's what a heave/roll damper layout is for). There's no separate Left/Right Rear spring to
+ *    adjust. The manual is explicit that softening it isn't free: "you will lose some amount of
+ *    downforce and efficiency mid corner as the rear ride heights will be well under the target
+ *    rear heights for maximum downforce" — so we surface that trade-off instead of treating it like
+ *    an ordinary spring change.
+ */
+function springTarget(rows: DecodedRow[], axlePattern: RegExp, wantStiffer: boolean) {
+  const cornerHits = findParams(rows, /spring.?rate/i, axlePattern);
+  if (cornerHits.length) return { parameter: describeParams(cornerHits), direction: concreteTarget(cornerHits[0], wantStiffer), tradeoff: "" };
+  const heaveHits = findParams(rows, /heave.*spring/i, /rear/i);
+  if (heaveHits.length) return { parameter: describeParams(heaveHits), direction: concreteTarget(heaveHits[0], wantStiffer), tradeoff: " Atenção: nesse carro (arquitetura GTP) não existe mola separada por roda — isso é a Heave Spring central, e amolecer ela também reduz downforce/eficiência no meio da curva porque a altura traseira cai abaixo do ideal aerodinâmico. Se notar perda de carga em curva rápida depois desse ajuste, considere endurecer a barra estabilizadora traseira em vez de amolecer ainda mais a heave spring." };
+  return { parameter: null, direction: null, tradeoff: "" };
 }
 
 async function blendSetups(driverId: string, setupIdA: string, setupIdB: string, carId: number, trackId: number, feedback: string) {
@@ -175,6 +214,11 @@ export async function POST(request: NextRequest) {
       recommendations.push({ adjustment, direction: result.direction ?? fallbackDirection, why: `${why}${result.tradeoff ?? ""}`, validate, parameter: result.parameter });
     };
 
+    const pushSpring = (adjustment: string, why: string, validate: string, axlePattern: RegExp, wantStiffer: boolean, fallbackDirection: string) => {
+      const result = hasDecoded ? springTarget(decodedRows, axlePattern, wantStiffer) : { parameter: null, direction: null, tradeoff: "" };
+      recommendations.push({ adjustment, direction: result.direction ?? fallbackDirection, why: `${why}${result.tradeoff ?? ""}`, validate, parameter: result.parameter });
+    };
+
     if (understeer && entry) {
       push("Brake bias", "Ajuda o carro a rotacionar na fase inicial sem pedir mais volante.", "Compare yaw rate, pico de volante e estabilidade da traseira na frenagem.", /brake.*bias|bias/i, undefined, false, "Diminua 0,25–0,50 p.p. (menos bias dianteiro)");
       pushArb("Barra estabilizadora dianteira", "Aumenta aderência mecânica dianteira no turn-in e meio da curva.", "Confirme menor correção de volante sem piorar apoio em curva rápida.", /front|diant/i, false, "Diminua (barra mais fina/macia)");
@@ -195,7 +239,7 @@ export async function POST(request: NextRequest) {
       push("Altura traseira", "Você já relatou que a mola mais macia deixou o carro baixo demais; suba a altura para recuperar folga sem endurecer a mola de volta.", "Confira se ainda bate no chão nas zebras/ondulações mais fortes da pista antes de levar pra corrida.", /ride.?height/i, /^(left rear|right rear)$/i, true, "Aumente um passo");
       pushArb("Barra estabilizadora traseira", "Como a mola já está mais macia, use a barra para controlar a tração/rotação na saída sem depender de baixar o carro de novo.", "Compare aceleração lateral e patinagem de uma roda na saída antes e depois do ajuste.", /rear|trase/i, false, "Diminua (barra mais fina/macia)");
     } else if (traction || (oversteer && exit)) {
-      push("Mola traseira (ambos os lados)", "A prioridade é aumentar contato mecânico sem mascarar o problema com diferencial excessivo.", "Use throttle, LongAccel, Steering e diferença de rotação das rodas quando disponível; ajuste os dois lados juntos, não só um. Se isso já deixou o carro baixo demais em algum teste anterior, compense subindo a altura em vez de voltar a mola.", /spring.?rate/i, /^(left rear|right rear)$/i, false, "Diminua (mola mais macia)");
+      pushSpring("Mola/Heave Spring traseira", "A prioridade é aumentar contato mecânico sem mascarar o problema com diferencial excessivo.", "Use throttle, LongAccel, Steering e diferença de rotação das rodas quando disponível; se o carro tiver mola por roda, ajuste os dois lados juntos, não só um. Se isso já deixou o carro baixo demais em algum teste anterior, compense subindo a altura em vez de amolecer mais.", /rear|trase/i, false, "Diminua (mola/heave spring mais macia)");
     }
     if (!recommendations.length) {
       recommendations.push({ adjustment: "Teste A/B controlado", direction: "Descreva entrada, meio ou saída e se o problema é frente, traseira ou tração", why: "Sem localizar a fase da curva, uma mudança de setup pode corrigir um trecho e piorar outro.", validate: "Faça três voltas consistentes, altere um item por vez e compare telemetria no mesmo combustível.", parameter: null });
@@ -208,7 +252,7 @@ export async function POST(request: NextRequest) {
       recommendations,
       hasDecodedParameters: hasDecoded,
       limitation: hasDecoded
-        ? "O formato binário .sto ainda não é regravado pelo servidor. Aplique um ajuste por vez no iRacing e valide na telemetria antes de consolidar. As direções de barra/diferencial acima usam os manuais oficiais do Super Formula SF23 e McLaren 720S GT3 EVO; outros carros (GTP, LMP2) ainda não têm essa confirmação."
+        ? "O formato binário .sto ainda não é regravado pelo servidor. Aplique um ajuste por vez no iRacing e valide na telemetria antes de consolidar. As direções de barra/diferencial/mola acima usam os manuais oficiais do Super Formula SF23, McLaren 720S GT3 EVO e dos GTP (Acura ARX-06, BMW M Hybrid V8, Porsche 963, Cadillac V-Series.R — as quatro têm o texto de diferencial/ARB/heave spring idêntico entre si, então tratamos como convenção da classe). O Ferrari 499P não tem manual oficial publicado ainda; para ele, aplicamos essa mesma lógica de GTP por analogia (mesma classe, mesmas convenções de nomenclatura), não por confirmação específica do carro. LMP2 (Dallara P217) segue sem essa confirmação."
         : "Este setup ainda não tem parâmetros decodificados (só chega via Garage61), então as sugestões abaixo são genéricas — não apontam o valor exato do seu setup. Use um setup já usado em corrida para recomendações com o parâmetro e valor atual citados.",
     });
   } catch (error) {

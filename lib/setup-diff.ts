@@ -15,7 +15,7 @@ export function categoryOf(label: string, section: string) {
   if (/ride height|altura/.test(key)) return "ride_height";
   if (/camber|cambagem|toe|converg|steering|direção|ackerman/.test(key)) return "alignment";
   if (/damp|shock|bump|rebound|amort/.test(key)) return "dampers";
-  if (/differential|diff|preload|coast|power/.test(key)) return "differential";
+  if (/differential|diff|preload|coast|power|ramp.?angle|clutch.*(plate|face)/.test(key)) return "differential";
   if (/pressure|pressao/.test(key)) return "tires";
   if (/gear|ratio|marcha/.test(key)) return "gearing";
   return "other";
@@ -53,7 +53,7 @@ export function effect(label: string, before: string, after: string, section?: s
     if (isRebound) return { text: `O amortecimento de extensão ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) controla a velocidade de retomada do pneu no solo após compressão; mais rígido reduz oscilação mas pode "empacar" o carro em sequência de curvas e zebras.`, actionable: true };
     return { text: `O amortecimento ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) muda a velocidade de transferência de carga em frenagem, rotação, zebra e retomada de aderência.`, actionable: true };
   }
-  if (/differential|diff|preload|coast|power/.test(key)) return { text: `O diferencial (${before} → ${after}) altera a rotação do carro em desaceleração/entrada de curva (coast) e a tração/estabilidade sob potência na saída (power); mais travado tende a estabilizar em reta e reduzir rotação na entrada.`, actionable: true };
+  if (/differential|diff|preload|coast|power|ramp.?angle|clutch.*(plate|face)/.test(key)) return { text: `O diferencial (${before} → ${after}) altera a rotação do carro em desaceleração/entrada de curva (coast) e a tração/estabilidade sob potência na saída (power); mais travado tende a estabilizar em reta e reduzir rotação na entrada.`, actionable: true };
   if (/pressure|pressao/.test(key)) return { text: `A pressão ${axleLabel ? `${axleLabel} ` : ""}(${before} → ${after}) afeta a janela térmica de trabalho do pneu, a deformação da carcaça, a resposta de direção e a área de contato; pressão muito baixa superaquece o pneu, muito alta reduz aderência.`, actionable: true };
   if (/gear|ratio|marcha/.test(key)) return { text: `A relação de marcha (${before} → ${after}) muda a aceleração disponível, a faixa de rotação usada e a velocidade máxima naquele estágio; confira se ainda bate no limitador antes das retas mais longas.`, actionable: true };
   if (/steering|direção|ackerman/.test(key)) return { text: `O ajuste de geometria de direção (${before} → ${after}) altera a relação entre o ângulo das rodas interna e externa em curva, afetando o esterçamento e o desgaste do pneu dianteiro interno.`, actionable: true };
