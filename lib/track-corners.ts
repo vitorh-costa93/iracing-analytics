@@ -15,7 +15,7 @@
  * bug.
  */
 
-export type TrackCornerEntry = { match: (trackName: string, variant: string) => boolean; names: string[] };
+export type TrackCornerEntry = { match: (trackName: string, variant: string) => boolean; names: (string | null)[] };
 
 const COUNT_TOLERANCE = 2;
 
@@ -84,13 +84,46 @@ const ENTRIES: TrackCornerEntry[] = [
     match: (t) => /donington/i.test(t),
     names: ["Redgate", "Hollywood", "Craner Curves", "Old Hairpin", "Schwantz Curve", "McLean's", "Coppice", "Starkey's Bridge", "Melbourne Hairpin", "Goddards"],
   },
+  {
+    match: (t) => /barcelona.?catalunya/i.test(t),
+    names: ["Elf (chicane)", null, "Renault", "Repsol", "Seat", null, "Wurth", "Campsa", "La Caixa", null, "New Holland (chicane)"],
+  },
+  {
+    match: (t) => /hungaroring/i.test(t),
+    names: ["Piquet", "Hamilton", "Spring", "Mansell", "Mogyoród", "Driving Centre", "Buda", "Pest", "Danube", "Alesi", "Schumacher", "Senna", "Szisz"],
+  },
+  {
+    match: (t) => /red bull ring/i.test(t),
+    names: ["Niki Lauda Kurve", "Remus", "Schlossgold", "Rauch", null, null, null, "Jochen Rindt Kurve", null, null],
+  },
+  {
+    match: (t) => /zandvoort/i.test(t),
+    names: ["Tarzanbocht", "Gerlachbocht", "Hugenholtzbocht", null, null, "Scheivlak", null, "Slotemakerbocht", null, null, null, null, "Arie Luyendykbocht"],
+  },
+  {
+    match: (t) => /oulton park/i.test(t),
+    names: ["Old Hall", "Cascades", "Island Bend", "Knickerbrook", "Shell Hairpin", "Hislop's", "Druids", "Lodge Corner", "Deer Leap"],
+  },
+  {
+    match: (t) => /laguna seca/i.test(t),
+    names: [null, "Andretti Hairpin", null, null, null, null, null, "The Corkscrew", "Rainey Curve", null, null],
+  },
+  {
+    match: (t) => /gilles villeneuve/i.test(t),
+    names: ["Senna S", null, null, null, "L'Épingle", null, "Pont de la Concorde", null, null, "Champions Corner (Wall of Champions)"],
+  },
+  {
+    match: (t) => /magny-cours/i.test(t),
+    names: ["Grande Courbe", "Estoril", null, "Adelaide", null, "Nürburgring (chicane)", "180°", null, "Imola (chicane)", null, "Château d'Eau", "Complexe du Lycée (chicane)"],
+  },
 ];
 
 /** Given a track name/variant and how many corners were actually detected from this lap's telemetry,
- * returns the ordered name list to zip against those corners (index 0 = first corner on the lap), or
- * null if there's no research for this track or the detected count is too far from the known corner
- * count to trust an index match. */
-export function lookupCornerNames(trackName: string, variant: string, detectedCount: number): string[] | null {
+ * returns the ordered name list to zip against those corners (index 0 = first corner on the lap, null
+ * = a real corner we know is there but don't have a confident name for), or null if there's no
+ * research for this track or the detected count is too far from the known corner count to trust an
+ * index match. */
+export function lookupCornerNames(trackName: string, variant: string, detectedCount: number): (string | null)[] | null {
   const entry = ENTRIES.find((item) => item.match(trackName, variant));
   if (!entry) return null;
   if (Math.abs(entry.names.length - detectedCount) > COUNT_TOLERANCE) return null;
