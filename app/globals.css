@@ -405,8 +405,17 @@ footer { margin-top: 24px; color: #8a949e; font-size: 12px; text-align: center; 
 
 .race-debrief-corner-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
 .race-debrief-corner-card { padding: 12px; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-muted); }
-.race-debrief-corner-card h5 { margin: 0 0 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; }
-.race-debrief-corner-card h5 span { font-size: 11px; color: var(--soft); font-weight: 600; }
+.race-debrief-corner-card h5 { margin: 0 0 8px; font-size: 13px; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.race-debrief-corner-card h5 span { font-size: 11px; color: var(--soft); font-weight: 600; white-space: nowrap; }
+.corner-mini-chart { width: 100%; height: auto; margin-bottom: 8px; background: var(--surface); border-radius: 4px; }
+.corner-mini-axis { stroke: var(--soft); stroke-width: 1; stroke-dasharray: 2 2; }
+.corner-mini-band { opacity: .18; }
+.corner-mini-band.brake { fill: #d1453b; }
+.corner-mini-band.throttle { fill: #2a9d5c; }
+.corner-mini-line { fill: none; stroke-width: 1.6; }
+.corner-mini-line.brake { stroke: #d1453b; }
+.corner-mini-line.throttle { stroke: #2a9d5c; }
+.corner-metric-grid { display: grid; gap: 0; }
 .corner-metric { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; padding: 6px 0; border-top: 1px solid var(--border); }
 .corner-metric:first-of-type { border-top: 0; }
 .corner-metric span { font-size: 11px; color: var(--muted); }

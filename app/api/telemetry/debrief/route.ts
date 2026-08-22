@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { lookupCornerName } from "@/lib/track-corners";
 
 const GARAGE61_BASE = "https://garage61.net/api/v1";
 const MIN_RACE_MINUTES = 15;
@@ -95,7 +96,7 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey):
 }
 
 const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade" };
-const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "o mesmo acelerador", brake: "o mesmo freio", steering: "o mesmo ângulo de volante", gear: "a mesma marcha", rpm: "a mesma rotação", speed: "a mesma velocidade" };
+const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "a mesma abertura de acelerador", brake: "a mesma pressão de freio", steering: "o mesmo tanto de volante", gear: "a mesma marcha", rpm: "a mesma rotação do motor", speed: "a mesma velocidade" };
 const CHART_CHANNELS: ChannelKey[] = ["throttle", "brake", "steering"];
 
 function formatLapTime(value: number) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
@@ -193,6 +194,22 @@ function analyzeCornerForLap(points: TracePoint[], cornerDistance: number): Corn
 function consistencyLabel(sd: number, scale: number) {
   const ratio = sd / scale;
   return ratio < 0.4 ? "muito consistente" : ratio < 1 ? "consistente" : ratio < 2 ? "variável" : "muito inconsistente";
+}
+
+/** Mean±stddev band of a channel across all valid laps, sampled around a corner (offset in % of lap
+ * distance, negative = before the corner, positive = after), used to graph how consistently the
+ * driver repeats the actual brake/throttle CURVE (not just a single onset point) at that corner —
+ * e.g. whether trail-braking pressure and release are applied the same way lap after lap. */
+function cornerBand(validTraces: { points: TracePoint[] }[], cornerDistance: number, channel: ChannelKey) {
+  const band: { offset: number; mean: number; stddev: number }[] = [];
+  for (let offset = -CORNER_WINDOW; offset <= CORNER_WINDOW; offset += 1) {
+    const distance = ((cornerDistance + offset) % 100 + 100) % 100;
+    const values = validTraces.map(({ points }) => interpolate(points, distance, channel)).filter((value): value is number => value !== null);
+    if (values.length < 3) continue;
+    const avg = mean(values);
+    band.push({ offset, mean: Number(avg.toFixed(3)), stddev: Number(stddev(values, avg).toFixed(3)) });
+  }
+  return band;
 }
 
 async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCategory>) {
@@ -307,6 +324,8 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
   // como pedido explicitamente — a mesma curva analisada em contextos (voltas) diferentes.
   const referenceTrace = validTraces.reduce((fastest, item) => (item.lapTime < fastest.lapTime ? item : fastest), validTraces[0]);
   const cornerDistances = referenceTrace.points.some((point) => point.speed !== undefined) ? detectCorners(referenceTrace.points) : [];
+  const trackDisplayName = trackRow.data?.name ?? "";
+  const trackVariant = trackRow.data?.variant ?? "";
   const cornerReports = cornerDistances.map((distance, index) => {
     const perLap = validTraces.map(({ lap, points }) => ({ lapNumber: lap.lapNumber ?? null, ...analyzeCornerForLap(points, distance) }));
     const brakeOnsets = perLap.map((item) => item.brakeOnset).filter((value): value is number => value !== null);
@@ -318,21 +337,33 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     const apexSd = apexSpeeds.length >= 3 ? stddev(apexSpeeds, apexMean!) : null;
     const reapplyMean = reapplies.length ? mean(reapplies) : null;
     const reapplySd = reapplies.length >= 3 ? stddev(reapplies, reapplyMean!) : null;
+
+    const brakeBand = cornerBand(validTraces, distance, "brake");
+    const throttleBand = cornerBand(validTraces, distance, "throttle");
+    const brakeShapeSd = brakeBand.length ? mean(brakeBand.map((point) => point.stddev)) : null;
+    const throttleShapeSd = throttleBand.length ? mean(throttleBand.map((point) => point.stddev)) : null;
+
     return {
       cornerNumber: index + 1,
+      name: lookupCornerName(trackDisplayName, trackVariant, distance),
       distancePct: distance,
       sampleSize: perLap.length,
       braking: brakeSd === null ? null : { meanDistancePct: Number(brakeMean!.toFixed(1)), stddev: Number(brakeSd.toFixed(2)), consistency: consistencyLabel(brakeSd, 1.5) },
       apexSpeed: apexSd === null ? null : { mean: Number(apexMean!.toFixed(1)), stddev: Number(apexSd.toFixed(2)), consistency: consistencyLabel(apexSd, 3) },
       throttleReapply: reapplySd === null ? null : { meanDistancePct: Number(reapplyMean!.toFixed(1)), stddev: Number(reapplySd.toFixed(2)), consistency: consistencyLabel(reapplySd, 1.5) },
+      brakeShape: brakeShapeSd === null ? null : { consistency: consistencyLabel(brakeShapeSd, 0.05) },
+      throttleShape: throttleShapeSd === null ? null : { consistency: consistencyLabel(throttleShapeSd, 0.05) },
+      brakeBand, throttleBand,
     };
   });
   const cornerNarratives = cornerReports.map((corner) => {
     const parts: string[] = [];
-    if (corner.braking) parts.push(`ponto de frenagem ${corner.braking.consistency} (desvio de ${corner.braking.stddev}% da pista, freando em média aos ${corner.braking.meanDistancePct}%)`);
-    if (corner.apexSpeed) parts.push(`velocidade de ápice ${corner.apexSpeed.consistency} (média ${corner.apexSpeed.mean} un., desvio ${corner.apexSpeed.stddev})`);
-    if (corner.throttleReapply) parts.push(`reabertura do acelerador ${corner.throttleReapply.consistency} (aos ${corner.throttleReapply.meanDistancePct}% da pista em média, desvio ${corner.throttleReapply.stddev}%)`);
-    return `Curva ${corner.cornerNumber} (~${corner.distancePct}% da volta): ${parts.join("; ")}.`;
+    if (corner.braking) parts.push(`você começa a frear ${corner.braking.consistency === "muito consistente" || corner.braking.consistency === "consistente" ? "sempre no mesmo ponto" : "em pontos diferentes a cada volta"} (perto dos ${corner.braking.meanDistancePct}% da pista)`);
+    if (corner.brakeShape) parts.push(`a forma como você solta o freio até o ponto mais lento da curva (trail braking) é ${corner.brakeShape.consistency}`);
+    if (corner.apexSpeed) parts.push(`a velocidade mais baixa que você atinge na curva é ${corner.apexSpeed.consistency} entre as voltas (variação de ${corner.apexSpeed.stddev})`);
+    if (corner.throttleShape) parts.push(`a forma como você volta a acelerar depois da curva é ${corner.throttleShape.consistency}`);
+    const label = corner.name ? `Curva ${corner.cornerNumber} (${corner.name})` : `Curva ${corner.cornerNumber}`;
+    return `${label} — ~${corner.distancePct}% da volta: ${parts.join("; ")}.`;
   });
 
   const ranked = [...channelStats].sort((a, b) => a.avgScore - b.avgScore);

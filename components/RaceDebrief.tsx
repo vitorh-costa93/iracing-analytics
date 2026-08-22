@@ -7,7 +7,14 @@ type ChannelStat = { channel: string; label: string; avgScore: number; binStats?
 type LapScatterPoint = { lapNumber: number | null; lapTime: number; deltaFromBest: number };
 type ExcludedOutlier = { lapNumber: number | null; lapTime: string; zScore: number };
 type CornerMetric = { meanDistancePct?: number; mean?: number; stddev: number; consistency: string };
-type CornerReport = { cornerNumber: number; distancePct: number; sampleSize: number; braking: CornerMetric | null; apexSpeed: CornerMetric | null; throttleReapply: CornerMetric | null };
+type ShapeMetric = { consistency: string };
+type BandPoint = { offset: number; mean: number; stddev: number };
+type CornerReport = {
+  cornerNumber: number; name: string | null; distancePct: number; sampleSize: number;
+  braking: CornerMetric | null; apexSpeed: CornerMetric | null; throttleReapply: CornerMetric | null;
+  brakeShape: ShapeMetric | null; throttleShape: ShapeMetric | null;
+  brakeBand: BandPoint[]; throttleBand: BandPoint[];
+};
 type CategoryDebrief = {
   session: { startedAt: string; endedAt: string; durationMinutes: number; car: string; track: string } | null;
   message?: string;
@@ -71,6 +78,26 @@ function ChannelBandChart({ label, binStats }: { label: string; binStats: BinSta
         <path d={meanPath} className="debrief-band-line" />
       </svg>
     </div>
+  );
+}
+
+function CornerBandChart({ brakeBand, throttleBand }: { brakeBand: BandPoint[]; throttleBand: BandPoint[] }) {
+  const width = 260, height = 90, pad = { left: 4, right: 4, top: 6, bottom: 4 };
+  const offsets = [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
+  if (!offsets.length) return null;
+  const minOffset = Math.min(...offsets), maxOffset = Math.max(...offsets);
+  const x = (offset: number) => pad.left + ((offset - minOffset) / Math.max(1, maxOffset - minOffset)) * (width - pad.left - pad.right);
+  const y = (value: number) => pad.top + (1 - value) * (height - pad.top - pad.bottom);
+  const bandPath = (band: BandPoint[]) => band.length ? `${band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(Math.min(1, p.mean + p.stddev)).toFixed(1)}`).join(" ")} ${[...band].reverse().map((p) => `L ${x(p.offset).toFixed(1)} ${y(Math.max(0, p.mean - p.stddev)).toFixed(1)}`).join(" ")} Z` : "";
+  const meanPath = (band: BandPoint[]) => band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(p.mean).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas">
+      <line x1={x(0)} x2={x(0)} y1={pad.top} y2={height - pad.bottom} className="corner-mini-axis" />
+      <path d={bandPath(brakeBand)} className="corner-mini-band brake" />
+      <path d={meanPath(brakeBand)} className="corner-mini-line brake" />
+      <path d={bandPath(throttleBand)} className="corner-mini-band throttle" />
+      <path d={meanPath(throttleBand)} className="corner-mini-line throttle" />
+    </svg>
   );
 }
 
@@ -183,30 +210,36 @@ export default function RaceDebrief() {
           {data.corners && data.corners.length > 0 && (
             <div className="race-debrief-chart-block">
               <span className="section-kicker">ANÁLISE POR CURVA</span>
-              <h4>Consistência de frenagem, ápice e reabertura — curva a curva</h4>
-              <p className="race-debrief-channels-note">Para cada zona de frenagem detectada na sua volta mais rápida, comparo onde você freou, a que velocidade fez o ápice e onde reabriu o acelerador em todas as voltas analisadas.</p>
+              <h4>Como você freia, faz a curva e volta a acelerar — curva a curva</h4>
+              <p className="race-debrief-channels-note">Para cada curva detectada na sua volta mais rápida, comparo onde você começa a frear, como solta o freio até o ponto mais lento (trail braking), a velocidade mínima que você atinge e como volta a acelerar — em todas as voltas analisadas. O gráfico mostra freio (vermelho) e acelerador (verde) na região da curva: faixa estreita = você repete o mesmo movimento; faixa larga = varia de volta a volta.</p>
               <div className="race-debrief-corner-grid">
                 {data.corners.map((corner) => (
                   <div className="race-debrief-corner-card" key={corner.cornerNumber}>
-                    <h5>Curva {corner.cornerNumber} <span>~{corner.distancePct}% da volta</span></h5>
-                    {corner.braking && (
-                      <div className={`corner-metric ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>
-                        <span>Frenagem</span><strong>{corner.braking.consistency}</strong>
-                        <small>ponto médio {corner.braking.meanDistancePct}% • desvio {corner.braking.stddev}</small>
-                      </div>
-                    )}
-                    {corner.apexSpeed && (
-                      <div className={`corner-metric ${CONSISTENCY_CLASS[corner.apexSpeed.consistency] ?? ""}`}>
-                        <span>Velocidade de ápice</span><strong>{corner.apexSpeed.consistency}</strong>
-                        <small>média {corner.apexSpeed.mean} • desvio {corner.apexSpeed.stddev}</small>
-                      </div>
-                    )}
-                    {corner.throttleReapply && (
-                      <div className={`corner-metric ${CONSISTENCY_CLASS[corner.throttleReapply.consistency] ?? ""}`}>
-                        <span>Reabertura do acelerador</span><strong>{corner.throttleReapply.consistency}</strong>
-                        <small>ponto médio {corner.throttleReapply.meanDistancePct}% • desvio {corner.throttleReapply.stddev}</small>
-                      </div>
-                    )}
+                    <h5>Curva {corner.cornerNumber}{corner.name ? ` — ${corner.name}` : ""} <span>~{corner.distancePct}% da volta</span></h5>
+                    <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} />
+                    <div className="corner-metric-grid">
+                      {corner.braking && (
+                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>
+                          <span>Onde você começa a frear</span><strong>{corner.braking.consistency}</strong>
+                          <small>em média aos {corner.braking.meanDistancePct}% da pista</small>
+                        </div>
+                      )}
+                      {corner.brakeShape && (
+                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.brakeShape.consistency] ?? ""}`}>
+                          <span>Como solta o freio (trail braking)</span><strong>{corner.brakeShape.consistency}</strong>
+                        </div>
+                      )}
+                      {corner.apexSpeed && (
+                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.apexSpeed.consistency] ?? ""}`}>
+                          <span>Velocidade mínima da curva</span><strong>{corner.apexSpeed.consistency}</strong>
+                        </div>
+                      )}
+                      {corner.throttleShape && (
+                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.throttleShape.consistency] ?? ""}`}>
+                          <span>Como volta a acelerar</span><strong>{corner.throttleShape.consistency}</strong>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 ))}
               </div>
