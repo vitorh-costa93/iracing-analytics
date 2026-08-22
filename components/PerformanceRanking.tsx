@@ -43,7 +43,7 @@ export default function PerformanceRanking({ items, emptyText, kind = "car" }: P
   // Ranked by TOTAL Δ iRating — this is "você ganha ou perde iRating nessa pista, no total", which
   // is the actual question this panel answers. Average per race is shown alongside as context, not
   // as the sort key (a previous version switched to avg-as-primary; reverted per explicit feedback).
-  const gains = items.filter((item) => item.delta > 0).slice(0, 5);
+  const gains = [...items].filter((item) => item.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 5);
   const drops = [...items].filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5);
   const rows = [...gains, ...drops].sort((a, b) => b.delta - a.delta);
   const maxAbs = Math.max(...rows.map((item) => Math.abs(item.delta)), 1);

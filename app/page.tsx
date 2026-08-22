@@ -113,12 +113,10 @@ function aggregateRows(
 
   // avgDelta must be recomputed as total/races AFTER aggregation, not summed/averaged from the
   // per-row avgDelta values — otherwise a track raced under several different cars would get its
-  // average double-counted. Ranking/sizing the bars by this (not the raw total) matters: a track
-  // raced 3 times can otherwise dominate the "biggest gain" list purely from race count, burying a
-  // track that's actually stronger per-race but has a smaller total because it's raced 20 times.
+  // average double-counted. Shown alongside the total in PerformanceRanking as context.
   for (const item of map.values()) item.avgDelta = item.races > 0 ? item.delta / item.races : 0;
 
-  return [...map.values()].sort((a, b) => b.avgDelta - a.avgDelta);
+  return [...map.values()].sort((a, b) => b.delta - a.delta);
 }
 
 export default function Home() {
