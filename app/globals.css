@@ -441,3 +441,22 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 @media (max-width: 720px) {
   .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
 }
+
+.sector-consistency { margin-top: 18px; }
+.sector-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
+.sector-row { display: grid; grid-template-columns: 36px 1fr 110px 220px; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 3px; }
+.sector-number { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--muted); }
+.sector-track { position: relative; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+.sector-spread { height: 100%; border-radius: 4px; }
+.sector-best-marker { position: absolute; left: 0; top: -2px; bottom: -2px; width: 2px; background: var(--text); }
+.sector-consistency { font-family: var(--mono); font-size: 11px; font-weight: 600; }
+.sector-times { color: var(--soft); font-family: var(--mono); font-size: 11px; text-align: right; }
+.sector-row.great .sector-spread { background: var(--green); }.sector-row.great .sector-consistency { color: var(--green); }
+.sector-row.good .sector-spread { background: var(--blue); }.sector-row.good .sector-consistency { color: var(--blue); }
+.sector-row.warn .sector-spread { background: var(--amber); }.sector-row.warn .sector-consistency { color: var(--amber); }
+.sector-row.bad .sector-spread { background: var(--red); }.sector-row.bad .sector-consistency { color: var(--red); }
+
+@media (max-width: 720px) {
+  .sector-row { grid-template-columns: 1fr; gap: 4px; }
+  .sector-times { text-align: left; }
+}
