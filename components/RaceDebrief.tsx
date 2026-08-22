@@ -215,7 +215,7 @@ export default function RaceDebrief() {
               <div className="race-debrief-corner-grid">
                 {data.corners.map((corner) => (
                   <div className="race-debrief-corner-card" key={corner.cornerNumber}>
-                    <h5>Curva {corner.cornerNumber}{corner.name ? ` — ${corner.name}` : ""} <span>~{corner.distancePct}% da volta</span></h5>
+                    <h5>{corner.name ?? `Zona de frenagem ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
                     <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} />
                     <div className="corner-metric-grid">
                       {corner.braking && (

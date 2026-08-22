@@ -362,7 +362,12 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     if (corner.brakeShape) parts.push(`a forma como você solta o freio até o ponto mais lento da curva (trail braking) é ${corner.brakeShape.consistency}`);
     if (corner.apexSpeed) parts.push(`a velocidade mais baixa que você atinge na curva é ${corner.apexSpeed.consistency} entre as voltas (variação de ${corner.apexSpeed.stddev})`);
     if (corner.throttleShape) parts.push(`a forma como você volta a acelerar depois da curva é ${corner.throttleShape.consistency}`);
-    const label = corner.name ? `Curva ${corner.cornerNumber} (${corner.name})` : `Curva ${corner.cornerNumber}`;
+    // Sem o nome real, não numeramos como "Curva N": só detectamos zonas de frenagem (mínimos de
+    // velocidade), então uma sequência de curvas rápidas sem frenagem forte (ex: a segunda curva de
+    // Monza, em alta velocidade) não vira uma zona nossa, e numerar sequencialmente aqui erraria a
+    // numeração oficial da pista (nossa 2ª zona pode ser a curva 4 de verdade). "Zona de frenagem N"
+    // é o rótulo honesto quando não sabemos o nome real da curva.
+    const label = corner.name ?? `Zona de frenagem ${corner.cornerNumber}`;
     return `${label} — ~${corner.distancePct}% da volta: ${parts.join("; ")}.`;
   });
 
