@@ -113,6 +113,20 @@ const ENTRIES: TrackCornerEntry[] = [
     names: ["Senna S", null, null, null, "L'Épingle", null, "Pont de la Concorde", null, null, "Champions Corner (Wall of Champions)"],
   },
   {
+    // All 13 turns are officially named except T3/T4 — most are named after MotoGP riders and
+    // circuit figures (Ángel Nieto himself gives the track its name).
+    match: (t) => /jerez/i.test(t),
+    names: ["Expo '92", "Michelin", null, null, "Sito Pons", "Dani Pedrosa", "Carmelo Ezpeleta", "Jorge Martínez 'Aspar'", "Ángel Nieto", "Peluqui", "Álex Crivillé", "Ferrari", "Jorge Lorenzo"],
+  },
+  {
+    match: (t) => /algarve|portim[aã]o/i.test(t),
+    names: ["Primeira", null, "Lagos", null, "Torre Vip", null, null, null, null, null, null, null, null, null, "Galp"],
+  },
+  {
+    match: (t) => /sebring/i.test(t),
+    names: [null, "Kristensen", null, null, null, null, "Hairpin", null, null, null, null, null, null, null, "Gendebien Bend", null, "Sunset Bend"],
+  },
+  {
     match: (t) => /magny-cours/i.test(t),
     names: ["Grande Courbe", "Estoril", null, "Adelaide", null, "Nürburgring (chicane)", "180°", null, "Imola (chicane)", null, "Château d'Eau", "Complexe du Lycée (chicane)"],
   },
