@@ -7,7 +7,11 @@ const GARAGE61_BASE = "https://garage61.net/api/v1";
 const MIN_RACE_MINUTES = 15;
 const MAX_LAPS = 10;
 const PAGE_SIZE = 250;
-const RATING_CATEGORIES = ["formula_car", "sports_car"] as const;
+// "gtp_car" is a debrief-only grouping, not an iRacing/Garage61 iRating category — Garage61 only
+// tracks separate iRating for formula_car/sports_car (see rating_history.category), GTP races count
+// towards the sports_car iRating. We still split it into its own debrief tab since GTP (Ferrari 499P,
+// Porsche 963, etc.) drives very differently from GT3 and the driver races it as a distinct category.
+const RATING_CATEGORIES = ["formula_car", "sports_car", "gtp_car"] as const;
 type RatingCategory = (typeof RATING_CATEGORIES)[number];
 
 type Garage61Lap = {
@@ -224,7 +228,7 @@ async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCat
     .order("started_at", { ascending: false }).limit(200);
   if (sessionsError) throw sessionsError;
 
-  const results: Record<RatingCategory, unknown> = { formula_car: null, sports_car: null };
+  const results: Record<RatingCategory, unknown> = { formula_car: null, sports_car: null, gtp_car: null };
 
   for (const category of RATING_CATEGORIES) {
     const carIds = new Set(carIdsForCategory.get(category) ?? []);
@@ -233,7 +237,8 @@ async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCat
       const minutes = (new Date(row.ended_at).getTime() - new Date(row.started_at).getTime()) / 60000;
       return Number.isFinite(minutes) && minutes >= MIN_RACE_MINUTES;
     });
-    if (!candidate) { results[category] = { status: "ok", session: null, message: `Nenhuma corrida de ${category === "formula_car" ? "Formula Car" : "Sports Car"} com pelo menos ${MIN_RACE_MINUTES} minutos encontrada.` }; continue; }
+    const categoryLabel = category === "formula_car" ? "Formula Car" : category === "gtp_car" ? "GTP" : "Sports Car";
+    if (!candidate) { results[category] = { status: "ok", session: null, message: `Nenhuma corrida de ${categoryLabel} com pelo menos ${MIN_RACE_MINUTES} minutos encontrada.` }; continue; }
 
     const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", category).maybeSingle();
     if (cached && Number(cached.session_id) === Number(candidate.id)) { results[category] = cached.payload; continue; }
@@ -417,6 +422,15 @@ export async function GET() {
     const carCategoryMap = new Map<number, RatingCategory>();
     for (const row of categoryRows ?? []) {
       if (row.rating_category === "formula_car" || row.rating_category === "sports_car") carCategoryMap.set(row.car_id, row.rating_category);
+    }
+
+    // GTP cars (Ferrari 499P, Porsche 963, etc.) count towards the sports_car iRating in Garage61
+    // (there's no separate GTP iRating bucket there), but drive differently enough from GT3 that the
+    // driver races it as its own category — split it into its own debrief tab.
+    const { data: gtpGroup } = await supabaseAdmin.from("car_groups").select("id").eq("name", "GTP").maybeSingle();
+    if (gtpGroup) {
+      const { data: gtpMembers } = await supabaseAdmin.from("car_group_members").select("car_id").eq("car_group_id", gtpGroup.id);
+      for (const row of gtpMembers ?? []) carCategoryMap.set(row.car_id, "gtp_car");
     }
 
     const categories = await computeDebrief(driver.id, carCategoryMap);

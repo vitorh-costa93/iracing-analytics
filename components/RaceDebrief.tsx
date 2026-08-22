@@ -35,8 +35,9 @@ type CategoryDebrief = {
 };
 
 const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
-type Category = "formula_car" | "sports_car";
-const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car" };
+type Category = "formula_car" | "sports_car" | "gtp_car";
+const CATEGORIES: Category[] = ["formula_car", "sports_car", "gtp_car"];
+const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car", gtp_car: "GTP" };
 
 function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
   const width = 560, height = 200, pad = { left: 46, right: 12, top: 14, bottom: 28 };
@@ -116,7 +117,10 @@ export default function RaceDebrief() {
         if (!active) return;
         if (result.status !== "ok") throw new Error(result.message ?? "Erro ao gerar o debrief");
         setCategories(result.categories);
-        if (!result.categories?.formula_car?.session && result.categories?.sports_car?.session) setSelected("sports_car");
+        if (!result.categories?.formula_car?.session) {
+          const fallback = CATEGORIES.find((category) => result.categories?.[category]?.session);
+          if (fallback) setSelected(fallback);
+        }
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoading(false));
@@ -131,7 +135,7 @@ export default function RaceDebrief() {
   return (
     <div className="race-debrief">
       <div className="race-debrief-category-toggle">
-        {(["formula_car", "sports_car"] as Category[]).map((category) => (
+        {CATEGORIES.map((category) => (
           <button key={category} className={selected === category ? "active" : ""} onClick={() => setSelected(category)}>{CATEGORY_LABEL[category]}</button>
         ))}
       </div>
