@@ -442,6 +442,12 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
 }
 
+.focus-panel { margin-top: 24px; }
+.focus-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.focus-card { padding: 14px 16px; border: 1px solid var(--border-strong); border-left: 3px solid var(--amber); background: var(--amber-pale); border-radius: 3px; }
+.focus-card strong { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 700; color: var(--text); }
+.focus-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+
 .sector-consistency { margin-top: 18px; }
 .sector-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .sector-row { display: grid; grid-template-columns: 36px 1fr 110px 220px; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 3px; }

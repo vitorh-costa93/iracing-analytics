@@ -83,6 +83,8 @@ type DashboardData = {
     }>;
   };
   featureAvailability: { wins: boolean; winsReason: string };
+  focus: { title: string; detail: string }[];
+  practiceInsight: { title: string; detail: string } | null;
   races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: number | null; startPosition: number | null; finishPosition: number | null }>;
 };
 
@@ -226,6 +228,32 @@ export default function Home() {
         <AppTabs />
 
         {message && <div className="status-banner">{message}</div>}
+
+        {(data.focus.length > 0 || data.practiceInsight) && (
+          <section className="section-block focus-panel">
+            <div className="section-title-row">
+              <div>
+                <span className="section-kicker">ONDE FOCAR</span>
+                <h2>Prioridades desta semana</h2>
+                <p>Combina o pior contexto por corrida, o ponto de melhoria mais recente de cada Debrief, e a correlação treino × resultado.</p>
+              </div>
+            </div>
+            <div className="focus-grid">
+              {data.focus.map((item) => (
+                <div className="focus-card" key={item.title}>
+                  <strong>{item.title}</strong>
+                  <p>{item.detail}</p>
+                </div>
+              ))}
+              {data.practiceInsight && (
+                <div className="focus-card">
+                  <strong>{data.practiceInsight.title}</strong>
+                  <p>{data.practiceInsight.detail}</p>
+                </div>
+              )}
+            </div>
+          </section>
+        )}
 
         <section className="section-block">
           <div className="section-title-row">
