@@ -86,7 +86,7 @@ type DashboardData = {
   races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: number | null; startPosition: number | null; finishPosition: number | null }>;
 };
 
-type RankingItem = { label: string; delta: number; races: number; group?: string | null };
+type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
 
 function shortSeason(name: string) {
   return name.replace(" Season ", " S");
@@ -103,13 +103,20 @@ function aggregateRows(
     const label = row[key];
     const group = includeGroup ? row.carClass : null;
     const mapKey = `${group ?? ""}::${label}`;
-    const current = map.get(mapKey) ?? { label, delta: 0, races: 0, group };
+    const current = map.get(mapKey) ?? { label, delta: 0, races: 0, group, avgDelta: 0 };
     current.delta += row.delta;
     current.races += row.races;
     map.set(mapKey, current);
   }
 
-  return [...map.values()].sort((a, b) => b.delta - a.delta);
+  // avgDelta must be recomputed as total/races AFTER aggregation, not summed/averaged from the
+  // per-row avgDelta values — otherwise a track raced under several different cars would get its
+  // average double-counted. Ranking/sizing the bars by this (not the raw total) matters: a track
+  // raced 3 times can otherwise dominate the "biggest gain" list purely from race count, burying a
+  // track that's actually stronger per-race but has a smaller total because it's raced 20 times.
+  for (const item of map.values()) item.avgDelta = item.races > 0 ? item.delta / item.races : 0;
+
+  return [...map.values()].sort((a, b) => b.avgDelta - a.avgDelta);
 }
 
 export default function Home() {

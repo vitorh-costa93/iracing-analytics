@@ -1,9 +1,10 @@
 import { CarFront, MapPin } from "lucide-react";
 
-type RankingItem = { label: string; delta: number; races: number; group?: string | null };
+type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
 type Props = { items: RankingItem[]; emptyText?: string; kind?: "car" | "track" };
 
 function signed(value: number) { return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR")}`; }
+function signedAvg(value: number) { return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`; }
 
 function countryCode(label: string) {
   const value = label.toLowerCase();
@@ -39,25 +40,33 @@ function manufacturerSlug(label: string) {
 
 export default function PerformanceRanking({ items, emptyText, kind = "car" }: Props) {
   if (!items.length) return <div className="ranking-empty">{emptyText ?? "Sem dados"}</div>;
-  const gains = items.filter((item) => item.delta > 0).slice(0, 5);
-  const drops = [...items].filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5);
-  const rows = [...gains, ...drops].sort((a, b) => b.delta - a.delta);
-  const maxAbs = Math.max(...rows.map((item) => Math.abs(item.delta)), 1);
+  // Ranked by average Δ iRating per race, not the raw total — a track/carro raced só 2-3 vezes pode
+  // ter um total pequeno que o esconde da lista mesmo sendo pior por corrida que um contexto raced
+  // 20x com total maior mas média melhor. Exige pelo menos 2 corridas para entrar no ranking (1
+  // corrida só é média = resultado daquela corrida, não um padrão) — só recorre a itens de 1 corrida
+  // se não houver 5 qualificados o suficiente.
+  const qualified = items.filter((item) => item.races >= 2);
+  const pool = qualified.length >= 4 ? qualified : items;
+  const gains = [...pool].filter((item) => item.avgDelta > 0).sort((a, b) => b.avgDelta - a.avgDelta).slice(0, 5);
+  const drops = [...pool].filter((item) => item.avgDelta < 0).sort((a, b) => a.avgDelta - b.avgDelta).slice(0, 5);
+  const rows = [...gains, ...drops].sort((a, b) => b.avgDelta - a.avgDelta);
+  const maxAbs = Math.max(...rows.map((item) => Math.abs(item.avgDelta)), 1);
 
   return <div className="diverging-ranking">
     <div className="diverging-axis"><span>PERDAS</span><i /><span>GANHOS</span></div>
+    <p className="diverging-note">Ranking por Δ iRating médio por corrida (não o total) — assim um contexto raced poucas vezes não domina a lista à custa de um mais consistente.</p>
     {rows.map((item) => {
-      const positive = item.delta > 0;
-      const width = Math.max(Math.abs(item.delta) / maxAbs * 48, 2);
+      const positive = item.avgDelta > 0;
+      const width = Math.max(Math.abs(item.avgDelta) / maxAbs * 48, 2);
       const code = kind === "track" ? countryCode(item.label) : null;
       const brand = kind === "car" ? manufacturerSlug(item.label) : null;
       return <div className="diverging-row" key={`${item.group ?? ""}-${item.label}`}>
         <div className="diverging-label">
           {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" /> : brand && BRAND_LOGO_OVERRIDES[brand] ? <span className="brand-icon-chip"><img className="brand-icon" src={BRAND_LOGO_OVERRIDES[brand]} alt={`Marca ${brand}`} width="14" height="14" /></span> : brand ? <span className="brand-icon-chip"><img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1a1f26`} alt={`Marca ${brand}`} width="14" height="14" /></span> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
-          {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas</small>
+          {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas • total {signed(item.delta)}</small>
         </div>
         <div className="diverging-bar"><i className="center-line" /><span className={positive ? "positive" : "negative"} style={positive ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>
-        <b className={positive ? "positive" : "negative"}>{signed(item.delta)}</b>
+        <b className={positive ? "positive" : "negative"}>{signedAvg(item.avgDelta)}/corrida</b>
       </div>;
     })}
   </div>;
