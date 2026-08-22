@@ -628,90 +628,6 @@ export async function GET() {
     }
 
     // =====================================================
-    // FOCUS — síntese acionável: pior contexto por corrida (já calculado acima em `historical`)
-    // + o ponto de melhoria mais recente de cada Debrief em cache, para virar uma recomendação
-    // direta em vez de só um dashboard passivo que o piloto precisa interpretar sozinho.
-    // =====================================================
-    const trackAgg = new Map<string, { races: number; delta: number }>();
-    for (const row of historical) {
-      const key = row.track;
-      const current = trackAgg.get(key) ?? { races: 0, delta: 0 };
-      current.races += row.races ?? 0;
-      current.delta += row.delta_irating ?? 0;
-      trackAgg.set(key, current);
-    }
-    const worstTrack = [...trackAgg.entries()]
-      .filter(([, value]) => value.races >= 2)
-      .map(([track, value]) => ({ track, races: value.races, avg: value.delta / value.races }))
-      .sort((a, b) => a.avg - b.avg)[0] ?? null;
-
-    const { data: debriefRows } = await supabaseAdmin.from("race_debriefs").select("rating_category,payload").eq("driver_id", driver.id);
-    const categoryLabel = (value: string) => value === "formula_car" ? "Formula Car" : value === "gtp_car" ? "GTP" : "Sports Car";
-
-    const focus: { title: string; detail: string }[] = [];
-    if (worstTrack && worstTrack.avg < 0) {
-      focus.push({
-        title: `Pior contexto por corrida: ${worstTrack.track}`,
-        detail: `Média de ${worstTrack.avg.toFixed(1)} iRating por corrida em ${worstTrack.races} corridas — o pior número entre todas as pistas com pelo menos 2 corridas registradas.`,
-      });
-    }
-    for (const row of debriefRows ?? []) {
-      const payload = row.payload as { improvements?: string[] } | null;
-      const improvement = payload?.improvements?.[0];
-      if (improvement) focus.push({ title: `${categoryLabel(row.rating_category as string)}: ponto de melhoria do último Debrief`, detail: improvement });
-    }
-
-    // =====================================================
-    // PRACTICE INSIGHT — daily_statistics (sincronizado, nunca consultado antes) cruzado com o
-    // resultado real da corrida daquele mesmo dia/carro/pista, pra ver se corridas com pouco treino
-    // no mesmo dia realmente saem piores, em vez de assumir isso sem checar os números.
-    // =====================================================
-    let practiceInsight: { title: string; detail: string } | null = null;
-    try {
-      const [{ data: dailyRows }, { data: raceMatchRows }, { data: raceSessionRows }] = await Promise.all([
-        supabaseAdmin.from("daily_statistics").select("statistic_date,car_id,track_id,session_type,laps_driven").eq("driver_id", driver.id).in("session_type", [1, 2]),
-        supabaseAdmin.from("race_rating_matches").select("session_id,delta_irating").eq("driver_id", driver.id),
-        supabaseAdmin.from("driving_sessions").select("id,car_id,track_id,started_at").eq("driver_id", driver.id).eq("session_type", 3),
-      ]);
-      const practiceByKey = new Map<string, number>();
-      for (const row of dailyRows ?? []) {
-        const key = `${row.statistic_date}|${row.car_id}|${row.track_id}`;
-        practiceByKey.set(key, (practiceByKey.get(key) ?? 0) + (row.laps_driven ?? 0));
-      }
-      const sessionById = new Map((raceSessionRows ?? []).map((row) => [Number(row.id), row]));
-      const pairs = (raceMatchRows ?? []).map((match) => {
-        const session = sessionById.get(Number(match.session_id));
-        if (!session) return null;
-        const date = new Date(session.started_at).toISOString().slice(0, 10);
-        const key = `${date}|${session.car_id}|${session.track_id}`;
-        const practiceLaps = practiceByKey.get(key) ?? 0;
-        return { practiceLaps, delta: match.delta_irating };
-      }).filter((item): item is { practiceLaps: number; delta: number } => item !== null);
-
-      if (pairs.length >= 20) {
-        const sortedLaps = [...pairs.map((p) => p.practiceLaps)].sort((a, b) => a - b);
-        const median = sortedLaps[Math.floor(sortedLaps.length / 2)];
-        const below = pairs.filter((p) => p.practiceLaps <= median);
-        const above = pairs.filter((p) => p.practiceLaps > median);
-        if (below.length >= 8 && above.length >= 8) {
-          const avg = (list: typeof pairs) => list.reduce((sum, p) => sum + p.delta, 0) / list.length;
-          const belowAvg = avg(below), aboveAvg = avg(above);
-          const gap = aboveAvg - belowAvg;
-          if (Math.abs(gap) >= 3) {
-            practiceInsight = {
-              title: gap > 0 ? "Mais treino no mesmo dia correlaciona com resultado melhor" : "Mais treino no mesmo dia não mostrou correlação positiva com o resultado",
-              detail: gap > 0
-                ? `Corridas com até ${median} voltas de treino no mesmo dia (mesmo carro/pista) tiveram média de ${belowAvg.toFixed(1)} iRating; com mais que isso, ${aboveAvg.toFixed(1)} — uma diferença de ${gap.toFixed(1)} pontos. É correlação, não causa comprovada, mas é consistente com "aquecer" antes de correr.`
-                : `Corridas com mais treino no mesmo dia não saíram melhores nos seus números (${belowAvg.toFixed(1)} com até ${median} voltas de treino vs ${aboveAvg.toFixed(1)} com mais) — pelo menos nessa amostra, a quantidade de treino no dia não parece ser o fator decisivo pra você.`,
-            };
-          }
-        }
-      }
-    } catch {
-      practiceInsight = null;
-    }
-
-    // =====================================================
     // RESPONSE
     // =====================================================
 
@@ -886,9 +802,6 @@ export async function GET() {
           !latest || row.capturedAt > latest ? row.capturedAt : latest, null),
         series: resultBreakdown,
       },
-
-      focus,
-      practiceInsight,
 
       featureAvailability: {
         wins: true,

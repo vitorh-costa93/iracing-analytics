@@ -442,11 +442,17 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
 }
 
-.focus-panel { margin-top: 24px; }
-.focus-grid { margin-top: 14px; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
-.focus-card { padding: 14px 16px; border: 1px solid var(--border-strong); border-left: 3px solid var(--amber); background: var(--amber-pale); border-radius: 3px; }
-.focus-card strong { display: block; margin-bottom: 6px; font-size: 13px; font-weight: 700; color: var(--text); }
-.focus-card p { margin: 0; color: var(--muted); font-size: 13px; line-height: 1.55; }
+.safety-correlation { margin-top: 18px; }
+.safety-scatter { width: 100%; height: auto; margin-top: 8px; }
+.safety-scatter-axis { stroke: var(--border-strong); stroke-width: 1; }
+.safety-scatter-label { fill: var(--soft); font-family: var(--mono); font-size: 10px; }
+.safety-dot { opacity: .8; }
+.safety-dot.formula { fill: var(--blue); }
+.safety-dot.sports { fill: var(--amber); }
+.safety-scatter-legend { display: flex; gap: 16px; margin-top: 8px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
+.safety-scatter-legend span::before { content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+.safety-scatter-legend .formula::before { background: var(--blue); }
+.safety-scatter-legend .sports::before { background: var(--amber); }
 
 .sector-consistency { margin-top: 18px; }
 .sector-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }

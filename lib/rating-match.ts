@@ -18,6 +18,12 @@ type RatingRow = { recorded_at: string; rating: number };
  * history via Garage61, not just races we've synced), so a strict 1:1 global pairing would
  * misalign everything; this only ever matches within the local 6h window, leaving races or
  * changes with no plausible partner unmatched rather than guessing.
+ *
+ * Safety Rating: Garage61 snapshots iRating and Safety Rating together on the same sync event, so
+ * every iRating change's `recorded_at` timestamp has a same-timestamp Safety Rating snapshot too —
+ * no separate matching needed. We look up the SR value at that exact timestamp and the SR value at
+ * the immediately preceding snapshot in the full (non-deduped) SR series to get the SR delta that
+ * co-occurred with the matched race, for the "does more incidents cost iRating too" correlation.
  */
 export async function recomputeRatingMatches(driverId: string) {
   const { data: categoryRows, error: categoryError } = await supabaseAdmin.from("car_rating_categories").select("car_id,rating_category");
@@ -29,6 +35,7 @@ export async function recomputeRatingMatches(driverId: string) {
   const upsertRows: {
     session_id: number; driver_id: string; rating_category: string; rating_at: string;
     previous_rating: number; new_rating: number; delta_irating: number; gap_hours: number;
+    previous_safety_rating: number | null; new_safety_rating: number | null; delta_safety_rating: number | null;
   }[] = [];
 
   for (const category of CATEGORIES) {
@@ -46,6 +53,13 @@ export async function recomputeRatingMatches(driverId: string) {
       .eq("driver_id", driverId).eq("category", category).eq("rating_type", "irating")
       .order("recorded_at", { ascending: true });
     if (ratingsError) throw ratingsError;
+
+    const { data: safetySeries, error: safetyError } = await supabaseAdmin
+      .from("rating_history").select("recorded_at,rating")
+      .eq("driver_id", driverId).eq("category", category).eq("rating_type", "safety_rating")
+      .order("recorded_at", { ascending: true });
+    if (safetyError) throw safetyError;
+    const safetyByTimestamp = new Map((safetySeries ?? []).map((row, index) => [row.recorded_at, index]));
 
     const changes: { recorded_at: string; previous: number; rating: number; used: boolean }[] = [];
     for (let i = 1; i < (ratings ?? []).length; i += 1) {
@@ -69,10 +83,20 @@ export async function recomputeRatingMatches(driverId: string) {
       const change = changes[foundIndex];
       change.used = true;
       const gapHours = (new Date(change.recorded_at).getTime() - endMs) / 3_600_000;
+
+      let previousSafety: number | null = null, newSafety: number | null = null;
+      const safetyIndex = safetyByTimestamp.get(change.recorded_at);
+      if (safetyIndex !== undefined && safetyIndex > 0 && safetySeries) {
+        newSafety = safetySeries[safetyIndex].rating;
+        previousSafety = safetySeries[safetyIndex - 1].rating;
+      }
+
       upsertRows.push({
         session_id: session.id, driver_id: driverId, rating_category: category, rating_at: change.recorded_at,
         previous_rating: change.previous, new_rating: change.rating, delta_irating: change.rating - change.previous,
         gap_hours: Number(gapHours.toFixed(3)),
+        previous_safety_rating: previousSafety, new_safety_rating: newSafety,
+        delta_safety_rating: previousSafety !== null && newSafety !== null ? newSafety - previousSafety : null,
       });
       totalMatched += 1;
     }

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
+import SafetyRatingCorrelation from "@/components/SafetyRatingCorrelation";
 import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
@@ -83,8 +84,6 @@ type DashboardData = {
     }>;
   };
   featureAvailability: { wins: boolean; winsReason: string };
-  focus: { title: string; detail: string }[];
-  practiceInsight: { title: string; detail: string } | null;
   races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: number | null; startPosition: number | null; finishPosition: number | null }>;
 };
 
@@ -227,32 +226,6 @@ export default function Home() {
 
         {message && <div className="status-banner">{message}</div>}
 
-        {(data.focus.length > 0 || data.practiceInsight) && (
-          <section className="section-block focus-panel">
-            <div className="section-title-row">
-              <div>
-                <span className="section-kicker">ONDE FOCAR</span>
-                <h2>Prioridades desta semana</h2>
-                <p>Combina o pior contexto por corrida, o ponto de melhoria mais recente de cada Debrief, e a correlação treino × resultado.</p>
-              </div>
-            </div>
-            <div className="focus-grid">
-              {data.focus.map((item) => (
-                <div className="focus-card" key={item.title}>
-                  <strong>{item.title}</strong>
-                  <p>{item.detail}</p>
-                </div>
-              ))}
-              {data.practiceInsight && (
-                <div className="focus-card">
-                  <strong>{data.practiceInsight.title}</strong>
-                  <p>{data.practiceInsight.detail}</p>
-                </div>
-              )}
-            </div>
-          </section>
-        )}
-
         <section className="section-block">
           <div className="section-title-row">
             <div>
@@ -291,6 +264,17 @@ export default function Home() {
           <div className="panel-heading"><div><span className="section-kicker">RACE SURVIVAL</span><h2>Duração × Δ iRating</h2><p>Somente corridas da season atual. Pontos à esquerda indicam sessões encerradas cedo.</p></div></div>
           <RaceScatterPlot points={scatter} />
         </article>
+        </section>
+
+        <section className="section-block">
+          <div className="section-title-row">
+            <div>
+              <span className="section-kicker">SAFETY RATING × IRATING</span>
+              <h2>Incidentes custam ranking também?</h2>
+              <p>Correlação entre Δ Safety Rating e Δ iRating, corrida a corrida.</p>
+            </div>
+          </div>
+          <SafetyRatingCorrelation />
         </section>
 
         <section className="section-block historical-section">
