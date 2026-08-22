@@ -53,7 +53,7 @@ export default function PerformanceRanking({ items, emptyText, kind = "car" }: P
       const brand = kind === "car" ? manufacturerSlug(item.label) : null;
       return <div className="diverging-row" key={`${item.group ?? ""}-${item.label}`}>
         <div className="diverging-label">
-          {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" /> : brand && BRAND_LOGO_OVERRIDES[brand] ? <img className="brand-icon" src={BRAND_LOGO_OVERRIDES[brand]} alt={`Marca ${brand}`} width="20" height="20" /> : brand ? <img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1f2933`} alt={`Marca ${brand}`} width="20" height="20" /> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
+          {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" /> : brand && BRAND_LOGO_OVERRIDES[brand] ? <span className="brand-icon-chip"><img className="brand-icon" src={BRAND_LOGO_OVERRIDES[brand]} alt={`Marca ${brand}`} width="14" height="14" /></span> : brand ? <span className="brand-icon-chip"><img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1a1f26`} alt={`Marca ${brand}`} width="14" height="14" /></span> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
           {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas</small>
         </div>
         <div className="diverging-bar"><i className="center-line" /><span className={positive ? "positive" : "negative"} style={positive ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>

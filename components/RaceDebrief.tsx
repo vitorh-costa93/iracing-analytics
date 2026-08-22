@@ -214,35 +214,19 @@ export default function RaceDebrief() {
           {data.corners && data.corners.length > 0 && (
             <div className="race-debrief-chart-block">
               <span className="section-kicker">ANÁLISE POR CURVA</span>
-              <h4>Como você freia, faz a curva e volta a acelerar — curva a curva</h4>
-              <p className="race-debrief-channels-note">Para cada curva detectada na sua volta mais rápida, comparo onde você começa a frear, como solta o freio até o ponto mais lento (trail braking), a velocidade mínima que você atinge e como volta a acelerar — em todas as voltas analisadas. O gráfico mostra freio (vermelho) e acelerador (verde) na região da curva: faixa estreita = você repete o mesmo movimento; faixa larga = varia de volta a volta.</p>
+              <h4>Curva por curva, o que fazer em cada uma</h4>
+              <p className="race-debrief-channels-note">Toda curva da pista, não só onde você freia forte. O gráfico mostra freio (vermelho) e acelerador (verde): faixa estreita = você repete o mesmo movimento volta após volta; faixa larga = você faz diferente cada vez.</p>
               <div className="race-debrief-corner-grid">
-                {data.corners.map((corner) => (
+                {data.corners.map((corner, index) => (
                   <div className="race-debrief-corner-card" key={corner.cornerNumber}>
-                    <h5>{corner.name ?? `Zona de frenagem ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
+                    <h5>{corner.name ?? `Curva ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
                     <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} />
+                    {data.cornerNarratives?.[index] && <p className="corner-narrative">{data.cornerNarratives[index].replace(/^.*?\(~\d+% da volta\):\s*/, "")}</p>}
                     <div className="corner-metric-grid">
-                      {corner.braking && (
-                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>
-                          <span>Onde você começa a frear</span><strong>{corner.braking.consistency}</strong>
-                          <small>em média aos {corner.braking.meanDistancePct}% da pista</small>
-                        </div>
-                      )}
-                      {corner.brakeShape && (
-                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.brakeShape.consistency] ?? ""}`}>
-                          <span>Como solta o freio (trail braking)</span><strong>{corner.brakeShape.consistency}</strong>
-                        </div>
-                      )}
-                      {corner.apexSpeed && (
-                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.apexSpeed.consistency] ?? ""}`}>
-                          <span>Velocidade mínima da curva</span><strong>{corner.apexSpeed.consistency}</strong>
-                        </div>
-                      )}
-                      {corner.throttleShape && (
-                        <div className={`corner-metric ${CONSISTENCY_CLASS[corner.throttleShape.consistency] ?? ""}`}>
-                          <span>Como volta a acelerar</span><strong>{corner.throttleShape.consistency}</strong>
-                        </div>
-                      )}
+                      {corner.braking && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>Ponto de freada: {corner.braking.consistency}</span>}
+                      {corner.brakeShape && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.brakeShape.consistency] ?? ""}`}>Força no freio: {corner.brakeShape.consistency}</span>}
+                      {corner.apexSpeed && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.apexSpeed.consistency] ?? ""}`}>Velocidade na curva: {corner.apexSpeed.consistency}</span>}
+                      {corner.throttleShape && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.throttleShape.consistency] ?? ""}`}>Retomada do acelerador: {corner.throttleShape.consistency}</span>}
                     </div>
                   </div>
                 ))}
@@ -252,9 +236,9 @@ export default function RaceDebrief() {
 
           {data.channelStats?.some((item) => item.binStats?.length) && (
             <div className="race-debrief-chart-block">
-              <span className="section-kicker">BANDA DE CONSISTÊNCIA</span>
-              <h4>Média ± desvio padrão por trecho da pista</h4>
-              <p className="race-debrief-channels-note">A faixa sombreada mostra o quanto cada canal variou entre as 10 voltas em cada ponto da pista (0–100%). Faixa estreita = repetição consistente; faixa larga = inconsistência ali.</p>
+              <span className="section-kicker">CONSISTÊNCIA AO LONGO DA VOLTA</span>
+              <h4>Onde você repete e onde você varia</h4>
+              <p className="race-debrief-channels-note">A faixa colorida mostra o quanto cada comando mudou entre as voltas em cada ponto da pista. Faixa fina = você faz sempre igual; faixa larga = você faz diferente cada volta ali.</p>
               {data.channelStats.filter((item) => item.binStats?.length).map((item) => <ChannelBandChart key={item.channel} label={item.label} binStats={item.binStats as BinStat[]} />)}
             </div>
           )}

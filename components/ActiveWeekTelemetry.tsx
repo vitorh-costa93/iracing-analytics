@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { detectCorners as detectCornersFromLatAccel } from "@/lib/corner-detection";
+import { lookupCornerNames } from "@/lib/track-corners";
 
 type Combination = {
   key: string;
@@ -27,7 +29,7 @@ type Comparison = {
   estimatedReferenceTime: number;
   estimatedGap: number;
   averageSpeedDifference: number;
-  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; kind: "corner" | "straight"; cornerNumber: number | null; primaryType: string }[];
+  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; kind: "corner" | "straight"; cornerNumber: number | null; cornerLabel: string | null; primaryType: string }[];
   channelInsights: string[];
 };
 
@@ -222,31 +224,16 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey) 
   return previous[field];
 }
 
-type Corner = { number: number; distance: number; minSpeed: number };
+type Corner = { number: number; distance: number; name: string | null };
 
-function detectCorners(points: TracePoint[]): Corner[] {
-  const speeds = points.map((point) => point.speed ?? 0);
-  const minimaIdx: number[] = [];
-  for (let i = 2; i < points.length - 2; i += 1) {
-    if (speeds[i] <= speeds[i - 1] && speeds[i] <= speeds[i + 1] && speeds[i] < speeds[i - 2] && speeds[i] < speeds[i + 2]) {
-      minimaIdx.push(i);
-    }
-  }
-  const merged: number[] = [];
-  for (const idx of minimaIdx) {
-    const last = merged[merged.length - 1];
-    if (last !== undefined && Math.abs(points[idx].distance - points[last].distance) < 3) {
-      if (speeds[idx] < speeds[last]) merged[merged.length - 1] = idx;
-    } else merged.push(idx);
-  }
-  const filtered = merged.filter((idx) => {
-    const nearby = points.filter((point) => Math.abs(point.distance - points[idx].distance) <= 8 || Math.abs(point.distance - points[idx].distance) >= 92);
-    const localMax = nearby.length ? Math.max(...nearby.map((point) => point.speed ?? 0)) : speeds[idx];
-    return localMax - speeds[idx] > 5;
-  });
-  return filtered
-    .sort((a, b) => points[a].distance - points[b].distance)
-    .map((idx, order) => ({ number: order + 1, distance: points[idx].distance, minSpeed: speeds[idx] }));
+/** Detects every real corner (any part of the track that isn't a straight, via lateral acceleration —
+ * not just braking zones), then attaches a researched name when the number of corners we detect on
+ * this lap plausibly matches the track's known corner count. Shared with the race debrief so corner
+ * numbering/naming is identical across the whole app instead of two independent implementations. */
+function detectCorners(points: TracePoint[], trackName: string, trackVariant: string): Corner[] {
+  const raw = detectCornersFromLatAccel(points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel })));
+  const names = lookupCornerNames(trackName, trackVariant, raw.length);
+  return raw.map((corner, index) => ({ number: corner.number, distance: corner.distance, name: names?.[index] ?? null }));
 }
 
 function nearestCorner(corners: Corner[], start: number, end: number): Corner | null {
@@ -293,7 +280,8 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     const braking = brakingDeltas.find((event) => event.position >= start - 2 && event.position <= end + 2);
     const corner = nearestCorner(corners, start, end);
     const kind: "corner" | "straight" = corner ? "corner" : "straight";
-    const place = corner ? `na zona de frenagem ${corner.number}` : "neste trecho";
+    const cornerLabel = corner ? corner.name ?? `Curva ${corner.number}` : null;
+    const place = cornerLabel ? `na ${cornerLabel}` : "neste trecho";
 
     type Finding = { type: string; weight: number; clause: string; instruction: string };
     const findings: Finding[] = [];
@@ -327,8 +315,8 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     });
     if (item.latAccelGap > .5) findings.push({
       type: "rotation", weight: item.latAccelGap * 20,
-      clause: "a referência sustenta mais aceleração lateral no ápice",
-      instruction: "carregue mais velocidade com uma entrada limpa, solte o freio de forma progressiva até o ápice, e evite correções que saturam o pneu dianteiro",
+      clause: "a referência mantém mais velocidade no ponto mais fechado da curva",
+      instruction: "chegue com mais velocidade numa entrada limpa e solte o freio aos poucos até o ponto mais lento, sem corrigir o volante — cada correção sobrecarrega o pneu da frente e tira velocidade",
     });
     if (item.rpmGap > 300) findings.push({
       type: "rpm", weight: item.rpmGap / 30,
@@ -342,7 +330,7 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     const magnitude = rankIndex === 0 && tenths >= 0.15 ? "Essa é a maior oportunidade da volta: " : tenths >= 0.12 ? "Ganho relevante aqui: " : "";
     let narrative: string;
     if (findings.length === 0) {
-      narrative = `${magnitude}você está ${(item.speedGap).toFixed(1)} km/h mais lento que a referência ${place} sem um padrão claro de freio, acelerador ou volante — pode ser confiança ou linha. Compare o seu traçado com o da referência no mapa ao lado e veja se está tocando o mesmo ápice.`;
+      narrative = `${magnitude}você está ${(item.speedGap).toFixed(1)} km/h mais lento que a referência ${place}, sem um motivo claro de freio, acelerador ou volante — pode ser confiança ou o caminho que você faz na curva. Compare seu traçado com o da referência no mapa ao lado e veja se você passa pelo mesmo ponto mais fechado da curva.`;
     } else {
       const primary = findings[0];
       const secondary = findings.slice(1, 3);
@@ -354,14 +342,15 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     }
 
     return {
-      title: `${corner ? `Zona de frenagem ${corner.number}` : "Reta / transição"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
+      title: `${cornerLabel ?? "Reta / transição"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
       detail: `Você perde cerca de ${tenths.toFixed(1)} décimos aqui. ${narrative}`,
       gain: item.gain,
-      metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ throttle ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
+      metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ acelerador ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
       start,
       end,
       kind,
       cornerNumber: corner?.number ?? null,
+      cornerLabel,
       primaryType,
     };
   }).sort((a, b) => a.start - b.start);
@@ -523,7 +512,7 @@ export default function ActiveWeekTelemetry() {
     return () => { active = false; };
   }, [selected]);
 
-  const corners = useMemo(() => trace ? detectCorners(trace.points) : [], [trace]);
+  const corners = useMemo(() => trace && selected ? detectCorners(trace.points, selected.track.name, selected.track.variant ?? "") : [], [trace, selected]);
 
   const comparison = useMemo(() => {
     if (!trace || !referenceTrace || !selected?.bestLap) return null;
@@ -615,7 +604,7 @@ export default function ActiveWeekTelemetry() {
                 <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
-              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As zonas de frenagem são numeradas na ordem em que aparecem na volta (1 = primeira frenagem forte), não o número oficial da curva na pista.</p></div>
+              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As curvas são numeradas na ordem em que aparecem na volta. Quando eu sei o nome real da curva, uso ele; quando não sei, mostro só o número.</p></div>
                   <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
                     <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); }} key={item.title}>
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
@@ -638,7 +627,7 @@ export default function ActiveWeekTelemetry() {
                   setHoveredDistance(Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100)));
                 }}>
                 {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1={value * 10} x2={value * 10} y1="0" y2="925" className="telemetry-grid" /><text x={value * 10} y="954" textAnchor={value === 0 ? "start" : value === 100 ? "end" : "middle"}>{value}%</text></g>)}
-                {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">Z{corner.number}</text></g>)}
+                {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">{corner.name ? corner.name.slice(0, 12) : `C${corner.number}`}</text></g>)}
                 {([{"field":"speed","top":10,"height":140},{"field":"throttle","top":175,"height":65},{"field":"brake","top":265,"height":65},{"field":"steering","top":355,"height":65},{"field":"rpm","top":445,"height":65},{"field":"gear","top":535,"height":35},{"field":"clutch","top":595,"height":55},{"field":"latAccel","top":685,"height":55},{"field":"longAccel","top":775,"height":55},{"field":"yawRate","top":865,"height":55}] as {field:ChannelKey;top:number;height:number}[]).map((row) => <g key={row.field}>
                   <text x="8" y={row.top + 12} className="channel-label">{row.field === "speed" ? "SPEED" : row.field === "throttle" ? "THROTTLE" : row.field === "brake" ? "BRAKE" : row.field === "steering" ? "STEERING" : row.field.toUpperCase()}</text>
                   <polyline points={polyline(trace.points, row.field, row.top, row.height, referenceTrace ? [...trace.points, ...referenceTrace.points] : trace.points)} className={`trace-${row.field}`} />
@@ -670,7 +659,7 @@ export default function ActiveWeekTelemetry() {
               <div className="insight-popup" ref={popupRef}>
                 <div className="insight-popup-head">
                   <div>
-                    <span className="section-kicker">{focusedInsight.kind === "corner" ? `ZONA DE FRENAGEM ${focusedInsight.cornerNumber}` : "TRECHO"}</span>
+                    <span className="section-kicker">{focusedInsight.kind === "corner" ? (focusedInsight.cornerLabel ?? `CURVA ${focusedInsight.cornerNumber}`).toUpperCase() : "TRECHO"}</span>
                     <h3>{focusedInsight.title}</h3>
                   </div>
                   <button type="button" className="insight-popup-close" onClick={() => { setFocusedInsight(null); setSelectedRange(null); }}>Fechar ✕</button>

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { lookupCornerName } from "@/lib/track-corners";
+import { lookupCornerNames } from "@/lib/track-corners";
+import { detectCorners as detectCornersFromLatAccel } from "@/lib/corner-detection";
 
 const GARAGE61_BASE = "https://garage61.net/api/v1";
 const MIN_RACE_MINUTES = 15;
@@ -34,7 +35,7 @@ async function fetchAllLaps(carId: number, trackId: number): Promise<Garage61Lap
   return all;
 }
 
-type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm" | "speed";
+type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm" | "speed" | "latAccel";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
 
 function normalizedHeader(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -65,6 +66,7 @@ function parseLapCsv(csv: string): { points: TracePoint[]; hasOvertakeChannel: b
     steering: find("steeringwheelangle", "steeringangle"),
     gear: find("gear"), rpm: find("rpm", "engine0rpm"),
     speed: find("speed", "speedms", "speedkph", "carspeed"),
+    latAccel: find("lataccel", "lateralacceleration"),
   };
   const hasOvertakeChannel = find("pushtopass") >= 0 || find("p2pstatus") >= 0;
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
@@ -99,8 +101,8 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey):
   return value === undefined ? null : value;
 }
 
-const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade" };
-const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "a mesma abertura de acelerador", brake: "a mesma pressão de freio", steering: "o mesmo tanto de volante", gear: "a mesma marcha", rpm: "a mesma rotação do motor", speed: "a mesma velocidade" };
+const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade", latAccel: "Força na curva" };
+const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "a mesma abertura de acelerador", brake: "a mesma pressão de freio", steering: "o mesmo tanto de volante", gear: "a mesma marcha", rpm: "a mesma rotação do motor", speed: "a mesma velocidade", latAccel: "a mesma força nas curvas" };
 const CHART_CHANNELS: ChannelKey[] = ["throttle", "brake", "steering"];
 
 function formatLapTime(value: number) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
@@ -131,36 +133,8 @@ function findOutlierLaps<T extends { lapTime: number }>(items: T[], zThreshold =
 }
 
 const CORNER_WINDOW = 7; // % of lap distance searched around each corner apex for onset/reapply crossings
-const CORNER_MERGE_MIN_GAP = 9; // must exceed 2*CORNER_WINDOW minus overlap slack, or adjacent corners' search windows collapse onto the same apex and report as duplicates
 const BRAKE_THRESHOLD = 0.15;
 const THROTTLE_THRESHOLD = 0.2;
-
-/** Detects corners as local minima in speed along the reference (fastest) lap's trace, merging
- * minima that are too close together to be distinct braking zones. Reused pattern from the
- * "Zona de frenagem" detection in ActiveWeekTelemetry.tsx, adapted to operate on percent-distance bins. */
-function detectCorners(referencePoints: TracePoint[]): number[] {
-  const bins = Array.from({ length: 101 }, (_, index) => index);
-  const speedAt = bins.map((distance) => interpolate(referencePoints, distance, "speed"));
-  const minimaDistances: number[] = [];
-  const PROMINENCE = 3;
-  for (let index = 2; index < bins.length - 2; index += 1) {
-    const value = speedAt[index];
-    if (value === null) continue;
-    const window = speedAt.slice(Math.max(0, index - 4), index + 5).filter((v): v is number => v !== null);
-    if (!window.length) continue;
-    const localMin = Math.min(...window);
-    if (value !== localMin) continue;
-    const localMax = Math.max(...window);
-    if (localMax - value < PROMINENCE) continue;
-    minimaDistances.push(bins[index]);
-  }
-  const merged: number[] = [];
-  for (const distance of minimaDistances) {
-    if (merged.length && distance - merged[merged.length - 1] < CORNER_MERGE_MIN_GAP) continue;
-    merged.push(distance);
-  }
-  return merged;
-}
 
 type CornerPointMetrics = { brakeOnset: number | null; apexSpeed: number | null; apexDistance: number | null; throttleReapply: number | null };
 
@@ -324,13 +298,16 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
   const chronological = [...validTraces].sort((a, b) => (a.lap.lapNumber ?? 0) - (b.lap.lapNumber ?? 0));
   const lapScatter = chronological.map(({ lap }) => ({ lapNumber: lap.lapNumber ?? null, lapTime: Number(lap.lapTime), deltaFromBest: Number((Number(lap.lapTime) - sortedLapTimes[0]).toFixed(3)) }));
 
-  // Análise por curva: para cada zona de frenagem detectada na volta mais rápida, compara ponto de
-  // frenagem, velocidade de ápice e ponto de reabertura do acelerador entre TODAS as voltas válidas,
-  // como pedido explicitamente — a mesma curva analisada em contextos (voltas) diferentes.
+  // Análise por curva: detecta toda curva real da pista (qualquer trecho que não seja reta, usando a
+  // aceleração lateral — não só onde há frenagem forte, o que antes fazia curvas rápidas sem frenagem
+  // como a Curva Grande de Monza serem ignoradas ou contadas com o número errado) e compara ponto de
+  // frenagem, velocidade mínima e retomada do acelerador entre TODAS as voltas válidas.
   const referenceTrace = validTraces.reduce((fastest, item) => (item.lapTime < fastest.lapTime ? item : fastest), validTraces[0]);
-  const cornerDistances = referenceTrace.points.some((point) => point.speed !== undefined) ? detectCorners(referenceTrace.points) : [];
+  const detected = detectCornersFromLatAccel(referenceTrace.points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel ?? null })));
+  const cornerDistances = detected.map((corner) => corner.distance);
   const trackDisplayName = trackRow.data?.name ?? "";
   const trackVariant = trackRow.data?.variant ?? "";
+  const researchedNames = lookupCornerNames(trackDisplayName, trackVariant, detected.length);
   const cornerReports = cornerDistances.map((distance, index) => {
     const perLap = validTraces.map(({ lap, points }) => ({ lapNumber: lap.lapNumber ?? null, ...analyzeCornerForLap(points, distance) }));
     const brakeOnsets = perLap.map((item) => item.brakeOnset).filter((value): value is number => value !== null);
@@ -350,7 +327,7 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
 
     return {
       cornerNumber: index + 1,
-      name: lookupCornerName(trackDisplayName, trackVariant, distance),
+      name: researchedNames?.[index] ?? null,
       distancePct: distance,
       sampleSize: perLap.length,
       braking: brakeSd === null ? null : { meanDistancePct: Number(brakeMean!.toFixed(1)), stddev: Number(brakeSd.toFixed(2)), consistency: consistencyLabel(brakeSd, 1.5) },
@@ -361,26 +338,38 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
       brakeBand, throttleBand,
     };
   });
+  const isGood = (consistency: string) => consistency === "muito consistente" || consistency === "consistente";
   const cornerNarratives = cornerReports.map((corner) => {
     const parts: string[] = [];
-    if (corner.braking) parts.push(`você começa a frear ${corner.braking.consistency === "muito consistente" || corner.braking.consistency === "consistente" ? "sempre no mesmo ponto" : "em pontos diferentes a cada volta"} (perto dos ${corner.braking.meanDistancePct}% da pista)`);
-    if (corner.brakeShape) parts.push(`a forma como você solta o freio até o ponto mais lento da curva (trail braking) é ${corner.brakeShape.consistency}`);
-    if (corner.apexSpeed) parts.push(`a velocidade mais baixa que você atinge na curva é ${corner.apexSpeed.consistency} entre as voltas (variação de ${corner.apexSpeed.stddev})`);
-    if (corner.throttleShape) parts.push(`a forma como você volta a acelerar depois da curva é ${corner.throttleShape.consistency}`);
-    // Sem o nome real, não numeramos como "Curva N": só detectamos zonas de frenagem (mínimos de
-    // velocidade), então uma sequência de curvas rápidas sem frenagem forte (ex: a segunda curva de
-    // Monza, em alta velocidade) não vira uma zona nossa, e numerar sequencialmente aqui erraria a
-    // numeração oficial da pista (nossa 2ª zona pode ser a curva 4 de verdade). "Zona de frenagem N"
-    // é o rótulo honesto quando não sabemos o nome real da curva.
-    const label = corner.name ?? `Zona de frenagem ${corner.cornerNumber}`;
-    return `${label} — ~${corner.distancePct}% da volta: ${parts.join("; ")}.`;
+    if (corner.braking) {
+      parts.push(isGood(corner.braking.consistency)
+        ? "você pisa no freio sempre no mesmo lugar aqui — ótimo, é isso que dá confiança pra explorar o limite"
+        : "você está pisando no freio em pontos diferentes a cada volta aqui — escolha uma referência de pista (uma placa, uma mancha de pneu) e freie sempre no mesmo ponto");
+    }
+    if (corner.brakeShape) {
+      parts.push(isGood(corner.brakeShape.consistency)
+        ? "a força que você faz no freio e o jeito que solta ele até o ponto mais lento também se repetem bem"
+        : "a força e a forma como você solta o freio mudam de volta pra volta — tente manter a mesma pressão do início ao fim da freada, sem soltar de repente");
+    }
+    if (corner.apexSpeed) {
+      parts.push(isGood(corner.apexSpeed.consistency)
+        ? "a velocidade mais baixa que você chega nessa curva é sempre parecida"
+        : "a velocidade mais baixa que você chega nessa curva varia bastante — isso geralmente é reflexo do ponto de freada mudar; resolvendo a freada, isso tende a melhorar junto");
+    }
+    if (corner.throttleShape) {
+      parts.push(isGood(corner.throttleShape.consistency)
+        ? "e você volta a acelerar sempre do mesmo jeito na saída, sem hesitar"
+        : "na saída, você às vezes acelera rápido demais e às vezes devagar demais — pise no acelerador de forma constante e crescente, sem tranco, assim que o carro estiver reto o suficiente");
+    }
+    const label = corner.name ?? `Curva ${corner.cornerNumber}`;
+    return `${label} (~${corner.distancePct}% da volta): ${parts.join("; ")}.`;
   });
 
   const ranked = [...channelStats].sort((a, b) => a.avgScore - b.avgScore);
-  const strengths = ranked.slice(0, 2).map((item) => `${item.label}: você repete o mesmo padrão em quase toda a volta — essa é uma das suas maiores forças agora, não mexa nisso sem motivo.`);
+  const strengths = ranked.slice(0, 2).map((item) => `${item.label}: você repete o mesmo movimento em quase toda a volta — é um ponto forte seu agora, não precisa mexer nisso.`);
   const improvements = ranked.slice(-3).reverse().map((item) => {
     const zone = item.worstZones[0];
-    return `${item.label}: a maior variação entre as voltas acontece perto de ${zone.distance}% da pista — você não está repetindo ${CHANNEL_PHRASE[item.channel as ChannelKey]} ali volta a volta. Foque em fazer o mesmo movimento, no mesmo ponto, todas as vezes antes de tentar ganhar mais performance.`;
+    return `${item.label}: o ponto onde você mais varia de volta pra volta é perto dos ${zone.distance}% da pista — você não está fazendo ${CHANNEL_PHRASE[item.channel as ChannelKey]} sempre igual ali. Repita o mesmo movimento, no mesmo lugar, todas as vezes — só depois de repetir bem vale tentar ganhar mais performance.`;
   });
 
   const consistencyWord = lapTimeStddev < 0.3 ? "bem consistente" : lapTimeStddev < 0.8 ? "moderadamente consistente" : "pouco consistente";
