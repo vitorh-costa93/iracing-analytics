@@ -458,6 +458,18 @@ export default function ActiveWeekTelemetry() {
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
 
+  // Esc closes the insight popup — the only way out was previously a mouse click on the ✕ or
+  // outside the card, which stalls a keyboard-driven flow entirely.
+  useEffect(() => {
+    if (!focusedInsight) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { setFocusedInsight(null); setSelectedRange(null); }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    popupRef.current?.querySelector<HTMLButtonElement>(".insight-popup-close")?.focus();
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [focusedInsight]);
+
   useEffect(() => {
     let active = true;
     fetch("/api/telemetry/active-week", { cache: "no-store" })
@@ -619,12 +631,20 @@ export default function ActiveWeekTelemetry() {
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
               <div className="channel-key"><span className="speed">Velocidade</span><span className="throttle">Acelerador</span><span className="brake">Freio</span><span className="steering">Volante</span><span className="rpm">RPM</span><span className="gear">Marcha</span><span className="clutch">Embreagem</span><span className="dynamics">Dinâmica</span></div>
               <div className="telemetry-workspace">
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} /><p>Passe o mouse nos inputs ou clique em um insight.</p></aside>
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} /><p>Passe o mouse nos inputs ou clique em um insight. Clique no gráfico e use ← → (Shift para passos maiores) para percorrer a pista pelo teclado.</p></aside>
               <div className="interactive-chart">
-              <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" aria-label="Canais sincronizados das duas voltas por distância da pista"
+              <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
+                aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."
                 onMouseLeave={() => setHoveredDistance(null)} onMouseMove={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect();
                   setHoveredDistance(Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100)));
+                }}
+                onKeyDown={(event) => {
+                  const step = event.shiftKey ? 5 : 0.5;
+                  if (event.key === "ArrowRight") { event.preventDefault(); setHoveredDistance((prev) => Math.min(100, (prev ?? 0) + step)); }
+                  else if (event.key === "ArrowLeft") { event.preventDefault(); setHoveredDistance((prev) => Math.max(0, (prev ?? 0) - step)); }
+                  else if (event.key === "Home") { event.preventDefault(); setHoveredDistance(0); }
+                  else if (event.key === "End") { event.preventDefault(); setHoveredDistance(100); }
                 }}>
                 {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1={value * 10} x2={value * 10} y1="0" y2="925" className="telemetry-grid" /><text x={value * 10} y="954" textAnchor={value === 0 ? "start" : value === 100 ? "end" : "middle"}>{value}%</text></g>)}
                 {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">{corner.name ? corner.name.slice(0, 12) : `C${corner.number}`}</text></g>)}
