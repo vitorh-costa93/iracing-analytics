@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
-import SafetyRatingCorrelation from "@/components/SafetyRatingCorrelation";
+import IncidentCorrelation from "@/components/IncidentCorrelation";
 import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
@@ -269,12 +269,12 @@ export default function Home() {
         <section className="section-block">
           <div className="section-title-row">
             <div>
-              <span className="section-kicker">SAFETY RATING × IRATING</span>
-              <h2>Incidentes custam ranking também?</h2>
-              <p>Correlação entre Δ Safety Rating e Δ iRating, corrida a corrida.</p>
+              <span className="section-kicker">VOLTAS FORA DA PISTA × IRATING</span>
+              <h2>Sair da pista custa ranking também?</h2>
+              <p>Correlação entre voltas fora da pista e Δ iRating, corrida a corrida — e se essas voltas realmente custam ritmo ou não.</p>
             </div>
           </div>
-          <SafetyRatingCorrelation />
+          <IncidentCorrelation />
         </section>
 
         <section className="section-block historical-section">
