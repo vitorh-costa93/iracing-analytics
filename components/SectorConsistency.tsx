@@ -32,10 +32,12 @@ export default function SectorConsistency() {
   const [selected, setSelected] = useState<Category>("formula_car");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let active = true;
     setLoading(true);
+    setError(null);
     fetch("/api/telemetry/sectors", { cache: "no-store" })
       .then((response) => response.json())
       .then((result) => {
@@ -50,10 +52,10 @@ export default function SectorConsistency() {
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, []);
+  }, [retryCount]);
 
   if (loading) return <div className="telemetry-state">Juntando todas as voltas já registradas nesse carro/pista para calcular sua volta ideal...</div>;
-  if (error) return <div className="telemetry-state error">{error}</div>;
+  if (error) return <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={() => setRetryCount((count) => count + 1)}>Tentar novamente</button></div>;
 
   const data = categories?.[selected];
 

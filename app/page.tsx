@@ -190,7 +190,7 @@ export default function Home() {
   }
 
   if (!data || !rankings) {
-    return <main className="app-shell"><div className="state-box error">{message ?? "Não foi possível carregar os dados."}</div></main>;
+    return <main className="app-shell"><div className="state-box error">{message ?? "Não foi possível carregar os dados."}<button type="button" className="retry-button" onClick={() => loadDashboard()}>Tentar novamente</button></div></main>;
   }
 
   const currentLabel = shortSeason(data.season.current.name);

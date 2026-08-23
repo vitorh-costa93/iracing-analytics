@@ -1,9 +1,11 @@
 import { CarFront, MapPin } from "lucide-react";
+import type { SyntheticEvent } from "react";
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
 type Props = { items: RankingItem[]; emptyText?: string; kind?: "car" | "track" };
 
 function signed(value: number) { return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR")}`; }
+function hideBrokenImage(event: SyntheticEvent<HTMLImageElement>) { event.currentTarget.style.display = "none"; }
 function signedAvg(value: number) { return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`; }
 
 function countryCode(label: string) {
@@ -57,7 +59,7 @@ export default function PerformanceRanking({ items, emptyText, kind = "car" }: P
       const brand = kind === "car" ? manufacturerSlug(item.label) : null;
       return <div className="diverging-row" key={`${item.group ?? ""}-${item.label}`}>
         <div className="diverging-label">
-          {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" /> : brand && BRAND_LOGO_OVERRIDES[brand] ? <span className="brand-icon-chip"><img className="brand-icon" src={BRAND_LOGO_OVERRIDES[brand]} alt={`Marca ${brand}`} width="14" height="14" /></span> : brand ? <span className="brand-icon-chip"><img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1a1f26`} alt={`Marca ${brand}`} width="14" height="14" /></span> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
+          {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" onError={hideBrokenImage} /> : brand && BRAND_LOGO_OVERRIDES[brand] ? <span className="brand-icon-chip"><img className="brand-icon" src={BRAND_LOGO_OVERRIDES[brand]} alt={`Marca ${brand}`} width="14" height="14" onError={hideBrokenImage} /></span> : brand ? <span className="brand-icon-chip"><img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1a1f26`} alt={`Marca ${brand}`} width="14" height="14" onError={hideBrokenImage} /></span> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
           {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas • média {signedAvg(item.avgDelta)}/corrida</small>
         </div>
         <div className="diverging-bar"><i className="center-line" /><span className={positive ? "positive" : "negative"} style={positive ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>

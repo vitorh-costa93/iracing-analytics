@@ -470,8 +470,13 @@ export default function ActiveWeekTelemetry() {
     return () => document.removeEventListener("keydown", handleKeyDown);
   }, [focusedInsight]);
 
+  const [retryCount, setRetryCount] = useState(0);
+  const retry = () => setRetryCount((count) => count + 1);
+
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
     fetch("/api/telemetry/active-week", { cache: "no-store" })
       .then(async (response) => {
         const result = await response.json();
@@ -483,7 +488,7 @@ export default function ActiveWeekTelemetry() {
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, []);
+  }, [retryCount]);
 
   const selected = useMemo(() => data?.combinations.find((item) => item.key === selectedKey) ?? null, [data, selectedKey]);
 
@@ -503,7 +508,7 @@ export default function ActiveWeekTelemetry() {
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setTraceLoading(false));
     return () => { active = false; };
-  }, [selected]);
+  }, [selected, retryCount]);
 
   useEffect(() => {
     let active = true;
@@ -580,7 +585,7 @@ export default function ActiveWeekTelemetry() {
       </div>
 
       {loading && <div className="telemetry-state">Identificando carro e pista da semana...</div>}
-      {!loading && error && !selected && <div className="telemetry-state error">{error}</div>}
+      {!loading && error && !selected && <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={retry}>Tentar novamente</button></div>}
       {!loading && !error && !data?.combinations.length && <div className="telemetry-state">Nenhuma atividade encontrada na semana vigente.</div>}
       {selected && (
         <div className="telemetry-content">
@@ -606,7 +611,7 @@ export default function ActiveWeekTelemetry() {
           </div>
           {referenceMessage && <div className="reference-message">{referenceMessage}</div>}
           {traceLoading && <div className="telemetry-state">Pré-carregando canais do Garage61...</div>}
-          {error && <div className="telemetry-state error">{error}</div>}
+          {error && <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={retry}>Tentar novamente</button></div>}
           {!traceLoading && !error && !selected.bestLap && <div className="telemetry-state">Ainda não há uma volta limpa com telemetria disponível para esta combinação.</div>}
           {referenceTrace && !comparison && <div className="telemetry-state error">Não foi possível alinhar amostras suficientes entre as duas voltas.</div>}
           {comparison && trace && (

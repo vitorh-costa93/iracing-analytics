@@ -40,19 +40,22 @@ export default function SafetyRatingCorrelation() {
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
     fetch("/api/dashboard/safety-rating", { cache: "no-store" })
       .then((response) => response.json())
       .then((result) => { if (active) { if (result.status !== "ok") throw new Error(result.message); setData(result); } })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, []);
+  }, [retryCount]);
 
   if (loading) return null;
-  if (error) return <div className="telemetry-state error">{error}</div>;
+  if (error) return <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={() => setRetryCount((count) => count + 1)}>Tentar novamente</button></div>;
   if (!data?.available) return <div className="telemetry-state">{data?.message ?? "Sem dados suficientes."}</div>;
 
   const points = data.points ?? [];
