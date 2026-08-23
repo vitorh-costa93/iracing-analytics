@@ -1,5 +1,5 @@
 export type DecodedRow = { tab?: string; section?: string; label?: string; metric_value?: string | number; is_mapped?: boolean };
-export type ParsedChange = { tab: string; section: string; label: string; before: string; after: string; explanation: string; category: string; actionable: boolean; numericDelta: number | null };
+export type ParsedChange = { tab: string; section: string; label: string; before: string; after: string; explanation: string; category: string; actionable: boolean; settable: boolean; numericDelta: number | null };
 
 export function numericOf(value: string) {
   return Number(value.replace(",", ".").match(/-?\d+(?:\.\d+)?/)?.[0]);
@@ -21,7 +21,7 @@ export function categoryOf(label: string, section: string) {
   return "other";
 }
 
-export function effect(label: string, before: string, after: string, section?: string, tab?: string): { text: string; actionable: boolean } {
+export function effect(label: string, before: string, after: string, section?: string, tab?: string): { text: string; actionable: boolean; settable: boolean } {
   const key = label.toLowerCase();
   const sectionKey = (section ?? "").toLowerCase();
   const from = numericOf(before), to = numericOf(after), increased = Number.isFinite(from) && Number.isFinite(to) ? to > from : null;
@@ -29,35 +29,39 @@ export function effect(label: string, before: string, after: string, section?: s
   const isRear = /rear|trase/.test(sectionKey) || /rear|trase/.test(key);
   const axleLabel = isFront ? "dianteir" : isRear ? "traseir" : null;
 
-  if (/display|dash|page|shift light|led|alert/.test(key)) return { text: `Ajuste de exibição no painel/dash (${before} → ${after}); não altera o comportamento físico do carro, só a informação mostrada ao piloto.`, actionable: false };
+  // Not a setup input: this is a result observed after a session (tire wear/heat). Kept and
+  // explained rather than dropped as "unmapped" — it's informative even though the driver never sets it directly.
+  if (/wear|tread|desgaste|remaining/.test(key)) return { text: `${before} → ${after} não é algo que se ajusta no setup — é o desgaste de pneu observado ao final da sessão. Vale olhar junto com pressão e cambagem daquele eixo: desgaste maior num dos lados costuma apontar pressão/cambagem desalinhada, não é um parâmetro para copiar entre setups.`, actionable: true, settable: false };
 
-  if (/rear.*wing|wing.*angle|asa.*trase|gurney/.test(key)) return { text: increased === null ? `A asa traseira ${before} → ${after} muda apoio e arrasto.` : increased ? `Mais asa traseira (${before} → ${after}) prende mais a traseira em curvas rápidas e na tração, mas aumenta o arrasto e reduz a velocidade de reta.` : `Menos asa traseira (${before} → ${after}) reduz o arrasto e aumenta a velocidade de reta, mas deixa a traseira mais solta e reduz a margem em curvas rápidas.`, actionable: true };
-  if (/front.*wing|flap.*angle|asa.*diante/.test(key)) return { text: increased ? `Mais asa dianteira (${before} → ${after}) aumenta resposta e aderência da frente em média/alta velocidade, mas pode deixar a traseira relativamente mais solta e elevar o arrasto.` : `Menos asa dianteira (${before} → ${after}) acalma a entrada, desloca o balanço para subesterço e normalmente reduz o arrasto.`, actionable: true };
-  if (/wing|asa|aero/.test(key)) return { text: `A mudança aerodinâmica ${before} → ${after} altera carga, balanço e arrasto; confira velocidade de reta e estabilidade em curva rápida.`, actionable: true };
-  if (/brake bias|balance|freio/.test(key)) return { text: increased === null ? `O brake bias ${before} → ${after} muda o equilíbrio em frenagem.` : increased ? `Mais brake bias dianteiro (${before} → ${after}) deixa o carro mais estável na frenagem, mas aumenta subesterço na entrada e sobrecarrega os pneus dianteiros.` : `Menos brake bias dianteiro (${before} → ${after}) deixa o carro mais traseiro e facilita a rotação na entrada, mas aumenta o risco de instabilidade e travamento traseiro no trail braking.`, actionable: true };
+  if (/display|dash|page|shift light|led|alert/.test(key)) return { text: `Ajuste de exibição no painel/dash (${before} → ${after}); não altera o comportamento físico do carro, só a informação mostrada ao piloto.`, actionable: false, settable: true };
+
+  if (/rear.*wing|wing.*angle|asa.*trase|gurney/.test(key)) return { text: increased === null ? `A asa traseira ${before} → ${after} muda apoio e arrasto.` : increased ? `Mais asa traseira (${before} → ${after}) prende mais a traseira em curvas rápidas e na tração, mas aumenta o arrasto e reduz a velocidade de reta.` : `Menos asa traseira (${before} → ${after}) reduz o arrasto e aumenta a velocidade de reta, mas deixa a traseira mais solta e reduz a margem em curvas rápidas.`, actionable: true, settable: true };
+  if (/front.*wing|flap.*angle|asa.*diante/.test(key)) return { text: increased ? `Mais asa dianteira (${before} → ${after}) aumenta resposta e aderência da frente em média/alta velocidade, mas pode deixar a traseira relativamente mais solta e elevar o arrasto.` : `Menos asa dianteira (${before} → ${after}) acalma a entrada, desloca o balanço para subesterço e normalmente reduz o arrasto.`, actionable: true, settable: true };
+  if (/wing|asa|aero/.test(key)) return { text: `A mudança aerodinâmica ${before} → ${after} altera carga, balanço e arrasto; confira velocidade de reta e estabilidade em curva rápida.`, actionable: true, settable: true };
+  if (/brake bias|balance|freio/.test(key)) return { text: increased === null ? `O brake bias ${before} → ${after} muda o equilíbrio em frenagem.` : increased ? `Mais brake bias dianteiro (${before} → ${after}) deixa o carro mais estável na frenagem, mas aumenta subesterço na entrada e sobrecarrega os pneus dianteiros.` : `Menos brake bias dianteiro (${before} → ${after}) deixa o carro mais traseiro e facilita a rotação na entrada, mas aumenta o risco de instabilidade e travamento traseiro no trail braking.`, actionable: true, settable: true };
   if (/anti.?roll|arb|barra/.test(key)) {
-    if (axleLabel === "dianteir") return { text: increased ? `Barra dianteira mais rígida (${before} → ${after}) dá resposta mais rápida na entrada, porém reduz aderência mecânica dianteira no meio da curva e tende a aumentar subesterço, principalmente em curvas de baixa velocidade.` : `Barra dianteira mais macia (${before} → ${after}) aumenta aderência e tolerância a zebras na frente, mas deixa a resposta de direção mais lenta e aumenta a rolagem dianteira.`, actionable: true };
-    if (axleLabel === "traseir") return { text: increased ? `Barra traseira mais rígida (${before} → ${after}) ajuda o carro a rotacionar na entrada e no meio da curva, mas reduz tração na saída e pode provocar sobresterço em curvas rápidas ou pista molhada.` : `Barra traseira mais macia (${before} → ${after}) melhora tração na saída e estabilidade em curvas rápidas, mas tende a aumentar subesterço no meio da curva.`, actionable: true };
-    return { text: `A alteração na barra estabilizadora (${before} → ${after}) redistribui rigidez lateral entre os pneus daquele eixo; combinada com o eixo oposto, define o balanço geral entre subesterço e sobresterço.`, actionable: true };
+    if (axleLabel === "dianteir") return { text: increased ? `Barra dianteira mais rígida (${before} → ${after}) dá resposta mais rápida na entrada, porém reduz aderência mecânica dianteira no meio da curva e tende a aumentar subesterço, principalmente em curvas de baixa velocidade.` : `Barra dianteira mais macia (${before} → ${after}) aumenta aderência e tolerância a zebras na frente, mas deixa a resposta de direção mais lenta e aumenta a rolagem dianteira.`, actionable: true, settable: true };
+    if (axleLabel === "traseir") return { text: increased ? `Barra traseira mais rígida (${before} → ${after}) ajuda o carro a rotacionar na entrada e no meio da curva, mas reduz tração na saída e pode provocar sobresterço em curvas rápidas ou pista molhada.` : `Barra traseira mais macia (${before} → ${after}) melhora tração na saída e estabilidade em curvas rápidas, mas tende a aumentar subesterço no meio da curva.`, actionable: true, settable: true };
+    return { text: `A alteração na barra estabilizadora (${before} → ${after}) redistribui rigidez lateral entre os pneus daquele eixo; combinada com o eixo oposto, define o balanço geral entre subesterço e sobresterço.`, actionable: true, settable: true };
   }
   if (/spring|mola/.test(key)) {
     const axlePhrase = axleLabel ? `no eixo ${axleLabel}o` : "";
-    return { text: increased === null ? `A mudança de mola ${axlePhrase} (${before} → ${after}) afeta a plataforma aerodinâmica, a resposta a transferência de carga e a capacidade de absorver zebras e ondulações.` : increased ? `Mola mais dura ${axlePhrase} (${before} → ${after}) mantém a plataforma mais estável sob carga aerodinâmica e frenagem, mas transmite mais impacto de zebras/ondulações e reduz aderência mecânica em pista irregular.` : `Mola mais macia ${axlePhrase} (${before} → ${after}) melhora absorção de zebras e aderência mecânica, mas aumenta a variação de altura sob carga, o que pode instabilizar a aerodinâmica em alta velocidade.`, actionable: true };
+    return { text: increased === null ? `A mudança de mola ${axlePhrase} (${before} → ${after}) afeta a plataforma aerodinâmica, a resposta a transferência de carga e a capacidade de absorver zebras e ondulações.` : increased ? `Mola mais dura ${axlePhrase} (${before} → ${after}) mantém a plataforma mais estável sob carga aerodinâmica e frenagem, mas transmite mais impacto de zebras/ondulações e reduz aderência mecânica em pista irregular.` : `Mola mais macia ${axlePhrase} (${before} → ${after}) melhora absorção de zebras e aderência mecânica, mas aumenta a variação de altura sob carga, o que pode instabilizar a aerodinâmica em alta velocidade.`, actionable: true, settable: true };
   }
-  if (/ride height|altura/.test(key)) return { text: `A altura ${axleLabel ? `${axleLabel}a ` : ""}(${before} → ${after}) muda o rake do carro, o curso de suspensão disponível e a plataforma aerodinâmica; valide também legalidade mínima e risco de fundo raspando no chão.`, actionable: true };
-  if (/camber|cambagem/.test(key)) return { text: `A cambagem ${axleLabel ? `${axleLabel}a ` : ""}(${before} → ${after}) altera a área de contato do pneu em apoio lateral, a temperatura interna/externa do pneu e o desempenho em frenagem/tração longitudinal.`, actionable: true };
-  if (/toe|converg/.test(key)) return { text: `O toe ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) modifica a resposta inicial de direção, a estabilidade em reta, a geração de temperatura e o arrasto dos pneus.`, actionable: true };
+  if (/ride height|altura/.test(key)) return { text: `A altura ${axleLabel ? `${axleLabel}a ` : ""}(${before} → ${after}) muda o rake do carro, o curso de suspensão disponível e a plataforma aerodinâmica; valide também legalidade mínima e risco de fundo raspando no chão.`, actionable: true, settable: true };
+  if (/camber|cambagem/.test(key)) return { text: `A cambagem ${axleLabel ? `${axleLabel}a ` : ""}(${before} → ${after}) altera a área de contato do pneu em apoio lateral, a temperatura interna/externa do pneu e o desempenho em frenagem/tração longitudinal.`, actionable: true, settable: true };
+  if (/toe|converg/.test(key)) return { text: `O toe ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) modifica a resposta inicial de direção, a estabilidade em reta, a geração de temperatura e o arrasto dos pneus.`, actionable: true, settable: true };
   if (/damp|shock|bump|rebound|amort/.test(key)) {
     const isBump = /bump|compress/.test(key), isRebound = /rebound|extens/.test(key);
-    if (isBump) return { text: `O amortecimento de compressão ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) controla a velocidade com que a suspensão absorve zebras e transferência de carga em frenagem/curva; mais rígido responde mais rápido mas transmite mais impacto.`, actionable: true };
-    if (isRebound) return { text: `O amortecimento de extensão ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) controla a velocidade de retomada do pneu no solo após compressão; mais rígido reduz oscilação mas pode "empacar" o carro em sequência de curvas e zebras.`, actionable: true };
-    return { text: `O amortecimento ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) muda a velocidade de transferência de carga em frenagem, rotação, zebra e retomada de aderência.`, actionable: true };
+    if (isBump) return { text: `O amortecimento de compressão ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) controla a velocidade com que a suspensão absorve zebras e transferência de carga em frenagem/curva; mais rígido responde mais rápido mas transmite mais impacto.`, actionable: true, settable: true };
+    if (isRebound) return { text: `O amortecimento de extensão ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) controla a velocidade de retomada do pneu no solo após compressão; mais rígido reduz oscilação mas pode "empacar" o carro em sequência de curvas e zebras.`, actionable: true, settable: true };
+    return { text: `O amortecimento ${axleLabel ? `${axleLabel}o ` : ""}(${before} → ${after}) muda a velocidade de transferência de carga em frenagem, rotação, zebra e retomada de aderência.`, actionable: true, settable: true };
   }
-  if (/differential|diff|preload|coast|power|ramp.?angle|clutch.*(plate|face)/.test(key)) return { text: `O diferencial (${before} → ${after}) altera a rotação do carro em desaceleração/entrada de curva (coast) e a tração/estabilidade sob potência na saída (power); mais travado tende a estabilizar em reta e reduzir rotação na entrada.`, actionable: true };
-  if (/pressure|pressao/.test(key)) return { text: `A pressão ${axleLabel ? `${axleLabel} ` : ""}(${before} → ${after}) afeta a janela térmica de trabalho do pneu, a deformação da carcaça, a resposta de direção e a área de contato; pressão muito baixa superaquece o pneu, muito alta reduz aderência.`, actionable: true };
-  if (/gear|ratio|marcha/.test(key)) return { text: `A relação de marcha (${before} → ${after}) muda a aceleração disponível, a faixa de rotação usada e a velocidade máxima naquele estágio; confira se ainda bate no limitador antes das retas mais longas.`, actionable: true };
-  if (/steering|direção|ackerman/.test(key)) return { text: `O ajuste de geometria de direção (${before} → ${after}) altera a relação entre o ângulo das rodas interna e externa em curva, afetando o esterçamento e o desgaste do pneu dianteiro interno.`, actionable: true };
-  return { text: `O parâmetro em ${tab ?? "Setup"} • ${section ?? "Geral"} foi alterado de ${before} para ${after}; sem uma regra específica mapeada ainda — valide isoladamente o efeito em telemetria (frenagem, rotação e tração) antes de adotá-lo em corrida.`, actionable: false };
+  if (/differential|diff|preload|coast|power|ramp.?angle|clutch.*(plate|face)/.test(key)) return { text: `O diferencial (${before} → ${after}) altera a rotação do carro em desaceleração/entrada de curva (coast) e a tração/estabilidade sob potência na saída (power); mais travado tende a estabilizar em reta e reduzir rotação na entrada.`, actionable: true, settable: true };
+  if (/pressure|pressao/.test(key)) return { text: `A pressão ${axleLabel ? `${axleLabel} ` : ""}(${before} → ${after}) afeta a janela térmica de trabalho do pneu, a deformação da carcaça, a resposta de direção e a área de contato; pressão muito baixa superaquece o pneu, muito alta reduz aderência.`, actionable: true, settable: true };
+  if (/gear|ratio|marcha/.test(key)) return { text: `A relação de marcha (${before} → ${after}) muda a aceleração disponível, a faixa de rotação usada e a velocidade máxima naquele estágio; confira se ainda bate no limitador antes das retas mais longas.`, actionable: true, settable: true };
+  if (/steering|direção|ackerman/.test(key)) return { text: `O ajuste de geometria de direção (${before} → ${after}) altera a relação entre o ângulo das rodas interna e externa em curva, afetando o esterçamento e o desgaste do pneu dianteiro interno.`, actionable: true, settable: true };
+  return { text: `O parâmetro em ${tab ?? "Setup"} • ${section ?? "Geral"} foi alterado de ${before} para ${after}; sem uma regra específica mapeada ainda — valide isoladamente o efeito em telemetria (frenagem, rotação e tração) antes de adotá-lo em corrida.`, actionable: false, settable: true };
 }
 
 export function mappedRows(rows: DecodedRow[]) {
@@ -67,14 +71,52 @@ export function mappedRows(rows: DecodedRow[]) {
 export function diffSetups(baseRows: DecodedRow[], comparisonRows: DecodedRow[]): ParsedChange[] {
   const a = mappedRows(baseRows), b = mappedRows(comparisonRows);
   const keys = [...new Set([...a.keys(), ...b.keys()])];
-  return keys.filter((key) => a.get(key) !== b.get(key)).map((key) => {
+  const raw = keys.filter((key) => a.get(key) !== b.get(key)).map((key) => {
     const [tab, section, label] = key.split("::");
     const before = a.get(key) ?? "—", after = b.get(key) ?? "—";
-    const { text, actionable } = effect(label, before, after, section, tab);
+    const { text, actionable, settable } = effect(label, before, after, section, tab);
     const from = numericOf(before), to = numericOf(after);
     const numericDelta = Number.isFinite(from) && Number.isFinite(to) ? to - from : null;
-    return { tab, section, label, before, after, explanation: text, category: categoryOf(label, section), actionable, numericDelta };
+    return { tab, section, label, before, after, explanation: text, category: categoryOf(label, section), actionable, settable, numericDelta };
   });
+  return mergeLinkedPairs(raw);
+}
+
+/**
+ * Several parameters are mechanically mirrored per the official car manuals (e.g. a single physical
+ * adjuster sets both left and right ARB blades, or front-left/front-right toe move together on a
+ * shared rack) — the raw per-row diff reports each side as an independent change, which reads as two
+ * deliberate edits when the driver really made one. Detects same-category pairs whose label differs
+ * only by a left/right (or L/R) token and whose numeric deltas move the same direction, and folds
+ * them into one combined entry with a note that this was a single mirrored adjustment.
+ */
+function mergeLinkedPairs(changes: ParsedChange[]): ParsedChange[] {
+  const sideToken = /\b(left|right|esquerd[oa]|direit[oa]|\bl\b|\br\b|le|ri)\b/i;
+  const groups = new Map<string, ParsedChange[]>();
+  for (const change of changes) {
+    if (!sideToken.test(change.label)) { groups.set(`solo::${change.tab}::${change.section}::${change.label}`, [change]); continue; }
+    const normalizedLabel = change.label.replace(sideToken, "").replace(/\s{2,}/g, " ").trim();
+    const key = `pair::${change.tab}::${change.category}::${normalizedLabel}`;
+    groups.set(key, [...(groups.get(key) ?? []), change]);
+  }
+
+  const result: ParsedChange[] = [];
+  for (const group of groups.values()) {
+    if (group.length !== 2) { result.push(...group); continue; }
+    const [left, right] = group;
+    const sameDirection = left.numericDelta !== null && right.numericDelta !== null
+      && Math.sign(left.numericDelta) === Math.sign(right.numericDelta) && left.numericDelta !== 0;
+    if (!sameDirection) { result.push(...group); continue; }
+    const normalizedLabel = left.label.replace(sideToken, "").replace(/\s{2,}/g, " ").trim();
+    result.push({
+      tab: left.tab, section: left.section, label: `${normalizedLabel} (dois lados)`,
+      before: `${left.before} / ${right.before}`, after: `${left.after} / ${right.after}`,
+      explanation: `${left.explanation} Os dois lados mudaram juntos e na mesma direção — nesse carro esse ajuste é espelhado por um único controle (ver manual), então conte isso como uma alteração só, não duas.`,
+      category: left.category, actionable: left.actionable, settable: left.settable,
+      numericDelta: left.numericDelta,
+    });
+  }
+  return result;
 }
 
 export const CATEGORY_LABELS: Record<string, string> = {

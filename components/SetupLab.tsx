@@ -14,7 +14,7 @@ type SetupContext = {
 type EngineerRecommendation = { adjustment: string; direction: string; why: string; validate: string; parameter: { label: string; current: string } | null };
 type EngineerResult = { summary: string; limitation: string; hasDecodedParameters: boolean; recommendations: EngineerRecommendation[] };
 type ConversationTurn = { role: "user"; text: string } | { role: "assistant"; result: EngineerResult };
-type CompareChange = { tab: string; section: string; label: string; before: string; after: string; explanation: string; category: string };
+type CompareChange = { tab: string; section: string; label: string; before: string; after: string; explanation: string; category: string; settable: boolean };
 type CompareAnalysis = { topCategories: { category: string; label: string; count: number }[]; topContributors: { label: string; before: string; after: string; category: string }[] };
 type CompareResult = { summary: string; totalParameters: number; skippedCount: number; changes: CompareChange[]; analysis: CompareAnalysis };
 type LibraryItem = { carFolder: string; filename: string; provider: string; kind: string; condition: string; track: string; week: number | null; size: number; modifiedAt: string };
@@ -171,7 +171,7 @@ export default function SetupLab() {
                 <div className="setup-summary-categories">{compareResult.analysis.topCategories.map((item) => <span key={item.category} className="performance-badge">{item.label}: {item.count}</span>)}</div>
               )}
             </div>
-            {compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}</span><strong>{change.label}</strong></div><div className="setup-values"><del>{change.before}</del><b>→</b><ins>{change.after}</ins></div><p>{change.explanation}</p></article>)}
+            {compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}{!change.settable && <em className="setup-readonly-tag"> • resultado, não ajustável</em>}</span><strong>{change.label}</strong></div><div className="setup-values"><del>{change.before}</del><b>→</b><ins>{change.after}</ins></div><p>{change.explanation}</p></article>)}
           </div>
         )}</>
       )}

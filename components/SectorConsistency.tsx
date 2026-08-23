@@ -2,13 +2,11 @@
 
 import { useEffect, useState } from "react";
 
-type SectorStat = { sector: number; sampleSize: number; mean: number; stddev: number; best: number; consistency: string };
+type SectorStat = { sector: number; sampleSize: number; mean: number; stddev: number; best: number; consistency: string; note: string | null };
 type SectorReport = { car: string; track: string; lapsAnalyzed: number; sectors: SectorStat[]; idealLap: string; actualBestLap: string; gapToIdeal: string; summary: string };
 type CategoryPayload = { status: string; report: SectorReport | null; message?: string | null };
-type Category = "formula_car" | "sports_car" | "gtp_car";
+export type SectorCategory = "formula_car" | "sports_car" | "gtp_car";
 
-const CATEGORIES: Category[] = ["formula_car", "sports_car", "gtp_car"];
-const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car", gtp_car: "GTP" };
 const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
 
 function SectorBar({ sector }: { sector: SectorStat }) {
@@ -23,13 +21,13 @@ function SectorBar({ sector }: { sector: SectorStat }) {
       </div>
       <span className="sector-consistency">{sector.consistency}</span>
       <span className="sector-times">melhor {sector.best.toFixed(3)}s • média {sector.mean.toFixed(3)}s</span>
+      {sector.note && <span className="sector-note">{sector.note}</span>}
     </div>
   );
 }
 
-export default function SectorConsistency() {
-  const [categories, setCategories] = useState<Record<Category, CategoryPayload> | null>(null);
-  const [selected, setSelected] = useState<Category>("formula_car");
+export default function SectorConsistency({ category }: { category: SectorCategory }) {
+  const [categories, setCategories] = useState<Record<SectorCategory, CategoryPayload> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -44,37 +42,27 @@ export default function SectorConsistency() {
         if (!active) return;
         if (result.status !== "ok") throw new Error(result.message ?? "Erro ao calcular consistência por setor");
         setCategories(result.categories);
-        if (!result.categories?.formula_car?.report) {
-          const fallback = CATEGORIES.find((category) => result.categories?.[category]?.report);
-          if (fallback) setSelected(fallback);
-        }
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
   }, [retryCount]);
 
-  if (loading) return <div className="telemetry-state">Juntando todas as voltas já registradas nesse carro/pista para calcular sua volta ideal...</div>;
+  if (loading) return <div className="telemetry-state">Juntando as voltas mais rápidas dessa corrida para calcular sua volta ideal...</div>;
   if (error) return <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={() => setRetryCount((count) => count + 1)}>Tentar novamente</button></div>;
 
-  const data = categories?.[selected];
+  const data = categories?.[category];
 
   return (
     <div className="sector-consistency">
-      <div className="race-debrief-category-toggle">
-        {CATEGORIES.map((category) => (
-          <button key={category} className={selected === category ? "active" : ""} onClick={() => setSelected(category)}>{CATEGORY_LABEL[category]}</button>
-        ))}
-      </div>
-
       {!data?.report ? (
         <div className="telemetry-state">{data?.message ?? "Sem dados suficientes ainda."}</div>
       ) : (
         <>
           <div className="race-debrief-header">
-            <span className="section-kicker">CONSISTÊNCIA POR SETOR • TODAS AS VOLTAS</span>
-            <h3>{data.report.car} — {data.report.track}</h3>
-            <p>{data.report.lapsAnalyzed} voltas limpas analisadas (todo o período com dados), não só a última corrida.</p>
+            <span className="section-kicker">CONSISTÊNCIA POR SETOR • VOLTAS MAIS RÁPIDAS DA CORRIDA</span>
+            <h4>Sua volta ideal, setor a setor</h4>
+            <p>{data.report.lapsAnalyzed} voltas mais rápidas dessa corrida — as mesmas usadas acima, para os dois contarem a mesma história.</p>
           </div>
 
           <div className="race-debrief-summary">

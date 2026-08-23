@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import SectorConsistency from "@/components/SectorConsistency";
 
 type BinStat = { distance: number; mean: number; stddev: number };
 type ChannelStat = { channel: string; label: string; avgScore: number; binStats?: BinStat[] };
@@ -244,6 +245,10 @@ export default function RaceDebrief() {
               {data.channelStats.filter((item) => item.binStats?.length).map((item) => <ChannelBandChart key={item.channel} label={item.label} binStats={item.binStats as BinStat[]} />)}
             </div>
           )}
+
+          <div className="race-debrief-chart-block">
+            <SectorConsistency category={selected} />
+          </div>
         </>
       )}
     </div>

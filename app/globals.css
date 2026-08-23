@@ -306,6 +306,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .setup-summary-contributors del { color: var(--red); text-decoration: line-through; }
 .setup-summary-contributors ins { color: var(--green); text-decoration: none; font-weight: 600; }
 .setup-summary-categories { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.setup-readonly-tag { color: var(--amber); font-style: normal; }
 
 .setup-patterns { margin-top: 14px; padding: 22px; }
 .setup-patterns-meta { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
@@ -459,7 +460,8 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 
 .sector-consistency { margin-top: 18px; }
 .sector-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
-.sector-row { display: grid; grid-template-columns: 36px 1fr 110px 220px; align-items: center; gap: 12px; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 3px; }
+.sector-row { display: grid; grid-template-columns: 36px 1fr 110px 220px; align-items: center; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 3px; }
+.sector-note { grid-column: 1 / -1; color: var(--amber); font-size: 11px; }
 .sector-number { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--muted); }
 .sector-track { position: relative; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
 .sector-spread { height: 100%; border-radius: 4px; }
