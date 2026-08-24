@@ -7,7 +7,6 @@ import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
-import OfficialResultsUpload from "@/components/OfficialResultsPanel";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -69,19 +68,6 @@ type DashboardData = {
     sports: { current: WeekPoint[]; previous: WeekPoint[] };
   };
   historical: HistoricalRow[];
-  officialResults: {
-    lastCapturedAt: string | null;
-    series: Array<{
-      seasonId: string;
-      seasonName: string;
-      category: "formula_car" | "sports_car";
-      series: string;
-      starts: number;
-      wins: number;
-      source: string;
-      capturedAt: string;
-    }>;
-  };
   featureAvailability: { wins: boolean; winsReason: string };
   races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: number | null; startPosition: number | null; finishPosition: number | null }>;
 };
@@ -215,7 +201,6 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <OfficialResultsUpload onImported={loadDashboard} />
             <button className="primary-button" onClick={syncData} disabled={syncing}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
             </button>
