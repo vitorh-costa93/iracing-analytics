@@ -28,6 +28,7 @@ export type RaceResult = {
   racedAt: string;
   seriesName: string;
   trackName: string;
+  trackConfig: string | null;
   carName: string;
   category: "formula_car" | "sports_car";
   seasonWeek: number | null;
@@ -87,6 +88,7 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
   const subMatch = subLine.match(/^(.+?)(?:\s*\(([^)]+)\))?\s*(?:·Week (\d+))?$/);
   if (!subMatch) throw new Error(`irstats race detail: unrecognized track/week line "${subLine}"`);
   const trackName = subMatch[1].trim();
+  const trackConfig = subMatch[2] ? subMatch[2].trim() : null;
   const seasonWeek = subMatch[3] ? Number(subMatch[3]) : null;
 
   const category = parseCategory(raceStat($, "Category"));
@@ -106,9 +108,13 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
   if (!licenseMatch) throw new Error(`irstats race detail: unrecognized license cell "${licenseCell}"`);
 
   const iratingCell = cells.eq(3);
-  const iratingDeltaText = iratingCell.find("small").first().text().trim();
-  const iratingDeltaMatch = iratingDeltaText.match(/^([+-]\d+)$/);
-  if (!iratingDeltaMatch) throw new Error(`irstats race detail: unrecognized iRating delta "${iratingDeltaText}"`);
+  const iratingDeltaTextRaw = iratingCell.find("small").first().text().trim();
+  // Accept an optional sign (a zero/unsigned delta may render without one) and both the ASCII
+  // hyphen-minus and the Unicode minus sign U+2212 (the table header itself uses "±/−"), then
+  // normalize to ASCII before Number(...).
+  const iratingDeltaText = iratingDeltaTextRaw.replace(/−/g, "-");
+  const iratingDeltaMatch = iratingDeltaText.match(/^([+-]?\d+)$/);
+  if (!iratingDeltaMatch) throw new Error(`irstats race detail: unrecognized iRating delta "${iratingDeltaTextRaw}"`);
   const iratingClone = iratingCell.clone();
   iratingClone.find("small").remove();
   const iratingDisplay = iratingClone.text().trim();
@@ -120,6 +126,7 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
     racedAt,
     seriesName,
     trackName,
+    trackConfig,
     carName: cells.eq(4).text().trim(),
     category,
     seasonWeek,

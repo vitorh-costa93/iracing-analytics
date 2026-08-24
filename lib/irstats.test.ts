@@ -132,6 +132,7 @@ describe("parseRaceDetailPage", () => {
       racedAt: "2026-08-21T20:30:00.000Z",
       seriesName: "Formula B - Super Formula Series",
       trackName: "Autodromo Nazionale Monza",
+      trackConfig: "Grand Prix",
       carName: "Super Formula SF23 - Honda",
       category: "formula_car",
       seasonWeek: 10,
@@ -161,6 +162,29 @@ describe("parseRaceDetailPage", () => {
     expect(result.iratingDelta).toBe(-46);
     expect(result.finishPosition).toBe(4);
     expect(result.positionChange).toBe(3);
+  });
+
+  it("extracts trackConfig from the parenthesized layout in the track/week line", () => {
+    const result = parseRaceDetailPage(DETAIL_PAGE_FIXTURE, "Vitor Hugo Da Costa");
+    expect(result.trackConfig).toBe("Grand Prix");
+  });
+
+  it("treats an unsigned iRating delta as positive", () => {
+    const unsigned = DETAIL_PAGE_FIXTURE.replace(
+      '<small class="text-success">+73</small>',
+      '<small class="text-success">73</small>'
+    );
+    const result = parseRaceDetailPage(unsigned, "Vitor Hugo Da Costa");
+    expect(result.iratingDelta).toBe(73);
+  });
+
+  it("parses a Unicode minus sign (U+2212) delta as negative", () => {
+    const unicodeMinus = DETAIL_PAGE_FIXTURE.replace(
+      '<small class="text-danger">-46</small>',
+      '<small class="text-danger">−46</small>'
+    );
+    const result = parseRaceDetailPage(unicodeMinus, "Noddy Emel");
+    expect(result.iratingDelta).toBe(-46);
   });
 
   it("throws when the named driver is not in the results table", () => {
