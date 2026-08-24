@@ -366,17 +366,19 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
 }
 
-function TrackMap({ trace, range, zoom }: { trace: Trace; range: [number, number] | null; zoom?: boolean }) {
+function TrackMap({ trace, referenceTrace, range, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; zoom?: boolean }) {
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
+  const refGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
   const selected = range ? gps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
+  const refSelected = range && refGps.length ? refGps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
 
   let boundsPoints = gps;
-  if (zoom && selected.length >= 2) {
-    boundsPoints = selected;
+  if (zoom && (selected.length >= 2 || refSelected.length >= 2)) {
+    boundsPoints = [...selected, ...refSelected];
   } else if (zoom && range) {
     const center = (range[0] + range[1]) / 2;
-    boundsPoints = [...gps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 12);
+    boundsPoints = [...gps, ...refGps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 16);
   }
   const lats = boundsPoints.map((point) => Number(point.lat)), lons = boundsPoints.map((point) => Number(point.lon));
   const rawMinLat = Math.min(...lats), rawMaxLat = Math.max(...lats), rawMinLon = Math.min(...lons), rawMaxLon = Math.max(...lons);
@@ -389,20 +391,31 @@ function TrackMap({ trace, range, zoom }: { trace: Trace; range: [number, number
     const y = 182 - (Number(point.lat) - minLat) / Math.max(.000001, maxLat - minLat) * 164;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   };
-  return <svg className="track-map" viewBox="0 0 300 200" role="img" aria-label="Mapa GPS da pista com trecho selecionado">
+  return <svg className="track-map" viewBox="0 0 300 200" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
     <polyline points={gps.map(project).join(" ")} className="track-outline" />
+    {refSelected.length > 1 && <polyline points={refSelected.map(project).join(" ")} className="track-reference" />}
     {selected.length > 1 && <polyline points={selected.map(project).join(" ")} className="track-highlight" />}
     {selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
   </svg>;
 }
 
+const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: number }[] = [
+  { field: "speed", label: "SPEED", top: 4, height: 72 },
+  { field: "throttle", label: "THROTTLE", top: 92, height: 46 },
+  { field: "brake", label: "BRAKE", top: 154, height: 46 },
+  { field: "steering", label: "STEERING", top: 216, height: 64 },
+];
+const FOCUSED_HEIGHT = 288;
+
 function FocusedChart({ own, reference, range }: { own: Trace; reference: Trace | null; range: [number, number] }) {
-  const width = 480, height = 220;
+  const width = 480;
   const from = Math.max(0, range[0] - 3), to = Math.min(100, range[1] + 3);
   const ownPts = own.points.filter((point) => point.distance >= from && point.distance <= to);
   const refPts = reference ? reference.points.filter((point) => point.distance >= from && point.distance <= to) : [];
   const all = [...ownPts, ...refPts];
+  const [hoverDistance, setHoverDistance] = useState<number | null>(null);
   const scaleX = (distance: number) => (distance - from) / Math.max(0.001, to - from) * width;
+  const unscaleX = (x: number) => from + (x / width) * (to - from);
   function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
     const values = all.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
     if (!values.length) return "";
@@ -412,21 +425,39 @@ function FocusedChart({ own, reference, range }: { own: Trace; reference: Trace 
     return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
       .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
   }
-  return <svg viewBox={`0 0 ${width} ${height}`} className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado">
-    <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={height} className="focused-zone" />
-    <text x="4" y="14" className="channel-label">SPEED</text>
-    <polyline points={line(ownPts, "speed", 4, 66)} className="trace-speed" />
-    {reference && <polyline points={line(refPts, "speed", 4, 66)} className="trace-speed reference-line" />}
-    <text x="4" y="88" className="channel-label">THROTTLE</text>
-    <polyline points={line(ownPts, "throttle", 82, 46)} className="trace-throttle" />
-    {reference && <polyline points={line(refPts, "throttle", 82, 46)} className="trace-throttle reference-line" />}
-    <text x="4" y="146" className="channel-label">BRAKE</text>
-    <polyline points={line(ownPts, "brake", 140, 46)} className="trace-brake" />
-    {reference && <polyline points={line(refPts, "brake", 140, 46)} className="trace-brake reference-line" />}
-    <text x="4" y="204" className="channel-label">STEERING</text>
-    <polyline points={line(ownPts, "steering", 198, 20)} className="trace-steering" />
-    {reference && <polyline points={line(refPts, "steering", 198, 20)} className="trace-steering reference-line" />}
-  </svg>;
+  const formatValue = (field: ChannelKey, value: number | null) => value === null ? "—"
+    : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h`
+    : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°`
+    : `${(value * 100).toFixed(0)}%`;
+  return (
+    <div className="focused-chart-wrap">
+      <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio e volante"
+        onMouseMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          const x = (event.clientX - rect.left) / rect.width * width;
+          setHoverDistance(Math.max(from, Math.min(to, unscaleX(x))));
+        }}
+        onMouseLeave={() => setHoverDistance(null)}>
+        <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
+        {FOCUSED_ROWS.map((row) => (
+          <g key={row.field}>
+            <text x="4" y={row.top + 12} className="channel-label">{row.label}</text>
+            <polyline points={line(ownPts, row.field, row.top, row.height)} className={`trace-${row.field}`} />
+            {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
+          </g>
+        ))}
+        {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
+      </svg>
+      {hoverDistance !== null ? (
+        <div className="focused-hover-readout">
+          <strong>{hoverDistance.toFixed(1)}%</strong>
+          {(["speed", "throttle", "brake", "steering"] as ChannelKey[]).map((field) => (
+            <div key={field}><span>{field}</span><b>{formatValue(field, interpolate(ownPts.length ? ownPts : own.points, hoverDistance, field))}</b>{reference && <em>{formatValue(field, interpolate(refPts.length ? refPts : reference.points, hoverDistance, field))}</em>}</div>
+          ))}
+        </div>
+      ) : <p className="focused-hover-empty">Passe o mouse no gráfico para ver os valores exatos de cada canal neste ponto.</p>}
+    </div>
+  );
 }
 
 export default function ActiveWeekTelemetry() {
@@ -636,7 +667,7 @@ export default function ActiveWeekTelemetry() {
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
               <div className="channel-key"><span className="speed">Velocidade</span><span className="throttle">Acelerador</span><span className="brake">Freio</span><span className="steering">Volante</span><span className="rpm">RPM</span><span className="gear">Marcha</span><span className="clutch">Embreagem</span><span className="dynamics">Dinâmica</span></div>
               <div className="telemetry-workspace">
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} /><p>Passe o mouse nos inputs ou clique em um insight. Clique no gráfico e use ← → (Shift para passos maiores) para percorrer a pista pelo teclado.</p></aside>
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight. Clique no gráfico e use ← → (Shift para passos maiores) para percorrer a pista pelo teclado.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
                 aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."
@@ -670,7 +701,7 @@ export default function ActiveWeekTelemetry() {
                   const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
                   return <div className="telemetry-hover">
                     <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
-                    <div className="telemetry-hover-map"><TrackMap trace={trace} range={[Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)]} zoom /></div>
+                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} range={[Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)]} zoom /></div>
                     {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
                   </div>;
                 })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
@@ -694,7 +725,8 @@ export default function ActiveWeekTelemetry() {
                   <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} />
                   <div className="insight-popup-map">
                     <span className="section-kicker">TRAÇADO</span>
-                    <TrackMap trace={trace} range={[focusedInsight.start, focusedInsight.end]} zoom />
+                    <TrackMap trace={trace} referenceTrace={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} zoom />
+                    {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
                   </div>
                 </div>
                 <div className="insight-popup-metrics">{focusedInsight.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>

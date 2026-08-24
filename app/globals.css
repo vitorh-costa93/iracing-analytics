@@ -240,7 +240,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insights-grid button p, .comparison-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .comparison-note { margin: 10px 0 0; }
 .track-map-panel { margin-top: 20px; padding: 14px; border: 1px solid var(--border); background: var(--surface-muted); }.track-map-panel h3 { margin: 4px 0 8px; font-size: 16px; }.track-map-panel > p, .track-map-empty { margin: 6px 0 0; color: var(--soft); font-size: 11px; }
-.track-map { width: 100%; height: 220px; display: block; }.track-outline { fill: none; stroke: var(--border-strong); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 8; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 3; }
+.track-map { width: 100%; height: 220px; display: block; }.track-outline { fill: none; stroke: var(--border-strong); stroke-width: 4; stroke-linejoin: round; stroke-linecap: round; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 8; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 3; }.track-reference { fill: none; stroke: var(--blue); stroke-width: 6; stroke-linecap: round; stroke-dasharray: 3 5; opacity: .9; }
+.track-map-legend { display: flex; gap: 14px; margin: 6px 0 0; font-family: var(--mono); font-size: 10px; color: var(--muted); }.track-map-legend span { display: inline-flex; align-items: center; gap: 5px; }.track-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; }.track-map-legend .own::before { background: var(--red); }.track-map-legend .reference::before { background: var(--blue); background-image: repeating-linear-gradient(90deg, var(--blue) 0 3px, transparent 3px 6px); }
 .telemetry-workspace { display: grid; grid-template-columns: minmax(240px, 28%) minmax(0, 1fr) minmax(220px, 24%); gap: 18px; align-items: start; margin-top: 10px; }.telemetry-map-sticky { position: sticky; top: 16px; min-height: 520px; padding: 16px; border: 1px solid var(--border); background: var(--surface-muted); }.telemetry-map-sticky h3 { margin: 4px 0 12px; font-size: 17px; }.telemetry-map-sticky .track-map { height: 430px; }.telemetry-map-sticky p { color: var(--soft); font-size: 11px; }
 
 .insight-popup-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(3,5,7,.72); padding: 20px; }
@@ -255,10 +256,19 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-map .track-map { height: 200px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
-.focused-chart { width: 100%; height: auto; border: 1px solid var(--border); background: var(--surface-muted); }
+.focused-chart-wrap { display: grid; gap: 8px; }
+.focused-chart { width: 100%; height: auto; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; }
 .focused-chart text { fill: var(--soft); font-size: 10px; font-family: var(--mono); }
 .focused-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.focused-zone { fill: rgba(79,209,232,.08); }
+.focused-chart .trace-steering { stroke-width: 2.5; }
+.focused-zone { fill: rgba(28,79,156,.1); }
+.focused-hover-readout { padding: 10px 12px; background: var(--surface); border: 1px solid var(--border-strong); font-family: var(--mono); font-size: 11px; }
+.focused-hover-readout strong { display: block; margin-bottom: 6px; font-size: 12px; color: var(--text); }
+.focused-hover-readout div { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; padding: 2px 0; }
+.focused-hover-readout span { color: var(--muted); text-transform: uppercase; }
+.focused-hover-readout b { font-weight: 500; }
+.focused-hover-readout em { color: var(--blue); font-style: normal; }
+.focused-hover-empty { margin: 0; padding: 10px 12px; color: var(--soft); font-size: 11px; background: var(--surface); border: 1px solid var(--border); }
 
 footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-size: 11px; text-align: center; }
 
