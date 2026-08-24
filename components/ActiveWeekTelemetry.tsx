@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { detectCorners as detectCornersFromLatAccel } from "@/lib/corner-detection";
+import { lookupCornerNames } from "@/lib/track-corners";
 
 type Combination = {
   key: string;
@@ -27,7 +29,7 @@ type Comparison = {
   estimatedReferenceTime: number;
   estimatedGap: number;
   averageSpeedDifference: number;
-  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number }[];
+  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; kind: "corner" | "straight"; cornerNumber: number | null; cornerLabel: string | null; primaryType: string }[];
   channelInsights: string[];
 };
 
@@ -222,7 +224,30 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey) 
   return previous[field];
 }
 
-function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Comparison | null {
+type Corner = { number: number; distance: number; name: string | null };
+
+/** Detects every real corner (any part of the track that isn't a straight, via lateral acceleration —
+ * not just braking zones), then attaches a researched name when the number of corners we detect on
+ * this lap plausibly matches the track's known corner count. Shared with the race debrief so corner
+ * numbering/naming is identical across the whole app instead of two independent implementations. */
+function detectCorners(points: TracePoint[], trackName: string, trackVariant: string): Corner[] {
+  const raw = detectCornersFromLatAccel(points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel })));
+  const names = lookupCornerNames(trackName, trackVariant, raw.length);
+  return raw.map((corner, index) => ({ number: corner.number, distance: corner.distance, name: names?.[index] ?? null }));
+}
+
+function nearestCorner(corners: Corner[], start: number, end: number): Corner | null {
+  const center = (start + end) / 2;
+  let best: Corner | null = null;
+  let bestDist = Infinity;
+  for (const corner of corners) {
+    const d = Math.min(Math.abs(corner.distance - center), 100 - Math.abs(corner.distance - center));
+    if (d < bestDist) { bestDist = d; best = corner; }
+  }
+  return best && bestDist <= 8 ? best : null;
+}
+
+function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners: Corner[]): Comparison | null {
   const bins = Array.from({ length: 401 }, (_, index) => index / 4);
   const fields: ChannelKey[] = ["speed", "throttle", "brake", "steering", "rpm", "gear", "clutch", "latAccel", "longAccel", "yawRate", "abs", "drs", "pushToPass", "p2pStatus", "p2pCount"];
   const samples = bins.map((distance) => {
@@ -249,31 +274,86 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
     const ownTime = rows.reduce((sum, item) => sum + 1 / Number(item.own_speed), 0) * scale;
     const refTime = rows.reduce((sum, item) => sum + 1 / Number(item.ref_speed), 0) * scale;
     return { index, gain: ownTime - refTime, speedGap: (avg("ref_speed") - avg("own_speed")) * 3.6, throttleGap: avg("ref_throttle") - avg("own_throttle"), brakeGap: avg("own_brake") - avg("ref_brake"), steeringGap: Math.abs(avg("own_steering")) - Math.abs(avg("ref_steering")), rpmGap: avg("ref_rpm") - avg("own_rpm"), gearGap: avg("ref_gear") - avg("own_gear"), latAccelGap: Math.abs(avg("ref_latAccel")) - Math.abs(avg("own_latAccel")) };
-  }).filter((item) => item.gain > 0.008).sort((a, b) => b.gain - a.gain).slice(0, 5);
-  const opportunities = segments.map((item) => {
+  }).filter((item) => item.gain > 0.008).sort((a, b) => b.gain - a.gain).slice(0, 6);
+  const opportunities = segments.map((item, rankIndex) => {
     const start = item.index * 5, end = (item.index + 1) * 5;
     const braking = brakingDeltas.find((event) => event.position >= start - 2 && event.position <= end + 2);
-    const nearestBrake = ownBrakes.reduce((best, position) => Math.abs(position - (start + end) / 2) < Math.abs(best - (start + end) / 2) ? position : best, ownBrakes[0] ?? start);
-    const cornerNumber = ownBrakes.length && Math.abs(nearestBrake - (start + end) / 2) <= 8 ? ownBrakes.indexOf(nearestBrake) + 1 : null;
-    const observations: string[] = [];
-    if (braking?.deltaMeters) observations.push(braking.deltaMeters < 0
-      ? `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m antes; há espaço para testar uma frenagem progressivamente mais adiante se velocidade mínima e saída não piorarem`
-      : `você freia ${Math.abs(braking.deltaMeters).toFixed(0)} m depois; confira se isso causa pico de freio, menor velocidade mínima ou atraso na retomada`);
-    if (item.throttleGap > .06) observations.push(`a referência usa ${(item.throttleGap * 100).toFixed(0)} p.p. mais acelerador; priorize soltar o freio sem arrastar e abra o acelerador progressivamente assim que o carro apontar para a saída`);
-    if (item.brakeGap > .06) observations.push(`você aplica ${(item.brakeGap * 100).toFixed(0)} p.p. mais freio; teste menos pressão ou uma liberação mais contínua para preservar velocidade mínima`);
-    if (Math.abs(item.steeringGap) > .03) observations.push(item.steeringGap > 0 ? "você usa mais volante; faça a rotação com uma entrada única e reduza correções para não sobrecarregar o pneu dianteiro" : "a referência usa mais volante; experimente antecipar suavemente a rotação sem adicionar um segundo movimento");
-    if (Math.abs(item.gearGap) >= .45) observations.push(`a referência usa marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"}; teste essa marcha e compare rotação, tração e estabilidade antes de adotá-la`);
-    if (item.rpmGap > 300) observations.push(`referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`);
-    if (item.latAccelGap > .5) observations.push("a referência sustenta mais aceleração lateral; carregue velocidade com uma entrada mais limpa, solte o freio progressivamente até o ápice e evite correções que saturam o pneu");
+    const corner = nearestCorner(corners, start, end);
+    const kind: "corner" | "straight" = corner ? "corner" : "straight";
+    const cornerLabel = corner ? corner.name ?? `Curva ${corner.number}` : null;
+    const place = cornerLabel ? `na ${cornerLabel}` : "neste trecho";
+
+    type Finding = { type: string; weight: number; clause: string; instruction: string };
+    const findings: Finding[] = [];
+    if (braking?.deltaMeters) {
+      const early = braking.deltaMeters < 0;
+      findings.push({
+        type: early ? "braking-early" : "braking-late", weight: Math.abs(braking.deltaMeters) * 1.5,
+        clause: early ? `você está freando ${Math.abs(braking.deltaMeters).toFixed(0)} m antes da referência` : `você está freando ${Math.abs(braking.deltaMeters).toFixed(0)} m depois da referência`,
+        instruction: early ? `se a velocidade mínima e a saída não pioraram, empurre o ponto de freada progressivamente, décimo a décimo, até achar o limite` : `confira na telemetria se isso está gerando pico de freio, menor velocidade mínima ou atraso na retomada do acelerador — pode ser oportunidade, ou pode ser o seu limite de segurança`,
+      });
+    }
+    if (item.throttleGap > .06) findings.push({
+      type: "throttle", weight: item.throttleGap * 200,
+      clause: `a referência já está com ${(item.throttleGap * 100).toFixed(0)} pontos percentuais a mais de acelerador aqui`,
+      instruction: "solte o freio sem arrastar e reabra o pedal de forma progressiva assim que o carro apontar para a saída, em vez de esperar o carro estabilizar todo",
+    });
+    if (item.brakeGap > .06) findings.push({
+      type: "brake-pressure", weight: item.brakeGap * 180,
+      clause: `você está aplicando ${(item.brakeGap * 100).toFixed(0)} pontos percentuais a mais de freio que a referência`,
+      instruction: "teste uma pressão inicial menor ou uma liberação mais contínua — isso preserva velocidade mínima sem perder segurança na entrada",
+    });
+    if (Math.abs(item.steeringGap) > .03) findings.push({
+      type: "steering", weight: Math.abs(item.steeringGap) * 300,
+      clause: item.steeringGap > 0 ? "você está usando mais volante que a referência" : "a referência usa mais volante que você aqui, provavelmente rotacionando o carro mais cedo",
+      instruction: item.steeringGap > 0 ? "busque uma entrada única e limpa, sem correções — cada correção extra sobrecarrega o pneu dianteiro e custa tempo" : "experimente antecipar a virada de forma suave, sem adicionar um segundo movimento de volante",
+    });
+    if (Math.abs(item.gearGap) >= .45) findings.push({
+      type: "gear", weight: Math.abs(item.gearGap) * 20,
+      clause: `a referência usa marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"} nesse trecho`,
+      instruction: "teste essa marcha e compare rotação, tração e estabilidade antes de levar pra corrida",
+    });
+    if (item.latAccelGap > .5) findings.push({
+      type: "rotation", weight: item.latAccelGap * 20,
+      clause: "a referência mantém mais velocidade no ponto mais fechado da curva",
+      instruction: "chegue com mais velocidade numa entrada limpa e solte o freio aos poucos até o ponto mais lento, sem corrigir o volante — cada correção sobrecarrega o pneu da frente e tira velocidade",
+    });
+    if (item.rpmGap > 300) findings.push({
+      type: "rpm", weight: item.rpmGap / 30,
+      clause: `a referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`,
+      instruction: "isso sugere marcha diferente ou ponto de troca mais tardio — cruze com a informação de marcha antes de mudar qualquer coisa",
+    });
+    findings.sort((a, b) => b.weight - a.weight);
+    const primaryType = (findings[0]?.type ?? "speed") as "braking-early" | "braking-late" | "throttle" | "brake-pressure" | "steering" | "gear" | "rotation" | "speed";
+
+    const tenths = item.gain * 10;
+    const magnitude = rankIndex === 0 && tenths >= 0.15 ? "Essa é a maior oportunidade da volta: " : tenths >= 0.12 ? "Ganho relevante aqui: " : "";
+    let narrative: string;
+    if (findings.length === 0) {
+      narrative = `${magnitude}você está ${(item.speedGap).toFixed(1)} km/h mais lento que a referência ${place}, sem um motivo claro de freio, acelerador ou volante — pode ser confiança ou o caminho que você faz na curva. Compare seu traçado com o da referência no mapa ao lado e veja se você passa pelo mesmo ponto mais fechado da curva.`;
+    } else {
+      const primary = findings[0];
+      const secondary = findings.slice(1, 3);
+      const secondaryText = secondary.length
+        ? ` Também reparei que ${secondary.map((finding) => finding.clause).join(" e ")}${secondary.length === 1 ? `; ${secondary[0].instruction}.` : "."}`
+        : "";
+      const cap = (text: string) => `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+      narrative = `${magnitude}${cap(primary.clause)} ${place}. ${cap(primary.instruction)}.${secondaryText}`;
+    }
+
     return {
-      title: `${cornerNumber ? `Curva ${cornerNumber}` : "Trecho"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
-      detail: `Você perde cerca de ${(item.gain * 10).toFixed(1)} décimos neste trecho porque ${observations.length ? observations.join("; ") : "mantém menos velocidade que a referência"}.`,
+      title: `${cornerLabel ?? "Reta / transição"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
+      detail: `Você perde cerca de ${tenths.toFixed(1)} décimos aqui. ${narrative}`,
       gain: item.gain,
-      metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ throttle ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
+      metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ acelerador ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
       start,
       end,
+      kind,
+      cornerNumber: corner?.number ?? null,
+      cornerLabel,
+      primaryType,
     };
-  });
+  }).sort((a, b) => a.start - b.start);
   const avgAbs = (field: ChannelKey, source: Trace) => source.points.reduce((sum, point) => sum + Math.abs(point[field] ?? 0), 0) / source.points.length;
   const channelInsights = [
     `Volante: média absoluta ${(avgAbs("steering", own) * 180 / Math.PI).toFixed(1)}° contra ${(avgAbs("steering", reference) * 180 / Math.PI).toFixed(1)}° na referência.`,
@@ -286,22 +366,98 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number): Compar
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
 }
 
-function TrackMap({ trace, range }: { trace: Trace; range: [number, number] | null }) {
+function nearestGpsPoint(points: TracePoint[], distance: number) {
+  let best: TracePoint | null = null, bestDelta = Infinity;
+  for (const point of points) {
+    const delta = Math.min(Math.abs(point.distance - distance), 100 - Math.abs(point.distance - distance));
+    if (delta < bestDelta) { bestDelta = delta; best = point; }
+  }
+  return best;
+}
+
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean }) {
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
-  const lats = gps.map((point) => Number(point.lat)), lons = gps.map((point) => Number(point.lon));
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const refGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
+  const selected = range ? gps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
+  const refSelected = range && refGps.length ? refGps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
+
+  let boundsPoints = gps;
+  if (zoom && (selected.length >= 2 || refSelected.length >= 2)) {
+    boundsPoints = [...selected, ...refSelected];
+  } else if (zoom && range) {
+    const center = (range[0] + range[1]) / 2;
+    boundsPoints = [...gps, ...refGps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 16);
+  }
+  const lats = boundsPoints.map((point) => Number(point.lat)), lons = boundsPoints.map((point) => Number(point.lon));
+  const rawMinLat = Math.min(...lats), rawMaxLat = Math.max(...lats), rawMinLon = Math.min(...lons), rawMaxLon = Math.max(...lons);
+  const zoomPad = zoom ? 0.35 : 0;
+  const latSpan = Math.max(rawMaxLat - rawMinLat, 0.00005), lonSpan = Math.max(rawMaxLon - rawMinLon, 0.00005);
+  const minLat = rawMinLat - latSpan * zoomPad, maxLat = rawMaxLat + latSpan * zoomPad;
+  const minLon = rawMinLon - lonSpan * zoomPad, maxLon = rawMaxLon + lonSpan * zoomPad;
   const project = (point: TracePoint) => {
     const x = 18 + (Number(point.lon) - minLon) / Math.max(.000001, maxLon - minLon) * 264;
     const y = 182 - (Number(point.lat) - minLat) / Math.max(.000001, maxLat - minLat) * 164;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   };
-  const selected = range ? gps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
-  return <svg className="track-map" viewBox="0 0 300 200" role="img" aria-label="Mapa GPS da pista com trecho selecionado">
+  const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
+  const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
+  return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
     <polyline points={gps.map(project).join(" ")} className="track-outline" />
     {selected.length > 1 && <polyline points={selected.map(project).join(" ")} className="track-highlight" />}
-    {selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
+    {refSelected.length > 1 && <polyline points={refSelected.map(project).join(" ")} className="track-reference" />}
+    {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
+    {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
+    {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r="5" className="track-marker" />}
   </svg>;
+}
+
+const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: number }[] = [
+  { field: "speed", label: "SPEED", top: 4, height: 90 },
+  { field: "throttle", label: "THROTTLE", top: 106, height: 56 },
+  { field: "brake", label: "BRAKE", top: 174, height: 56 },
+  { field: "steering", label: "STEERING", top: 242, height: 78 },
+];
+const FOCUSED_HEIGHT = 324;
+
+/** Hover here drives the position marker on the linked TrackMap (via onHover), instead of a value
+ * readout — the driver asked to see WHERE on track a point is, not read exact numbers off a tooltip. */
+function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: Trace; reference: Trace | null; range: [number, number]; hoverDistance: number | null; onHover: (distance: number | null) => void }) {
+  const width = 480;
+  const from = Math.max(0, range[0] - 3), to = Math.min(100, range[1] + 3);
+  const ownPts = own.points.filter((point) => point.distance >= from && point.distance <= to);
+  const refPts = reference ? reference.points.filter((point) => point.distance >= from && point.distance <= to) : [];
+  const all = [...ownPts, ...refPts];
+  const scaleX = (distance: number) => (distance - from) / Math.max(0.001, to - from) * width;
+  const unscaleX = (x: number) => from + (x / width) * (to - from);
+  function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
+    const values = all.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
+    if (!values.length) return "";
+    const min = field === "speed" ? Math.min(...values) : 0;
+    const max = Math.max(...values);
+    const span = Math.max(0.0001, max - min);
+    return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
+      .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
+  }
+  return (
+    <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} preserveAspectRatio="none" className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio e volante; passe o mouse para ver a posição no mapa ao lado"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width * width;
+        onHover(Math.max(from, Math.min(to, unscaleX(x))));
+      }}
+      onMouseLeave={() => onHover(null)}>
+      <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
+      {FOCUSED_ROWS.map((row) => (
+        <g key={row.field}>
+          <text x="4" y={row.top + 12} className="channel-label">{row.label}</text>
+          <polyline points={line(ownPts, row.field, row.top, row.height)} className={`trace-${row.field}`} />
+          {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
+        </g>
+      ))}
+      {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
+    </svg>
+  );
 }
 
 export default function ActiveWeekTelemetry() {
@@ -317,9 +473,43 @@ export default function ActiveWeekTelemetry() {
   const [referenceMessage, setReferenceMessage] = useState<string | null>(null);
   const [hoveredDistance, setHoveredDistance] = useState<number | null>(null);
   const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null);
+  const [focusedInsight, setFocusedInsight] = useState<Comparison["opportunities"][number] | null>(null);
+  const [popupHoverDistance, setPopupHoverDistance] = useState<number | null>(null);
+  const insightsRef = useRef<HTMLDivElement | null>(null);
+  const popupRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    function handlePointerDown(event: MouseEvent) {
+      const target = event.target as Node;
+      if (insightsRef.current?.contains(target)) return;
+      if (popupRef.current?.contains(target)) return;
+      setFocusedInsight(null);
+      setSelectedRange(null);
+    }
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => document.removeEventListener("mousedown", handlePointerDown);
+  }, []);
+
+  // Esc closes the insight popup — the only way out was previously a mouse click on the ✕ or
+  // outside the card, which stalls a keyboard-driven flow entirely.
+  useEffect(() => {
+    setPopupHoverDistance(null);
+    if (!focusedInsight) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { setFocusedInsight(null); setSelectedRange(null); }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    popupRef.current?.querySelector<HTMLButtonElement>(".insight-popup-close")?.focus();
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [focusedInsight]);
+
+  const [retryCount, setRetryCount] = useState(0);
+  const retry = () => setRetryCount((count) => count + 1);
 
   useEffect(() => {
     let active = true;
+    setLoading(true);
+    setError(null);
     fetch("/api/telemetry/active-week", { cache: "no-store" })
       .then(async (response) => {
         const result = await response.json();
@@ -331,7 +521,7 @@ export default function ActiveWeekTelemetry() {
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, []);
+  }, [retryCount]);
 
   const selected = useMemo(() => data?.combinations.find((item) => item.key === selectedKey) ?? null, [data, selectedKey]);
 
@@ -351,7 +541,7 @@ export default function ActiveWeekTelemetry() {
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setTraceLoading(false));
     return () => { active = false; };
-  }, [selected]);
+  }, [selected, retryCount]);
 
   useEffect(() => {
     let active = true;
@@ -372,10 +562,12 @@ export default function ActiveWeekTelemetry() {
     return () => { active = false; };
   }, [selected]);
 
+  const corners = useMemo(() => trace && selected ? detectCorners(trace.points, selected.track.name, selected.track.variant ?? "") : [], [trace, selected]);
+
   const comparison = useMemo(() => {
     if (!trace || !referenceTrace || !selected?.bestLap) return null;
-    return compareTraces(trace, referenceTrace, selected.bestLap.lapTime);
-  }, [trace, referenceTrace, selected]);
+    return compareTraces(trace, referenceTrace, selected.bestLap.lapTime, corners);
+  }, [trace, referenceTrace, selected, corners]);
 
   async function uploadReference(file: File) {
     if (!selected) return;
@@ -426,7 +618,7 @@ export default function ActiveWeekTelemetry() {
       </div>
 
       {loading && <div className="telemetry-state">Identificando carro e pista da semana...</div>}
-      {!loading && error && !selected && <div className="telemetry-state error">{error}</div>}
+      {!loading && error && !selected && <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={retry}>Tentar novamente</button></div>}
       {!loading && !error && !data?.combinations.length && <div className="telemetry-state">Nenhuma atividade encontrada na semana vigente.</div>}
       {selected && (
         <div className="telemetry-content">
@@ -452,7 +644,7 @@ export default function ActiveWeekTelemetry() {
           </div>
           {referenceMessage && <div className="reference-message">{referenceMessage}</div>}
           {traceLoading && <div className="telemetry-state">Pré-carregando canais do Garage61...</div>}
-          {error && <div className="telemetry-state error">{error}</div>}
+          {error && <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={retry}>Tentar novamente</button></div>}
           {!traceLoading && !error && !selected.bestLap && <div className="telemetry-state">Ainda não há uma volta limpa com telemetria disponível para esta combinação.</div>}
           {referenceTrace && !comparison && <div className="telemetry-state error">Não foi possível alinhar amostras suficientes entre as duas voltas.</div>}
           {comparison && trace && (
@@ -462,9 +654,9 @@ export default function ActiveWeekTelemetry() {
                 <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
-              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3></div>
-                  <div className="insights-grid">{comparison.opportunities.length ? comparison.opportunities.map((item) => (
-                    <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance((item.start + item.end) / 2); }} key={item.title}>
+              <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As curvas são numeradas na ordem em que aparecem na volta. Quando eu sei o nome real da curva, uso ele; quando não sei, mostro só o número.</p></div>
+                  <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
+                    <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); }} key={item.title}>
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
                     </button>
                   )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos segmentos analisados.</p>}</div>
@@ -477,14 +669,23 @@ export default function ActiveWeekTelemetry() {
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
               <div className="channel-key"><span className="speed">Velocidade</span><span className="throttle">Acelerador</span><span className="brake">Freio</span><span className="steering">Volante</span><span className="rpm">RPM</span><span className="gear">Marcha</span><span className="clutch">Embreagem</span><span className="dynamics">Dinâmica</span></div>
               <div className="telemetry-workspace">
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} /><p>Passe o mouse nos inputs ou clique em um insight.</p></aside>
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight. Clique no gráfico e use ← → (Shift para passos maiores) para percorrer a pista pelo teclado.</p></aside>
               <div className="interactive-chart">
-              <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" aria-label="Canais sincronizados das duas voltas por distância da pista"
+              <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
+                aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."
                 onMouseLeave={() => setHoveredDistance(null)} onMouseMove={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect();
                   setHoveredDistance(Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100)));
+                }}
+                onKeyDown={(event) => {
+                  const step = event.shiftKey ? 5 : 0.5;
+                  if (event.key === "ArrowRight") { event.preventDefault(); setHoveredDistance((prev) => Math.min(100, (prev ?? 0) + step)); }
+                  else if (event.key === "ArrowLeft") { event.preventDefault(); setHoveredDistance((prev) => Math.max(0, (prev ?? 0) - step)); }
+                  else if (event.key === "Home") { event.preventDefault(); setHoveredDistance(0); }
+                  else if (event.key === "End") { event.preventDefault(); setHoveredDistance(100); }
                 }}>
                 {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1={value * 10} x2={value * 10} y1="0" y2="925" className="telemetry-grid" /><text x={value * 10} y="954" textAnchor={value === 0 ? "start" : value === 100 ? "end" : "middle"}>{value}%</text></g>)}
+                {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">{corner.name ? corner.name.slice(0, 12) : `C${corner.number}`}</text></g>)}
                 {([{"field":"speed","top":10,"height":140},{"field":"throttle","top":175,"height":65},{"field":"brake","top":265,"height":65},{"field":"steering","top":355,"height":65},{"field":"rpm","top":445,"height":65},{"field":"gear","top":535,"height":35},{"field":"clutch","top":595,"height":55},{"field":"latAccel","top":685,"height":55},{"field":"longAccel","top":775,"height":55},{"field":"yawRate","top":865,"height":55}] as {field:ChannelKey;top:number;height:number}[]).map((row) => <g key={row.field}>
                   <text x="8" y={row.top + 12} className="channel-label">{row.field === "speed" ? "SPEED" : row.field === "throttle" ? "THROTTLE" : row.field === "brake" ? "BRAKE" : row.field === "steering" ? "STEERING" : row.field.toUpperCase()}</text>
                   <polyline points={polyline(trace.points, row.field, row.top, row.height, referenceTrace ? [...trace.points, ...referenceTrace.points] : trace.points)} className={`trace-${row.field}`} />
@@ -493,16 +694,46 @@ export default function ActiveWeekTelemetry() {
                 {selectedRange && <rect x={selectedRange[0] * 10} y="0" width={(selectedRange[1] - selectedRange[0]) * 10} height="925" className="selected-segment" />}
                 {hoveredDistance !== null && <line x1={hoveredDistance * 10} x2={hoveredDistance * 10} y1="0" y2="925" className="hover-line" />}
               </svg>
-              {hoveredDistance !== null && (() => {
-                const own = (field: ChannelKey) => interpolate(trace.points, hoveredDistance, field);
-                const ref = (field: ChannelKey) => referenceTrace ? interpolate(referenceTrace.points, hoveredDistance, field) : null;
-                const format = (field: ChannelKey, value: number | null) => value === null ? "—" : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h` : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°` : field === "rpm" ? `${value.toFixed(0)}` : field === "gear" || field === "p2pCount" || field === "p2pStatus" ? `${Math.round(value)}` : field === "pushToPass" ? (value ? "ATIVO" : "inativo") : field === "latAccel" || field === "longAccel" ? `${value.toFixed(2)} m/s²` : field === "yawRate" ? `${value.toFixed(3)} rad/s` : `${(value * 100).toFixed(0)}%`;
-                const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
-                return <div className="telemetry-hover" style={{ left: `${Math.min(82, Math.max(2, hoveredDistance))}%` }}><strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>{visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}</div>;
-              })()}
               </div>
+              <aside className="telemetry-hover-panel">
+                {hoveredDistance !== null ? (() => {
+                  const own = (field: ChannelKey) => interpolate(trace.points, hoveredDistance, field);
+                  const ref = (field: ChannelKey) => referenceTrace ? interpolate(referenceTrace.points, hoveredDistance, field) : null;
+                  const format = (field: ChannelKey, value: number | null) => value === null ? "—" : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h` : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°` : field === "rpm" ? `${value.toFixed(0)}` : field === "gear" || field === "p2pCount" || field === "p2pStatus" ? `${Math.round(value)}` : field === "pushToPass" ? (value ? "ATIVO" : "inativo") : field === "latAccel" || field === "longAccel" ? `${value.toFixed(2)} m/s²` : field === "yawRate" ? `${value.toFixed(3)} rad/s` : `${(value * 100).toFixed(0)}%`;
+                  const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
+                  return <div className="telemetry-hover">
+                    <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
+                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} range={[Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)]} zoom /></div>
+                    {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
+                  </div>;
+                })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
+              </aside>
               </div>
               <p className="telemetry-caption">{trace.points.length.toLocaleString("pt-BR")} amostras exibidas • volta de {new Date(selected.bestLap!.startTime).toLocaleString("pt-BR")}</p>
+            </div>
+          )}
+          {focusedInsight && trace && (
+            <div className="insight-popup-backdrop">
+              <div className="insight-popup" ref={popupRef}>
+                <div className="insight-popup-head">
+                  <div>
+                    <span className="section-kicker">{focusedInsight.kind === "corner" ? (focusedInsight.cornerLabel ?? `CURVA ${focusedInsight.cornerNumber}`).toUpperCase() : "TRECHO"}</span>
+                    <h3>{focusedInsight.title}</h3>
+                  </div>
+                  <button type="button" className="insight-popup-close" onClick={() => { setFocusedInsight(null); setSelectedRange(null); }}>Fechar ✕</button>
+                </div>
+                <p className="insight-popup-detail">{focusedInsight.detail}</p>
+                <div className="insight-popup-body">
+                  <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} onHover={setPopupHoverDistance} />
+                  <div className="insight-popup-map">
+                    <span className="section-kicker">TRAÇADO</span>
+                    <TrackMap trace={trace} referenceTrace={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom />
+                    {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
+                    <p className="focused-hover-hint">{popupHoverDistance !== null ? `${popupHoverDistance.toFixed(1)}% da volta` : "Passe o mouse no gráfico ao lado para localizar o ponto no mapa."}</p>
+                  </div>
+                </div>
+                <div className="insight-popup-metrics">{focusedInsight.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>
+              </div>
             </div>
           )}
         </div>

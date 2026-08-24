@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { POST as syncCatalogAndStatistics } from "@/app/api/sync/all/route";
 import { POST as syncRatingHistory } from "@/app/api/sync/rating-history/route";
 import { POST as syncIncrementalSessions } from "@/app/api/sync/incremental/route";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { recomputeRatingMatches } from "@/lib/rating-match";
 
 async function readStep(name: string, response: Response) {
   const result = await response.json();
@@ -19,7 +21,9 @@ export async function GET(request: NextRequest) {
     const catalog = await readStep("catalog", await syncCatalogAndStatistics());
     const sessions = await readStep("sessions", await syncIncrementalSessions());
     const ratings = await readStep("rating-history", await syncRatingHistory());
-    return NextResponse.json({ status: "ok", catalog, sessions, ratings });
+    const { data: driver } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
+    const ratingMatches = driver ? await recomputeRatingMatches(driver.id) : { totalMatched: 0 };
+    return NextResponse.json({ status: "ok", catalog, sessions, ratings, ratingMatches });
   } catch (error) {
     return NextResponse.json(
       { status: "error", message: error instanceof Error ? error.message : String(error) },

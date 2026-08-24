@@ -1,4 +1,4 @@
-import ActiveWeekTelemetry from "@/components/ActiveWeekTelemetry";
+import TelemetryTabs from "@/components/TelemetryTabs";
 import AppTabs from "@/components/AppTabs";
 
 export const metadata = { title: "Telemetry Lab • Racing Analytics" };
@@ -11,7 +11,7 @@ export default function TelemetryPage() {
           <div className="brand-block"><div className="brand-mark"><span /></div><div><div className="brand-kicker">RACING ANALYTICS</div><h1>Telemetry Lab</h1><p>Análise técnica da semana ativa</p></div></div>
         </header>
         <AppTabs />
-        <ActiveWeekTelemetry />
+        <TelemetryTabs />
       </div>
     </main>
   );

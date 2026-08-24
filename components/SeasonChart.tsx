@@ -39,8 +39,8 @@ function formatRating(value: number | null) {
 export default function SeasonChart({ current, previous, currentName, previousName, metric = "irating" }: Props) {
   const [hovered, setHovered] = useState<{ point: WeekPoint; series: "current" | "previous" } | null>(null);
 
-  const width = 1000;
-  const height = 260;
+  const width = 640;
+  const height = 290;
   const pad = { top: 22, right: 24, bottom: 38, left: 64 };
   const chartWidth = width - pad.left - pad.right;
   const chartHeight = height - pad.top - pad.bottom;

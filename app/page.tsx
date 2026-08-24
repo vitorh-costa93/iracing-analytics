@@ -7,6 +7,7 @@ import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
+import OfficialResultsUpload from "@/components/OfficialResultsPanel";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -85,7 +86,7 @@ type DashboardData = {
   races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: number | null; startPosition: number | null; finishPosition: number | null }>;
 };
 
-type RankingItem = { label: string; delta: number; races: number; group?: string | null };
+type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
 
 function shortSeason(name: string) {
   return name.replace(" Season ", " S");
@@ -102,11 +103,16 @@ function aggregateRows(
     const label = row[key];
     const group = includeGroup ? row.carClass : null;
     const mapKey = `${group ?? ""}::${label}`;
-    const current = map.get(mapKey) ?? { label, delta: 0, races: 0, group };
+    const current = map.get(mapKey) ?? { label, delta: 0, races: 0, group, avgDelta: 0 };
     current.delta += row.delta;
     current.races += row.races;
     map.set(mapKey, current);
   }
+
+  // avgDelta must be recomputed as total/races AFTER aggregation, not summed/averaged from the
+  // per-row avgDelta values — otherwise a track raced under several different cars would get its
+  // average double-counted. Shown alongside the total in PerformanceRanking as context.
+  for (const item of map.values()) item.avgDelta = item.races > 0 ? item.delta / item.races : 0;
 
   return [...map.values()].sort((a, b) => b.delta - a.delta);
 }
@@ -183,7 +189,7 @@ export default function Home() {
   }
 
   if (!data || !rankings) {
-    return <main className="app-shell"><div className="state-box error">{message ?? "Não foi possível carregar os dados."}</div></main>;
+    return <main className="app-shell"><div className="state-box error">{message ?? "Não foi possível carregar os dados."}<button type="button" className="retry-button" onClick={() => loadDashboard()}>Tentar novamente</button></div></main>;
   }
 
   const currentLabel = shortSeason(data.season.current.name);
@@ -209,6 +215,7 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
+            <OfficialResultsUpload onImported={loadDashboard} />
             <button className="primary-button" onClick={syncData} disabled={syncing}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
             </button>
@@ -283,7 +290,7 @@ export default function Home() {
                   <button className={gt3Mode === "track" ? "active" : ""} onClick={() => setGt3Mode("track")}>Pista</button>
                 </div>
               </div>
-              <PerformanceRanking items={rankings.gt3} />
+              <PerformanceRanking items={rankings.gt3} kind={gt3Mode} />
             </article>
 
             <article className="panel ranking-panel">
@@ -294,7 +301,7 @@ export default function Home() {
                   <button className={imsaMode === "track" ? "active" : ""} onClick={() => setImsaMode("track")}>Pista</button>
                 </div>
               </div>
-              <PerformanceRanking items={rankings.imsa} />
+              <PerformanceRanking items={rankings.imsa} kind={imsaMode} />
             </article>
           </div>
         </section>

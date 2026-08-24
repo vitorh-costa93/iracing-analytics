@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "border-bottom: 3px solid",
+        "createdAt": "2026-08-23T13:38:18.779Z",
+        "reason": "confirmed false positive: .app-tabs a and .setup-subtabs button are tab-underline active-indicators (border-bottom transparent by default, colored only on .active), no border-radius present anywhere in the rule or on the element"
+      }
+    ]
+  }
+}
