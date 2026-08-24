@@ -12,11 +12,6 @@ type WeekRow = {
   week_end: string;
 };
 
-type SessionRow = {
-  car_id: number | null;
-  track_id: number | null;
-};
-
 type CatalogRow = { id: number; name: string; variant: string | null };
 
 type Garage61Lap = {
@@ -53,50 +48,63 @@ function isEligibleLap(lap: Garage61Lap, weekStart: Date, weekEnd: Date) {
 
 export async function GET() {
   try {
-    const nowIso = new Date().toISOString();
-    const { data: weekRows, error: weekError } = await supabaseAdmin
-      .from("v_season_weekly_irating")
-      .select("season_id, season_name, week_number, week_start, week_end")
-      .lte("week_start", nowIso)
-      .gt("week_end", nowIso)
-      .order("week_start", { ascending: false })
-      .limit(1);
-
-    if (weekError) throw weekError;
-    const week = (weekRows?.[0] ?? null) as WeekRow | null;
-    if (!week) {
-      return NextResponse.json({ status: "ok", week: null, combinations: [] });
-    }
-
-    const accounts = await garage61Get<{ items?: { platform?: string; id?: string }[] }>("/me/accounts");
-    const account = accounts.items?.find((item) => item.platform === "iracing");
-    if (!account?.id) throw new Error("Conta iRacing não encontrada no Garage61");
-
     const { data: driver, error: driverError } = await supabaseAdmin
       .from("drivers")
       .select("id")
-      .eq("platform_driver_id", account.id)
+      .order("updated_at", { ascending: false })
+      .limit(1)
       .single();
     if (driverError || !driver) throw new Error("Driver não encontrado no Supabase");
 
-    const { data: sessionData, error: sessionsError } = await supabaseAdmin
-      .from("driving_sessions")
+    const { data: latestRace, error: latestRaceError } = await supabaseAdmin
+      .from("race_results")
+      .select("raced_at, season_week, category")
+      .eq("driver_id", driver.id)
+      .order("raced_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (latestRaceError) throw latestRaceError;
+    if (!latestRace) {
+      return NextResponse.json({ status: "ok", week: null, combinations: [] });
+    }
+
+    const { data: calendarRow, error: calendarError } = await supabaseAdmin
+      .from("v_season_calendar")
+      .select("season_id, season_name, season_start")
+      .lte("season_start", latestRace.raced_at)
+      .order("season_start", { ascending: false })
+      .limit(1)
+      .single();
+    if (calendarError) throw calendarError;
+
+    const weekNumber = latestRace.season_week ?? 1;
+    const weekStart = new Date(new Date(calendarRow.season_start).getTime() + (weekNumber - 1) * 7 * 86_400_000);
+    const weekEnd = new Date(weekStart.getTime() + 7 * 86_400_000);
+    const week: WeekRow = {
+      season_id: String(calendarRow.season_id),
+      season_name: calendarRow.season_name,
+      week_number: weekNumber,
+      week_start: weekStart.toISOString(),
+      week_end: weekEnd.toISOString(),
+    };
+
+    const { data: weekRaces, error: weekRacesError } = await supabaseAdmin
+      .from("race_results")
       .select("car_id, track_id")
       .eq("driver_id", driver.id)
-      .gte("started_at", week.week_start)
-      .lt("started_at", week.week_end)
+      .gte("raced_at", week.week_start)
+      .lt("raced_at", week.week_end)
       .not("car_id", "is", null)
       .not("track_id", "is", null);
-    if (sessionsError) throw sessionsError;
+    if (weekRacesError) throw weekRacesError;
 
-    const sessions = (sessionData ?? []) as SessionRow[];
     const pairCounts = new Map<string, { carId: number; trackId: number; sessions: number }>();
-    for (const session of sessions) {
-      if (typeof session.car_id !== "number" || typeof session.track_id !== "number") continue;
-      const key = `${session.car_id}:${session.track_id}`;
+    for (const race of weekRaces ?? []) {
+      if (typeof race.car_id !== "number" || typeof race.track_id !== "number") continue;
+      const key = `${race.car_id}:${race.track_id}`;
       const current = pairCounts.get(key);
       if (current) current.sessions += 1;
-      else pairCounts.set(key, { carId: session.car_id, trackId: session.track_id, sessions: 1 });
+      else pairCounts.set(key, { carId: race.car_id, trackId: race.track_id, sessions: 1 });
     }
 
     const pairs = [...pairCounts.values()];
@@ -111,8 +119,6 @@ export async function GET() {
 
     const cars = new Map(((carsResult.data ?? []) as CatalogRow[]).map((item) => [item.id, item]));
     const tracks = new Map(((tracksResult.data ?? []) as CatalogRow[]).map((item) => [item.id, item]));
-    const weekStart = new Date(week.week_start);
-    const weekEnd = new Date(week.week_end);
 
     const combinations = await Promise.all(pairs.map(async (pair) => {
       const response = await garage61Get<Garage61LapsResponse>("/laps", {
