@@ -8,15 +8,6 @@
         "value": "border-bottom: 3px solid",
         "createdAt": "2026-08-23T13:38:18.779Z",
         "reason": "confirmed false positive: .app-tabs a and .setup-subtabs button are tab-underline active-indicators (border-bottom transparent by default, colored only on .active), no border-radius present anywhere in the rule or on the element"
-      },
-      {
-        "rule": "border-accent-on-rounded",
-        "value": "*",
-        "files": [
-          "app/globals.css"
-        ],
-        "createdAt": "2026-08-24T18:39:37.364Z",
-        "reason": "false positive: .app-tabs a and .setup-subtabs button are bottom-border tab-indicator underlines (no border-radius on the element itself), not a border on a rounded card; pre-existing pattern unrelated to this session's task"
       }
     ]
   }
