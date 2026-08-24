@@ -138,3 +138,30 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
     sof,
   };
 }
+
+export type FetchImpl = (url: string) => Promise<Response>;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export async function fetchIrstatsPage(
+  path: string,
+  opts: { fetchImpl?: FetchImpl; maxRetries?: number; retryDelayMs?: number } = {}
+): Promise<string> {
+  const fetchImpl = opts.fetchImpl ?? fetch;
+  const maxRetries = opts.maxRetries ?? 4;
+  const retryDelayMs = opts.retryDelayMs ?? 2000;
+  const url = `${IRSTATS_BASE_URL}${path}`;
+
+  for (let attempt = 1; attempt <= maxRetries + 1; attempt += 1) {
+    const response = await fetchImpl(url);
+    if (response.ok) return response.text();
+    if (response.status === 429 && attempt <= maxRetries) {
+      await sleep(retryDelayMs * attempt);
+      continue;
+    }
+    throw new Error(`irstats fetch ${path}: HTTP ${response.status}`);
+  }
+  throw new Error(`irstats fetch ${path}: exhausted retries`);
+}

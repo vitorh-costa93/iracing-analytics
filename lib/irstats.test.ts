@@ -1,6 +1,6 @@
 // lib/irstats.test.ts
 import { describe, expect, it } from "vitest";
-import { parseRaceListPage, parseRaceDetailPage } from "./irstats";
+import { parseRaceListPage, parseRaceDetailPage, fetchIrstatsPage } from "./irstats";
 
 const LIST_PAGE_FIXTURE = `
 <table>
@@ -170,5 +170,42 @@ describe("parseRaceDetailPage", () => {
   it("throws when the category text is not a recognized value", () => {
     const badCategory = DETAIL_PAGE_FIXTURE.replace(">Formula Car<", ">Nascar<");
     expect(() => parseRaceDetailPage(badCategory, "Vitor Hugo Da Costa")).toThrow();
+  });
+});
+
+describe("fetchIrstatsPage", () => {
+  it("returns the body text on a 200 response", async () => {
+    const fetchImpl = async () => new Response("<html>ok</html>", { status: 200 });
+    const body = await fetchIrstatsPage("/driver/958741", { fetchImpl });
+    expect(body).toBe("<html>ok</html>");
+  });
+
+  it("retries on 429 and succeeds once the mock returns 200", async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      if (calls < 3) return new Response("Too Many Requests", { status: 429 });
+      return new Response("<html>ok</html>", { status: 200 });
+    };
+    const body = await fetchIrstatsPage("/driver/958741", { fetchImpl, retryDelayMs: 1 });
+    expect(body).toBe("<html>ok</html>");
+    expect(calls).toBe(3);
+  });
+
+  it("throws after exhausting retries on persistent 429", async () => {
+    const fetchImpl = async () => new Response("Too Many Requests", { status: 429 });
+    await expect(
+      fetchIrstatsPage("/driver/958741", { fetchImpl, maxRetries: 2, retryDelayMs: 1 })
+    ).rejects.toThrow(/429/);
+  });
+
+  it("throws immediately on a non-429 error status without retrying", async () => {
+    let calls = 0;
+    const fetchImpl = async () => {
+      calls += 1;
+      return new Response("Not Found", { status: 404 });
+    };
+    await expect(fetchIrstatsPage("/driver/958741", { fetchImpl })).rejects.toThrow(/404/);
+    expect(calls).toBe(1);
   });
 });
