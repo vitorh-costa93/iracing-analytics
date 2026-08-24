@@ -366,7 +366,16 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
 }
 
-function TrackMap({ trace, referenceTrace, range, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; zoom?: boolean }) {
+function nearestGpsPoint(points: TracePoint[], distance: number) {
+  let best: TracePoint | null = null, bestDelta = Infinity;
+  for (const point of points) {
+    const delta = Math.min(Math.abs(point.distance - distance), 100 - Math.abs(point.distance - distance));
+    if (delta < bestDelta) { bestDelta = delta; best = point; }
+  }
+  return best;
+}
+
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean }) {
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
   const refGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
@@ -391,29 +400,34 @@ function TrackMap({ trace, referenceTrace, range, zoom }: { trace: Trace; refere
     const y = 182 - (Number(point.lat) - minLat) / Math.max(.000001, maxLat - minLat) * 164;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   };
-  return <svg className="track-map" viewBox="0 0 300 200" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
+  const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
+  const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
+  return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
     <polyline points={gps.map(project).join(" ")} className="track-outline" />
-    {refSelected.length > 1 && <polyline points={refSelected.map(project).join(" ")} className="track-reference" />}
     {selected.length > 1 && <polyline points={selected.map(project).join(" ")} className="track-highlight" />}
-    {selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
+    {refSelected.length > 1 && <polyline points={refSelected.map(project).join(" ")} className="track-reference" />}
+    {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
+    {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
+    {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r="5" className="track-marker" />}
   </svg>;
 }
 
 const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: number }[] = [
-  { field: "speed", label: "SPEED", top: 4, height: 72 },
-  { field: "throttle", label: "THROTTLE", top: 92, height: 46 },
-  { field: "brake", label: "BRAKE", top: 154, height: 46 },
-  { field: "steering", label: "STEERING", top: 216, height: 64 },
+  { field: "speed", label: "SPEED", top: 4, height: 90 },
+  { field: "throttle", label: "THROTTLE", top: 106, height: 56 },
+  { field: "brake", label: "BRAKE", top: 174, height: 56 },
+  { field: "steering", label: "STEERING", top: 242, height: 78 },
 ];
-const FOCUSED_HEIGHT = 288;
+const FOCUSED_HEIGHT = 324;
 
-function FocusedChart({ own, reference, range }: { own: Trace; reference: Trace | null; range: [number, number] }) {
+/** Hover here drives the position marker on the linked TrackMap (via onHover), instead of a value
+ * readout — the driver asked to see WHERE on track a point is, not read exact numbers off a tooltip. */
+function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: Trace; reference: Trace | null; range: [number, number]; hoverDistance: number | null; onHover: (distance: number | null) => void }) {
   const width = 480;
   const from = Math.max(0, range[0] - 3), to = Math.min(100, range[1] + 3);
   const ownPts = own.points.filter((point) => point.distance >= from && point.distance <= to);
   const refPts = reference ? reference.points.filter((point) => point.distance >= from && point.distance <= to) : [];
   const all = [...ownPts, ...refPts];
-  const [hoverDistance, setHoverDistance] = useState<number | null>(null);
   const scaleX = (distance: number) => (distance - from) / Math.max(0.001, to - from) * width;
   const unscaleX = (x: number) => from + (x / width) * (to - from);
   function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
@@ -425,38 +439,24 @@ function FocusedChart({ own, reference, range }: { own: Trace; reference: Trace 
     return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
       .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
   }
-  const formatValue = (field: ChannelKey, value: number | null) => value === null ? "—"
-    : field === "speed" ? `${(value * 3.6).toFixed(1)} km/h`
-    : field === "steering" ? `${(value * 180 / Math.PI).toFixed(1)}°`
-    : `${(value * 100).toFixed(0)}%`;
   return (
-    <div className="focused-chart-wrap">
-      <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio e volante"
-        onMouseMove={(event) => {
-          const rect = event.currentTarget.getBoundingClientRect();
-          const x = (event.clientX - rect.left) / rect.width * width;
-          setHoverDistance(Math.max(from, Math.min(to, unscaleX(x))));
-        }}
-        onMouseLeave={() => setHoverDistance(null)}>
-        <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
-        {FOCUSED_ROWS.map((row) => (
-          <g key={row.field}>
-            <text x="4" y={row.top + 12} className="channel-label">{row.label}</text>
-            <polyline points={line(ownPts, row.field, row.top, row.height)} className={`trace-${row.field}`} />
-            {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
-          </g>
-        ))}
-        {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
-      </svg>
-      {hoverDistance !== null ? (
-        <div className="focused-hover-readout">
-          <strong>{hoverDistance.toFixed(1)}%</strong>
-          {(["speed", "throttle", "brake", "steering"] as ChannelKey[]).map((field) => (
-            <div key={field}><span>{field}</span><b>{formatValue(field, interpolate(ownPts.length ? ownPts : own.points, hoverDistance, field))}</b>{reference && <em>{formatValue(field, interpolate(refPts.length ? refPts : reference.points, hoverDistance, field))}</em>}</div>
-          ))}
-        </div>
-      ) : <p className="focused-hover-empty">Passe o mouse no gráfico para ver os valores exatos de cada canal neste ponto.</p>}
-    </div>
+    <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} preserveAspectRatio="none" className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio e volante; passe o mouse para ver a posição no mapa ao lado"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width * width;
+        onHover(Math.max(from, Math.min(to, unscaleX(x))));
+      }}
+      onMouseLeave={() => onHover(null)}>
+      <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
+      {FOCUSED_ROWS.map((row) => (
+        <g key={row.field}>
+          <text x="4" y={row.top + 12} className="channel-label">{row.label}</text>
+          <polyline points={line(ownPts, row.field, row.top, row.height)} className={`trace-${row.field}`} />
+          {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
+        </g>
+      ))}
+      {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
+    </svg>
   );
 }
 
@@ -474,6 +474,7 @@ export default function ActiveWeekTelemetry() {
   const [hoveredDistance, setHoveredDistance] = useState<number | null>(null);
   const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null);
   const [focusedInsight, setFocusedInsight] = useState<Comparison["opportunities"][number] | null>(null);
+  const [popupHoverDistance, setPopupHoverDistance] = useState<number | null>(null);
   const insightsRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
@@ -492,6 +493,7 @@ export default function ActiveWeekTelemetry() {
   // Esc closes the insight popup — the only way out was previously a mouse click on the ✕ or
   // outside the card, which stalls a keyboard-driven flow entirely.
   useEffect(() => {
+    setPopupHoverDistance(null);
     if (!focusedInsight) return;
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") { setFocusedInsight(null); setSelectedRange(null); }
@@ -722,11 +724,12 @@ export default function ActiveWeekTelemetry() {
                 </div>
                 <p className="insight-popup-detail">{focusedInsight.detail}</p>
                 <div className="insight-popup-body">
-                  <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} />
+                  <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} onHover={setPopupHoverDistance} />
                   <div className="insight-popup-map">
                     <span className="section-kicker">TRAÇADO</span>
-                    <TrackMap trace={trace} referenceTrace={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} zoom />
+                    <TrackMap trace={trace} referenceTrace={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom />
                     {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
+                    <p className="focused-hover-hint">{popupHoverDistance !== null ? `${popupHoverDistance.toFixed(1)}% da volta` : "Passe o mouse no gráfico ao lado para localizar o ponto no mapa."}</p>
                   </div>
                 </div>
                 <div className="insight-popup-metrics">{focusedInsight.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>

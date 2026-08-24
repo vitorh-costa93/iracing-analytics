@@ -184,6 +184,93 @@ function categoryTradeoff(category: string, direction: Direction): string {
   return phrases[category]?.[direction] ?? "muda parâmetros nessa categoria sem um padrão único";
 }
 
+function axleOf(change: ParsedChange): "front" | "rear" | null {
+  const key = `${change.label} ${change.section}`.toLowerCase();
+  if (/front|diant/.test(key)) return "front";
+  if (/rear|trase/.test(key)) return "rear";
+  return null;
+}
+
+function directionOf(items: ParsedChange[]): Direction {
+  const numeric = items.filter((item) => item.numericDelta !== null && item.numericDelta !== 0);
+  const increases = numeric.filter((item) => (item.numericDelta as number) > 0).length;
+  const decreases = numeric.length - increases;
+  return numeric.length === 0 ? "mixed" : increases === decreases ? "mixed" : increases > decreases ? "increase" : "decrease";
+}
+
+/**
+ * Individual parameter explanations (effect()) are correct in isolation but the driver pointed out
+ * they read as independent findings even when several parameters were clearly changed together as one
+ * decision — e.g. stiffening the front ARB while softening the front spring both move front mechanical
+ * grip, just in opposite directions, so the net effect on grip is smaller than either line alone
+ * implies. This groups actionable changes by category+axle (front/rear) and checks a small table of
+ * known interacting pairs (ARB vs ARB across axles, ARB vs spring on the same axle, aero front vs
+ * rear, brake bias vs front ARB, differential vs rear ARB, ride height vs wing) to surface whether the
+ * driver's changes are reinforcing one adjustment or quietly cancelling it out.
+ */
+function crossParameterCorrelations(actionable: ParsedChange[]): string[] {
+  const signals = new Map<string, ParsedChange[]>();
+  for (const change of actionable) {
+    const axle = axleOf(change);
+    const key = `${change.category}:${axle ?? "_"}`;
+    signals.set(key, [...(signals.get(key) ?? []), change]);
+  }
+  const dir = (key: string): Direction | null => signals.has(key) ? directionOf(signals.get(key)!) : null;
+  const notes: string[] = [];
+
+  const arbFront = dir("arb:front"), arbRear = dir("arb:rear");
+  if (arbFront && arbRear && arbFront !== "mixed" && arbRear !== "mixed") {
+    if (arbFront !== arbRear) {
+      const towards = arbFront === "increase" ? "subesterço/estabilidade" : "sobresterço/rotação";
+      notes.push(`Barra dianteira e traseira mudaram em direções opostas: isso não é coincidência de dois ajustes separados, é a MESMA decisão de balanço — as duas puxam o carro para mais ${towards} ao mesmo tempo, então o efeito real é mais forte do que cada barra isolada sugere.`);
+    } else {
+      const effect = arbFront === "increase" ? "perde aderência mecânica nos dois eixos, ganha resposta e perde rolagem — vira uma plataforma mais rígida em geral" : "ganha aderência mecânica nos dois eixos — carro mais complacente em pista irregular";
+      notes.push(`Barra dianteira e traseira endureceram/amoleceram juntas na mesma direção: o efeito no BALANÇO (sub × sobresterço) tende a se cancelar entre si, porque as duas mexem na aderência mecânica do mesmo jeito; o que sobra é o carro inteiro ${effect}.`);
+    }
+  }
+
+  for (const axle of ["front", "rear"] as const) {
+    const arbAxle = dir(`arb:${axle}`), springAxle = dir(`springs:${axle}`);
+    if (arbAxle && springAxle && arbAxle !== "mixed" && springAxle !== "mixed") {
+      const axleWord = axle === "front" ? "dianteira" : "traseira";
+      if (arbAxle !== springAxle) {
+        notes.push(`Na ${axleWord}, você mexeu na barra e na mola em direções opostas — as duas afetam a aderência mecânica desse eixo, então o efeito líquido na aderência é menor do que parece isoladamente; mas a barra reage mais rápido que a mola em transferência de carga (frenagem, curva rápida), então a PLATAFORMA ainda muda na direção da barra, mesmo com a aderência quase de volta ao normal.`);
+      } else {
+        const word = arbAxle === "increase" ? "reduz" : "aumenta";
+        notes.push(`Na ${axleWord}, barra e mola endureceram/amoleceram juntas — isso reforça a mesma mudança de aderência mecânica (${word} bastante), mais forte do que mexer só numa das duas teria feito.`);
+      }
+    }
+  }
+
+  const wingFront = dir("aero:front"), wingRear = dir("aero:rear");
+  if (wingFront && wingRear && wingFront !== "mixed" && wingRear !== "mixed") {
+    if (wingFront !== wingRear) {
+      const towards = wingFront === "increase" ? "mais carga relativa na dianteira (menos subesterço em curva rápida)" : "mais carga relativa na traseira (mais estável em curva rápida, mais tendência a subesterço)";
+      notes.push(`Asa dianteira e traseira mudaram em direções opostas: isso desloca o balanço aerodinâmico — ${towards} — além de mudar a carga total.`);
+    } else {
+      notes.push(`Asa dianteira e traseira mudaram juntas na mesma direção: o balanço aerodinâmico entre os eixos muda pouco, o que muda mesmo é a carga total (e o arrasto) do carro.`);
+    }
+  }
+
+  const brakeBias = dir("brakes:_"), arbFrontOnly = dir("arb:front");
+  if (brakeBias && arbFrontOnly && brakeBias !== "mixed" && arbFrontOnly !== "mixed" && brakeBias === arbFrontOnly) {
+    const towards = brakeBias === "increase" ? "mais estável na frenagem, mas mais subesterço na entrada — as duas mudanças reforçam a mesma direção" : "mais fácil de rotacionar na entrada, mas mais perto da instabilidade em frenagem forte — as duas mudanças reforçam a mesma direção, vale confirmar que não passou do ponto";
+    notes.push(`Você moveu o brake bias e a barra dianteira para o mesmo lado: ${towards}.`);
+  }
+
+  const diffChanged = dir("differential:_"), arbRearOnly = dir("arb:rear");
+  if (diffChanged && arbRearOnly) {
+    notes.push(`Diferencial e barra traseira mudaram juntos — os dois afetam como o carro gira na entrada e tração na saída. Compare a telemetria de ângulo de deriva na entrada com a de tração na saída para saber qual dos dois está realmente fazendo efeito, porque a mudança combinada pode mascarar qual parâmetro domina.`);
+  }
+
+  const rideFront = dir("ride_height:front"), wingFrontOnly = dir("aero:front");
+  if (rideFront && wingFrontOnly && rideFront !== "mixed" && wingFrontOnly !== "mixed" && rideFront === "decrease" && wingFrontOnly === "increase") {
+    notes.push(`Você abaixou a dianteira e aumentou a asa dianteira ao mesmo tempo — os dois aumentam a carga aerodinâmica na frente juntos, reforçando bastante a resposta dianteira em curva rápida; mas isso também soma o risco de tocar o fundo em zebra/ondulação que cada mudança isolada já carregava.`);
+  }
+
+  return notes;
+}
+
 /** Builds a comparative narrative explaining, category by category, what the comparison setup does differently from the base one. */
 export function comparativeSummary(changes: ParsedChange[], baseLabel: string, comparisonLabel: string): string {
   const actionable = changes.filter((change) => change.actionable);
@@ -193,10 +280,7 @@ export function comparativeSummary(changes: ParsedChange[], baseLabel: string, c
   for (const change of actionable) byCategory.set(change.category, [...(byCategory.get(change.category) ?? []), change]);
 
   const categoryStats = [...byCategory.entries()].map(([category, items]) => {
-    const numeric = items.filter((item) => item.numericDelta !== null && item.numericDelta !== 0);
-    const increases = numeric.filter((item) => (item.numericDelta as number) > 0).length;
-    const decreases = numeric.length - increases;
-    const direction: Direction = numeric.length === 0 ? "mixed" : increases === decreases ? "mixed" : increases > decreases ? "increase" : "decrease";
+    const direction = directionOf(items);
     return { category, count: items.length, direction };
   }).sort((a, b) => b.count - a.count);
 
@@ -204,5 +288,7 @@ export function comparativeSummary(changes: ParsedChange[], baseLabel: string, c
   const sentences = top.map((stat) => `Em ${(CATEGORY_LABELS[stat.category] ?? stat.category).toLowerCase()} (${stat.count} parâmetro${stat.count > 1 ? "s" : ""}), ${comparisonLabel} ${categoryTradeoff(stat.category, stat.direction)}.`);
 
   const intro = `Comparando ${baseLabel} com ${comparisonLabel}: ${actionable.length} parâmetro${actionable.length > 1 ? "s" : ""} com efeito prático diferem.`;
-  return `${intro} ${sentences.join(" ")}`;
+  const correlations = crossParameterCorrelations(actionable);
+  const correlationText = correlations.length ? ` Olhando os parâmetros juntos, não isolados: ${correlations.join(" ")}` : "";
+  return `${intro} ${sentences.join(" ")}${correlationText}`;
 }

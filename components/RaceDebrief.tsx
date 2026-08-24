@@ -10,6 +10,7 @@ type ExcludedOutlier = { lapNumber: number | null; lapTime: string; zScore: numb
 type CornerMetric = { meanDistancePct?: number; mean?: number; stddev: number; consistency: string };
 type ShapeMetric = { consistency: string };
 type BandPoint = { offset: number; mean: number; stddev: number };
+type TrackOutlinePoint = { distance: number; lat: number; lon: number };
 type CornerReport = {
   cornerNumber: number; name: string | null; distancePct: number; sampleSize: number;
   braking: CornerMetric | null; apexSpeed: CornerMetric | null; throttleReapply: CornerMetric | null;
@@ -33,6 +34,7 @@ type CategoryDebrief = {
   lapScatter?: LapScatterPoint[];
   corners?: CornerReport[];
   cornerNarratives?: string[];
+  trackOutline?: TrackOutlinePoint[] | null;
 };
 
 const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
@@ -41,64 +43,75 @@ const CATEGORIES: Category[] = ["formula_car", "sports_car", "gtp_car"];
 const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car", gtp_car: "GTP" };
 
 function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
-  const width = 560, height = 200, pad = { left: 46, right: 12, top: 14, bottom: 28 };
+  const width = 560, height = 110, pad = { left: 46, right: 12, top: 10, bottom: 20 };
   const times = points.map((p) => p.lapTime);
   const min = Math.min(...times), max = Math.max(...times);
   const span = Math.max(0.05, max - min);
   const x = (index: number) => pad.left + (index / Math.max(1, points.length - 1)) * (width - pad.left - pad.right);
   const y = (time: number) => pad.top + (1 - (time - min) / span) * (height - pad.top - pad.bottom);
   const avg = times.reduce((sum, t) => sum + t, 0) / times.length;
-  const ticks = [min, min + span / 2, max];
+  const ticks = [min, max];
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="debrief-chart" role="img" aria-label="Dispersão do tempo de volta ao longo do stint">
+    <svg viewBox={`0 0 ${width} ${height}`} className="debrief-chart compact" role="img" aria-label="Dispersão do tempo de volta ao longo do stint">
       {ticks.map((tick) => <g key={tick}><line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} className="debrief-grid" /><text x={pad.left - 6} y={y(tick) + 3} textAnchor="end" className="debrief-axis">{tick.toFixed(2)}s</text></g>)}
       <line x1={pad.left} x2={width - pad.right} y1={y(avg)} y2={y(avg)} className="debrief-avg-line" />
       {points.map((point, index) => (
-        <circle key={index} cx={x(index)} cy={y(point.lapTime)} r="5" className={point.lapTime <= min + 0.02 ? "debrief-dot best" : "debrief-dot"} />
+        <circle key={index} cx={x(index)} cy={y(point.lapTime)} r="3.5" className={point.lapTime <= min + 0.02 ? "debrief-dot best" : "debrief-dot"} />
       ))}
-      {points.map((point, index) => <text key={`n${index}`} x={x(index)} y={height - 10} textAnchor="middle" className="debrief-axis">{point.lapNumber ?? index + 1}</text>)}
+      {points.map((point, index) => <text key={`n${index}`} x={x(index)} y={height - 6} textAnchor="middle" className="debrief-axis">{point.lapNumber ?? index + 1}</text>)}
     </svg>
   );
 }
 
-function ChannelBandChart({ label, binStats }: { label: string; binStats: BinStat[] }) {
-  const width = 560, height = 130, pad = { left: 6, right: 6, top: 10, bottom: 16 };
-  const means = binStats.map((b) => b.mean);
-  const uppers = binStats.map((b) => b.mean + b.stddev);
-  const lowers = binStats.map((b) => b.mean - b.stddev);
-  const min = Math.min(...lowers), max = Math.max(...uppers);
-  const span = Math.max(0.001, max - min);
-  const x = (distance: number) => pad.left + (distance / 100) * (width - pad.left - pad.right);
-  const y = (value: number) => pad.top + (1 - (value - min) / span) * (height - pad.top - pad.bottom);
-  const bandPath = `${binStats.map((b, i) => `${i === 0 ? "M" : "L"} ${x(b.distance).toFixed(1)} ${y(b.mean + b.stddev).toFixed(1)}`).join(" ")} ${[...binStats].reverse().map((b) => `L ${x(b.distance).toFixed(1)} ${y(b.mean - b.stddev).toFixed(1)}`).join(" ")} Z`;
-  const meanPath = means.map((m, i) => `${i === 0 ? "M" : "L"} ${x(binStats[i].distance).toFixed(1)} ${y(m).toFixed(1)}`).join(" ");
-  return (
-    <div className="debrief-band-row">
-      <span>{label}</span>
-      <svg viewBox={`0 0 ${width} ${height}`} className="debrief-chart band" role="img" aria-label={`Consistência de ${label} ao longo da pista, média e desvio padrão entre as voltas`}>
-        <path d={bandPath} className="debrief-band-fill" />
-        <path d={meanPath} className="debrief-band-line" />
-      </svg>
-    </div>
-  );
-}
-
-function CornerBandChart({ brakeBand, throttleBand }: { brakeBand: BandPoint[]; throttleBand: BandPoint[] }) {
+function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: BandPoint[]; throttleBand: BandPoint[]; onHover: (offset: number | null) => void }) {
   const width = 260, height = 90, pad = { left: 4, right: 4, top: 6, bottom: 4 };
   const offsets = [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
   if (!offsets.length) return null;
   const minOffset = Math.min(...offsets), maxOffset = Math.max(...offsets);
   const x = (offset: number) => pad.left + ((offset - minOffset) / Math.max(1, maxOffset - minOffset)) * (width - pad.left - pad.right);
+  const unx = (px: number) => minOffset + ((px - pad.left) / Math.max(1, width - pad.left - pad.right)) * (maxOffset - minOffset);
   const y = (value: number) => pad.top + (1 - value) * (height - pad.top - pad.bottom);
   const bandPath = (band: BandPoint[]) => band.length ? `${band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(Math.min(1, p.mean + p.stddev)).toFixed(1)}`).join(" ")} ${[...band].reverse().map((p) => `L ${x(p.offset).toFixed(1)} ${y(Math.max(0, p.mean - p.stddev)).toFixed(1)}`).join(" ")} Z` : "";
   const meanPath = (band: BandPoint[]) => band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(p.mean).toFixed(1)}`).join(" ");
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas">
+    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas; passe o mouse para localizar no mapa"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const px = (event.clientX - rect.left) / rect.width * width;
+        onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
+      }}
+      onMouseLeave={() => onHover(null)}>
       <line x1={x(0)} x2={x(0)} y1={pad.top} y2={height - pad.bottom} className="corner-mini-axis" />
       <path d={bandPath(brakeBand)} className="corner-mini-band brake" />
       <path d={meanPath(brakeBand)} className="corner-mini-line brake" />
       <path d={bandPath(throttleBand)} className="corner-mini-band throttle" />
       <path d={meanPath(throttleBand)} className="corner-mini-line throttle" />
+    </svg>
+  );
+}
+
+/** Small track-shape map showing where on the physical circuit this corner card sits — the corner's
+ * own position by default, or the point under the driver's cursor on the band chart above it, so
+ * variance in the band chart can be tied back to an exact spot on track instead of just an offset %. */
+function CornerTrackMap({ outline, cornerDistance, hoverOffset }: { outline: TrackOutlinePoint[]; cornerDistance: number; hoverOffset: number | null }) {
+  const lats = outline.map((p) => p.lat), lons = outline.map((p) => p.lon);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const latSpan = Math.max(maxLat - minLat, 0.00005), lonSpan = Math.max(maxLon - minLon, 0.00005);
+  const project = (point: TrackOutlinePoint) => {
+    const x = 6 + (point.lon - minLon) / lonSpan * 88;
+    const y = 62 - (point.lat - minLat) / latSpan * 56;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+  const markerDistance = ((cornerDistance + (hoverOffset ?? 0)) % 100 + 100) % 100;
+  let marker: TrackOutlinePoint | null = null, bestDelta = Infinity;
+  for (const point of outline) {
+    const delta = Math.min(Math.abs(point.distance - markerDistance), 100 - Math.abs(point.distance - markerDistance));
+    if (delta < bestDelta) { bestDelta = delta; marker = point; }
+  }
+  return (
+    <svg viewBox="0 0 100 68" className="corner-mini-map" role="img" aria-label="Posição dessa curva no traçado da pista">
+      <polyline points={outline.map(project).join(" ")} className="corner-mini-map-outline" />
+      {marker && <circle cx={project(marker).split(",")[0]} cy={project(marker).split(",")[1]} r="3.2" className="corner-mini-map-marker" />}
     </svg>
   );
 }
@@ -109,6 +122,7 @@ export default function RaceDebrief() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [hoveredCorner, setHoveredCorner] = useState<{ cornerNumber: number; offset: number } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -223,7 +237,10 @@ export default function RaceDebrief() {
                 {data.corners.map((corner, index) => (
                   <div className="race-debrief-corner-card" key={corner.cornerNumber}>
                     <h5>{corner.name ?? `Curva ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
-                    <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} />
+                    <div className="corner-mini-row">
+                      <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
+                      {data.trackOutline && <CornerTrackMap outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />}
+                    </div>
                     {data.cornerNarratives?.[index] && <p className="corner-narrative">{data.cornerNarratives[index].replace(/^.*?\(~\d+% da volta\):\s*/, "")}</p>}
                     <div className="corner-metric-grid">
                       {corner.braking && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>Ponto de freada: {corner.braking.consistency}</span>}
@@ -234,15 +251,6 @@ export default function RaceDebrief() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {data.channelStats?.some((item) => item.binStats?.length) && (
-            <div className="race-debrief-chart-block">
-              <span className="section-kicker">CONSISTÊNCIA AO LONGO DA VOLTA</span>
-              <h4>Onde você repete e onde você varia</h4>
-              <p className="race-debrief-channels-note">A faixa colorida mostra o quanto cada comando mudou entre as voltas em cada ponto da pista. Faixa fina = você faz sempre igual; faixa larga = você faz diferente cada volta ali.</p>
-              {data.channelStats.filter((item) => item.binStats?.length).map((item) => <ChannelBandChart key={item.channel} label={item.label} binStats={item.binStats as BinStat[]} />)}
             </div>
           )}
 

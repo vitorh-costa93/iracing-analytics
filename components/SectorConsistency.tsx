@@ -20,7 +20,7 @@ function SectorBar({ sector }: { sector: SectorStat }) {
         <div className="sector-best-marker" />
       </div>
       <span className="sector-consistency">{sector.consistency}</span>
-      <span className="sector-times">melhor {sector.best.toFixed(3)}s • média {sector.mean.toFixed(3)}s</span>
+      <span className="sector-times">melhor {sector.best.toFixed(3)}s • média {sector.mean.toFixed(3)}s • Δ {(sector.mean - sector.best).toFixed(3)}s</span>
       {sector.note && <span className="sector-note">{sector.note}</span>}
     </div>
   );

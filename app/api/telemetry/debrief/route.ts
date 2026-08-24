@@ -35,7 +35,7 @@ async function fetchAllLaps(carId: number, trackId: number): Promise<Garage61Lap
   return all;
 }
 
-type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm" | "speed" | "latAccel";
+type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm" | "speed" | "latAccel" | "lat" | "lon";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
 
 function normalizedHeader(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -67,6 +67,7 @@ function parseLapCsv(csv: string): { points: TracePoint[]; hasOvertakeChannel: b
     gear: find("gear"), rpm: find("rpm", "engine0rpm"),
     speed: find("speed", "speedms", "speedkph", "carspeed"),
     latAccel: find("lataccel", "lateralacceleration"),
+    lat: find("lat", "latitude"), lon: find("lon", "longitude"),
   };
   const hasOvertakeChannel = find("pushtopass") >= 0 || find("p2pstatus") >= 0;
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
@@ -101,8 +102,8 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey):
   return value === undefined ? null : value;
 }
 
-const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade", latAccel: "Força na curva" };
-const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "a mesma abertura de acelerador", brake: "a mesma pressão de freio", steering: "o mesmo tanto de volante", gear: "a mesma marcha", rpm: "a mesma rotação do motor", speed: "a mesma velocidade", latAccel: "a mesma força nas curvas" };
+const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade", latAccel: "Força na curva", lat: "Latitude", lon: "Longitude" };
+const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "a mesma abertura de acelerador", brake: "a mesma pressão de freio", steering: "o mesmo tanto de volante", gear: "a mesma marcha", rpm: "a mesma rotação do motor", speed: "a mesma velocidade", latAccel: "a mesma força nas curvas", lat: "a mesma posição", lon: "a mesma posição" };
 const CHART_CHANNELS: ChannelKey[] = ["throttle", "brake", "steering"];
 
 function formatLapTime(value: number) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
@@ -215,7 +216,10 @@ async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCat
     if (!candidate) { results[category] = { status: "ok", session: null, message: `Nenhuma corrida de ${categoryLabel} com pelo menos ${MIN_RACE_MINUTES} minutos encontrada.` }; continue; }
 
     const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", category).maybeSingle();
-    if (cached && Number(cached.session_id) === Number(candidate.id)) { results[category] = cached.payload; continue; }
+    // "trackOutline" was added after some payloads were already cached — treat its absence as a stale
+    // schema and force a rebuild once, rather than serving old payloads without the corner map forever.
+    const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && Object.prototype.hasOwnProperty.call(cached.payload ?? {}, "trackOutline");
+    if (cachedIsFresh) { results[category] = cached!.payload; continue; }
 
     try {
       const payload = await buildDebriefPayload(candidate);
@@ -304,6 +308,13 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
   // frenagem, velocidade mínima e retomada do acelerador entre TODAS as voltas válidas.
   const referenceTrace = validTraces.reduce((fastest, item) => (item.lapTime < fastest.lapTime ? item : fastest), validTraces[0]);
   const detected = detectCornersFromLatAccel(referenceTrace.points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel ?? null })));
+  // Thinned GPS outline of the fastest lap, sent to the client so each corner card can show WHERE on
+  // track it is (not just a %) — the driver asked to locate variance on the map, not just read a number.
+  const gpsPoints = referenceTrace.points.filter((point) => point.lat !== undefined && point.lon !== undefined);
+  const outlineStride = Math.max(1, Math.ceil(gpsPoints.length / 400));
+  const trackOutline = gpsPoints.length >= 20
+    ? gpsPoints.filter((_, index) => index % outlineStride === 0).map((point) => ({ distance: point.distance, lat: point.lat as number, lon: point.lon as number }))
+    : null;
   const cornerDistances = detected.map((corner) => corner.distance);
   const trackDisplayName = trackRow.data?.name ?? "";
   const trackVariant = trackRow.data?.variant ?? "";
@@ -394,6 +405,7 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     lapScatter,
     corners: cornerReports,
     cornerNarratives,
+    trackOutline,
     summary: `Analisei suas ${validTraces.length} voltas mais rápidas dessa corrida (${formatLapTime(sortedLapTimes[0])} a ${formatLapTime(sortedLapTimes[sortedLapTimes.length - 1])}, desvio padrão de ${lapTimeStddev.toFixed(3)}s), com ${cornerReports.length} curvas identificadas e comparadas volta a volta. Seu ritmo foi ${consistencyWord} entre as voltas.${trendText}${excludedOutliers.length ? ` Descartei ${excludedOutliers.length} volta(s) estatisticamente anômala(s) (rápida(s) demais para o seu ritmo real, provável overtake): ${excludedOutliers.map((item) => `volta ${item.lapNumber ?? "?"} em ${item.lapTime}`).join(", ")}.` : ""}${!overtakeChannelAvailable && isSuperFormula ? " Aviso: a Garage61 não exporta o canal de overtake/push-to-pass nessas voltas, então a detecção acima é estatística (outlier de tempo), não uma leitura direta do overtake — confira manualmente se restar dúvida." : ""}`,
     strengths,
     improvements,
