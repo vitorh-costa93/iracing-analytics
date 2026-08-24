@@ -88,10 +88,16 @@ function resolveTrackId(
   return trackByName.get(name) ?? null;
 }
 
-type CatalogMaps = Awaited<ReturnType<typeof resolveCarTrackIds>>;
+export type CatalogMaps = Awaited<ReturnType<typeof resolveCarTrackIds>>;
 
-async function importRace(raceId: number, driverId: string, driverName: string, catalog: CatalogMaps) {
-  const html = await fetchIrstatsPage(`/race/${raceId}`, { retryDelayMs: REQUEST_DELAY_MS });
+export { resolveCarTrackIds };
+
+/** Parses already-fetched race detail HTML and upserts it — shared by the server-side fetch loop
+ * (importRace, below) and the browser-ingest route, which receives HTML captured by a real
+ * browser session (irstats.com sits behind a Cloudflare bot challenge that blocks server-side
+ * fetches; only a real browser can load these pages, so ingestion of pre-fetched HTML from a
+ * user's browser is the only way this data reaches the database in practice). */
+export async function importRaceFromHtml(raceId: number, html: string, driverId: string, driverName: string, catalog: CatalogMaps) {
   const parsed = parseRaceDetailPage(html, driverName);
   const carId = resolveCarId(parsed.carName, catalog.carByCombined, catalog.carByName);
   const trackId = resolveTrackId(parsed.trackName, parsed.trackConfig, catalog.trackByCombined, catalog.trackByName);
@@ -123,6 +129,11 @@ async function importRace(raceId: number, driverId: string, driverName: string, 
   const { error } = await supabaseAdmin.from("race_results").upsert(row, { onConflict: "irstats_race_id" });
   if (error) throw error;
   return { carId, trackId };
+}
+
+async function importRace(raceId: number, driverId: string, driverName: string, catalog: CatalogMaps) {
+  const html = await fetchIrstatsPage(`/race/${raceId}`, { retryDelayMs: REQUEST_DELAY_MS });
+  return importRaceFromHtml(raceId, html, driverId, driverName, catalog);
 }
 
 export async function runSync(mode: "incremental" | "backfill") {
