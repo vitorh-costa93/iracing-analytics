@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from "react";
 
-type Race = { id: number; startedAt: string; series: string | null; car: string; track: string; bestLap: number | null; startPosition: number | null; finishPosition: number | null; delta: number | null };
+type Race = { id: number; startedAt: string; series: string | null; car: string; track: string; bestLap: string | null; startPosition: number | null; finishPosition: number | null; delta: number | null };
 
 const PAGE_SIZE = 10;
 
-function lapTime(value: number | null) {
-  if (value === null) return "—";
-  const minutes = Math.floor(value / 60), seconds = value - minutes * 60;
-  return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`;
+// bestLap now comes pre-formatted from irstats.com (e.g. "1:27.305"), not a number of seconds —
+// display it as-is instead of doing time arithmetic on it.
+function lapTime(value: string | null) {
+  return value ?? "—";
 }
 
 export default function RaceTable({ races }: { races: Race[] }) {
