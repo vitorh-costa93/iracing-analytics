@@ -9,3 +9,6 @@ data/garage61-events-26S3/
 data/garage61-setups-26S3/
 scripts/.import-cache.json
 scripts/import-local-setups.log
+
+.vercel
+.env*

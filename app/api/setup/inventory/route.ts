@@ -8,18 +8,22 @@ type Garage61Laps = { items?: Payload[] };
 async function context() {
   const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
   if (driverError || !driver) throw new Error("Piloto não encontrado");
-  const { data: seasons, error: seasonError } = await supabaseAdmin.from("v_season_summary").select("season_id,season_name");
-  if (seasonError) throw seasonError;
-  const current = [...(seasons ?? [])].sort((a, b) => Number(b.season_id) - Number(a.season_id))[0];
-  if (!current) throw new Error("Season atual não encontrada");
-  return { driverId: driver.id, seasonId: String(current.season_id), seasonName: current.season_name };
+  const { data: current, error: seasonError } = await supabaseAdmin
+    .from("v_season_calendar")
+    .select("season_id, season_name, season_start")
+    .order("season_start", { ascending: false })
+    .limit(1)
+    .single();
+  if (seasonError || !current) throw new Error("Season atual não encontrada");
+  const seasonEnd = new Date(new Date(current.season_start).getTime() + 84 * 86_400_000).toISOString();
+  return { driverId: driver.id, seasonId: String(current.season_id), seasonName: current.season_name, seasonStart: current.season_start, seasonEnd };
 }
 
 export async function GET(request: NextRequest) {
   try {
-    const { driverId, seasonId, seasonName } = await context();
+    const { driverId, seasonId, seasonName, seasonStart, seasonEnd } = await context();
     const [sessionsResult, setupsResult, lapsResult] = await Promise.all([
-      supabaseAdmin.from("driving_sessions").select("car_id,track_id,started_at,session_type").eq("driver_id", driverId).eq("season_id", seasonId).eq("session_type", 3),
+      supabaseAdmin.from("race_results").select("car_id,track_id,raced_at").eq("driver_id", driverId).gte("raced_at", seasonStart).lt("raced_at", seasonEnd),
       supabaseAdmin.from("setup_files").select("id,car_id,track_id,source,setup_kind,filename,file_size,created_at,decoded_at,decoder").eq("driver_id", driverId).eq("season_id", seasonId).order("created_at", { ascending: false }),
       supabaseAdmin.from("laps").select("id,car_id,track_id,can_view_setup,garage61_payload").eq("driver_id", driverId).limit(5000),
     ]);
@@ -33,7 +37,7 @@ export async function GET(request: NextRequest) {
       const key = `${row.car_id}:${row.track_id}`;
       const current = pairMap.get(key) ?? { carId: Number(row.car_id), trackId: Number(row.track_id), races: 0, lastRace: null };
       current.races += 1;
-      if (!current.lastRace || (row.started_at && row.started_at > current.lastRace)) current.lastRace = row.started_at;
+      if (!current.lastRace || (row.raced_at && row.raced_at > current.lastRace)) current.lastRace = row.raced_at;
       pairMap.set(key, current);
     }
     const carIds = [...new Set([...pairMap.values()].map((item) => item.carId))];

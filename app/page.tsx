@@ -7,7 +7,6 @@ import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
-import OfficialResultsUpload from "@/components/OfficialResultsPanel";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -69,21 +68,8 @@ type DashboardData = {
     sports: { current: WeekPoint[]; previous: WeekPoint[] };
   };
   historical: HistoricalRow[];
-  officialResults: {
-    lastCapturedAt: string | null;
-    series: Array<{
-      seasonId: string;
-      seasonName: string;
-      category: "formula_car" | "sports_car";
-      series: string;
-      starts: number;
-      wins: number;
-      source: string;
-      capturedAt: string;
-    }>;
-  };
   featureAvailability: { wins: boolean; winsReason: string };
-  races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: number | null; startPosition: number | null; finishPosition: number | null }>;
+  races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number | null; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: string | null; startPosition: number | null; finishPosition: number | null }>;
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
@@ -151,17 +137,12 @@ export default function Home() {
       const generalResult = await generalResponse.json();
       if (!generalResponse.ok) throw new Error(generalResult.message ?? "Erro na sincronização geral");
 
-      setMessage("Atualizando sessões recentes...");
-      const sessionsResponse = await fetch("/api/sync/incremental", { method: "POST" });
-      const sessionsResult = await sessionsResponse.json();
-      if (!sessionsResponse.ok) throw new Error(sessionsResult.message ?? "Erro na sincronização incremental");
+      setMessage("Atualizando corridas recentes...");
+      const irstatsResponse = await fetch("/api/sync/irstats", { method: "POST" });
+      const irstatsResult = await irstatsResponse.json();
+      if (!irstatsResponse.ok) throw new Error(irstatsResult.message ?? "Erro na sincronização de corridas");
 
-      setMessage("Atualizando histórico de iRating...");
-      const ratingResponse = await fetch("/api/sync/rating-history", { method: "POST" });
-      const ratingResult = await ratingResponse.json();
-      if (!ratingResponse.ok) throw new Error(ratingResult.message ?? "Erro ao atualizar histórico de iRating");
-
-      setMessage("Dados gerais, sessões recentes e iRating atualizados.");
+      setMessage("Dados gerais e corridas recentes atualizados.");
       await loadDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
@@ -215,7 +196,6 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <OfficialResultsUpload onImported={loadDashboard} />
             <button className="primary-button" onClick={syncData} disabled={syncing}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
             </button>
