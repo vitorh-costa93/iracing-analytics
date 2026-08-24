@@ -51,6 +51,7 @@ O sync do Garage61 deixa de popular `driving_sessions` para fins de season/week/
 
 - `ActiveWeekTelemetry`: localizar/pré-carregar a volta (telemetria) do par carro+pista da semana ativa — a semana ativa passa a ser determinada pela corrida mais recente em `race_results`.
 - `SetupLab`/Engenheiro: setups por carro+pista da season atual, como hoje.
+- Manter o snapshot atual de `ratings` (iRating/SR exatos, já sincronizado hoje) atualizado — vira a âncora exata usada para reconstruir a série histórica de iRating a partir dos deltas de `race_results` (ver seção "Correção: iRating exato via encadeamento de deltas"). A sincronização completa de `rating_history` deixa de ser necessária para esse fim.
 
 `driving_sessions` deixa de ser escrita pelo sync recorrente; não é removida nesta mudança (pode ficar como tabela legada/não utilizada, sem migration de remoção — fora de escopo).
 
@@ -71,8 +72,8 @@ O sync do Garage61 deixa de popular `driving_sessions` para fins de season/week/
 | `season_week` | int null | "Week N" quando presente na página |
 | `license_class` | text | ex. `A` |
 | `safety_rating` | numeric | ex. `3.31` |
-| `irating_after` | int not null | iRating do piloto pós-corrida |
-| `irating_delta` | int not null | variação daquela corrida; `irating_before = irating_after - irating_delta` |
+| `irating_delta` | int not null | variação exata daquela corrida (ex. `+73`) |
+| `irating_display` | text | valor abreviado exibido pelo irstats pós-corrida (ex. `5.2k`) — só para exibição/depuração, nunca usado em cálculo |
 | `grid_position` | int | |
 | `finish_position` | int not null | |
 | `position_change` | int | coluna `+/-` |
@@ -85,6 +86,12 @@ O sync do Garage61 deixa de popular `driving_sessions` para fins de season/week/
 | `imported_at` | timestamptz not null default now() | controle de sync |
 
 Índices: `unique(irstats_race_id)`, `(driver_id, raced_at)`, `(driver_id, category)`.
+
+### Correção: iRating exato via encadeamento de deltas
+
+Inspeção do HTML confirmou que o irstats só expõe o iRating pós-corrida **arredondado** (ex. `5.2k`, sem `title`/`data-*` com o valor preciso); apenas o delta da corrida (`+73`) é exato. Não é possível gravar um `irating_after` exato diretamente de cada corrida.
+
+Solução adotada: `race_results` guarda apenas `irating_delta` (exato). O iRating exato em qualquer ponto do tempo é reconstruído por encadeamento a partir de uma **âncora exata** — o snapshot atual de `ratings` (tabela já populada pelo Garage61, valor exato e atual) — subtraindo os deltas das corridas mais recentes até a mais antiga, em ordem cronológica inversa, por categoria. O Garage61 sync passa a rodar também para manter esse snapshot de `ratings` atualizado (além de telemetria/setups), mesmo sem mais sincronizar `driving_sessions`/`rating_history` completos.
 
 ### Views afetadas
 
