@@ -68,6 +68,8 @@ O sync do Garage61 deixa de popular `driving_sessions` para fins de season/week/
 | `series_name` | text | |
 | `track_name` | text | |
 | `car_name` | text | |
+| `car_id` | int null, FK `cars` | resolvido por match de nome contra o catálogo já sincronizado do Garage61; `null` quando não há correspondência exata (nunca inventado) — necessário para os rankings GT3/IMSA que hoje dependem de `car_group_members` |
+| `track_id` | int null, FK `tracks` | mesmo critério de match por nome |
 | `category` | text not null | `formula_car` / `sports_car`, direto do irstats |
 | `season_week` | int null | "Week N" quando presente na página |
 | `license_class` | text | ex. `A` |
