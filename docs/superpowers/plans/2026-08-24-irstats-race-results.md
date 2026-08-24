@@ -279,6 +279,20 @@ const DETAIL_PAGE_FIXTURE = `
         <td class="text-center d-none d-lg-table-cell">234</td>
       </tr>
       <tr>
+        <td class="text-center fw-semibold"></td>
+        <td>Jack David Spickett</td>
+        <td class="text-center">A 2.11</td>
+        <td class="text-center">6.5k<small class="text-success">+12</small></td>
+        <td class="text-center car-cell">Super Formula SF23 - Honda</td>
+        <td class="text-center">6</td>
+        <td class="text-center">+3</td>
+        <td class="text-center">24</td>
+        <td class="text-center d-none d-lg-table-cell">0</td>
+        <td class="text-center">1:27.259</td>
+        <td class="text-center">5</td>
+        <td class="text-center d-none d-lg-table-cell">217</td>
+      </tr>
+      <tr>
         <td class="text-center fw-semibold">4</td>
         <td>Noddy Emel</td>
         <td class="text-center">A 1.37</td>
