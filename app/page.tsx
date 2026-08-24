@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
-import IncidentCorrelation from "@/components/IncidentCorrelation";
 import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
@@ -264,17 +263,6 @@ export default function Home() {
           <div className="panel-heading"><div><span className="section-kicker">RACE SURVIVAL</span><h2>Duração × Δ iRating</h2><p>Somente corridas da season atual. Pontos à esquerda indicam sessões encerradas cedo.</p></div></div>
           <RaceScatterPlot points={scatter} />
         </article>
-        </section>
-
-        <section className="section-block">
-          <div className="section-title-row">
-            <div>
-              <span className="section-kicker">VOLTAS FORA DA PISTA × IRATING</span>
-              <h2>Sair da pista custa ranking também?</h2>
-              <p>Correlação entre voltas fora da pista e Δ iRating, corrida a corrida — e se essas voltas realmente custam ritmo ou não.</p>
-            </div>
-          </div>
-          <IncidentCorrelation />
         </section>
 
         <section className="section-block historical-section">
