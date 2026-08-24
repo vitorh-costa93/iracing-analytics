@@ -62,18 +62,26 @@ type RatingRow = {
 
 type SafetyHistoryRow = RatingRow;
 
-type OfficialSeriesResultRow = {
-  season_id: string | number;
-  season_name: string;
-  rating_category: "formula_car" | "sports_car";
+type RaceResultRow = {
+  irstats_race_id: number;
+  raced_at: string;
   series_name: string;
-  starts: number;
-  wins: number;
-  source: string;
-  captured_at: string;
+  track_name: string;
+  car_name: string;
+  category: "formula_car" | "sports_car";
+  grid_position: number | null;
+  finish_position: number;
+  position_change: number | null;
+  fastest_lap_time: string | null;
+  irating_after: number;
+  irating_before: number;
 };
 
-type RaceCandidateRow = { session_id: number; rating_category: "formula_car" | "sports_car"; car: string; track: string; started_at: string; ended_at: string; delta_irating: number; candidate_for_race: number; race_for_rating: number };
+type SeasonCalendarRow = {
+  season_id: string | number;
+  season_name: string;
+  season_start: string;
+};
 
 function normalizeSeasonId(value: string | number) {
   return String(value);
@@ -383,74 +391,77 @@ export async function GET() {
         previousSeason.season_id
       );
 
-    const officialResultsResult = await supabaseAdmin
-      .from("official_series_results")
-      .select("season_id,season_name,rating_category,series_name,starts,wins,source,captured_at")
+    const { data: seasonCalendarRows, error: calendarError } = await supabaseAdmin
+      .from("v_season_calendar")
+      .select("season_id, season_name, season_start")
+      .in("season_id", [currentSeasonId, previousSeasonId]);
+    if (calendarError) throwSupabaseError("v_season_calendar", calendarError);
+
+    const seasonCalendar = (seasonCalendarRows ?? []) as SeasonCalendarRow[];
+    const calendarById = new Map(seasonCalendar.map((row) => [normalizeSeasonId(row.season_id), row]));
+    const currentSeasonStart = calendarById.get(currentSeasonId)?.season_start;
+    const previousSeasonStart = calendarById.get(previousSeasonId)?.season_start;
+
+    if (!currentSeasonStart || !previousSeasonStart) {
+      throw new Error("v_season_calendar não contém season_start para a season atual/anterior");
+    }
+
+    const currentSeasonEnd = new Date(new Date(currentSeasonStart).getTime() + 84 * 86_400_000).toISOString();
+
+    const { data: seasonRaceRows, error: racesError } = await supabaseAdmin
+      .from("v_race_results_irating")
+      .select(
+        "irstats_race_id, raced_at, series_name, track_name, car_name, category, grid_position, finish_position, position_change, fastest_lap_time, irating_after, irating_before"
+      )
       .eq("driver_id", driver.id)
-      .in("season_id", [Number(currentSeasonId), Number(previousSeasonId)])
-      .order("wins", { ascending: false });
+      .gte("raced_at", previousSeasonStart)
+      .lt("raced_at", currentSeasonEnd)
+      .order("raced_at", { ascending: false });
+    if (racesError) throwSupabaseError("v_race_results_irating", racesError);
 
-    if (officialResultsResult.error) {
-      throwSupabaseError("official_series_results", officialResultsResult.error);
+    const seasonRaces = (seasonRaceRows ?? []) as RaceResultRow[];
+    const currentSeasonStartMs = new Date(currentSeasonStart).getTime();
+    const currentSeasonRaces = seasonRaces.filter(
+      (row) => new Date(row.raced_at).getTime() >= currentSeasonStartMs
+    );
+
+    const races = currentSeasonRaces.map((row) => ({
+      id: row.irstats_race_id,
+      startedAt: row.raced_at,
+      endedAt: row.raced_at,
+      durationMinutes: null,
+      delta: row.irating_after - row.irating_before,
+      ratingCategory: row.category,
+      car: row.car_name,
+      track: row.track_name,
+      bestLap: row.fastest_lap_time,
+      series: row.series_name,
+      startPosition: row.grid_position,
+      finishPosition: row.finish_position,
+    }));
+
+    function seasonIdForRace(racedAt: string) {
+      const t = new Date(racedAt).getTime();
+      for (const row of seasonCalendar) {
+        const start = new Date(row.season_start).getTime();
+        const end = start + 84 * 86_400_000;
+        if (t >= start && t < end) return normalizeSeasonId(row.season_id);
+      }
+      return null;
     }
 
-    const officialResults = (officialResultsResult.data ?? []) as OfficialSeriesResultRow[];
-
-    const { data: currentRaceSessions, error: raceSessionsError } = await supabaseAdmin
-      .from("driving_sessions")
-      .select("id,garage61_event_id,car_id,track_id,started_at,ended_at")
-      .eq("driver_id", driver.id).eq("season_id", currentSeasonId).eq("session_type", 3)
-      .order("started_at", { ascending: false });
-    if (raceSessionsError) throwSupabaseError("driving_sessions races", raceSessionsError);
-    const sessionIds = (currentRaceSessions ?? []).map((row) => Number(row.id));
-    const eventIds = (currentRaceSessions ?? []).map((row) => String(row.garage61_event_id));
-    const [{ data: raceCandidates, error: candidateError }, { data: raceLaps, error: raceLapsError }, { data: carRows }, { data: trackRows }] = await Promise.all([
-      sessionIds.length ? supabaseAdmin.from("v_race_irating_candidates").select("session_id,rating_category,car,track,started_at,ended_at,delta_irating,candidate_for_race,race_for_rating").in("session_id", sessionIds).eq("candidate_for_race", 1).eq("race_for_rating", 1) : Promise.resolve({ data: [], error: null }),
-      eventIds.length ? supabaseAdmin.from("laps").select("lap_time,clean,incomplete,garage61_payload").eq("driver_id", driver.id).in("garage61_payload->>event", eventIds).limit(10000) : Promise.resolve({ data: [], error: null }),
-      supabaseAdmin.from("cars").select("id,name"),
-      supabaseAdmin.from("tracks").select("id,name"),
-    ]);
-    if (candidateError) throwSupabaseError("v_race_irating_candidates current", candidateError);
-    if (raceLapsError) throwSupabaseError("laps current races", raceLapsError);
-    const candidatesBySession = new Map(((raceCandidates ?? []) as RaceCandidateRow[]).map((row) => [Number(row.session_id), row]));
-    const carsById = new Map((carRows ?? []).map((row) => [Number(row.id), row.name]));
-    const tracksById = new Map((trackRows ?? []).map((row) => [Number(row.id), row.name]));
-    const lapsByEvent = new Map<string, number[]>();
-    for (const lap of raceLaps ?? []) {
-      const payload = lap.garage61_payload as { event?: string; sessionType?: number } | null;
-      if (!payload?.event || payload.sessionType !== 3 || lap.incomplete || !Number.isFinite(Number(lap.lap_time)) || Number(lap.lap_time) <= 0) continue;
-      lapsByEvent.set(payload.event, [...(lapsByEvent.get(payload.event) ?? []), Number(lap.lap_time)]);
+    const winsBySeasonCategory = new Map<string, number>();
+    for (const row of seasonRaces) {
+      if (row.finish_position !== 1) continue;
+      const seasonId = seasonIdForRace(row.raced_at);
+      if (!seasonId) continue;
+      const key = `${seasonId}:${row.category}`;
+      winsBySeasonCategory.set(key, (winsBySeasonCategory.get(key) ?? 0) + 1);
     }
-    const races = (currentRaceSessions ?? []).map((session) => {
-      const candidate = candidatesBySession.get(Number(session.id));
-      const started = new Date(session.started_at).getTime(), ended = new Date(session.ended_at).getTime();
-      const lapTimes = lapsByEvent.get(session.garage61_event_id) ?? [];
-      return {
-        id: Number(session.id), startedAt: session.started_at, endedAt: session.ended_at,
-        durationMinutes: Math.max(0, (ended - started) / 60000), delta: candidate?.delta_irating ?? null,
-        ratingCategory: candidate?.rating_category ?? null, series: null,
-        car: candidate?.car ?? carsById.get(Number(session.car_id)) ?? `Carro ${session.car_id}`,
-        track: candidate?.track ?? tracksById.get(Number(session.track_id)) ?? `Pista ${session.track_id}`,
-        bestLap: lapTimes.length ? Math.min(...lapTimes) : null, startPosition: null, finishPosition: null,
-      };
-    });
 
     function winsFor(seasonId: string, category: "formula_car" | "sports_car") {
-      return officialResults
-        .filter((row) => normalizeSeasonId(row.season_id) === seasonId && row.rating_category === category)
-        .reduce((total, row) => total + row.wins, 0);
+      return winsBySeasonCategory.get(`${normalizeSeasonId(seasonId)}:${category}`) ?? 0;
     }
-
-    const resultBreakdown = officialResults.map((row) => ({
-      seasonId: normalizeSeasonId(row.season_id),
-      seasonName: row.season_name,
-      category: row.rating_category,
-      series: row.series_name,
-      starts: row.starts,
-      wins: row.wins,
-      source: row.source,
-      capturedAt: row.captured_at,
-    }));
 
     // =====================================================
     // IRATING ATUAL
@@ -797,17 +808,11 @@ export async function GET() {
 
       races,
 
-      officialResults: {
-        lastCapturedAt: resultBreakdown.reduce<string | null>((latest, row) =>
-          !latest || row.capturedAt > latest ? row.capturedAt : latest, null),
-        series: resultBreakdown,
-      },
-
       featureAvailability: {
         wins: true,
 
         winsReason:
-          "Resultados oficiais persistidos por temporada; atualização automática aguardando OAuth do iRacing.",
+          "Wins vêm automaticamente de irstats.com, sem necessidade de captura manual.",
       },
     });
   } catch (error) {
