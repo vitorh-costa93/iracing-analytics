@@ -191,6 +191,15 @@ describe("parseRaceDetailPage", () => {
     expect(result.raceFastestLapTime).toBeNull();
   });
 
+  it("treats the em-dash placeholder in the Fastest column as null, not a literal dash", () => {
+    const noLap = DETAIL_PAGE_FIXTURE.replace(
+      '<td class="text-center">1:27.305</td>',
+      '<td class="text-center">—</td>'
+    );
+    const result = parseRaceDetailPage(noLap, "Vitor Hugo Da Costa");
+    expect(result.fastestLapTime).toBeNull();
+  });
+
   it("treats an unsigned iRating delta as positive", () => {
     const unsigned = DETAIL_PAGE_FIXTURE.replace(
       '<small class="text-success">+73</small>',

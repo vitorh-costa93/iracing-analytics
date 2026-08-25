@@ -181,7 +181,7 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
     positionChange: parseIntOrNull(cells.eq(changeCol).text()),
     laps: parseIntOrNull(cells.eq(lapsCol).text()),
     lapsLed: parseIntOrNull(cells.eq(ledCol).text()),
-    fastestLapTime: fastestLapText === "" ? null : fastestLapText,
+    fastestLapTime: fastestLapText === "" || fastestLapText === "—" ? null : fastestLapText,
     incidents: parseIntOrNull(cells.eq(incCol).text()),
     points: parseIntOrNull(cells.eq(ptsCol).text()),
     sof,
