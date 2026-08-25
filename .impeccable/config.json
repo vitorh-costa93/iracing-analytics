@@ -17,6 +17,15 @@
         ],
         "createdAt": "2026-08-24T18:39:37.364Z",
         "reason": "false positive: .app-tabs a and .setup-subtabs button are bottom-border tab-indicator underlines (no border-radius on the element itself), not a border on a rounded card; pre-existing pattern unrelated to this session's task"
+      },
+      {
+        "rule": "layout-transition",
+        "value": "width",
+        "files": [
+          "public/irstats-import.js"
+        ],
+        "createdAt": "2026-08-25T12:13:02.632Z",
+        "reason": "sanctioned exception: simple progress-bar width transition in the irstats-import bookmarklet's injected debug overlay — a lightweight internal tool, not app UI subject to the design system"
       }
     ]
   }
