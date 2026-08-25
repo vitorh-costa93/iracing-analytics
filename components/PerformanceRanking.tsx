@@ -42,28 +42,25 @@ function manufacturerSlug(label: string) {
 
 export default function PerformanceRanking({ items, emptyText, kind = "car" }: Props) {
   if (!items.length) return <div className="ranking-empty">{emptyText ?? "Sem dados"}</div>;
-  // Ranked by TOTAL Δ iRating — this is "você ganha ou perde iRating nessa pista, no total", which
-  // is the actual question this panel answers. Average per race is shown alongside as context, not
-  // as the sort key (a previous version switched to avg-as-primary; reverted per explicit feedback).
-  const gains = [...items].filter((item) => item.delta > 0).sort((a, b) => b.delta - a.delta).slice(0, 5);
-  const drops = [...items].filter((item) => item.delta < 0).sort((a, b) => a.delta - b.delta).slice(0, 5);
-  const rows = [...gains, ...drops].sort((a, b) => b.delta - a.delta);
-  const maxAbs = Math.max(...rows.map((item) => Math.abs(item.delta)), 1);
+  const gains = [...items].filter((item) => item.avgDelta > 0).sort((a, b) => b.avgDelta - a.avgDelta).slice(0, 5);
+  const drops = [...items].filter((item) => item.avgDelta < 0).sort((a, b) => a.avgDelta - b.avgDelta).slice(0, 5);
+  const rows = [...gains, ...drops].sort((a, b) => b.avgDelta - a.avgDelta);
+  const maxAbs = Math.max(...rows.map((item) => Math.abs(item.avgDelta)), 1);
 
   return <div className="diverging-ranking">
     <div className="diverging-axis"><span>PERDAS</span><i /><span>GANHOS</span></div>
     {rows.map((item) => {
-      const positive = item.delta > 0;
-      const width = Math.max(Math.abs(item.delta) / maxAbs * 48, 2);
+      const positive = item.avgDelta > 0;
+      const width = Math.max(Math.abs(item.avgDelta) / maxAbs * 48, 2);
       const code = kind === "track" ? countryCode(item.label) : null;
       const brand = kind === "car" ? manufacturerSlug(item.label) : null;
       return <div className="diverging-row" key={`${item.group ?? ""}-${item.label}`}>
         <div className="diverging-label">
           {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" onError={hideBrokenImage} /> : brand && BRAND_LOGO_OVERRIDES[brand] ? <span className="brand-icon-chip"><img className="brand-icon" src={BRAND_LOGO_OVERRIDES[brand]} alt={`Marca ${brand}`} width="14" height="14" onError={hideBrokenImage} /></span> : brand ? <span className="brand-icon-chip"><img className="brand-icon" src={`https://cdn.simpleicons.org/${brand}/1a1f26`} alt={`Marca ${brand}`} width="14" height="14" onError={hideBrokenImage} /></span> : kind === "track" ? <MapPin size={15} /> : <CarFront size={16} />}
-          {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas • média {signedAvg(item.avgDelta)}/corrida</small>
+          {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas • Δ total {signed(item.delta)}</small>
         </div>
         <div className="diverging-bar"><i className="center-line" /><span className={positive ? "positive" : "negative"} style={positive ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>
-        <b className={positive ? "positive" : "negative"}>{signed(item.delta)}</b>
+        <b className={positive ? "positive" : "negative"}>{signedAvg(item.avgDelta)}/corrida</b>
       </div>;
     })}
   </div>;

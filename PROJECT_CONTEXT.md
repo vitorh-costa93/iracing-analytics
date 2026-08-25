@@ -242,6 +242,10 @@ Em 20/08/2026 foi criada a tabela `official_series_results`, que preserva snapsh
 
 Esse snapshot remove a necessidade de consultar o site em cada abertura do painel, mas não deve ser descrito como sincronização automática completa. O refresh recorrente continuará pendente até existir OAuth oficial do iRacing; nessa etapa, a rota de sync deverá atualizar a mesma tabela incrementalmente e armazenar resultados individuais/deduplicados. Não automatizar scraping de sessão autenticada do navegador no Vercel nem armazenar cookies/senhas. Para correções pontuais antes do OAuth, atualizar apenas com evidência do Results Archive/Series Standings e registrar `captured_at`/`source`.
 
+Em 25/08/2026 o botão manual `Atualizar dados` passou a não chamar mais o iRStats pelo servidor, pois esse caminho é bloqueado por Cloudflare fora de um navegador real. O botão abre Garage61 e iRStats em abas separadas, sincroniza Garage61/Supabase via rotas server-side (`sync/all`, `sync/incremental`, `sync/rating-history`) e deixa o iRStats para o importador browser-side. O script público `public/irstats-import.js` mantém `window.__iisState` para acompanhamento e, por padrão pós-backfill completo, faz sync incremental: consulta os IDs já presentes em `race_results`, percorre as páginas mais recentes e para ao encontrar uma página sem corridas novas. Para auditoria de lacunas históricas, `localStorage.iis_full_scan = "true"` reativa a varredura completa limitada.
+
+Com o histórico completo de `race_results`, os rankings de performance por pista/carro passaram a destacar a média de Δ iRating por corrida como métrica principal. O Δ total permanece como KPI secundário e a lógica visual de Top 5 ganhos / Top 5 perdas segue separando extremos positivos e negativos.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:

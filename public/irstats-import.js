@@ -4,6 +4,18 @@
   var DRIVER_ID = "958741";
   var REQUEST_GAP_MS = 3000;
   var BATCH_SIZE = 15;
+  var FULL_SCAN = window.localStorage.getItem("iis_full_scan") === "true";
+  var state = window.__iisState = {
+    status: "starting",
+    page: 0,
+    found: 0,
+    imported: 0,
+    failed: 0,
+    skipped: 0,
+    total: null,
+    fullScan: FULL_SCAN,
+    updatedAt: new Date().toISOString()
+  };
 
   var existing = document.getElementById("irstats-import-overlay");
   if (existing) existing.remove();
@@ -23,8 +35,18 @@
   var statusEl = document.getElementById("iis-status");
   var barEl = document.getElementById("iis-bar");
   var logEl = document.getElementById("iis-log");
-  function setStatus(text) { statusEl.textContent = text; }
-  function setProgress(pct) { barEl.style.width = Math.max(0, Math.min(100, pct)) + "%"; }
+  function updateState(patch) {
+    Object.assign(state, patch, { updatedAt: new Date().toISOString() });
+  }
+  function setStatus(text) {
+    statusEl.textContent = text;
+    updateState({ status: text });
+  }
+  function setProgress(pct) {
+    var bounded = Math.max(0, Math.min(100, pct));
+    barEl.style.width = bounded + "%";
+    updateState({ progress: bounded });
+  }
   function log(text) { var line = document.createElement("div"); line.textContent = text; logEl.appendChild(line); logEl.scrollTop = logEl.scrollHeight; }
 
   var key = window.localStorage.getItem("iis_key");
@@ -78,18 +100,16 @@
     var knownData = await knownRes.json();
     if (knownData.status !== "ok") throw new Error(knownData.message || "Erro ao buscar corridas conhecidas");
     var known = new Set(knownData.knownIds || []);
+    updateState({ skipped: known.size });
     log(known.size + " corrida(s) já no banco.");
 
-    // Walks every page regardless of whether a given page is fully already-known. A resumed
-    // backfill (e.g. after a browser/network interruption) can have the newest races already
-    // imported while real gaps remain deeper in history — stopping at the first fully-known page
-    // (an "incremental" shortcut) would silently report "nothing to import" and leave the gap
-    // unfilled. The cost is a few extra cheap page checks on a true incremental run; the correctness
-    // this buys (never silently stopping mid-backfill) is worth far more for a low-frequency,
-    // rate-limited personal tool.
+    // After the full backfill, regular runs should only walk the newest pages until they hit an
+    // already-complete page. Set localStorage.iis_full_scan = "true" before running if a later
+    // audit ever needs to search for old gaps again.
     var newRaceIds = [];
     var page = 0;
     while (true) {
+      updateState({ page: page });
       setStatus("Lendo página " + page + " da lista de corridas...");
       await sleep(REQUEST_GAP_MS);
       var listResult = await fetchWithRetry(
@@ -107,7 +127,9 @@
       for (var i = 0; i < ids.length; i++) {
         if (!known.has(ids[i])) { newRaceIds.push(ids[i]); newOnPage++; }
       }
+      updateState({ found: newRaceIds.length });
       log("Página " + page + ": " + newOnPage + " nova(s) de " + ids.length + ".");
+      if (!FULL_SCAN && newOnPage === 0) { log("Página já completa; import incremental encerrado."); break; }
 
       page += 1;
       if (page > 30) { log("Limite de páginas atingido (30), parando."); break; }
@@ -120,6 +142,7 @@
     }
 
     log(newRaceIds.length + " corrida(s) nova(s) encontrada(s). Buscando detalhes...");
+    updateState({ total: newRaceIds.length });
 
     var batch = [];
     var totalImported = 0;
@@ -139,6 +162,7 @@
       } else {
         totalImported += data.imported;
         totalFailed += data.failed;
+        updateState({ imported: totalImported, failed: totalFailed });
         (data.results || []).forEach(function (r) {
           if (r.status === "error") log("Corrida " + r.raceId + ": " + r.message);
         });

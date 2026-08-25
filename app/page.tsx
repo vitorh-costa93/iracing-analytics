@@ -96,11 +96,11 @@ function aggregateRows(
   }
 
   // avgDelta must be recomputed as total/races AFTER aggregation, not summed/averaged from the
-  // per-row avgDelta values — otherwise a track raced under several different cars would get its
-  // average double-counted. Shown alongside the total in PerformanceRanking as context.
+  // per-row avgDelta values; otherwise a track raced under several different cars would get its
+  // average double-counted. It is the primary performance signal in the ranking.
   for (const item of map.values()) item.avgDelta = item.races > 0 ? item.delta / item.races : 0;
 
-  return [...map.values()].sort((a, b) => b.delta - a.delta);
+  return [...map.values()].sort((a, b) => b.avgDelta - a.avgDelta);
 }
 
 export default function Home() {
@@ -131,18 +131,26 @@ export default function Home() {
 
   async function syncData() {
     setSyncing(true);
-    setMessage("Atualizando perfil, ratings, catálogo e atividade...");
+    setMessage("Abrindo Garage61 e iRStats, depois atualizando dados via Supabase...");
     try {
+      window.open("https://garage61.net/app", "_blank", "noopener,noreferrer");
+      window.open("https://irstats.com/driver/958741", "_blank", "noopener,noreferrer");
+
       const generalResponse = await fetch("/api/sync/all", { method: "POST" });
       const generalResult = await generalResponse.json();
       if (!generalResponse.ok) throw new Error(generalResult.message ?? "Erro na sincronização geral");
 
-      setMessage("Atualizando corridas recentes...");
-      const irstatsResponse = await fetch("/api/sync/irstats", { method: "POST" });
-      const irstatsResult = await irstatsResponse.json();
-      if (!irstatsResponse.ok) throw new Error(irstatsResult.message ?? "Erro na sincronização de corridas");
+      setMessage("Atualizando sessões recentes do Garage61...");
+      const sessionsResponse = await fetch("/api/sync/incremental", { method: "POST" });
+      const sessionsResult = await sessionsResponse.json();
+      if (!sessionsResponse.ok) throw new Error(sessionsResult.message ?? "Erro na sincronização de sessões");
 
-      setMessage("Dados gerais e corridas recentes atualizados.");
+      setMessage("Atualizando histórico de rating do Garage61...");
+      const ratingsResponse = await fetch("/api/sync/rating-history", { method: "POST" });
+      const ratingsResult = await ratingsResponse.json();
+      if (!ratingsResponse.ok) throw new Error(ratingsResult.message ?? "Erro na sincronização de ratings");
+
+      setMessage("Garage61 atualizado. A aba do iRStats foi aberta; acione o importador browser-side para enviar somente corridas ainda ausentes.");
       await loadDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
@@ -257,7 +265,7 @@ export default function Home() {
           <div className="performance-grid">
             <article className="panel ranking-panel">
               <div className="panel-heading compact">
-                <div><span className="section-kicker">TRACK PERFORMANCE</span><h3>Δ iRating por pista</h3></div>
+                <div><span className="section-kicker">TRACK PERFORMANCE</span><h3>Média de Δ iRating por pista</h3></div>
               </div>
               <PerformanceRanking items={rankings.tracks} kind="track" />
             </article>
