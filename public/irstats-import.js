@@ -36,14 +36,28 @@
 
   function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
 
-  async function fetchWithRetry(url, opts, maxRetries) {
+  // Cloudflare sometimes serves a soft rate-limit/interstitial page with HTTP 200 (not 429) once
+  // requests come in sustained volume — status alone can't detect it, so callers pass a
+  // `isValidBody` check (e.g. "does this look like a real race page") to retry on that too.
+  async function fetchWithRetry(url, opts, maxRetries, isValidBody) {
     maxRetries = maxRetries || 5;
+    var lastReason = "resposta inesperada";
     for (var attempt = 1; attempt <= maxRetries + 1; attempt++) {
       var res = await fetch(url, opts);
-      if (res.status !== 429) return res;
-      if (attempt > maxRetries) return res;
+      if (res.status === 429) {
+        lastReason = "HTTP 429";
+        if (attempt > maxRetries) return { text: null, reason: lastReason };
+        await sleep(REQUEST_GAP_MS * attempt);
+        continue;
+      }
+      if (!res.ok) return { text: null, reason: "HTTP " + res.status };
+      var text = await res.text();
+      if (!isValidBody || isValidBody(text)) return { text: text, reason: null };
+      lastReason = "conteúdo inesperado (bloqueio temporário?)";
+      if (attempt > maxRetries) return { text: null, reason: lastReason };
       await sleep(REQUEST_GAP_MS * attempt);
     }
+    return { text: null, reason: lastReason };
   }
 
   function extractRaceIds(html) {
@@ -72,9 +86,14 @@
     while (true) {
       setStatus("Lendo página " + page + " da lista de corridas...");
       await sleep(REQUEST_GAP_MS);
-      var listRes = await fetchWithRetry("/driver/" + DRIVER_ID + "/races?page=" + page, { credentials: "same-origin" });
-      if (!listRes.ok) { log("Página " + page + ": HTTP " + listRes.status + ", parando."); break; }
-      var listHtml = await listRes.text();
+      var listResult = await fetchWithRetry(
+        "/driver/" + DRIVER_ID + "/races?page=" + page,
+        { credentials: "same-origin" },
+        5,
+        function (text) { return text.indexOf("<table") !== -1; }
+      );
+      if (listResult.text === null) { log("Página " + page + ": " + listResult.reason + ", parando."); break; }
+      var listHtml = listResult.text;
       var ids = extractRaceIds(listHtml);
       if (!ids.length) { log("Página " + page + " sem corridas, fim da lista."); break; }
 
@@ -126,9 +145,14 @@
       setStatus((j + 1) + " / " + newRaceIds.length + " corridas — buscando #" + raceId);
       setProgress(((j + 1) / newRaceIds.length) * 100);
       await sleep(REQUEST_GAP_MS);
-      var detailRes = await fetchWithRetry("/race/" + raceId, { credentials: "same-origin" });
-      if (!detailRes.ok) { log("Corrida " + raceId + ": HTTP " + detailRes.status + ", pulando."); continue; }
-      var detailHtml = await detailRes.text();
+      var detailResult = await fetchWithRetry(
+        "/race/" + raceId,
+        { credentials: "same-origin" },
+        5,
+        function (text) { return text.indexOf('class="lb-title') !== -1; }
+      );
+      if (detailResult.text === null) { log("Corrida " + raceId + ": " + detailResult.reason + ", pulando."); continue; }
+      var detailHtml = detailResult.text;
       batch.push({ raceId: raceId, html: detailHtml });
       if (batch.length >= BATCH_SIZE) await flushBatch();
     }
