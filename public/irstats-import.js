@@ -36,6 +36,16 @@
 
   function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
 
+  async function fetchWithRetry(url, opts, maxRetries) {
+    maxRetries = maxRetries || 5;
+    for (var attempt = 1; attempt <= maxRetries + 1; attempt++) {
+      var res = await fetch(url, opts);
+      if (res.status !== 429) return res;
+      if (attempt > maxRetries) return res;
+      await sleep(REQUEST_GAP_MS * attempt);
+    }
+  }
+
   function extractRaceIds(html) {
     var doc = new DOMParser().parseFromString(html, "text/html");
     var links = doc.querySelectorAll('a[href^="/race/"]');
@@ -62,7 +72,7 @@
     while (true) {
       setStatus("Lendo página " + page + " da lista de corridas...");
       await sleep(REQUEST_GAP_MS);
-      var listRes = await fetch("/driver/" + DRIVER_ID + "/races?page=" + page, { credentials: "same-origin" });
+      var listRes = await fetchWithRetry("/driver/" + DRIVER_ID + "/races?page=" + page, { credentials: "same-origin" });
       if (!listRes.ok) { log("Página " + page + ": HTTP " + listRes.status + ", parando."); break; }
       var listHtml = await listRes.text();
       var ids = extractRaceIds(listHtml);
@@ -116,7 +126,7 @@
       setStatus((j + 1) + " / " + newRaceIds.length + " corridas — buscando #" + raceId);
       setProgress(((j + 1) / newRaceIds.length) * 100);
       await sleep(REQUEST_GAP_MS);
-      var detailRes = await fetch("/race/" + raceId, { credentials: "same-origin" });
+      var detailRes = await fetchWithRetry("/race/" + raceId, { credentials: "same-origin" });
       if (!detailRes.ok) { log("Corrida " + raceId + ": HTTP " + detailRes.status + ", pulando."); continue; }
       var detailHtml = await detailRes.text();
       batch.push({ raceId: raceId, html: detailHtml });
