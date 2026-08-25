@@ -80,9 +80,15 @@
     var known = new Set(knownData.knownIds || []);
     log(known.size + " corrida(s) já no banco.");
 
+    // Walks every page regardless of whether a given page is fully already-known. A resumed
+    // backfill (e.g. after a browser/network interruption) can have the newest races already
+    // imported while real gaps remain deeper in history — stopping at the first fully-known page
+    // (an "incremental" shortcut) would silently report "nothing to import" and leave the gap
+    // unfilled. The cost is a few extra cheap page checks on a true incremental run; the correctness
+    // this buys (never silently stopping mid-backfill) is worth far more for a low-frequency,
+    // rate-limited personal tool.
     var newRaceIds = [];
     var page = 0;
-    var totalPages = null;
     while (true) {
       setStatus("Lendo página " + page + " da lista de corridas...");
       await sleep(REQUEST_GAP_MS);
@@ -97,11 +103,11 @@
       var ids = extractRaceIds(listHtml);
       if (!ids.length) { log("Página " + page + " sem corridas, fim da lista."); break; }
 
-      var pageHasNew = false;
+      var newOnPage = 0;
       for (var i = 0; i < ids.length; i++) {
-        if (!known.has(ids[i])) { newRaceIds.push(ids[i]); pageHasNew = true; }
+        if (!known.has(ids[i])) { newRaceIds.push(ids[i]); newOnPage++; }
       }
-      if (!pageHasNew) { log("Página " + page + ": tudo já conhecido, parando (modo incremental)."); break; }
+      log("Página " + page + ": " + newOnPage + " nova(s) de " + ids.length + ".");
 
       page += 1;
       if (page > 30) { log("Limite de páginas atingido (30), parando."); break; }
