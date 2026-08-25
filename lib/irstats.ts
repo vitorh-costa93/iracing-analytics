@@ -45,6 +45,10 @@ export type RaceResult = {
   incidents: number | null;
   points: number | null;
   sof: number | null;
+  /** The race's overall fastest lap (any driver), not this driver's own — used as a fixed
+   * per-race pace reference for duration estimation, since a driver who DNFs before setting any
+   * timed lap of their own still has laps=0 and needs *some* reference pace. */
+  raceFastestLapTime: string | null;
 };
 
 function raceStat($: cheerio.CheerioAPI, label: string): string {
@@ -53,6 +57,20 @@ function raceStat($: cheerio.CheerioAPI, label: string): string {
   const clone = span.clone();
   clone.find("b").remove();
   return clone.text().trim();
+}
+
+/**
+ * The "Fastest Lap" race-stat block has a different structure from the plain-text ones (SoF,
+ * Category, Date): `<span class="race-stat"><i .../> <b>Fastest Lap</b> <a>{driver}</a>
+ * <span class="text-muted">{time}</span></span>` — the time lives in a nested span, not as loose
+ * text after `<b>`, so it needs its own extraction instead of the generic raceStat() helper.
+ * Returns null if the block is absent (some race types may not report an overall fastest lap).
+ */
+function raceFastestLapTime($: cheerio.CheerioAPI): string | null {
+  const span = $("span.race-stat").filter((_, el) => $(el).find("b").first().text().trim() === "Fastest Lap").first();
+  if (span.length === 0) return null;
+  const time = span.find("span.text-muted").first().text().trim();
+  return time || null;
 }
 
 function parseCategory(raw: string): "formula_car" | "sports_car" {
@@ -94,6 +112,7 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
   const category = parseCategory(raceStat($, "Category"));
   const racedAt = parseDate(raceStat($, "Date"));
   const sof = parseIntOrNull(raceStat($, "SoF"));
+  const raceFastestLap = raceFastestLapTime($);
 
   const table = $("table").first();
   if (table.length === 0) throw new Error("irstats race detail: no results table found");
@@ -166,6 +185,7 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
     incidents: parseIntOrNull(cells.eq(incCol).text()),
     points: parseIntOrNull(cells.eq(ptsCol).text()),
     sof,
+    raceFastestLapTime: raceFastestLap,
   };
 }
 

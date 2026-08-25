@@ -122,6 +122,7 @@ export async function importRaceFromHtml(raceId: number, html: string, driverId:
     laps: parsed.laps,
     laps_led: parsed.lapsLed,
     fastest_lap_time: parsed.fastestLapTime,
+    race_fastest_lap_time: parsed.raceFastestLapTime,
     incidents: parsed.incidents,
     points: parsed.points,
     sof: parsed.sof,

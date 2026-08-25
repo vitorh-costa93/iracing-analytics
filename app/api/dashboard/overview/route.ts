@@ -73,9 +73,34 @@ type RaceResultRow = {
   finish_position: number;
   position_change: number | null;
   fastest_lap_time: string | null;
+  race_fastest_lap_time: string | null;
+  laps: number | null;
   irating_after: number;
   irating_before: number;
 };
+
+/** Parses irstats' "M:SS.mmm" lap-time text (e.g. "1:27.305") into seconds. */
+function parseLapTimeSeconds(text: string | null): number | null {
+  if (!text) return null;
+  const match = text.match(/^(\d+):(\d{2}(?:\.\d+)?)$/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
+}
+
+/**
+ * irstats.com exposes no session-duration field, only lap counts and lap times — so this is an
+ * ESTIMATE (laps completed × a reference pace), not a real duration. Uses the race's overall
+ * fastest lap (any driver) rather than this driver's own: a driver who DNFs before completing a
+ * single timed lap has laps=0 and no personal reference pace, but 0 laps × any pace still
+ * correctly yields ~0 minutes — showing up as an early exit on the Race Survival chart instead of
+ * being silently dropped for lacking a fastest lap at all. Falls back to the driver's own fastest
+ * lap only if the race-wide one wasn't captured (older imports, or the block was absent).
+ */
+function estimateDurationMinutes(row: RaceResultRow): number | null {
+  const paceSeconds = parseLapTimeSeconds(row.race_fastest_lap_time) ?? parseLapTimeSeconds(row.fastest_lap_time);
+  if (paceSeconds === null || row.laps === null) return null;
+  return (paceSeconds * row.laps) / 60;
+}
 
 type SeasonCalendarRow = {
   season_id: string | number;
@@ -411,7 +436,7 @@ export async function GET() {
     const { data: seasonRaceRows, error: racesError } = await supabaseAdmin
       .from("v_race_results_irating")
       .select(
-        "irstats_race_id, raced_at, series_name, track_name, car_name, category, grid_position, finish_position, position_change, fastest_lap_time, irating_after, irating_before"
+        "irstats_race_id, raced_at, series_name, track_name, car_name, category, grid_position, finish_position, position_change, fastest_lap_time, race_fastest_lap_time, laps, irating_after, irating_before"
       )
       .eq("driver_id", driver.id)
       .gte("raced_at", previousSeasonStart)
@@ -429,7 +454,7 @@ export async function GET() {
       id: row.irstats_race_id,
       startedAt: row.raced_at,
       endedAt: row.raced_at,
-      durationMinutes: null,
+      durationMinutes: estimateDurationMinutes(row),
       delta: row.irating_after - row.irating_before,
       ratingCategory: row.category,
       car: row.car_name,

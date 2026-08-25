@@ -240,7 +240,7 @@ export default function Home() {
           <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} />
         </article>
         <article className="panel large-panel">
-          <div className="panel-heading"><div><span className="section-kicker">RACE SURVIVAL</span><h2>Duração × Δ iRating</h2><p>Somente corridas da season atual. Pontos à esquerda indicam sessões encerradas cedo.</p></div></div>
+          <div className="panel-heading"><div><span className="section-kicker">RACE SURVIVAL</span><h2>Duração × Δ iRating</h2><p>Somente corridas da season atual. Duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</p></div></div>
           <RaceScatterPlot points={scatter} />
         </article>
         </section>

@@ -58,6 +58,10 @@ const DETAIL_PAGE_FIXTURE = `
   <span class="race-stat"><b>Incidents</b> 80 <span class="text-muted">(5.0/driver)</span></span>
   <span class="race-stat"><b>Category</b>Formula Car</span>
   <span class="race-stat"><b>Date</b> Aug 21, 2026 · 20:30 UTC</span>
+  <span class="race-stat"><i class="bi bi-stopwatch-fill text-primary"></i> <b>Fastest Lap</b>
+    <a href="/driver/684660" class="link-black-underlined">Kevin A Foster</a>
+    <span class="text-muted">1:26.253</span>
+  </span>
   <table>
     <thead>
       <tr><th>Pos</th><th>Driver</th><th>License</th><th>iR</th><th>Car</th><th>Grid</th><th>+/−</th><th>Laps</th><th>Led</th><th>Fastest</th><th>Inc</th><th>Pts</th></tr>
@@ -149,6 +153,7 @@ describe("parseRaceDetailPage", () => {
       incidents: 1,
       points: 234,
       sof: 4487,
+      raceFastestLapTime: "1:26.253",
     });
   });
 
@@ -167,6 +172,23 @@ describe("parseRaceDetailPage", () => {
   it("extracts trackConfig from the parenthesized layout in the track/week line", () => {
     const result = parseRaceDetailPage(DETAIL_PAGE_FIXTURE, "Vitor Hugo Da Costa");
     expect(result.trackConfig).toBe("Grand Prix");
+  });
+
+  it("extracts the race's overall fastest lap (not the named driver's own) from the Fastest Lap race-stat block", () => {
+    const result = parseRaceDetailPage(DETAIL_PAGE_FIXTURE, "Vitor Hugo Da Costa");
+    // Kevin A Foster set 1:26.253, the fastest in the race; Vitor's own best in this fixture is
+    // 1:27.305 — confirms this reads the race-wide stat, not the queried driver's row.
+    expect(result.raceFastestLapTime).toBe("1:26.253");
+    expect(result.fastestLapTime).toBe("1:27.305");
+  });
+
+  it("returns null raceFastestLapTime when the Fastest Lap block is absent", () => {
+    const noFastestLap = DETAIL_PAGE_FIXTURE.replace(
+      /<span class="race-stat"><i class="bi bi-stopwatch-fill text-primary"><\/i> <b>Fastest Lap<\/b>[\s\S]*?<\/span>\s*<\/span>/,
+      ""
+    );
+    const result = parseRaceDetailPage(noFastestLap, "Vitor Hugo Da Costa");
+    expect(result.raceFastestLapTime).toBeNull();
   });
 
   it("treats an unsigned iRating delta as positive", () => {
