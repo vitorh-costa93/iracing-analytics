@@ -195,6 +195,69 @@ describe("parseRaceDetailPage", () => {
     const badCategory = DETAIL_PAGE_FIXTURE.replace(">Formula Car<", ">Nascar<");
     expect(() => parseRaceDetailPage(badCategory, "Vitor Hugo Da Costa")).toThrow();
   });
+
+  it("locates columns by header text, not fixed position, so a multiclass race's extra Cls column doesn't shift every field", () => {
+    // Multiclass races (e.g. IMSA: GTP/LMP2/GT3 sharing one race) insert a "Cls" column right
+    // after "Pos", shifting every subsequent column one to the right. A fixed-index parser reads
+    // the wrong cell for every field and — since the driver row is found by matching the *name*
+    // cell's text — fails to find the driver at all, throwing on every real multiclass race.
+    const multiclass = `
+      <main>
+        <h1 class="lb-title mt-1 mb-1">IMSA iRacing Series - Fixed</h1>
+        <p class="lb-sub mb-3">Autodromo Nazionale Monza (Grand Prix)
+          ·Week 7</p>
+        <span class="race-stat"><b>SoF</b> 3111</span>
+        <span class="race-stat"><b>Category</b> Sports Car</span>
+        <span class="race-stat"><b>Date</b> Aug 3, 2026 · 21:45 UTC</span>
+        <table>
+          <thead>
+            <tr><th>Pos</th><th>Cls</th><th>Driver</th><th>License</th><th>iR</th><th>Car</th><th>Grid</th><th>+/−</th><th>Laps</th><th>Led</th><th>Fastest</th><th>Inc</th><th>Pts</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="text-center fw-semibold"></td>
+              <td class="text-center"></td>
+              <td>Dylan W.</td>
+              <td class="text-center">A 2.50</td>
+              <td class="text-center">3.1k<small class="text-success">+108</small></td>
+              <td class="text-center car-cell">Ferrari 499P</td>
+              <td class="text-center">1</td>
+              <td class="text-center">0</td>
+              <td class="text-center">22</td>
+              <td class="text-center d-none d-lg-table-cell">22</td>
+              <td class="text-center fw-semibold text-primary">1:33.901</td>
+              <td class="text-center">0</td>
+              <td class="text-center d-none d-lg-table-cell">194</td>
+            </tr>
+            <tr>
+              <td class="text-center fw-semibold">6</td>
+              <td class="text-center">6</td>
+              <td>Vitor Hugo Da Costa</td>
+              <td class="text-center">A 1.37</td>
+              <td class="text-center">3.5k<small class="text-success">+9</small></td>
+              <td class="text-center car-cell">Ferrari 499P</td>
+              <td class="text-center">3</td>
+              <td class="text-center">-3</td>
+              <td class="text-center">22</td>
+              <td class="text-center d-none d-lg-table-cell">0</td>
+              <td class="text-center">1:34.213</td>
+              <td class="text-center">11</td>
+              <td class="text-center d-none d-lg-table-cell">105</td>
+            </tr>
+          </tbody>
+        </table>
+      </main>
+    `;
+    const result = parseRaceDetailPage(multiclass, "Vitor Hugo Da Costa");
+    expect(result.finishPosition).toBe(2);
+    expect(result.carName).toBe("Ferrari 499P");
+    expect(result.gridPosition).toBe(3);
+    expect(result.positionChange).toBe(-3);
+    expect(result.iratingDelta).toBe(9);
+    expect(result.fastestLapTime).toBe("1:34.213");
+    expect(result.incidents).toBe(11);
+    expect(result.points).toBe(105);
+  });
 });
 
 describe("fetchIrstatsPage", () => {

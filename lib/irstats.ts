@@ -97,17 +97,40 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
 
   const table = $("table").first();
   if (table.length === 0) throw new Error("irstats race detail: no results table found");
+
+  // Column positions shift on multiclass races: an extra "Cls" column is inserted right after
+  // "Pos", so a fixed index for "Driver" etc. reads the wrong cell entirely (and mis-locates the
+  // driver's row, since it's found by comparing the *name* cell's text). Locate every column by
+  // its header text instead of a hardcoded position — robust to Cls being present or absent.
+  const headerCells = table.find("thead th").toArray().map((th) => $(th).text().trim());
+  function columnIndex(label: string): number {
+    const index = headerCells.indexOf(label);
+    if (index === -1) throw new Error(`irstats race detail: missing "${label}" column in results table header (${headerCells.join(", ")})`);
+    return index;
+  }
+  const driverCol = columnIndex("Driver");
+  const licenseCol = columnIndex("License");
+  const iratingCol = columnIndex("iR");
+  const carCol = columnIndex("Car");
+  const gridCol = columnIndex("Grid");
+  const changeCol = columnIndex("+/−");
+  const lapsCol = columnIndex("Laps");
+  const ledCol = columnIndex("Led");
+  const fastestCol = columnIndex("Fastest");
+  const incCol = columnIndex("Inc");
+  const ptsCol = columnIndex("Pts");
+
   const rows = table.find("tbody tr").toArray();
 
-  const rowIndex = rows.findIndex((row) => $(row).find("td").eq(1).text().trim() === driverName);
+  const rowIndex = rows.findIndex((row) => $(row).find("td").eq(driverCol).text().trim() === driverName);
   if (rowIndex === -1) throw new Error(`irstats race detail: driver "${driverName}" not found in results table`);
 
   const cells = $(rows[rowIndex]).find("td");
-  const licenseCell = cells.eq(2).text().trim(); // "A 3.31"
+  const licenseCell = cells.eq(licenseCol).text().trim(); // "A 3.31"
   const licenseMatch = licenseCell.match(/^(\S+)\s+([\d.]+)$/);
   if (!licenseMatch) throw new Error(`irstats race detail: unrecognized license cell "${licenseCell}"`);
 
-  const iratingCell = cells.eq(3);
+  const iratingCell = cells.eq(iratingCol);
   const iratingDeltaTextRaw = iratingCell.find("small").first().text().trim();
   // Accept an optional sign (a zero/unsigned delta may render without one) and both the ASCII
   // hyphen-minus and the Unicode minus sign U+2212 (the table header itself uses "±/−"), then
@@ -119,7 +142,7 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
   iratingClone.find("small").remove();
   const iratingDisplay = iratingClone.text().trim();
 
-  const fastestLapText = cells.eq(9).text().trim();
+  const fastestLapText = cells.eq(fastestCol).text().trim();
 
   return {
     irstatsRaceId: 0,
@@ -127,21 +150,21 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
     seriesName,
     trackName,
     trackConfig,
-    carName: cells.eq(4).text().trim(),
+    carName: cells.eq(carCol).text().trim(),
     category,
     seasonWeek,
     licenseClass: licenseMatch[1],
     safetyRating: Number(licenseMatch[2]),
     iratingDisplay,
     iratingDelta: Number(iratingDeltaMatch[1]),
-    gridPosition: parseIntOrNull(cells.eq(5).text()),
+    gridPosition: parseIntOrNull(cells.eq(gridCol).text()),
     finishPosition: rowIndex + 1,
-    positionChange: parseIntOrNull(cells.eq(6).text()),
-    laps: parseIntOrNull(cells.eq(7).text()),
-    lapsLed: parseIntOrNull(cells.eq(8).text()),
+    positionChange: parseIntOrNull(cells.eq(changeCol).text()),
+    laps: parseIntOrNull(cells.eq(lapsCol).text()),
+    lapsLed: parseIntOrNull(cells.eq(ledCol).text()),
     fastestLapTime: fastestLapText === "" ? null : fastestLapText,
-    incidents: parseIntOrNull(cells.eq(10).text()),
-    points: parseIntOrNull(cells.eq(11).text()),
+    incidents: parseIntOrNull(cells.eq(incCol).text()),
+    points: parseIntOrNull(cells.eq(ptsCol).text()),
     sof,
   };
 }
