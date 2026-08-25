@@ -97,8 +97,13 @@ function parseLapTimeSeconds(text: string | null): number | null {
  * lap only if the race-wide one wasn't captured (older imports, or the block was absent).
  */
 function estimateDurationMinutes(row: RaceResultRow): number | null {
+  if (row.laps === null) return null;
+  // Zero completed laps is ~0 minutes by definition — no pace reference needed or possible (the
+  // driver never set a timed lap), and older imports predating race_fastest_lap_time would
+  // otherwise have no pace source at all here, wrongly dropping a real early-DNF point.
+  if (row.laps === 0) return 0;
   const paceSeconds = parseLapTimeSeconds(row.race_fastest_lap_time) ?? parseLapTimeSeconds(row.fastest_lap_time);
-  if (paceSeconds === null || row.laps === null) return null;
+  if (paceSeconds === null) return null;
   return (paceSeconds * row.laps) / 60;
 }
 
