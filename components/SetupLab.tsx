@@ -70,6 +70,8 @@ export default function SetupLab() {
   }, [context, contexts]);
 
   const selected = contexts.find((item) => item.key === context) ?? null;
+  const setupA = selected?.uploads.find((item) => item.id === baseSetupId) ?? null;
+  const setupB = selected?.uploads.find((item) => item.id === comparisonSetupId) ?? null;
 
   useEffect(() => {
     setActiveSetupId((current) => selected?.uploads.some((item) => item.id === current) ? current : selected?.uploads[0]?.id ?? "");
@@ -160,18 +162,22 @@ export default function SetupLab() {
           <div className="panel setup-diff">
             <div className="panel-heading"><div><span className="section-kicker">SETUP DIFF</span><h3>{compareResult.changes.length} parâmetros com efeito prático diferem entre os setups.</h3><p>{compareResult.totalParameters} parâmetros mapeados foram verificados{compareResult.skippedCount ? ` • ${compareResult.skippedCount} sem regra de efeito específica foram omitidos` : ""}.</p></div></div>
             <div className="setup-summary">
-              <p>{compareResult.summary}</p>
+              <div className="setup-comparison-head">
+                <div><span>SETUP A</span><strong>{setupA?.filename ?? "Primeiro setup"}</strong></div>
+                <div><span>SETUP B</span><strong>{setupB?.filename ?? "Segundo setup"}</strong></div>
+              </div>
+              <p className="setup-summary-text">{compareResult.summary}</p>
               {compareResult.analysis.topContributors.length > 0 && (
                 <div className="setup-summary-contributors">
                   <span className="section-kicker">MAIORES CONTRIBUINTES</span>
-                  <ul>{compareResult.analysis.topContributors.map((item) => <li key={item.label}><strong>{item.label.split(" • ").pop()}</strong> <del>{item.before}</del> → <ins>{item.after}</ins></li>)}</ul>
+                  <ul>{compareResult.analysis.topContributors.map((item) => <li key={item.label}><strong>{item.label.split(" • ").pop()}</strong> <small>Setup A</small> <del>{item.before}</del> <b>→</b> <small>Setup B</small> <ins>{item.after}</ins></li>)}</ul>
                 </div>
               )}
               {compareResult.analysis.topCategories.length > 0 && (
                 <div className="setup-summary-categories">{compareResult.analysis.topCategories.map((item) => <span key={item.category} className="performance-badge">{item.label}: {item.count}</span>)}</div>
               )}
             </div>
-            {compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}{!change.settable && <em className="setup-readonly-tag"> • resultado, não ajustável</em>}</span><strong>{change.label}</strong></div><div className="setup-values"><del>{change.before}</del><b>→</b><ins>{change.after}</ins></div><p>{change.explanation}</p></article>)}
+            {compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}{!change.settable && <em className="setup-readonly-tag"> • resultado, não ajustável</em>}</span><strong>{change.label}</strong></div><div className="setup-values"><span><small>Setup A</small><del>{change.before}</del></span><b>→</b><span><small>Setup B</small><ins>{change.after}</ins></span></div><p>{change.explanation}</p></article>)}
           </div>
         )}</>
       )}

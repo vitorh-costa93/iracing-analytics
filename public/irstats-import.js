@@ -136,7 +136,7 @@
     }
 
     if (!newRaceIds.length) {
-      setStatus("Nenhuma corrida nova para importar.");
+      setStatus("iRStats lido: nenhuma corrida nova para importar.");
       setProgress(100);
       return;
     }

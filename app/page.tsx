@@ -134,7 +134,6 @@ export default function Home() {
     setMessage("Abrindo Garage61 e iRStats, depois atualizando dados via Supabase...");
     try {
       window.open("https://garage61.net/app", "_blank", "noopener,noreferrer");
-      window.open("https://irstats.com/driver/958741", "_blank", "noopener,noreferrer");
 
       const generalResponse = await fetch("/api/sync/all", { method: "POST" });
       const generalResult = await generalResponse.json();
@@ -150,7 +149,7 @@ export default function Home() {
       const ratingsResult = await ratingsResponse.json();
       if (!ratingsResponse.ok) throw new Error(ratingsResult.message ?? "Erro na sincronização de ratings");
 
-      setMessage("Garage61 atualizado. A aba do iRStats foi aberta; acione o importador browser-side para enviar somente corridas ainda ausentes.");
+      setMessage(`Garage61 lido: ${sessionsResult.sessionsUpserted ?? 0} sessões recentes consolidadas e ${ratingsResult.recordsSynced ?? 0} pontos de rating verificados. A aba do iRStats foi aberta para o importador incremental ler somente corridas novas.`);
       await loadDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
@@ -204,9 +203,9 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <button className="primary-button" onClick={syncData} disabled={syncing}>
+            <a className={`primary-button ${syncing ? "disabled" : ""}`} href="https://irstats.com/driver/958741" target="_blank" rel="noreferrer" onClick={(event) => { if (syncing) event.preventDefault(); else void syncData(); }}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
-            </button>
+            </a>
           </div>
         </header>
         <AppTabs />

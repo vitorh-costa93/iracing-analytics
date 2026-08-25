@@ -246,6 +246,8 @@ Em 25/08/2026 o botão manual `Atualizar dados` passou a não chamar mais o iRSt
 
 Com o histórico completo de `race_results`, os rankings de performance por pista/carro passaram a destacar a média de Δ iRating por corrida como métrica principal. O Δ total permanece como KPI secundário e a lógica visual de Top 5 ganhos / Top 5 perdas segue separando extremos positivos e negativos.
 
+Também em 25/08/2026, a abertura do iRStats pelo botão foi ajustada para usar o `href` nativo do controle, reduzindo bloqueio de popup. A telemetria detalhada foi reorganizada para privilegiar legibilidade: mapa principal do traçado em linha própria e maior, hover map ampliado, gráfico de ritmo ocupando a largura disponível, análise por curva em linhas com mapa maior e consistência por setor desenhada no traçado da pista por cor. O diff de setup passou a identificar explicitamente Setup A e Setup B e reduziu a densidade visual do texto explicativo.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:

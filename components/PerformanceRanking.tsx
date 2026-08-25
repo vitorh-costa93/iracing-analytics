@@ -11,7 +11,7 @@ function signedAvg(value: number) { return `${value > 0 ? "+" : ""}${value.toLoc
 function countryCode(label: string) {
   const value = label.toLowerCase();
   const countries: [string[], string][] = [
-    [["monza", "imola", "mugello", "vallelunga", "misano"], "it"], [["spa", "zolder"], "be"], [["silverstone", "brands hatch", "donington", "oulton", "snetterton", "knockhill", "thruxton", "cadwell"], "gb"],
+    [["monza", "imola", "enzo e dino ferrari", "mugello", "vallelunga", "misano"], "it"], [["spa", "zolder"], "be"], [["silverstone", "brands hatch", "donington", "oulton", "snetterton", "knockhill", "thruxton", "cadwell"], "gb"],
     [["nürburgring", "nurburgring", "hockenheim", "sachsenring", "motorsport arena oschersleben"], "de"], [["interlagos", "josé carlos pace"], "br"], [["suzuka", "fuji", "motegi", "okayama", "twin ring"], "jp"],
     [["le mans", "24 heures du mans", "magny", "paul ricard", "dijon"], "fr"], [["barcelona", "jerez", "aragon", "catalunya"], "es"],
     [["mount panorama", "bathurst", "phillip island", "sandown", "oran park", "the bend", "queensland raceway", "winton"], "au"],

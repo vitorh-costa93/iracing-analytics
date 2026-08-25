@@ -6,27 +6,57 @@ type SectorStat = { sector: number; sampleSize: number; mean: number; stddev: nu
 type SectorReport = { car: string; track: string; lapsAnalyzed: number; sectors: SectorStat[]; idealLap: string; actualBestLap: string; gapToIdeal: string; summary: string };
 type CategoryPayload = { status: string; report: SectorReport | null; message?: string | null };
 export type SectorCategory = "formula_car" | "sports_car" | "gtp_car";
+type TrackOutlinePoint = { distance: number; lat: number; lon: number };
 
 const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
+const CONSISTENCY_LABEL: Record<string, string> = { great: "Muito consistente", good: "Consistente", warn: "Variável", bad: "Muito inconsistente" };
 
-function SectorBar({ sector }: { sector: SectorStat }) {
-  const range = Math.max(sector.mean - sector.best, 0.02);
-  const spread = Math.min(100, (sector.stddev / range) * 60 + 8);
+function SectorTrackMap({ sectors, outline }: { sectors: SectorStat[]; outline: TrackOutlinePoint[] }) {
+  if (outline.length < 20) return null;
+  const lats = outline.map((point) => point.lat), lons = outline.map((point) => point.lon);
+  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
+  const latSpan = Math.max(maxLat - minLat, 0.00005), lonSpan = Math.max(maxLon - minLon, 0.00005);
+  const project = (point: TrackOutlinePoint) => {
+    const x = 18 + (point.lon - minLon) / lonSpan * 404;
+    const y = 272 - (point.lat - minLat) / latSpan * 244;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  };
+  const sectorCount = Math.max(sectors.length, 1);
+
   return (
-    <div className={`sector-row ${CONSISTENCY_CLASS[sector.consistency] ?? ""}`}>
-      <span className="sector-number">S{sector.sector}</span>
-      <div className="sector-track">
-        <div className="sector-spread" style={{ width: `${spread}%` }} />
-        <div className="sector-best-marker" />
+    <div className="sector-map-card">
+      <svg viewBox="0 0 440 300" className="sector-map" role="img" aria-label="Mapa da pista colorido pela consistência de cada setor">
+        <polyline points={outline.map(project).join(" ")} className="sector-map-base" />
+        {sectors.map((sector, index) => {
+          const start = index / sectorCount * 100;
+          const end = (index + 1) / sectorCount * 100;
+          const points = outline.filter((point) => point.distance >= start && point.distance <= end);
+          const cls = CONSISTENCY_CLASS[sector.consistency] ?? "good";
+          return points.length > 1 ? <polyline key={sector.sector} points={points.map(project).join(" ")} className={`sector-map-segment ${cls}`} /> : null;
+        })}
+      </svg>
+      <div className="sector-map-legend">
+        {Object.entries(CONSISTENCY_LABEL).map(([cls, label]) => <span key={cls} className={cls}>{label}</span>)}
       </div>
-      <span className="sector-consistency">{sector.consistency}</span>
-      <span className="sector-times">melhor {sector.best.toFixed(3)}s • média {sector.mean.toFixed(3)}s • Δ {(sector.mean - sector.best).toFixed(3)}s</span>
-      {sector.note && <span className="sector-note">{sector.note}</span>}
     </div>
   );
 }
 
-export default function SectorConsistency({ category }: { category: SectorCategory }) {
+function SectorDetail({ sector }: { sector: SectorStat }) {
+  const cls = CONSISTENCY_CLASS[sector.consistency] ?? "";
+  return (
+    <div className={`sector-detail ${cls}`}>
+      <span>S{sector.sector}</span>
+      <strong>{sector.consistency}</strong>
+      <div><b>Melhor</b>{sector.best.toFixed(3)}s</div>
+      <div><b>Média</b>{sector.mean.toFixed(3)}s</div>
+      <div><b>Δ</b><em className={sector.mean - sector.best <= 0.05 ? "positive" : "negative"}>{(sector.mean - sector.best).toFixed(3)}s</em></div>
+      {sector.note && <p>{sector.note}</p>}
+    </div>
+  );
+}
+
+export default function SectorConsistency({ category, trackOutline }: { category: SectorCategory; trackOutline?: TrackOutlinePoint[] | null }) {
   const [categories, setCategories] = useState<Record<SectorCategory, CategoryPayload> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,8 +105,11 @@ export default function SectorConsistency({ category }: { category: SectorCatego
             </div>
           </div>
 
-          <div className="sector-list">
-            {data.report.sectors.map((sector) => <SectorBar key={sector.sector} sector={sector} />)}
+          <div className="sector-map-layout">
+            {trackOutline && <SectorTrackMap sectors={data.report.sectors} outline={trackOutline} />}
+            <div className="sector-detail-list">
+              {data.report.sectors.map((sector) => <SectorDetail key={sector.sector} sector={sector} />)}
+            </div>
           </div>
         </>
       )}

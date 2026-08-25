@@ -43,7 +43,7 @@ const CATEGORIES: Category[] = ["formula_car", "sports_car", "gtp_car"];
 const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car", gtp_car: "GTP" };
 
 function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
-  const width = 560, height = 110, pad = { left: 46, right: 12, top: 10, bottom: 20 };
+  const width = 980, height = 180, pad = { left: 54, right: 18, top: 18, bottom: 26 };
   const times = points.map((p) => p.lapTime);
   const min = Math.min(...times), max = Math.max(...times);
   const span = Math.max(0.05, max - min);
@@ -52,11 +52,11 @@ function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
   const avg = times.reduce((sum, t) => sum + t, 0) / times.length;
   const ticks = [min, max];
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="debrief-chart compact" role="img" aria-label="Dispersão do tempo de volta ao longo do stint">
+    <svg viewBox={`0 0 ${width} ${height}`} className="debrief-chart" role="img" aria-label="Dispersão do tempo de volta ao longo do stint">
       {ticks.map((tick) => <g key={tick}><line x1={pad.left} x2={width - pad.right} y1={y(tick)} y2={y(tick)} className="debrief-grid" /><text x={pad.left - 6} y={y(tick) + 3} textAnchor="end" className="debrief-axis">{tick.toFixed(2)}s</text></g>)}
       <line x1={pad.left} x2={width - pad.right} y1={y(avg)} y2={y(avg)} className="debrief-avg-line" />
       {points.map((point, index) => (
-        <circle key={index} cx={x(index)} cy={y(point.lapTime)} r="3.5" className={point.lapTime <= min + 0.02 ? "debrief-dot best" : "debrief-dot"} />
+        <circle key={index} cx={x(index)} cy={y(point.lapTime)} r="4.5" className={point.lapTime <= min + 0.02 ? "debrief-dot best" : "debrief-dot"} />
       ))}
       {points.map((point, index) => <text key={`n${index}`} x={x(index)} y={height - 6} textAnchor="middle" className="debrief-axis">{point.lapNumber ?? index + 1}</text>)}
     </svg>
@@ -64,7 +64,7 @@ function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
 }
 
 function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: BandPoint[]; throttleBand: BandPoint[]; onHover: (offset: number | null) => void }) {
-  const width = 260, height = 90, pad = { left: 4, right: 4, top: 6, bottom: 4 };
+  const width = 520, height = 150, pad = { left: 6, right: 6, top: 8, bottom: 6 };
   const offsets = [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
   if (!offsets.length) return null;
   const minOffset = Math.min(...offsets), maxOffset = Math.max(...offsets);
@@ -98,8 +98,8 @@ function CornerTrackMap({ outline, cornerDistance, hoverOffset }: { outline: Tra
   const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
   const latSpan = Math.max(maxLat - minLat, 0.00005), lonSpan = Math.max(maxLon - minLon, 0.00005);
   const project = (point: TrackOutlinePoint) => {
-    const x = 6 + (point.lon - minLon) / lonSpan * 88;
-    const y = 62 - (point.lat - minLat) / latSpan * 56;
+    const x = 12 + (point.lon - minLon) / lonSpan * 196;
+    const y = 128 - (point.lat - minLat) / latSpan * 116;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   };
   const markerDistance = ((cornerDistance + (hoverOffset ?? 0)) % 100 + 100) % 100;
@@ -109,9 +109,9 @@ function CornerTrackMap({ outline, cornerDistance, hoverOffset }: { outline: Tra
     if (delta < bestDelta) { bestDelta = delta; marker = point; }
   }
   return (
-    <svg viewBox="0 0 100 68" className="corner-mini-map" role="img" aria-label="Posição dessa curva no traçado da pista">
+    <svg viewBox="0 0 220 140" className="corner-mini-map" role="img" aria-label="Posição dessa curva no traçado da pista">
       <polyline points={outline.map(project).join(" ")} className="corner-mini-map-outline" />
-      {marker && <circle cx={project(marker).split(",")[0]} cy={project(marker).split(",")[1]} r="3.2" className="corner-mini-map-marker" />}
+      {marker && <circle cx={project(marker).split(",")[0]} cy={project(marker).split(",")[1]} r="4.8" className="corner-mini-map-marker" />}
     </svg>
   );
 }
@@ -255,7 +255,7 @@ export default function RaceDebrief() {
           )}
 
           <div className="race-debrief-chart-block">
-            <SectorConsistency category={selected} />
+            <SectorConsistency category={selected} trackOutline={data.trackOutline} />
           </div>
         </>
       )}
