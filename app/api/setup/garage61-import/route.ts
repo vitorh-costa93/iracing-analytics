@@ -77,6 +77,7 @@ export async function POST(request: NextRequest) {
           driver_id: driver.id, season_id: seasonId, car_id: item.car, track_id: item.track,
           source: "garage61", setup_kind: setupKind, filename, storage_path: storagePath,
           garage61_lap_id: item.runId ?? null, file_size: bytes.length, decoded_car_name: String(item.car),
+          garage61_event_id: item.event ?? null,
           decoded_params: decodedRows(item.parameters), decoded_at: new Date().toISOString(), decoder: "garage61",
           external_decode_consent_at: null, updated_at: new Date().toISOString(),
         }, { onConflict: "driver_id,season_id,car_id,track_id,filename" });

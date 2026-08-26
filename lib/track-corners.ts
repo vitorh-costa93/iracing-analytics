@@ -124,7 +124,7 @@ const ENTRIES: TrackCornerEntry[] = [
   },
   {
     match: (t) => /algarve|portim[aã]o/i.test(t),
-    names: ["Primeira", null, "Lagos", null, "Torre Vip", null, null, null, null, null, null, null, null, null, "Galp"],
+    names: ["Primeira", null, "Lagos", null, null, null, null, "Samsung", null, null, "Portimão", null, null, "Sagres", "Galp"],
   },
   {
     match: (t) => /sebring/i.test(t),

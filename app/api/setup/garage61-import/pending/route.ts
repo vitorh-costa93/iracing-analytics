@@ -34,14 +34,23 @@ export async function GET(request: NextRequest) {
       .order("started_at", { ascending: false });
     if (error) throw error;
 
+    const { data: importedSetups, error: importedError } = await supabaseAdmin
+      .from("setup_files")
+      .select("garage61_event_id")
+      .eq("driver_id", driver.id)
+      .eq("source", "garage61")
+      .not("garage61_event_id", "is", null);
+    if (importedError) throw importedError;
+    const importedEvents = new Set((importedSetups ?? []).map((row) => row.garage61_event_id).filter((id): id is string => typeof id === "string"));
+
     const seen = new Set<string>();
     const events = (data ?? []).filter((row) => {
       if (seen.has(row.garage61_event_id as string)) return false;
       seen.add(row.garage61_event_id as string);
-      return true;
+      return !importedEvents.has(row.garage61_event_id as string);
     }).map((row) => ({ eventId: row.garage61_event_id, car: row.car_id, track: row.track_id, startedAt: row.started_at }));
 
-    return NextResponse.json({ status: "ok", days, events }, { headers: CORS_HEADERS });
+    return NextResponse.json({ status: "ok", days, events, alreadyImported: importedEvents.size }, { headers: CORS_HEADERS });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400, headers: CORS_HEADERS });
   }

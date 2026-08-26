@@ -529,6 +529,14 @@ export async function GET() {
       }
     }
 
+    // iRStats results arrive through the browser bridge before Garage61's rating-history poll
+    // necessarily catches up. v_race_results_irating exposes the exact chained value for each
+    // imported result, so let the most recent official result win for the headline KPI.
+    for (const category of ["formula_car", "sports_car"] as const) {
+      const latestResult = seasonRaces.find((row) => row.category === category && Number.isFinite(row.irating_after));
+      if (latestResult) latestRatings[category] = latestResult.irating_after;
+    }
+
     const safetyScore = (row: RatingRow) => {
       const displayed = row.rating_display?.match(/([0-9]+(?:\.[0-9]+)?)$/)?.[1];
       return displayed ? Number(displayed) : row.rating === null ? null : row.rating % 1000 / 100;

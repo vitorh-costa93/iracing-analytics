@@ -31,6 +31,9 @@ type Garage61Lap = {
   pitIn?: boolean;
   pitOut?: boolean;
   canViewTelemetry?: boolean;
+  pushToPass?: boolean | number;
+  p2pStatus?: boolean | number;
+  p2pCount?: number;
 };
 
 type Garage61LapsResponse = { items?: Garage61Lap[] };
@@ -88,23 +91,31 @@ export async function GET() {
       week_end: weekEnd.toISOString(),
     };
 
-    const { data: weekRaces, error: weekRacesError } = await supabaseAdmin
-      .from("race_results")
-      .select("car_id, track_id")
+    // The active telemetry workspace must remain useful before the first race: practice is
+    // training data, so include every tracked session type in the official week window. A race
+    // still wins later when choosing the representative lap below.
+    const { data: weekSessions, error: weekSessionsError } = await supabaseAdmin
+      .from("driving_sessions")
+      .select("car_id, track_id, session_type")
       .eq("driver_id", driver.id)
-      .gte("raced_at", week.week_start)
-      .lt("raced_at", week.week_end)
+      .gte("started_at", week.week_start)
+      .lt("started_at", week.week_end)
+      .in("session_type", [1, 2, 3])
       .not("car_id", "is", null)
       .not("track_id", "is", null);
-    if (weekRacesError) throw weekRacesError;
+    if (weekSessionsError) throw weekSessionsError;
 
-    const pairCounts = new Map<string, { carId: number; trackId: number; sessions: number }>();
-    for (const race of weekRaces ?? []) {
-      if (typeof race.car_id !== "number" || typeof race.track_id !== "number") continue;
-      const key = `${race.car_id}:${race.track_id}`;
+    const pairCounts = new Map<string, { carId: number; trackId: number; sessions: number; sessionTypes: Set<number> }>();
+    for (const session of weekSessions ?? []) {
+      if (typeof session.car_id !== "number" || typeof session.track_id !== "number") continue;
+      const key = `${session.car_id}:${session.track_id}`;
       const current = pairCounts.get(key);
-      if (current) current.sessions += 1;
-      else pairCounts.set(key, { carId: race.car_id, trackId: race.track_id, sessions: 1 });
+      if (current) {
+        current.sessions += 1;
+        if (typeof session.session_type === "number") current.sessionTypes.add(session.session_type);
+      } else {
+        pairCounts.set(key, { carId: session.car_id, trackId: session.track_id, sessions: 1, sessionTypes: new Set(typeof session.session_type === "number" ? [session.session_type] : []) });
+      }
     }
 
     const pairs = [...pairCounts.values()];
@@ -140,10 +151,13 @@ export async function GET() {
         .filter((lap) => isEligibleLap(lap, weekStart, weekEnd));
       const car = cars.get(pair.carId);
       const isSuperFormula = /super formula sf23/i.test(car?.name ?? "");
-      const qualifyingLaps = isSuperFormula
-        ? eligibleLaps.filter((lap) => lap.sessionType === 2)
-        : [];
-      const bestLap = (qualifyingLaps.length ? qualifyingLaps : eligibleLaps)
+      const usedOvertake = (lap: Garage61Lap) => Boolean(lap.pushToPass) || Boolean(lap.p2pStatus) || Number(lap.p2pCount ?? 0) > 0;
+      const raceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && (!isSuperFormula || !usedOvertake(lap)));
+      const practiceLaps = eligibleLaps.filter((lap) => lap.sessionType === 1);
+      // Race pace is the representative reference once a race exists; otherwise practice is the
+      // best way to prepare for a scheduled race. Qualifying is only a last-resort fallback.
+      const chosenPool = raceLaps.length ? raceLaps : practiceLaps.length ? practiceLaps : eligibleLaps;
+      const bestLap = chosenPool
         .sort((a, b) => Number(a.lapTime) - Number(b.lapTime))[0];
       const track = tracks.get(pair.trackId);
 
@@ -153,15 +167,14 @@ export async function GET() {
         car: { id: pair.carId, name: car?.name ?? `Carro ${pair.carId}`, variant: car?.variant ?? null },
         track: { id: pair.trackId, name: track?.name ?? `Pista ${pair.trackId}`, variant: track?.variant ?? null },
         sessions: pair.sessions,
+        sessionTypes: [...pair.sessionTypes],
         lapsFound: currentWeekLaps.length,
         bestLap: bestLap ? {
           id: bestLap.id,
           lapTime: Number(bestLap.lapTime),
           startTime: bestLap.startTime,
           sessionType: bestLap.sessionType ?? null,
-          selectionReason: isSuperFormula && qualifyingLaps.length
-            ? "qualifying_without_race_push_to_pass"
-            : "fastest_clean_lap",
+          selectionReason: raceLaps.length ? (isSuperFormula ? "race_best_lap_without_p2p" : "race_best_lap") : practiceLaps.length ? "practice_best_lap" : "fastest_clean_lap",
           telemetryUrl: `/api/garage61/laps/${encodeURIComponent(bestLap.id)}/telemetry`,
         } : null,
       };

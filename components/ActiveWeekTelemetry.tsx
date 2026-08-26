@@ -11,6 +11,7 @@ type Combination = {
   car: { id: number; name: string };
   track: { id: number; name: string; variant: string | null };
   sessions: number;
+  sessionTypes: number[];
   lapsFound: number;
   bestLap: null | { id: string; lapTime: number; startTime: string; sessionType: number | null; selectionReason: string; telemetryUrl: string };
 };
@@ -376,7 +377,7 @@ function nearestGpsPoint(points: TracePoint[], distance: number) {
   return best;
 }
 
-function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean }) {
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, opportunities }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; opportunities?: Comparison["opportunities"] }) {
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
   const refGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
@@ -400,6 +401,10 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
     <polyline points={mapGps.map(project).join(" ")} className="track-outline" />
+    {!zoom && opportunities?.map((item) => {
+      const segment = gps.filter((point) => point.distance >= item.start && point.distance <= item.end);
+      return segment.length > 1 ? <polyline key={`${item.start}-${item.end}`} points={segment.map(project).join(" ")} className={`track-opportunity track-opportunity-${item.primaryType}`} /> : null;
+    })}
     {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
     {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
     {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
@@ -618,9 +623,9 @@ export default function ActiveWeekTelemetry() {
       {selected && (
         <div className="telemetry-content">
           <div className="telemetry-meta">
-            <div><span>{selected.bestLap?.selectionReason === "qualifying_without_race_push_to_pass" ? "MELHOR VOLTA DE QUALIFYING" : "MELHOR VOLTA LIMPA"}</span><strong>{selected.bestLap ? formatLapTime(selected.bestLap.lapTime) : "Indisponível"}</strong></div>
+            <div><span>{selected.bestLap?.selectionReason === "race_best_lap" || selected.bestLap?.selectionReason === "race_best_lap_without_p2p" ? "MELHOR VOLTA DE CORRIDA" : selected.bestLap?.selectionReason === "practice_best_lap" ? "MELHOR VOLTA DE PRACTICE" : "MELHOR VOLTA LIMPA"}</span><strong>{selected.bestLap ? formatLapTime(selected.bestLap.lapTime) : "Indisponível"}</strong></div>
             <div><span>ATIVIDADE</span><strong>{selected.sessions} sessões • {selected.lapsFound} voltas</strong></div>
-            <div><span>FONTE</span><strong>{selected.bestLap?.selectionReason === "qualifying_without_race_push_to_pass" ? "Garage61 • Qualifying sem P2P de corrida" : "Garage61 • pré-carregada"}</strong></div>
+            <div><span>FONTE</span><strong>{selected.bestLap?.selectionReason === "race_best_lap_without_p2p" ? "Garage61 • corrida sem P2P" : selected.bestLap?.selectionReason === "race_best_lap" ? "Garage61 • corrida" : selected.bestLap?.selectionReason === "practice_best_lap" ? "Garage61 • practice, pois ainda não há corrida" : "Garage61 • pré-carregada"}</strong></div>
           </div>
           <div className="reference-bar">
             <div>
@@ -655,6 +660,7 @@ export default function ActiveWeekTelemetry() {
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
                     </button>
                   )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos segmentos analisados.</p>}</div>
+              <div className="track-opportunity-overview"><div><span className="section-kicker">MAPA DE OPORTUNIDADES</span><h3>A pista toda, com os trechos priorizados</h3><p>Os trechos coloridos reproduzem as Maiores Oportunidades; selecione o card acima para abrir o recorte detalhado nos inputs.</p></div><TrackMap trace={trace} referenceTrace={referenceTrace} range={null} opportunities={comparison.opportunities} /></div>
               <div className="channel-report"><h3>Relatório de inputs</h3>{comparison.channelInsights.map((insight) => <p key={insight}>{insight}</p>)}</div>
               <p className="comparison-note">Tempos e ganhos são estimados pela integração de velocidade normalizada por distância. Confirme cada hipótese nos traços; combustível, setup, clima e aderência podem explicar diferenças.</p>
             </div>
@@ -664,7 +670,7 @@ export default function ActiveWeekTelemetry() {
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
               <div className="channel-key"><span className="speed">Velocidade</span><span className="throttle">Acelerador</span><span className="brake">Freio</span><span className="steering">Volante</span><span className="rpm">RPM</span><span className="gear">Marcha</span><span className="clutch">Embreagem</span><span className="dynamics">Dinâmica</span></div>
               <div className="telemetry-workspace">
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)] : null)} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight. Clique no gráfico e use ← → (Shift para passos maiores) para percorrer a pista pelo teclado.</p></aside>
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)] : null)} zoom={hoveredDistance !== null || selectedRange !== null} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight. O mapa amplia uma janela de 10% da pista para revelar a trajetória das duas voltas.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
                 aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."

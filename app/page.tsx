@@ -124,6 +124,7 @@ export default function Home() {
   const [chartCategory, setChartCategory] = useState<Category>("formula");
   const [gt3Mode, setGt3Mode] = useState<RankingMode>("car");
   const [imsaMode, setImsaMode] = useState<RankingMode>("car");
+  const [imsaClass, setImsaClass] = useState<"all" | "GTP" | "LMP2">("all");
 
   const loadDashboard = useCallback(async () => {
     try {
@@ -197,14 +198,14 @@ export default function Home() {
 
     const trackRows = data.historical.filter((row) => /super formula/i.test(row.car));
     const gt3Rows = data.historical.filter((row) => row.carClass === "GT3");
-    const imsaRows = data.historical.filter((row) => row.carClass === "GTP" || row.carClass === "LMP2");
+    const imsaRows = data.historical.filter((row) => (row.carClass === "GTP" || row.carClass === "LMP2") && (imsaMode !== "track" || imsaClass === "all" || row.carClass === imsaClass));
 
     return {
       tracks: aggregateRows(trackRows, "track"),
       gt3: aggregateRows(gt3Rows, gt3Mode, false),
       imsa: aggregateRows(imsaRows, imsaMode, true),
     };
-  }, [data, gt3Mode, imsaMode]);
+  }, [data, gt3Mode, imsaMode, imsaClass]);
 
   if (loading) {
     return <main className="app-shell"><div className="state-box">Carregando Racing Analytics...</div></main>;
@@ -337,6 +338,11 @@ export default function Home() {
                   <button className={imsaMode === "track" ? "active" : ""} onClick={() => setImsaMode("track")}>Pista</button>
                 </div>
               </div>
+              {imsaMode === "track" && <div className="segmented-control small ranking-subfilter">
+                <button className={imsaClass === "all" ? "active" : ""} onClick={() => setImsaClass("all")}>Todos</button>
+                <button className={imsaClass === "GTP" ? "active" : ""} onClick={() => setImsaClass("GTP")}>GTP</button>
+                <button className={imsaClass === "LMP2" ? "active" : ""} onClick={() => setImsaClass("LMP2")}>LMP2</button>
+              </div>}
               <PerformanceRanking items={rankings.imsa} kind={imsaMode} />
             </article>
           </div>

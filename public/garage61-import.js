@@ -59,7 +59,7 @@
 
   var collected = [];
 
-  function captureIfSetup(url, jsonBody) {
+  function captureIfSetup(url, jsonBody, eventId) {
     try {
       if (jsonBody && jsonBody.setup && jsonBody.setup.parameters && jsonBody.setup.name) {
         collected.push({
@@ -68,7 +68,7 @@
           name: jsonBody.setup.name,
           seasonId: jsonBody.season ? jsonBody.season.id : undefined,
           runId: jsonBody.id,
-          event: jsonBody.event,
+          event: eventId,
           setupFixed: !!jsonBody.setupFixed,
           setupCommercial: !!jsonBody.setupCommercial,
           parameters: jsonBody.setup.parameters,
@@ -78,7 +78,7 @@
     } catch (e) { /* ignore malformed payloads */ }
   }
 
-  function patchWindow(win) {
+  function patchWindow(win, eventId) {
     if (!win || win.__iriPatched) return;
     try {
       var originalFetch = win.fetch;
@@ -88,7 +88,7 @@
         var args = arguments;
         return originalFetch.apply(win, args).then(function (response) {
           try {
-            response.clone().json().then(function (json) { captureIfSetup(String(args[0]), json); }).catch(function () {});
+            response.clone().json().then(function (json) { captureIfSetup(String(args[0]), json, eventId); }).catch(function () {});
           } catch (e) { /* not JSON, ignore */ }
           return response;
         });
@@ -108,8 +108,8 @@
       var iframe = document.createElement("iframe");
       iframe.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;bottom:0;right:0;";
       document.body.appendChild(iframe);
-      try { patchWindow(iframe.contentWindow); } catch (e) {}
-      var patchTimer = setInterval(function () { try { patchWindow(iframe.contentWindow); } catch (e) {} }, 150);
+      try { patchWindow(iframe.contentWindow, event.eventId); } catch (e) {}
+      var patchTimer = setInterval(function () { try { patchWindow(iframe.contentWindow, event.eventId); } catch (e) {} }, 150);
 
       iframe.src = "https://garage61.net/app/event/" + event.eventId;
 
