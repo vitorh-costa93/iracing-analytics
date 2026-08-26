@@ -256,6 +256,8 @@ Em 26/08/2026 o launcher foi ajustado novamente: iRStats abre pela navegação n
 
 Na verificação posterior do banco em 26/08/2026 havia 1.138 `race_results` (550 Formula, 588 Sports e 0 Road). Portanto o schema e a view já aceitam Road, mas a auditoria browser-side ainda precisa de uma execução completa para trazer as corridas históricas que o parser anterior rejeitava. Não apresentar os rankings atuais como se já contivessem essa carteira até que a contagem Road seja maior que zero. A programação conhecida da 2026 S3 W11 foi registrada explicitamente para os cards semanais: Algarve/Super Formula 23, Road Atlanta/IMSA e Red Bull Ring/GT3; não inferir calendário de corridas a partir da atividade já realizada.
 
+Em 26/08/2026 foi adicionada a extensão local Chrome `chrome-extension/`, necessária porque uma página no domínio do Analytics não pode executar o importador dentro de `irstats.com` ou `garage61.net`. Depois de carregada uma vez em `chrome://extensions`, ela recebe o clique de Atualizar dados, abre ambas as abas com o marcador de sync, injeta os importadores já versionados no app e fecha cada aba quando a origem confirma a conclusão. As chaves continuam solicitadas e guardadas somente no `localStorage` de cada origem. Enquanto `race_results` tiver zero linhas `road`, o importador força uma auditoria histórica completa, independentemente de um marcador local antigo.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:

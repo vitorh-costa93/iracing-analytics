@@ -55,7 +55,16 @@ export async function GET(request: NextRequest) {
     if (!idsPage || idsPage.length < pageSize) break;
   }
 
-  return NextResponse.json({ status: "ok", knownIds }, { headers: CORS_HEADERS });
+  const { count: roadCount, error: roadCountError } = await supabaseAdmin
+    .from("race_results")
+    .select("*", { count: "exact", head: true })
+    .eq("driver_id", driver.id)
+    .eq("category", "road");
+  if (roadCountError) {
+    return NextResponse.json({ status: "error", message: roadCountError.message }, { status: 500, headers: CORS_HEADERS });
+  }
+
+  return NextResponse.json({ status: "ok", knownIds, roadCount: roadCount ?? 0 }, { headers: CORS_HEADERS });
 }
 
 export async function POST(request: NextRequest) {

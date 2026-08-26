@@ -29,6 +29,7 @@
   function complete(message, imported, skipped) {
     setStatus(message); setProgress(100);
     try { if (window.opener) window.opener.postMessage({ source: "iracing-analytics-import", integration: "garage61", imported: imported || 0, skipped: skipped || 0, message: message }, APP_BASE); } catch (e) {}
+    try { window.postMessage({ source: "iracing-analytics-import", integration: "garage61", imported: imported || 0, skipped: skipped || 0, message: message }, window.location.origin); } catch (e) {}
     if (window.opener) setTimeout(function () { window.close(); }, 900);
   }
 

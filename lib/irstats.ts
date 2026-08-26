@@ -74,11 +74,12 @@ function raceFastestLapTime($: cheerio.CheerioAPI): string | null {
 }
 
 function parseCategory(raw: string): "formula_car" | "sports_car" | "road" {
-  if (raw === "Formula Car") return "formula_car";
-  if (raw === "Sports Car") return "sports_car";
+  const normalized = raw.replace(/\s+/g, " ").trim().toLowerCase();
+  if (normalized === "formula car") return "formula_car";
+  if (normalized === "sports car") return "sports_car";
   // iRStats keeps a separate ROAD wallet.  It is not an iRating category used by the
   // headline KPIs, but its GT3/IMSA/SF23 results are still valid context performance data.
-  if (raw === "Road") return "road";
+  if (normalized === "road") return "road";
   throw new Error(`irstats race detail: unrecognized category "${raw}"`);
 }
 

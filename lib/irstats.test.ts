@@ -227,6 +227,11 @@ describe("parseRaceDetailPage", () => {
     expect(() => parseRaceDetailPage(badCategory, "Vitor Hugo Da Costa")).toThrow();
   });
 
+  it("accepts the ROAD wallet even when its label has extra whitespace", () => {
+    const road = DETAIL_PAGE_FIXTURE.replace(">Formula Car<", ">  Road  <");
+    expect(parseRaceDetailPage(road, "Vitor Hugo Da Costa").category).toBe("road");
+  });
+
   it("locates columns by header text, not fixed position, so a multiclass race's extra Cls column doesn't shift every field", () => {
     // Multiclass races (e.g. IMSA: GTP/LMP2/GT3 sharing one race) insert a "Cls" column right
     // after "Pos", shifting every subsequent column one to the right. A fixed-index parser reads

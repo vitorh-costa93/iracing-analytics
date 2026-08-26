@@ -1,0 +1,30 @@
+{
+  "manifest_version": 3,
+  "name": "iRacing Analytics Sync Bridge",
+  "description": "Executa os importadores incrementais do Garage61 e iRStats nas abas corretas.",
+  "version": "0.1.0",
+  "permissions": ["tabs"],
+  "host_permissions": [
+    "https://iracing-analytics.vercel.app/*",
+    "https://irstats.com/*",
+    "https://garage61.net/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "content_scripts": [
+    {
+      "matches": ["https://iracing-analytics.vercel.app/*"],
+      "js": ["analytics-bridge.js"],
+      "run_at": "document_start"
+    },
+    {
+      "matches": ["https://irstats.com/*"],
+      "js": ["irstats-loader.js"],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": ["https://garage61.net/*"],
+      "js": ["garage61-loader.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

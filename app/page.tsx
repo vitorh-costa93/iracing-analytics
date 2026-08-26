@@ -144,7 +144,7 @@ export default function Home() {
 
   useEffect(() => {
     function onImportComplete(event: MessageEvent) {
-      if (event.origin !== "https://irstats.com" && event.origin !== "https://garage61.net") return;
+      if (event.origin !== "https://irstats.com" && event.origin !== "https://garage61.net" && event.origin !== window.location.origin) return;
       const payload = event.data as { source?: string; message?: string };
       if (payload?.source !== "iracing-analytics-import") return;
       setMessage(payload.message ?? "Importação concluída.");
@@ -160,7 +160,14 @@ export default function Home() {
     try {
       // The Garage61 page is the popup opened from this handler. iRStats is the native anchor
       // navigation below: Chrome permits that direct navigation more reliably than a second popup.
-      window.open("https://garage61.net/app", "iracing-analytics-garage61");
+      const bridgeInstalled = document.documentElement.dataset.iracingAnalyticsSyncBridge === "ready";
+      if (bridgeInstalled) {
+        // A Chrome extension is the only safe way to run the importers in their respective
+        // origins. It receives this event and opens both pages without exposing either secret.
+        window.postMessage({ source: "iracing-analytics", type: "start-external-sync" }, window.location.origin);
+      } else {
+        window.open("https://garage61.net/app?iracingAnalyticsSync=1", "iracing-analytics-garage61");
+      }
 
       const generalResponse = await fetch("/api/sync/all", { method: "POST" });
       const generalResult = await generalResponse.json();
@@ -176,7 +183,7 @@ export default function Home() {
       const ratingsResult = await ratingsResponse.json();
       if (!ratingsResponse.ok) throw new Error(ratingsResult.message ?? "Erro na sincronização de ratings");
 
-      setMessage(`Garage61 lido: ${sessionsResult.sessionsUpserted ?? 0} sessões recentes consolidadas e ${ratingsResult.recordsSynced ?? 0} pontos de rating verificados. Execute os importadores nas duas abas abertas: eles fecham a própria aba ao concluir e retornam “sem novidades” quando aplicável.`);
+      setMessage(`Garage61 lido: ${sessionsResult.sessionsUpserted ?? 0} sessões recentes consolidadas e ${ratingsResult.recordsSynced ?? 0} pontos de rating verificados. ${bridgeInstalled ? "A extensão iniciou os importadores no Garage61 e iRStats; as abas fecham ao concluir." : "A aba do iRStats foi aberta para o importador incremental."}`);
       await loadDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
@@ -240,7 +247,7 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <a className={`primary-button ${syncing ? "disabled" : ""}`} href="https://irstats.com/driver/958741" target="iracing-analytics-irstats" onClick={(event) => { if (syncing) event.preventDefault(); else void syncData(); }}>
+            <a className={`primary-button ${syncing ? "disabled" : ""}`} href="https://irstats.com/driver/958741?iracingAnalyticsSync=1" target="_blank" onClick={(event) => { if (syncing || document.documentElement.dataset.iracingAnalyticsSyncBridge === "ready") event.preventDefault(); if (!syncing) void syncData(); }}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
             </a>
           </div>
