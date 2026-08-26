@@ -147,11 +147,9 @@ export default function Home() {
     setSyncing(true);
     setMessage("Abrindo Garage61 e iRStats, depois atualizando dados via Supabase...");
     try {
-      // These pages are opened only once. Their respective bookmarklets run in their own origin
-      // and report completion back to this tab; browser isolation prevents this app from injecting
-      // script into either third-party page.
+      // The Garage61 page is the popup opened from this handler. iRStats is the native anchor
+      // navigation below: Chrome permits that direct navigation more reliably than a second popup.
       window.open("https://garage61.net/app", "iracing-analytics-garage61");
-      window.open("https://irstats.com/driver/958741", "iracing-analytics-irstats");
 
       const generalResponse = await fetch("/api/sync/all", { method: "POST" });
       const generalResult = await generalResponse.json();
@@ -230,9 +228,9 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <button className={`primary-button ${syncing ? "disabled" : ""}`} type="button" disabled={syncing} onClick={() => void syncData()}>
+            <a className={`primary-button ${syncing ? "disabled" : ""}`} href="https://irstats.com/driver/958741" target="iracing-analytics-irstats" onClick={(event) => { if (syncing) event.preventDefault(); else void syncData(); }}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
-            </button>
+            </a>
           </div>
         </header>
         <AppTabs />

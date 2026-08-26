@@ -99,3 +99,36 @@ export function detectCorners(points: CornerSample[]): DetectedCorner[] {
       peak: Number(run.peak.toFixed(2)),
     }));
 }
+
+/** GPS geometry is the authoritative fallback for corner ORDER.  Lateral acceleration can miss
+ * a gentle turn when the driver is coasting, which made Indianapolis' first reported "corner"
+ * land at the exit of Turn 3.  The heading change of the physical trace is independent of pedal
+ * use and starts from the lap's true start/finish distance. */
+export function detectCornersFromGps(points: Array<{ distance: number; lat: number | null; lon: number | null }>): DetectedCorner[] {
+  const valid = points.filter((point): point is { distance: number; lat: number; lon: number } => point.lat !== null && point.lon !== null).sort((a, b) => a.distance - b.distance);
+  if (valid.length < 30) return [];
+  const meanLat = valid.reduce((sum, point) => sum + point.lat, 0) / valid.length;
+  const lonScale = Math.cos(meanLat * Math.PI / 180);
+  const nearest = (distance: number) => valid.reduce((best, point) => Math.abs(point.distance - distance) < Math.abs(best.distance - distance) ? point : best, valid[0]);
+  const angleDelta = (a: number, b: number) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  const samples = Array.from({ length: 200 }, (_, index) => {
+    const distance = index * .5;
+    const before = nearest((distance - 1 + 100) % 100), center = nearest(distance), after = nearest((distance + 1) % 100);
+    const headingIn = Math.atan2(center.lat - before.lat, (center.lon - before.lon) * lonScale);
+    const headingOut = Math.atan2(after.lat - center.lat, (after.lon - center.lon) * lonScale);
+    return { distance, value: Math.abs(angleDelta(headingIn, headingOut)) };
+  });
+  const sorted = samples.map((item) => item.value).sort((a, b) => a - b);
+  const threshold = (sorted[Math.floor(sorted.length * .7)] ?? 0) * .55;
+  if (threshold <= 0) return [];
+  const runs: Array<{ start: number; end: number; peak: number; peakDistance: number }> = [];
+  let run: { start: number; end: number; peak: number; peakDistance: number } | null = null;
+  for (const sample of samples) {
+    if (sample.value >= threshold) {
+      if (!run) run = { start: sample.distance, end: sample.distance, peak: sample.value, peakDistance: sample.distance };
+      else { run.end = sample.distance; if (sample.value > run.peak) { run.peak = sample.value; run.peakDistance = sample.distance; } }
+    } else if (run) { runs.push(run); run = null; }
+  }
+  if (run) runs.push(run);
+  return runs.filter((item) => item.end - item.start >= .5).map((item, index) => ({ number: index + 1, distance: Number(item.peakDistance.toFixed(1)), startDistance: item.start, endDistance: item.end, peak: Number(item.peak.toFixed(2)) }));
+}

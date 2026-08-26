@@ -4,7 +4,10 @@
   var DRIVER_ID = "958741";
   var REQUEST_GAP_MS = 3000;
   var BATCH_SIZE = 15;
-  var FULL_SCAN = window.localStorage.getItem("iis_full_scan") === "true";
+  // Version 2 adds the ROAD wallet. Run one deliberate complete gap audit after this upgrade so
+  // races that the old parser rejected in 2023/24 are found; future runs go back to page-zero-only.
+  var ROAD_RECONCILIATION = window.localStorage.getItem("iis_import_schema") !== "2";
+  var FULL_SCAN = window.localStorage.getItem("iis_full_scan") === "true" || ROAD_RECONCILIATION;
   var state = window.__iisState = {
     status: "starting",
     page: 0,
@@ -111,6 +114,7 @@
     updateState({ skipped: known.size });
     log(known.size + " corrida(s) já no banco.");
 
+    if (ROAD_RECONCILIATION) log("Auditoria única: procurando corridas ROAD que a versão anterior não podia importar.");
     // After the full backfill, regular runs should only walk the newest pages until they hit an
     // already-complete page. Set localStorage.iis_full_scan = "true" before running if a later
     // audit ever needs to search for old gaps again.
@@ -144,6 +148,7 @@
     }
 
     if (!newRaceIds.length) {
+      if (ROAD_RECONCILIATION) window.localStorage.setItem("iis_import_schema", "2");
       complete("iRStats lido: nenhuma corrida nova para importar.");
       return;
     }
@@ -195,6 +200,7 @@
     }
     await flushBatch();
 
+    if (ROAD_RECONCILIATION && totalFailed === 0) window.localStorage.setItem("iis_import_schema", "2");
     complete("iRStats lido: " + totalImported + " corrida(s) nova(s) importada(s), " + totalFailed + " com erro.");
   }
 

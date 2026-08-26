@@ -95,7 +95,9 @@ function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: Band
  * own position by default, or the point under the driver's cursor on the band chart above it, so
  * variance in the band chart can be tied back to an exact spot on track instead of just an offset %. */
 function CornerTrackMap({ outline, cornerDistance, hoverOffset }: { outline: TrackOutlinePoint[]; cornerDistance: number; hoverOffset: number | null }) {
-  const project = createTrackProjector(outline, 220, 140, 12);
+  const local = outline.filter((point) => Math.min(Math.abs(point.distance - cornerDistance), 100 - Math.abs(point.distance - cornerDistance)) <= 7);
+  const mapOutline = local.length >= 3 ? local : outline;
+  const project = createTrackProjector(mapOutline, 220, 140, 12);
   const markerDistance = ((cornerDistance + (hoverOffset ?? 0)) % 100 + 100) % 100;
   let marker: TrackOutlinePoint | null = null, bestDelta = Infinity;
   for (const point of outline) {
@@ -104,7 +106,7 @@ function CornerTrackMap({ outline, cornerDistance, hoverOffset }: { outline: Tra
   }
   return (
     <svg viewBox="0 0 220 140" className="corner-mini-map" role="img" aria-label="Posição dessa curva no traçado da pista">
-      <polyline points={outline.map(project).join(" ")} className="corner-mini-map-outline" />
+      <polyline points={mapOutline.map(project).join(" ")} className="corner-mini-map-outline" />
       {marker && <circle cx={project(marker).split(",")[0]} cy={project(marker).split(",")[1]} r="4.8" className="corner-mini-map-marker" />}
     </svg>
   );

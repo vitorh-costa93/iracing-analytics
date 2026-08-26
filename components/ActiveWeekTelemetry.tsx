@@ -390,14 +390,17 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
     const center = (range[0] + range[1]) / 2;
     boundsPoints = [...gps, ...refGps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 16);
   }
-  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, zoom ? 30 : 18);
+  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, zoom ? 20 : 18);
   const project = (point: TracePoint) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
+  // In the hover card, render only the local section. Drawing the entire lap against local bounds
+  // compressed the useful traces into an unreadable line at the edge of the map.
+  const mapGps = zoom && selected.length >= 2 ? selected : gps;
+  const mapReference = zoom && refSelected.length >= 2 ? refSelected : refGps;
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
-    <polyline points={gps.map(project).join(" ")} className="track-outline" />
-    {selected.length > 1 && <polyline points={selected.map(project).join(" ")} className="track-highlight" />}
-    {refSelected.length > 1 && <polyline points={refSelected.map(project).join(" ")} className="track-reference" />}
+    <polyline points={mapGps.map(project).join(" ")} className="track-outline" />
+    {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
     {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
     {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
     {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r="5" className="track-marker" />}

@@ -117,10 +117,14 @@ async function buildSectorReport(driverId: string, carId: number, trackId: numbe
     const { kept: times, excludedCount } = excludeFastSectorOutliers(rawTimes);
     const avg = mean(times);
     const sd = stddev(times, avg);
-    const best = Math.min(...times);
+    // The ideal lap and the named "melhor volta" must use a compatible set: if the best real
+    // lap was tagged as a sector outlier, it is still a valid candidate for its own comparison.
+    // Otherwise a sector can perversely look faster than the ideal and produce a green negative Δ.
+    const actualBest = actualBestBySector.get(number) ?? null;
+    const best = Math.min(...times, ...(actualBest === null ? [] : [actualBest]));
     return {
       sector: number, sampleSize: times.length, mean: Number(avg.toFixed(3)), stddev: Number(sd.toFixed(3)), best: Number(best.toFixed(3)), consistency: consistencyLabel(sd, avg),
-      actualBest: actualBestBySector.get(number) ?? null,
+      actualBest,
       note: excludedCount > 0 ? `${excludedCount} volta${excludedCount > 1 ? "s" : ""} com tempo atípico nesse setor (provável P2P/tow) desconsiderada${excludedCount > 1 ? "s" : ""} do cálculo.` : null,
     };
   }).filter((item): item is NonNullable<typeof item> => item !== null);

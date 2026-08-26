@@ -252,6 +252,8 @@ Em 26/08/2026, o fluxo manual de importação passou a abrir uma única aba nome
 
 Na mesma mudança, `race_results.category` passou a aceitar `road`. A carteira ROAD não entra nos KPIs, nas séries temporais ou no matching de iRating de Formula/Sports; seus deltas iRStats entram apenas em `v_historical_performance`, permitindo que histórico de GT3, IMSA e SF23 de outra carteira complemente os recortes de contexto. Rankings agora exigem no mínimo duas corridas. Os mapas de telemetria usam projeção local com correção de longitude por latitude e escala única, para não deformar o traçado GPS; os setores mostram IDEAL, MELHOR VOLTA e um delta que soma exatamente ao gap mostrado no cabeçalho.
 
+Em 26/08/2026 o launcher foi ajustado novamente: iRStats abre pela navegação nativa do link (mais confiável que uma segunda janela programática) e Garage61 permanece como a única popup. O mapa geral de Track Position foi removido do workspace; o painel ao lado dos inputs desenha somente a janela sob o hover, incluindo os dois traços. O mesmo recorte local é usado em cada card de curva. A detecção de curvas do debrief passou a preferir curvatura do GPS, com fallback à aceleração lateral; isso evita numerar como Curva 1 a primeira zona de frenagem detectada depois de curvas suaves. O cache é versionado para recomputar debriefs anteriores. O bookmarklet iRStats faz uma auditoria completa única após a atualização de parser ROAD e só então volta ao modo incremental.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:
