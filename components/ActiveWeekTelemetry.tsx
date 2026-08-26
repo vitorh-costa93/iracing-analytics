@@ -390,7 +390,7 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
     const center = (range[0] + range[1]) / 2;
     boundsPoints = [...gps, ...refGps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 16);
   }
-  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, zoom ? 20 : 18);
+  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, zoom ? 18 : 18, Boolean(zoom));
   const project = (point: TracePoint) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   // In the hover card, render only the local section. Drawing the entire lap against local bounds
   // compressed the useful traces into an unreadable line at the edge of the map.
@@ -698,7 +698,7 @@ export default function ActiveWeekTelemetry() {
                   const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
                   return <div className="telemetry-hover">
                     <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
-                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} range={[Math.max(0, hoveredDistance - .35), Math.min(100, hoveredDistance + .35)]} zoom /></div>
+                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} range={[Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)]} zoom /></div>
                     {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
                   </div>;
                 })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}

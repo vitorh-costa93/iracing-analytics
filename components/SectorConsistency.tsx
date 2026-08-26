@@ -44,7 +44,7 @@ function SectorDetail({ sector }: { sector: SectorStat }) {
       <strong>{sector.consistency}</strong>
       <div><b>Ideal</b>{sector.best.toFixed(3)}s</div>
       <div><b>Melhor volta</b>{sector.actualBest?.toFixed(3) ?? "—"}s</div>
-      <div><b>Δ</b><em className={(sector.actualBest ?? sector.mean) - sector.best <= 0.05 ? "positive" : "negative"}>{((sector.actualBest ?? sector.mean) - sector.best).toFixed(3)}s</em></div>
+      <div><b>Δ</b><em className={(sector.actualBest ?? sector.mean) - sector.best > 0.0005 ? "negative" : "positive"}>{`${(sector.actualBest ?? sector.mean) - sector.best > 0 ? "+" : ""}${((sector.actualBest ?? sector.mean) - sector.best).toFixed(3)}s`}</em></div>
       {sector.note && <p>{sector.note}</p>}
     </div>
   );

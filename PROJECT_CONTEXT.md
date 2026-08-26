@@ -254,6 +254,8 @@ Na mesma mudança, `race_results.category` passou a aceitar `road`. A carteira R
 
 Em 26/08/2026 o launcher foi ajustado novamente: iRStats abre pela navegação nativa do link (mais confiável que uma segunda janela programática) e Garage61 permanece como a única popup. O mapa geral de Track Position foi removido do workspace; o painel ao lado dos inputs desenha somente a janela sob o hover, incluindo os dois traços. O mesmo recorte local é usado em cada card de curva. A detecção de curvas do debrief passou a preferir curvatura do GPS, com fallback à aceleração lateral; isso evita numerar como Curva 1 a primeira zona de frenagem detectada depois de curvas suaves. O cache é versionado para recomputar debriefs anteriores. O bookmarklet iRStats faz uma auditoria completa única após a atualização de parser ROAD e só então volta ao modo incremental.
 
+Na verificação posterior do banco em 26/08/2026 havia 1.138 `race_results` (550 Formula, 588 Sports e 0 Road). Portanto o schema e a view já aceitam Road, mas a auditoria browser-side ainda precisa de uma execução completa para trazer as corridas históricas que o parser anterior rejeitava. Não apresentar os rankings atuais como se já contivessem essa carteira até que a contagem Road seja maior que zero. A programação conhecida da 2026 S3 W11 foi registrada explicitamente para os cards semanais: Algarve/Super Formula 23, Road Atlanta/IMSA e Red Bull Ring/GT3; não inferir calendário de corridas a partir da atividade já realizada.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:

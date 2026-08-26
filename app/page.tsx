@@ -73,6 +73,17 @@ type DashboardData = {
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
+type WeekContext = { series: string; track: string; matches: (row: HistoricalRow) => boolean };
+
+// Weekly schedule is intentionally explicit. Garage61 exposes activity, not the official schedule;
+// deriving these cards from races already driven made the section disappear before the first race.
+const WEEKLY_CONTEXTS: Record<string, WeekContext[]> = {
+  "34:11": [
+    { series: "Super Formula 23", track: "Algarve", matches: (row) => /super formula/i.test(row.car) && /algarve|portim/i.test(row.track) },
+    { series: "IMSA", track: "Road Atlanta", matches: (row) => (row.carClass === "GTP" || row.carClass === "LMP2") && /road atlanta/i.test(row.track) },
+    { series: "GT3", track: "Red Bull Ring", matches: (row) => row.carClass === "GT3" && /red bull ring/i.test(row.track) },
+  ],
+};
 
 function shortSeason(name: string) {
   return name.replace(" Season ", " S");
@@ -200,16 +211,17 @@ export default function Home() {
   const previousLabel = shortSeason(data.season.previous.name);
   const weekly = chartCategory === "formula" ? data.weekly.formula : data.weekly.sports;
   const scatter = data.races.filter((race) => race.ratingCategory === (chartCategory === "formula" ? "formula_car" : "sports_car") && race.delta !== null).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
-  const weeklyContexts = data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, race) => {
-    const key = `${race.series ?? race.car}::${race.track}`;
+  const scheduleKey = `${data.season.current.id}:${data.kpis.formula.irating.week}`;
+  const scheduledContexts = WEEKLY_CONTEXTS[scheduleKey];
+  const weeklyContexts = (scheduledContexts ?? data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => ({ series: race.series ?? race.car, track: race.track, matches: (row: HistoricalRow) => row.track === race.track && row.car === race.car }))).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, context) => {
+    const key = `${context.series}::${context.track}`;
     if (items.some((item) => item.key === key)) return items;
-    const contextRows = data.historical.filter((row) => row.track === race.track && (row.car === race.car || (/imsa/i.test(race.series ?? "") && (row.carClass === "GTP" || row.carClass === "LMP2"))));
+    const contextRows = data.historical.filter(context.matches);
     const races = contextRows.reduce((sum, row) => sum + row.races, 0);
     const avg = races >= 2 ? contextRows.reduce((sum, row) => sum + row.delta, 0) / races : null;
-    items.push({ key, series: race.series ?? race.car, track: race.track, avg, races });
+    items.push({ key, series: context.series, track: context.track, avg, races });
     return items;
   }, []).slice(0, 3);
-
   return (
     <main className="app-shell">
       <div className="app-frame">
