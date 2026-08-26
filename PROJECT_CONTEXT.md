@@ -258,6 +258,8 @@ Na verificação posterior do banco em 26/08/2026 havia 1.138 `race_results` (55
 
 Em 26/08/2026 foi adicionada a extensão local Chrome `chrome-extension/`, necessária porque uma página no domínio do Analytics não pode executar o importador dentro de `irstats.com` ou `garage61.net`. Depois de carregada uma vez em `chrome://extensions`, ela recebe o clique de Atualizar dados, abre ambas as abas com o marcador de sync, injeta os importadores já versionados no app e fecha cada aba quando a origem confirma a conclusão. As chaves continuam solicitadas e guardadas somente no `localStorage` de cada origem. Enquanto `race_results` tiver zero linhas `road`, o importador força uma auditoria histórica completa, independentemente de um marcador local antigo.
 
+Na revisão seguinte, o carregamento remoto por tag `<script>` foi substituído por execução dos importadores empacotados na própria extensão, via `chrome.scripting.executeScript` no mundo principal da aba. Isso evita bloqueio por Content Security Policy de iRStats/Garage61. Após atualizar a extensão local, é preciso usar o botão Recarregar em `chrome://extensions` antes de disparar um novo sync.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:
