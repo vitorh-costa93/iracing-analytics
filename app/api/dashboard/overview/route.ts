@@ -11,7 +11,7 @@ type SeasonSummaryRow = {
 type CategorySummaryRow = {
   season_id: string | number;
   season_name: string;
-  rating_category: "formula_car" | "sports_car";
+  rating_category: "formula_car" | "sports_car" | "road";
   corridas: number | null;
   delta_irating: number | null;
   delta_medio: number | null;
@@ -43,7 +43,7 @@ type WeeklyRow = {
 };
 
 type HistoricalRow = {
-  rating_category: "formula_car" | "sports_car";
+  rating_category: "formula_car" | "sports_car" | "road";
   car_class: string | null;
   car: string;
   track: string;
@@ -69,6 +69,7 @@ type RaceResultRow = {
   track_name: string;
   car_name: string;
   category: "formula_car" | "sports_car";
+  season_week: number | null;
   grid_position: number | null;
   finish_position: number;
   position_change: number | null;
@@ -441,7 +442,7 @@ export async function GET() {
     const { data: seasonRaceRows, error: racesError } = await supabaseAdmin
       .from("v_race_results_irating")
       .select(
-        "irstats_race_id, raced_at, series_name, track_name, car_name, category, grid_position, finish_position, position_change, fastest_lap_time, race_fastest_lap_time, laps, irating_after, irating_before"
+        "irstats_race_id, raced_at, series_name, track_name, car_name, category, season_week, grid_position, finish_position, position_change, fastest_lap_time, race_fastest_lap_time, laps, irating_after, irating_before"
       )
       .eq("driver_id", driver.id)
       .gte("raced_at", previousSeasonStart)
@@ -464,6 +465,7 @@ export async function GET() {
       ratingCategory: row.category,
       car: row.car_name,
       track: row.track_name,
+      seasonWeek: row.season_week,
       bestLap: row.fastest_lap_time,
       series: row.series_name,
       startPosition: row.grid_position,

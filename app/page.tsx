@@ -29,7 +29,7 @@ type WeekPoint = {
 };
 
 type HistoricalRow = {
-  ratingCategory: "formula_car" | "sports_car";
+  ratingCategory: "formula_car" | "sports_car" | "road";
   carClass: string | null;
   car: string;
   track: string;
@@ -69,7 +69,7 @@ type DashboardData = {
   };
   historical: HistoricalRow[];
   featureAvailability: { wins: boolean; winsReason: string };
-  races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number | null; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; bestLap: string | null; startPosition: number | null; finishPosition: number | null }>;
+  races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number | null; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; seasonWeek?: number | null; bestLap: string | null; startPosition: number | null; finishPosition: number | null }>;
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
@@ -100,7 +100,9 @@ function aggregateRows(
   // average double-counted. It is the primary performance signal in the ranking.
   for (const item of map.values()) item.avgDelta = item.races > 0 ? item.delta / item.races : 0;
 
-  return [...map.values()].sort((a, b) => b.avgDelta - a.avgDelta);
+  // One isolated result is not a performance signal. Keep it in the race table, but do not turn
+  // it into a "best/worst context" conclusion.
+  return [...map.values()].filter((item) => item.races >= 2).sort((a, b) => b.avgDelta - a.avgDelta);
 }
 
 export default function Home() {
@@ -129,11 +131,27 @@ export default function Home() {
     loadDashboard();
   }, [loadDashboard]);
 
+  useEffect(() => {
+    function onImportComplete(event: MessageEvent) {
+      if (event.origin !== "https://irstats.com" && event.origin !== "https://garage61.net") return;
+      const payload = event.data as { source?: string; message?: string };
+      if (payload?.source !== "iracing-analytics-import") return;
+      setMessage(payload.message ?? "Importação concluída.");
+      void loadDashboard();
+    }
+    window.addEventListener("message", onImportComplete);
+    return () => window.removeEventListener("message", onImportComplete);
+  }, [loadDashboard]);
+
   async function syncData() {
     setSyncing(true);
     setMessage("Abrindo Garage61 e iRStats, depois atualizando dados via Supabase...");
     try {
-      window.open("https://garage61.net/app", "_blank", "noopener,noreferrer");
+      // These pages are opened only once. Their respective bookmarklets run in their own origin
+      // and report completion back to this tab; browser isolation prevents this app from injecting
+      // script into either third-party page.
+      window.open("https://garage61.net/app", "iracing-analytics-garage61");
+      window.open("https://irstats.com/driver/958741", "iracing-analytics-irstats");
 
       const generalResponse = await fetch("/api/sync/all", { method: "POST" });
       const generalResult = await generalResponse.json();
@@ -149,7 +167,7 @@ export default function Home() {
       const ratingsResult = await ratingsResponse.json();
       if (!ratingsResponse.ok) throw new Error(ratingsResult.message ?? "Erro na sincronização de ratings");
 
-      setMessage(`Garage61 lido: ${sessionsResult.sessionsUpserted ?? 0} sessões recentes consolidadas e ${ratingsResult.recordsSynced ?? 0} pontos de rating verificados. A aba do iRStats foi aberta para o importador incremental ler somente corridas novas.`);
+      setMessage(`Garage61 lido: ${sessionsResult.sessionsUpserted ?? 0} sessões recentes consolidadas e ${ratingsResult.recordsSynced ?? 0} pontos de rating verificados. Execute os importadores nas duas abas abertas: eles fecham a própria aba ao concluir e retornam “sem novidades” quando aplicável.`);
       await loadDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
@@ -161,7 +179,7 @@ export default function Home() {
   const rankings = useMemo(() => {
     if (!data) return null;
 
-    const trackRows = data.historical.filter((row) => row.ratingCategory === "formula_car");
+    const trackRows = data.historical.filter((row) => /super formula/i.test(row.car));
     const gt3Rows = data.historical.filter((row) => row.carClass === "GT3");
     const imsaRows = data.historical.filter((row) => row.carClass === "GTP" || row.carClass === "LMP2");
 
@@ -184,6 +202,15 @@ export default function Home() {
   const previousLabel = shortSeason(data.season.previous.name);
   const weekly = chartCategory === "formula" ? data.weekly.formula : data.weekly.sports;
   const scatter = data.races.filter((race) => race.ratingCategory === (chartCategory === "formula" ? "formula_car" : "sports_car") && race.delta !== null).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
+  const weeklyContexts = data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, race) => {
+    const key = `${race.series ?? race.car}::${race.track}`;
+    if (items.some((item) => item.key === key)) return items;
+    const contextRows = data.historical.filter((row) => row.track === race.track && (row.car === race.car || (/imsa/i.test(race.series ?? "") && (row.carClass === "GTP" || row.carClass === "LMP2"))));
+    const races = contextRows.reduce((sum, row) => sum + row.races, 0);
+    const avg = races >= 2 ? contextRows.reduce((sum, row) => sum + row.delta, 0) / races : null;
+    items.push({ key, series: race.series ?? race.car, track: race.track, avg, races });
+    return items;
+  }, []).slice(0, 3);
 
   return (
     <main className="app-shell">
@@ -203,14 +230,19 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <a className={`primary-button ${syncing ? "disabled" : ""}`} href="https://irstats.com/driver/958741" target="_blank" rel="noreferrer" onClick={(event) => { if (syncing) event.preventDefault(); else void syncData(); }}>
+            <button className={`primary-button ${syncing ? "disabled" : ""}`} type="button" disabled={syncing} onClick={() => void syncData()}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
-            </a>
+            </button>
           </div>
         </header>
         <AppTabs />
 
         {message && <div className="status-banner">{message}</div>}
+
+        <section className="section-block week-context-section">
+          <div className="section-title-row"><div><span className="section-kicker">ESSA SEMANA NO IRACING</span><h2>Seu histórico nos contextos ativos</h2><p>Média de Δ iRating por corrida na mesma pista e categoria; amostra mínima de duas corridas.</p></div></div>
+          <div className="week-context-grid">{weeklyContexts.length ? weeklyContexts.map((item) => <article className="week-context-card" key={item.key}><span>{item.series}</span><h3>{item.track}</h3><strong className={item.avg === null ? "neutral" : item.avg >= 0 ? "positive" : "negative"}>{item.avg === null ? "—" : `${item.avg > 0 ? "+" : ""}${item.avg.toFixed(1)}`}</strong><small>{item.avg === null ? "Sem histórico suficiente" : `${item.races} corridas no contexto`}</small></article>) : <p className="comparison-note">Ainda não há corridas desta week para formar os contextos ativos.</p>}</div>
+        </section>
 
         <section className="section-block">
           <div className="section-title-row">
@@ -264,7 +296,7 @@ export default function Home() {
           <div className="performance-grid">
             <article className="panel ranking-panel">
               <div className="panel-heading compact">
-                <div><span className="section-kicker">TRACK PERFORMANCE</span><h3>Média de Δ iRating por pista</h3></div>
+                <div><span className="section-kicker">SUPER FORMULA 23</span><h3>Média de Δ iRating por pista</h3></div>
               </div>
               <PerformanceRanking items={rankings.tracks} kind="track" />
             </article>

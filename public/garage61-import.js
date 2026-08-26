@@ -26,6 +26,11 @@
   function setStatus(text) { statusEl.textContent = text; }
   function setProgress(pct) { barEl.style.width = Math.max(0, Math.min(100, pct)) + "%"; }
   function log(text) { var line = document.createElement("div"); line.textContent = text; logEl.appendChild(line); logEl.scrollTop = logEl.scrollHeight; }
+  function complete(message, imported, skipped) {
+    setStatus(message); setProgress(100);
+    try { if (window.opener) window.opener.postMessage({ source: "iracing-analytics-import", integration: "garage61", imported: imported || 0, skipped: skipped || 0, message: message }, APP_BASE); } catch (e) {}
+    if (window.opener) setTimeout(function () { window.close(); }, 900);
+  }
 
   var key = window.localStorage.getItem("iri_key");
   if (!key) {
@@ -44,7 +49,7 @@
       if (data.status !== "ok") throw new Error(data.message || "Erro ao buscar corridas pendentes");
       var events = data.events || [];
       log(events.length + " evento(s) nos últimos " + data.days + " dias.");
-      if (!events.length) { setStatus("Nenhuma corrida recente encontrada."); setProgress(100); return; }
+      if (!events.length) { complete("Garage61 lido: nenhum setup novo para importar.", 0, 0); return; }
       visitAll(events);
     })
     .catch(function (err) {
@@ -125,8 +130,7 @@
     var unique = Object.keys(byKey).map(function (k) { return byKey[k]; });
 
     if (!unique.length) {
-      setStatus("Nenhum setup capturado.");
-      setProgress(100);
+      complete("Garage61 lido: nenhum setup novo para importar.", 0, 0);
       log("Se isso persistir, o site pode ter mudado a URL do evento ou o formato da resposta. Avise o desenvolvedor com este log.");
       return;
     }
@@ -140,7 +144,7 @@
       .then(function (result) {
         setProgress(100);
         if (!result.ok) { setStatus("Erro ao enviar: " + result.data.message); return; }
-        setStatus("Concluído: " + result.data.imported + " importado(s), " + result.data.skipped + " ignorado(s).");
+        complete("Garage61 lido: " + result.data.imported + " setup(s) novo(s) importado(s), " + result.data.skipped + " já existentes.", result.data.imported, result.data.skipped);
         (result.data.errors || []).forEach(function (err) { log(err); });
       })
       .catch(function (err) { setStatus("Erro de rede ao enviar: " + err.message); });

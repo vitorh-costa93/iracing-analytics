@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createTrackProjector } from "@/lib/track-map";
 
-type SectorStat = { sector: number; sampleSize: number; mean: number; stddev: number; best: number; consistency: string; note: string | null };
+type SectorStat = { sector: number; sampleSize: number; mean: number; stddev: number; best: number; actualBest: number | null; consistency: string; note: string | null };
 type SectorReport = { car: string; track: string; lapsAnalyzed: number; sectors: SectorStat[]; idealLap: string; actualBestLap: string; gapToIdeal: string; summary: string };
 type CategoryPayload = { status: string; report: SectorReport | null; message?: string | null };
 export type SectorCategory = "formula_car" | "sports_car" | "gtp_car";
@@ -13,14 +14,7 @@ const CONSISTENCY_LABEL: Record<string, string> = { great: "Muito consistente", 
 
 function SectorTrackMap({ sectors, outline }: { sectors: SectorStat[]; outline: TrackOutlinePoint[] }) {
   if (outline.length < 20) return null;
-  const lats = outline.map((point) => point.lat), lons = outline.map((point) => point.lon);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const latSpan = Math.max(maxLat - minLat, 0.00005), lonSpan = Math.max(maxLon - minLon, 0.00005);
-  const project = (point: TrackOutlinePoint) => {
-    const x = 18 + (point.lon - minLon) / lonSpan * 404;
-    const y = 272 - (point.lat - minLat) / latSpan * 244;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  };
+  const project = createTrackProjector(outline, 440, 300, 18);
   const sectorCount = Math.max(sectors.length, 1);
 
   return (
@@ -48,9 +42,9 @@ function SectorDetail({ sector }: { sector: SectorStat }) {
     <div className={`sector-detail ${cls}`}>
       <span>S{sector.sector}</span>
       <strong>{sector.consistency}</strong>
-      <div><b>Melhor</b>{sector.best.toFixed(3)}s</div>
-      <div><b>Média</b>{sector.mean.toFixed(3)}s</div>
-      <div><b>Δ</b><em className={sector.mean - sector.best <= 0.05 ? "positive" : "negative"}>{(sector.mean - sector.best).toFixed(3)}s</em></div>
+      <div><b>Ideal</b>{sector.best.toFixed(3)}s</div>
+      <div><b>Melhor volta</b>{sector.actualBest?.toFixed(3) ?? "—"}s</div>
+      <div><b>Δ</b><em className={(sector.actualBest ?? sector.mean) - sector.best <= 0.05 ? "positive" : "negative"}>{((sector.actualBest ?? sector.mean) - sector.best).toFixed(3)}s</em></div>
       {sector.note && <p>{sector.note}</p>}
     </div>
   );

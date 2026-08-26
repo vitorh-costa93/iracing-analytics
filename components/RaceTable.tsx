@@ -12,6 +12,13 @@ function lapTime(value: string | null) {
   return value ?? "—";
 }
 
+function finish(value: number | null) {
+  if (value === 1) return <span className="finish-medal gold" title="P1">🏆</span>;
+  if (value === 2) return <span className="finish-medal silver" title="P2">🥈</span>;
+  if (value === 3) return <span className="finish-medal bronze" title="P3">🥉</span>;
+  return value ?? "—";
+}
+
 export default function RaceTable({ races }: { races: Race[] }) {
   const [page, setPage] = useState(0);
   const pageCount = Math.max(1, Math.ceil(races.length / PAGE_SIZE));
@@ -26,7 +33,7 @@ export default function RaceTable({ races }: { races: Race[] }) {
 
   return <div className="race-table-wrap">
     <table className="race-table"><thead><tr><th>Data</th><th>Série</th><th>Carro</th><th>Pista</th><th>Melhor volta</th><th>Largada</th><th>Final</th><th>Δ iRating</th></tr></thead><tbody>
-      {pageRaces.map((race) => <tr key={race.id}><td>{new Date(race.startedAt).toLocaleDateString("pt-BR")}</td><td>{race.series ?? "Série não informada"}</td><td>{race.car}</td><td>{race.track}</td><td>{lapTime(race.bestLap)}</td><td>{race.startPosition ?? "—"}</td><td>{race.finishPosition ?? "—"}</td><td className={race.delta === null ? "" : race.delta >= 0 ? "positive" : "negative"}>{race.delta === null ? "—" : `${race.delta > 0 ? "+" : ""}${race.delta}`}</td></tr>)}
+      {pageRaces.map((race) => <tr key={race.id}><td>{new Date(race.startedAt).toLocaleDateString("pt-BR")}</td><td>{race.series ?? "Série não informada"}</td><td>{race.car}</td><td>{race.track}</td><td>{lapTime(race.bestLap)}</td><td>{race.startPosition ?? "—"}</td><td>{finish(race.finishPosition)}</td><td className={race.delta === null ? "" : race.delta >= 0 ? "positive" : "negative"}>{race.delta === null ? "—" : `${race.delta > 0 ? "+" : ""}${race.delta}`}</td></tr>)}
     </tbody></table>
 
     {pageCount > 1 && (

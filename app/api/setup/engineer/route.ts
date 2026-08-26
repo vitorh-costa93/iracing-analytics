@@ -156,7 +156,7 @@ async function blendSetups(driverId: string, setupIdA: string, setupIdB: string,
   // Síntese do balanço geral (ex.: "um setup pende mais pra dianteira, o outro mais pra traseira")
   // por categoria, antes de listar parâmetro a parâmetro — isso é o "meio-termo conceitual" que
   // explica ONDE cada setup pende, para o piloto decidir para qual lado ir em cada trecho.
-  const balanceNarrative = comparativeSummary(changes, a.filename, b.filename);
+  const balanceNarrative = comparativeSummary(changes, "Setup A", "Setup B");
 
   return {
     status: "ok" as const,

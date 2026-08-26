@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import SectorConsistency from "@/components/SectorConsistency";
+import { createTrackProjector } from "@/lib/track-map";
 
 type BinStat = { distance: number; mean: number; stddev: number };
 type ChannelStat = { channel: string; label: string; avgScore: number; binStats?: BinStat[] };
@@ -43,7 +44,7 @@ const CATEGORIES: Category[] = ["formula_car", "sports_car", "gtp_car"];
 const CATEGORY_LABEL: Record<Category, string> = { formula_car: "Formula Car", sports_car: "Sports Car", gtp_car: "GTP" };
 
 function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
-  const width = 980, height = 180, pad = { left: 54, right: 18, top: 18, bottom: 26 };
+  const width = 980, height = 130, pad = { left: 54, right: 18, top: 14, bottom: 24 };
   const times = points.map((p) => p.lapTime);
   const min = Math.min(...times), max = Math.max(...times);
   const span = Math.max(0.05, max - min);
@@ -64,7 +65,7 @@ function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
 }
 
 function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: BandPoint[]; throttleBand: BandPoint[]; onHover: (offset: number | null) => void }) {
-  const width = 520, height = 150, pad = { left: 6, right: 6, top: 8, bottom: 6 };
+  const width = 520, height = 112, pad = { left: 6, right: 6, top: 6, bottom: 5 };
   const offsets = [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
   if (!offsets.length) return null;
   const minOffset = Math.min(...offsets), maxOffset = Math.max(...offsets);
@@ -94,14 +95,7 @@ function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: Band
  * own position by default, or the point under the driver's cursor on the band chart above it, so
  * variance in the band chart can be tied back to an exact spot on track instead of just an offset %. */
 function CornerTrackMap({ outline, cornerDistance, hoverOffset }: { outline: TrackOutlinePoint[]; cornerDistance: number; hoverOffset: number | null }) {
-  const lats = outline.map((p) => p.lat), lons = outline.map((p) => p.lon);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats), minLon = Math.min(...lons), maxLon = Math.max(...lons);
-  const latSpan = Math.max(maxLat - minLat, 0.00005), lonSpan = Math.max(maxLon - minLon, 0.00005);
-  const project = (point: TrackOutlinePoint) => {
-    const x = 12 + (point.lon - minLon) / lonSpan * 196;
-    const y = 128 - (point.lat - minLat) / latSpan * 116;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  };
+  const project = createTrackProjector(outline, 220, 140, 12);
   const markerDistance = ((cornerDistance + (hoverOffset ?? 0)) % 100 + 100) % 100;
   let marker: TrackOutlinePoint | null = null, bestDelta = Infinity;
   for (const point of outline) {

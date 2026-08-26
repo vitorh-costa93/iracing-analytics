@@ -102,7 +102,12 @@ async function buildSectorReport(driverId: string, carId: number, trackId: numbe
   if (!sectorRows || !sectorRows.length) return { status: "ok" as const, report: null, message: "Essas voltas não têm tempos de setor registrados." };
 
   const bySector = new Map<number, number[]>();
-  for (const row of sectorRows) bySector.set(row.sector_number, [...(bySector.get(row.sector_number) ?? []), row.sector_time]);
+  const actualBestLapId = laps[0].id;
+  const actualBestBySector = new Map<number, number>();
+  for (const row of sectorRows) {
+    bySector.set(row.sector_number, [...(bySector.get(row.sector_number) ?? []), row.sector_time]);
+    if (row.lap_id === actualBestLapId) actualBestBySector.set(row.sector_number, Number(row.sector_time));
+  }
 
   const sectorCount = Math.max(...bySector.keys());
   const sectors = Array.from({ length: sectorCount }, (_, index) => {
@@ -115,6 +120,7 @@ async function buildSectorReport(driverId: string, carId: number, trackId: numbe
     const best = Math.min(...times);
     return {
       sector: number, sampleSize: times.length, mean: Number(avg.toFixed(3)), stddev: Number(sd.toFixed(3)), best: Number(best.toFixed(3)), consistency: consistencyLabel(sd, avg),
+      actualBest: actualBestBySector.get(number) ?? null,
       note: excludedCount > 0 ? `${excludedCount} volta${excludedCount > 1 ? "s" : ""} com tempo atípico nesse setor (provável P2P/tow) desconsiderada${excludedCount > 1 ? "s" : ""} do cálculo.` : null,
     };
   }).filter((item): item is NonNullable<typeof item> => item !== null);
@@ -123,7 +129,10 @@ async function buildSectorReport(driverId: string, carId: number, trackId: numbe
   const idealLap = sectors.reduce((sum, sector) => sum + sector.best, 0);
   const lapTimes = laps.map((lap) => lap.lapTime);
   const actualBestLap = Math.min(...lapTimes);
-  const gapToIdeal = actualBestLap - idealLap;
+  // The displayed sector deltas must add up to the headline gap. Use the sector times of this
+  // exact fastest lap, never the average sector time from the sample.
+  const actualBestSectorTotal = sectors.reduce((sum, sector) => sum + (sector.actualBest ?? 0), 0);
+  const gapToIdeal = actualBestSectorTotal > 0 ? actualBestSectorTotal - idealLap : actualBestLap - idealLap;
 
   const ranked = [...sectors].sort((a, b) => (b.stddev / b.mean) - (a.stddev / a.mean));
   const worstSector = ranked[0];

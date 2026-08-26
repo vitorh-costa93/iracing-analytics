@@ -30,7 +30,7 @@ export type RaceResult = {
   trackName: string;
   trackConfig: string | null;
   carName: string;
-  category: "formula_car" | "sports_car";
+  category: "formula_car" | "sports_car" | "road";
   seasonWeek: number | null;
   licenseClass: string;
   safetyRating: number;
@@ -73,9 +73,12 @@ function raceFastestLapTime($: cheerio.CheerioAPI): string | null {
   return time || null;
 }
 
-function parseCategory(raw: string): "formula_car" | "sports_car" {
+function parseCategory(raw: string): "formula_car" | "sports_car" | "road" {
   if (raw === "Formula Car") return "formula_car";
   if (raw === "Sports Car") return "sports_car";
+  // iRStats keeps a separate ROAD wallet.  It is not an iRating category used by the
+  // headline KPIs, but its GT3/IMSA/SF23 results are still valid context performance data.
+  if (raw === "Road") return "road";
   throw new Error(`irstats race detail: unrecognized category "${raw}"`);
 }
 

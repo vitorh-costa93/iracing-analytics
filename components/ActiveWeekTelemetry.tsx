@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { detectCorners as detectCornersFromLatAccel } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
+import { createTrackProjector } from "@/lib/track-map";
 
 type Combination = {
   key: string;
@@ -389,17 +390,8 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
     const center = (range[0] + range[1]) / 2;
     boundsPoints = [...gps, ...refGps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 16);
   }
-  const lats = boundsPoints.map((point) => Number(point.lat)), lons = boundsPoints.map((point) => Number(point.lon));
-  const rawMinLat = Math.min(...lats), rawMaxLat = Math.max(...lats), rawMinLon = Math.min(...lons), rawMaxLon = Math.max(...lons);
-  const zoomPad = zoom ? 0.35 : 0;
-  const latSpan = Math.max(rawMaxLat - rawMinLat, 0.00005), lonSpan = Math.max(rawMaxLon - rawMinLon, 0.00005);
-  const minLat = rawMinLat - latSpan * zoomPad, maxLat = rawMaxLat + latSpan * zoomPad;
-  const minLon = rawMinLon - lonSpan * zoomPad, maxLon = rawMaxLon + lonSpan * zoomPad;
-  const project = (point: TracePoint) => {
-    const x = 18 + (Number(point.lon) - minLon) / Math.max(.000001, maxLon - minLon) * 264;
-    const y = 182 - (Number(point.lat) - minLat) / Math.max(.000001, maxLat - minLat) * 164;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  };
+  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, zoom ? 30 : 18);
+  const project = (point: TracePoint) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">

@@ -48,6 +48,14 @@
     updateState({ progress: bounded });
   }
   function log(text) { var line = document.createElement("div"); line.textContent = text; logEl.appendChild(line); logEl.scrollTop = logEl.scrollHeight; }
+  function complete(message) {
+    setStatus(message);
+    setProgress(100);
+    try { if (window.opener) window.opener.postMessage({ source: "iracing-analytics-import", integration: "irstats", imported: state.imported || 0, failed: state.failed || 0, message: message }, APP_BASE); } catch (e) {}
+    // Only a tab opened by the dashboard can be closed by script; a manually opened tab remains
+    // available so the user never loses their normal iRStats navigation.
+    if (window.opener) setTimeout(function () { window.close(); }, 900);
+  }
 
   var key = window.localStorage.getItem("iis_key");
   if (!key) {
@@ -136,8 +144,7 @@
     }
 
     if (!newRaceIds.length) {
-      setStatus("iRStats lido: nenhuma corrida nova para importar.");
-      setProgress(100);
+      complete("iRStats lido: nenhuma corrida nova para importar.");
       return;
     }
 
@@ -188,8 +195,7 @@
     }
     await flushBatch();
 
-    setStatus("Concluído: " + totalImported + " importada(s), " + totalFailed + " com erro.");
-    setProgress(100);
+    complete("iRStats lido: " + totalImported + " corrida(s) nova(s) importada(s), " + totalFailed + " com erro.");
   }
 
   run().catch(function (err) {

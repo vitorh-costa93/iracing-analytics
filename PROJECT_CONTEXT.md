@@ -248,6 +248,10 @@ Com o histórico completo de `race_results`, os rankings de performance por pist
 
 Também em 25/08/2026, a abertura do iRStats pelo botão foi ajustada para usar o `href` nativo do controle, reduzindo bloqueio de popup. A telemetria detalhada foi reorganizada para privilegiar legibilidade: mapa principal do traçado em linha própria e maior, hover map ampliado, gráfico de ritmo ocupando a largura disponível, análise por curva em linhas com mapa maior e consistência por setor desenhada no traçado da pista por cor. O diff de setup passou a identificar explicitamente Setup A e Setup B e reduziu a densidade visual do texto explicativo.
 
+Em 26/08/2026, o fluxo manual de importação passou a abrir uma única aba nomeada para cada fonte. Os bookmarklets de Garage61 e iRStats notificam a janela do Analytics ao concluir, exibem contagens incrementais (inclusive “sem novidades”) e fecham somente a aba que foi aberta pelo painel. O browser não permite que o Analytics execute JavaScript dentro de `garage61.net` ou `irstats.com`; portanto a execução do bookmarklet/futuro userscript continua sendo necessariamente dentro de cada origem. Não alegar automação de um clique até existir uma extensão/userscript instalado que faça essa ponte.
+
+Na mesma mudança, `race_results.category` passou a aceitar `road`. A carteira ROAD não entra nos KPIs, nas séries temporais ou no matching de iRating de Formula/Sports; seus deltas iRStats entram apenas em `v_historical_performance`, permitindo que histórico de GT3, IMSA e SF23 de outra carteira complemente os recortes de contexto. Rankings agora exigem no mínimo duas corridas. Os mapas de telemetria usam projeção local com correção de longitude por latitude e escala única, para não deformar o traçado GPS; os setores mostram IDEAL, MELHOR VOLTA e um delta que soma exatamente ao gap mostrado no cabeçalho.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:

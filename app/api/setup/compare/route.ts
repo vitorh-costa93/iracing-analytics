@@ -35,7 +35,9 @@ export async function POST(request: NextRequest) {
     const topContributors = [...numericChanges].sort((a, b) => Math.abs(b.numericDelta as number) - Math.abs(a.numericDelta as number)).slice(0, 5)
       .map((change) => ({ label: `${change.tab} • ${change.section} • ${change.label}`, before: change.before, after: change.after, category: change.category }));
 
-    const summary = `${comparativeSummary(changes, base.filename, comparison.filename)}${skipped > 0 ? ` (${skipped} parâmetro(s) sem regra de efeito específica foram omitidos da lista abaixo.)` : ""}`;
+    // Filenames remain in the A/B header; prose deliberately uses stable labels so the causal
+    // explanation is readable even when provider filenames are long or opaque.
+    const summary = `${comparativeSummary(changes, "Setup A", "Setup B")}${skipped > 0 ? ` (${skipped} parâmetro(s) sem regra de efeito específica foram omitidos da lista abaixo.)` : ""}`;
 
     return NextResponse.json({
       status: "ok",
