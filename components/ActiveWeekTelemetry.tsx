@@ -412,7 +412,13 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
+    {/* The "asphalt" ribbon has no real track-edge geometry behind it — we only have per-lap GPS,
+     * not the physical track boundary Garage61 draws from. Drawing the outline from BOTH traces
+     * (not just the own line) at least widens visibly wherever the two laps diverge (braking
+     * point, apex), which is the closest honest approximation of "how the track was used" the
+     * available data supports. */}
     <polyline points={mapGps.map(project).join(" ")} className="track-outline" />
+    {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-outline" />}
     <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
     {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
     {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
