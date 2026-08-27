@@ -191,30 +191,59 @@ function cornerBand(validTraces: { points: TracePoint[] }[], cornerDistance: num
   return band;
 }
 
-async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCategory>) {
-  const carIdsForCategory = new Map<RatingCategory, number[]>();
-  for (const [carId, category] of rowCarIds) carIdsForCategory.set(category, [...(carIdsForCategory.get(category) ?? []), carId]);
+const SESSION_MATCH_WINDOW_MS = 3 * 3600_000; // driving_sessions.started_at vs race_results.raced_at drift observed in practice is minutes, not hours
 
-  const { data: sessions, error: sessionsError } = await supabaseAdmin
+/** Locates the driving_sessions row that holds the telemetry for a given race_results row. There is
+ * no foreign key between the two (different sources, iRStats vs Garage61) — match on car+track+time
+ * proximity instead, scoped to a single race so this stays a cheap, narrow query. */
+async function findSessionForRace(driverId: string, race: { car_id: number; track_id: number; raced_at: string }) {
+  const racedAt = new Date(race.raced_at).getTime();
+  const { data, error } = await supabaseAdmin
     .from("driving_sessions")
     .select("id,garage61_event_id,car_id,track_id,started_at,ended_at,lap_count")
-    .eq("driver_id", driverId).eq("session_type", 3)
-    .not("garage61_event_id", "is", null).not("car_id", "is", null).not("track_id", "is", null)
-    .order("started_at", { ascending: false }).limit(200);
-  if (sessionsError) throw sessionsError;
+    .eq("driver_id", driverId).eq("session_type", 3).eq("car_id", race.car_id).eq("track_id", race.track_id)
+    .not("garage61_event_id", "is", null)
+    .gte("started_at", new Date(racedAt - SESSION_MATCH_WINDOW_MS).toISOString())
+    .lte("started_at", new Date(racedAt + SESSION_MATCH_WINDOW_MS).toISOString());
+  if (error) throw error;
+  if (!data?.length) return null;
+  return data.reduce((closest, row) =>
+    Math.abs(new Date(row.started_at).getTime() - racedAt) < Math.abs(new Date(closest.started_at).getTime() - racedAt) ? row : closest
+  );
+}
+
+async function computeDebrief(driverId: string, gtpCarIds: Set<number>) {
+  // race_results (iRStats) is the source of truth for which race was actually completed — see
+  // DATA_ARCHITECTURE.md. driving_sessions.lap_count (Garage61) is NOT the same thing: it counts
+  // every lap driven in the session window (formation lap, reconnects), so an abandoned race can
+  // still clear a lap-count floor there. Concretely: a Super Formula race at Algarve abandoned on
+  // lap 2 (race_results.laps = 1) had driving_sessions.lap_count = 5, which used to beat MIN_LAPS
+  // and get picked over the actually-valid earlier race that finished P4 (laps = 15). Selecting the
+  // candidate race from race_results directly, then locating its telemetry session, fixes that.
+  const { data: races, error: racesError } = await supabaseAdmin
+    .from("race_results")
+    .select("id,raced_at,category,car_id,track_id,laps")
+    .eq("driver_id", driverId)
+    .not("car_id", "is", null).not("track_id", "is", null)
+    .order("raced_at", { ascending: false }).limit(400);
+  if (racesError) throw racesError;
 
   const results: Record<RatingCategory, unknown> = { formula_car: null, sports_car: null, gtp_car: null };
 
   for (const category of RATING_CATEGORIES) {
-    const carIds = new Set(carIdsForCategory.get(category) ?? []);
-    // Validity is completed laps, not session duration: a race abandoned on lap 2 can still sit on
-    // track/in the pits long enough to clear a minutes-based threshold, wrongly picking an invalid
-    // race over an earlier one that was actually raced. MIN_LAPS matches the sector-consistency
-    // sub-tab's own floor (app/api/telemetry/sectors/route.ts) so "valid" means the same thing in
-    // both places instead of one silently rejecting what the other just accepted.
-    const candidate = (sessions ?? []).find((row) => carIds.has(row.car_id) && (row.lap_count ?? 0) >= MIN_LAPS);
+    const pool = (races ?? []).filter((race) => {
+      if (category === "gtp_car") return race.category === "sports_car" && gtpCarIds.has(race.car_id);
+      if (category === "sports_car") return race.category === "sports_car" && !gtpCarIds.has(race.car_id);
+      return race.category === "formula_car";
+    });
+    // Matches the sector-consistency sub-tab's own floor (app/api/telemetry/sectors/route.ts) so
+    // "valid" means the same thing everywhere, now measured in real classified race laps.
+    const validRace = pool.find((race) => (race.laps ?? 0) >= MIN_LAPS);
     const categoryLabel = category === "formula_car" ? "Formula Car" : category === "gtp_car" ? "GTP" : "Sports Car";
-    if (!candidate) { results[category] = { status: "ok", session: null, message: `Nenhuma corrida de ${categoryLabel} com pelo menos ${MIN_LAPS} voltas completadas encontrada.` }; continue; }
+    if (!validRace) { results[category] = { status: "ok", session: null, message: `Nenhuma corrida de ${categoryLabel} com pelo menos ${MIN_LAPS} voltas completadas encontrada.` }; continue; }
+
+    const candidate = await findSessionForRace(driverId, validRace);
+    if (!candidate) { results[category] = { status: "ok", session: null, message: `Achei sua última corrida válida de ${categoryLabel} (${validRace.laps} voltas, ${new Date(validRace.raced_at).toLocaleDateString("pt-BR")}), mas a telemetria dessa sessão ainda não sincronizou do Garage61.` }; continue; }
 
     const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", category).maybeSingle();
     // "trackOutline" was added after some payloads were already cached — treat its absence as a stale
@@ -421,23 +450,17 @@ export async function GET() {
     const { data: driver } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (!driver) throw new Error("Piloto não encontrado");
 
-    const { data: categoryRows, error: categoryError } = await supabaseAdmin.from("car_rating_categories").select("car_id,rating_category");
-    if (categoryError) throw categoryError;
-    const carCategoryMap = new Map<number, RatingCategory>();
-    for (const row of categoryRows ?? []) {
-      if (row.rating_category === "formula_car" || row.rating_category === "sports_car") carCategoryMap.set(row.car_id, row.rating_category);
-    }
-
-    // GTP cars (Ferrari 499P, Porsche 963, etc.) count towards the sports_car iRating in Garage61
-    // (there's no separate GTP iRating bucket there), but drive differently enough from GT3 that the
-    // driver races it as its own category — split it into its own debrief tab.
+    // GTP cars (Ferrari 499P, Porsche 963, etc.) are scored as "sports_car" by race_results/iRStats
+    // (there's no separate GTP category there), but drive differently enough from GT3 that the
+    // driver races it as its own tab — split it out by car_id membership in the GTP car_groups group.
+    const gtpCarIds = new Set<number>();
     const { data: gtpGroup } = await supabaseAdmin.from("car_groups").select("id").eq("name", "GTP").maybeSingle();
     if (gtpGroup) {
       const { data: gtpMembers } = await supabaseAdmin.from("car_group_members").select("car_id").eq("car_group_id", gtpGroup.id);
-      for (const row of gtpMembers ?? []) carCategoryMap.set(row.car_id, "gtp_car");
+      for (const row of gtpMembers ?? []) gtpCarIds.add(row.car_id);
     }
 
-    const categories = await computeDebrief(driver.id, carCategoryMap);
+    const categories = await computeDebrief(driver.id, gtpCarIds);
     return NextResponse.json({ status: "ok", categories });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
