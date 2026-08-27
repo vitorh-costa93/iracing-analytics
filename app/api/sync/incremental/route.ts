@@ -13,10 +13,17 @@ type Garage61Lap = {
   session?: number;
   sessionType?: number;
   startTime?: string;
+  lapNumber?: number;
   lapTime?: number;
   season?: { id?: string; name?: string };
   car?: { id?: number };
   track?: { id?: number };
+  clean?: boolean; joker?: boolean; discontinuity?: boolean; missing?: boolean; incomplete?: boolean; offtrack?: boolean;
+  pitlane?: boolean; pitIn?: boolean; pitOut?: boolean;
+  driverRating?: number; fuelLevel?: number; fuelUsed?: number; fuelAdded?: number;
+  weightPenalty?: number; powerAdjust?: number; tireCompound?: number;
+  canViewTelemetry?: boolean; canViewSetup?: boolean;
+  sectors?: { sectorTime?: number; incomplete?: boolean }[];
 };
 
 /** The lap's own end time (start + duration), not just its start — a session's real end is the
@@ -103,6 +110,15 @@ async function runIncrementalSessionSync() {
     );
 
     const sessions = new Map<string, SessionRow>();
+    // Feeds the `laps`/`lap_sectors` tables from the exact same /laps response already being
+    // fetched here for session boundaries — no extra Garage61 calls. This is the ONLY recurring
+    // sync those two tables had: the original app/api/sync/laps (single hardcoded track, no
+    // pagination, no cutoff) was a one-off manual/debug tool never wired to cron or a button, so
+    // any car/track pair raced for the first time after that manual run (e.g. a one-off Algarve
+    // race) silently had zero rows in `laps` forever — breaking the sector-consistency sub-tab
+    // for that pair specifically, while race debrief kept working because it reads Garage61 live.
+    const lapRows: Record<string, unknown>[] = [];
+    const sectorRows: { lap_id: string; sector_number: number; sector_time: number | null; incomplete: boolean }[] = [];
     let lapsReceived = 0;
     let recentLaps = 0;
 
@@ -159,6 +175,23 @@ async function runIncrementalSessionSync() {
             lap_count: 1,
           });
         }
+
+        lapRows.push({
+          id: lap.id, driver_id: driver.id, car_id: lap.car.id, track_id: lap.track.id,
+          lap_number: lap.lapNumber ?? null, lap_time: lap.lapTime ?? null,
+          clean: lap.clean ?? null, joker: lap.joker ?? null, discontinuity: lap.discontinuity ?? null,
+          missing: lap.missing ?? null, incomplete: lap.incomplete ?? null, off_track: lap.offtrack ?? null,
+          // The Garage61 API field is "pitlane" (lowercase), not "pitLane" — the old manual sync tool
+          // had this mismatched and silently stored pit_lane as always null. Fixed here.
+          pit_lane: lap.pitlane ?? null, pit_in: lap.pitIn ?? null, pit_out: lap.pitOut ?? null,
+          driver_rating: lap.driverRating ?? null, fuel_level: lap.fuelLevel ?? null, fuel_used: lap.fuelUsed ?? null,
+          fuel_added: lap.fuelAdded ?? null, weight_penalty: lap.weightPenalty ?? null, power_adjust: lap.powerAdjust ?? null,
+          tire_compound: lap.tireCompound ?? null, can_view_telemetry: lap.canViewTelemetry ?? false, can_view_setup: lap.canViewSetup ?? false,
+          garage61_payload: lap, synced_at: new Date().toISOString(),
+        });
+        if (Array.isArray(lap.sectors)) {
+          lap.sectors.forEach((sector, index) => sectorRows.push({ lap_id: lap.id, sector_number: index + 1, sector_time: sector.sectorTime ?? null, incomplete: sector.incomplete ?? false }));
+        }
       }
     }
 
@@ -168,6 +201,18 @@ async function runIncrementalSessionSync() {
         onConflict: "driver_id,garage61_event_id,garage61_session_id,car_id,track_id",
       });
       if (upsertError) throw upsertError;
+    }
+
+    // Chunked: Supabase/PostgREST has a payload-size ceiling and a busy week can produce thousands
+    // of rows across all recent car/track pairs combined.
+    const CHUNK = 500;
+    for (let index = 0; index < lapRows.length; index += CHUNK) {
+      const { error: lapsUpsertError } = await supabaseAdmin.from("laps").upsert(lapRows.slice(index, index + CHUNK), { onConflict: "id" });
+      if (lapsUpsertError) throw lapsUpsertError;
+    }
+    for (let index = 0; index < sectorRows.length; index += CHUNK) {
+      const { error: sectorsUpsertError } = await supabaseAdmin.from("lap_sectors").upsert(sectorRows.slice(index, index + CHUNK), { onConflict: "lap_id,sector_number" });
+      if (sectorsUpsertError) throw sectorsUpsertError;
     }
 
     if (syncRun?.id) {
@@ -190,6 +235,8 @@ async function runIncrementalSessionSync() {
       lapsReceived,
       recentLaps,
       sessionsUpserted: rows.length,
+      lapsUpserted: lapRows.length,
+      sectorsUpserted: sectorRows.length,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);

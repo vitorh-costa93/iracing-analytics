@@ -122,6 +122,10 @@ export default function Home() {
   const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [chartCategory, setChartCategory] = useState<Category>("formula");
+  // Options depend on which series this driver actually raced in that category this season, not a
+  // hardcoded taxonomy — the real list (GT3 Challenge Fixed, IMSA, GT Sprint, Prototype, LMP2...)
+  // is messier than "GT3/IMSA x Open/Fixed" and a fixed set would silently exclude series outside it.
+  const [chartSeries, setChartSeries] = useState<string>("all");
   const [gt3Mode, setGt3Mode] = useState<RankingMode>("car");
   const [imsaMode, setImsaMode] = useState<RankingMode>("car");
   const [imsaClass, setImsaClass] = useState<"all" | "GTP" | "LMP2">("all");
@@ -218,7 +222,15 @@ export default function Home() {
   const currentLabel = shortSeason(data.season.current.name);
   const previousLabel = shortSeason(data.season.previous.name);
   const weekly = chartCategory === "formula" ? data.weekly.formula : data.weekly.sports;
-  const scatter = data.races.filter((race) => race.ratingCategory === (chartCategory === "formula" ? "formula_car" : "sports_car") && race.delta !== null).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
+  const categoryRaces = data.races.filter((race) => race.ratingCategory === (chartCategory === "formula" ? "formula_car" : "sports_car") && race.delta !== null);
+  // Sorted by how many races each series has this season — the driver's most-raced series leads
+  // the dropdown instead of alphabetical order burying it.
+  const seriesOptions = Array.from(categoryRaces.reduce((counts, race) => {
+    const key = race.series ?? "Sem série";
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    return counts;
+  }, new Map<string, number>()).entries()).sort((a, b) => b[1] - a[1]);
+  const scatter = categoryRaces.filter((race) => chartSeries === "all" || (race.series ?? "Sem série") === chartSeries).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
   const scheduleKey = `${data.season.current.id}:${data.kpis.formula.irating.week}`;
   const scheduledContexts = WEEKLY_CONTEXTS[scheduleKey];
   const weeklyContexts = (scheduledContexts ?? data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => ({ series: race.series ?? race.car, track: race.track, matches: (row: HistoricalRow) => row.track === race.track && row.car === race.car }))).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, context) => {
@@ -290,14 +302,24 @@ export default function Home() {
               <p>iRating absoluto por semana, comparando a Season atual com a anterior.</p>
             </div>
             <div className="segmented-control">
-              <button className={chartCategory === "formula" ? "active" : ""} onClick={() => setChartCategory("formula")}>Formula Car</button>
-              <button className={chartCategory === "sports" ? "active" : ""} onClick={() => setChartCategory("sports")}>Sports Car</button>
+              <button className={chartCategory === "formula" ? "active" : ""} onClick={() => { setChartCategory("formula"); setChartSeries("all"); }}>Formula Car</button>
+              <button className={chartCategory === "sports" ? "active" : ""} onClick={() => { setChartCategory("sports"); setChartSeries("all"); }}>Sports Car</button>
             </div>
           </div>
           <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} />
         </article>
         <article className="panel large-panel">
-          <div className="panel-heading"><div><span className="section-kicker">RACE SURVIVAL</span><h2>Duração × Δ iRating</h2><p>Somente corridas da season atual. Duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</p></div></div>
+          <div className="panel-heading">
+            <div><span className="section-kicker">RACE SURVIVAL</span><h2>Duração × Δ iRating</h2><p>Somente corridas da season atual. Duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</p></div>
+            {seriesOptions.length > 1 && (
+              <div className="series-filter">
+                <select value={chartSeries} onChange={(event) => setChartSeries(event.target.value)} aria-label="Filtrar por série">
+                  <option value="all">Todas as séries ({categoryRaces.length})</option>
+                  {seriesOptions.map(([series, count]) => <option key={series} value={series}>{series} ({count})</option>)}
+                </select>
+              </div>
+            )}
+          </div>
           <RaceScatterPlot points={scatter} />
         </article>
         </section>

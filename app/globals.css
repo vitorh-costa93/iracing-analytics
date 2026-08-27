@@ -102,6 +102,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .segmented-control button:last-child { border-right: 0; }
 .segmented-control button.active { background: var(--brand); color: var(--on-brand); }
 .segmented-control.small button { padding: 11px 10px; font-size: 11px; min-height: 40px; }
+.series-filter select { border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); padding: 8px 30px 8px 10px; font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; max-width: 220px; }
 .ranking-subfilter { margin: -2px 0 10px; }
 
 .season-chart-wrap { margin-top: 15px; }
@@ -241,7 +242,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insights-grid button p, .comparison-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .comparison-note { margin: 10px 0 0; }
 .track-map-panel { margin-top: 20px; padding: 14px; border: 1px solid var(--border); background: var(--surface-muted); }.track-map-panel h3 { margin: 4px 0 8px; font-size: 16px; }.track-map-panel > p, .track-map-empty { margin: 6px 0 0; color: var(--soft); font-size: 11px; }
-.track-map { width: 100%; height: 220px; display: block; }.track-outline { fill: none; stroke: var(--border-strong); stroke-width: 18; stroke-linejoin: round; stroke-linecap: round; opacity: .55; }.track-own-line { fill: none; stroke: var(--red); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 4; }.track-marker-ref { fill: var(--bg); stroke: var(--blue); stroke-width: 4; }.track-reference { fill: none; stroke: var(--blue); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
+.track-map-zoom-wrap { position: relative; width: 100%; height: 100%; }
+.track-map-zoom-controls { position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 3px; z-index: 2; }
+.track-map-zoom-controls button { width: 22px; height: 22px; border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 1; cursor: pointer; border-radius: 3px; padding: 0; }
+.track-map-zoom-controls button:hover { background: var(--surface); }
+.track-map { width: 100%; height: 220px; display: block; }
+.track-map g { transition: transform .15s ease-out; }.track-outline { fill: none; stroke: var(--border-strong); stroke-width: 18; stroke-linejoin: round; stroke-linecap: round; opacity: .55; }.track-own-line { fill: none; stroke: var(--red); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 4; }.track-marker-ref { fill: var(--bg); stroke: var(--blue); stroke-width: 4; }.track-reference { fill: none; stroke: var(--blue); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
 .track-map-legend { display: flex; gap: 14px; margin: 6px 0 0; font-family: var(--mono); font-size: 10px; color: var(--muted); }.track-map-legend span { display: inline-flex; align-items: center; gap: 5px; }.track-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; }.track-map-legend .own::before { background: var(--red); }.track-map-legend .reference::before { background: var(--blue); background-image: repeating-linear-gradient(90deg, var(--blue) 0 3px, transparent 3px 6px); }
 .telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); gap: 18px; align-items: start; margin-top: 10px; }.telemetry-map-sticky { display: none; }.interactive-chart { grid-column: 1; grid-row: 1; }.telemetry-hover-panel { grid-column: 2; grid-row: 1; }
 

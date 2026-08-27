@@ -24,16 +24,17 @@ Supabase Storage ─────────────────────
 
 **Divisão de responsabilidade (decisão de 27/08/2026):**
 
-- **Garage61** é a fonte exclusiva de **telemetria, voltas, setores e setups**. Não alimenta mais iRating, resultados oficiais ou os KPIs de season — essas tabelas continuam sendo sincronizadas (`driving_sessions`, `laps`, `lap_sectors`, `setup_files`) porque o Meu Debrief e o Setup Lab ainda precisam localizar qual sessão/volta analisar, mas os números que o piloto vê no Overview não vêm mais delas.
-- **iRStats** é a fonte única de **resultados de corrida, Δ iRating exato e vitórias**. Cobre a carreira inteira (desde a primeira season), ao contrário do `rating_history` do Garage61 que só tem ~10 meses de histórico. `rating_history` e `race_rating_matches` (matching heurístico) ficam como tabelas legadas, não lidas nem escritas pelo caminho recorrente — mantidas apenas para não quebrar nada que ainda referencie o schema antigo.
-- **Snapshot oficial do iRacing** (`official_series_results`) é dispensável: era um snapshot manual de 11 linhas para cobrir a lacuna que o iRStats resolve de forma automática e completa hoje. A tabela não é lida por nenhuma rota ativa.
+- **Garage61** é a fonte exclusiva de **telemetria, voltas, setores, setups e Safety Rating**. Não alimenta mais iRating de corrida, resultados oficiais ou os KPIs de season — essas tabelas continuam sendo sincronizadas (`driving_sessions`, `laps`, `lap_sectors`, `setup_files`, `rating_history` para SR) porque o Meu Debrief, o Setup Lab e o histórico de Safety Rating do Overview ainda dependem delas, mas o iRating/resultados que o piloto vê não vêm mais daqui.
+- **iRStats** é a fonte única de **resultados de corrida, Δ iRating exato e vitórias**. Cobre a carreira inteira (desde a primeira season), ao contrário do `rating_history` do Garage61 que só tem ~10 meses de histórico.
+- **Órfãs removidas em 27/08/2026** (auditoria de código completa: zero rotas liam ou escreviam nelas): `race_rating_matches` (matching heurístico corrida↔rating, substituído pelo delta exato do iRStats) e `official_series_results` (snapshot manual de 11 linhas, cobria a lacuna que o iRStats resolve hoje). Dropadas via migração, junto com a view `v_race_irating_candidates` que dependia da primeira, e o código morto que as escrevia (`lib/rating-match.ts`, `app/api/results/official/import`, `components/OfficialResultsPanel.tsx`, nunca montado em nenhuma página).
+- **`rating_history` NÃO é legada** — diferente do que uma versão anterior deste documento registrou por engano. Ela ainda é a única fonte do histórico de Safety Rating no Overview (o iRStats não expõe SR). O que era real: nenhum processo recorrente a alimentava (mesmo problema estrutural do item abaixo) — corrigido reconectando-a ao cron horário.
+- **Gap de sincronização real encontrado e corrigido**: `laps`/`lap_sectors` também não tinham NENHUM sync recorrente — só um script manual antigo (`app/api/sync/laps`, um único track hardcoded, nunca invocado por nada) tinha populado essas tabelas uma vez. Qualquer combinação carro/pista corrida pela primeira vez depois disso ficava com `laps` vazio para sempre, quebrando silenciosamente a aba de consistência por setor (o Meu Debrief não era afetado, por ler a API do Garage61 ao vivo em vez dessa tabela). Corrigido: `/api/sync/incremental` (já chamado pelo cron horário) agora também grava `laps`+`lap_sectors` a partir da mesma resposta que já busca para `driving_sessions` — sem chamadas extras à API.
 
 | Fonte | Dados que alimenta | Regra de atualização |
 |---|---|---|
-| Garage61 | `drivers`, catálogos (`cars`, `tracks`, `car_groups`, `car_group_members`, `car_rating_categories`), `sessions`, `driving_sessions`, `laps`, `lap_sectors`, `setup_files`, `ratings` (snapshot atual — âncora exata para reconstruir o iRating do iRStats), telemetria | Cron horário (`/api/cron/hourly-sync`): catálogo + `ratings` + `driving_sessions` incremental. Setups via extensão Chrome, deduplicados pelo evento Garage61. |
+| Garage61 | `drivers`, catálogos (`cars`, `tracks`, `car_groups`, `car_group_members`, `car_rating_categories`), `sessions`, `driving_sessions`, `laps`, `lap_sectors`, `rating_history` (Safety Rating), `setup_files`, `ratings` (snapshot atual — âncora exata para reconstruir o iRating do iRStats), telemetria | Cron horário (`/api/cron/hourly-sync`): catálogo + `ratings` + `driving_sessions`/`laps`/`lap_sectors` incremental + `rating_history`. Setups via extensão Chrome, deduplicados pelo evento Garage61. |
 | iRStats | `race_results` (resultados, Δ iRating exato por corrida, wins) | Bookmarklet no navegador (`public/irstats-import.js`) — ver "Por que não é 100% automático" abaixo. Idempotente por `irstats_race_id`. |
 | Supabase Storage | CSV da referência e arquivos de setup | Apenas metadados e caminho ficam nas tabelas. |
-| ~~Snapshot oficial~~ | ~~`official_series_results`~~ | **Descontinuado.** Tabela preservada, não lida por nenhuma rota. |
 
 No frontend, `/` consome as views de temporada, resultados e ratings (todas `race_results`-sourced); `/telemetry` consome a semana ativa (agora determinada pela corrida mais recente em `race_results`, não mais por `driving_sessions`) e as sessões/voltas Garage61 para a telemetria em si; o Meu Debrief consome `driving_sessions` (para achar a corrida com ≥5 voltas completadas de cada categoria) e `race_debriefs` como cache.
 
@@ -64,9 +65,7 @@ Isso significa que **sincronização 100% automática do iRStats não é viável
 | `cars` / `tracks` | Garage61 | Catálogo normalizado de carros e pistas — `race_results.car_id`/`track_id` são resolvidos contra este catálogo por nome (best-effort; ficam `null` sem match, nunca inventados). | `{id: 153, name: "Acura ARX-06 GTP", variant: null}` |
 | `drivers` | Garage61 | Piloto monitorado (single-user). | `id uuid`, `platform_driver_id text`, `name text` |
 | `ratings` | Garage61 | **Snapshot atual** de iRating/SR — é a âncora exata usada por `v_race_results_irating` para reconstruir o histórico completo a partir dos deltas do iRStats. Continua sendo sincronizado mesmo com iRating vindo do iRStats. | `id uuid`, `category text`, `rating_type text`, `rating integer`, `recorded_at timestamptz` |
-| `rating_history` | Garage61 (**legado**) | Série temporal de iRating/SR — só cobre ~10 meses. Não lida por nenhuma view/rota ativa desde a migração de 27/08. Mantida, não removida. | — |
-| `race_rating_matches` | Garage61 (**legado**) | Matching heurístico corrida↔mudança de rating — substituído pelo delta exato do iRStats. Não lido por nenhuma rota ativa. | — |
-| `official_series_results` | Snapshot manual (**descontinuado**) | 11 linhas de um snapshot manual pré-iRStats. Não lida por nenhuma rota ativa. | — |
+| `rating_history` | Garage61 | Série temporal de Safety Rating (e iRating pré-migração, hoje ignorado) — a ÚNICA fonte do gráfico de SR no Overview, já que o iRStats não expõe SR. Reconectada ao cron horário em 27/08 (estava órfã de sync). | — |
 | `car_group_members` / `car_groups` | Garage61 | Classe/grupo do carro (GT3, GTP, LMP2 etc.), usado por `v_historical_performance` para o Performance por Contexto. | — |
 | `car_rating_categories` | Garage61 | Mapeia carro → Formula/Sports Car (histórico; hoje `race_results.category` já vem pronto do iRStats). | — |
 | `daily_statistics` | Garage61 | Agregado diário de atividade. | — |
@@ -85,7 +84,8 @@ Isso significa que **sincronização 100% automática do iRStats não é viável
 | `v_season_weekly_irating` | `race_results` + `v_race_results_irating` | Gráfico semanal de iRating; `season_week` do iRStats quando disponível, senão calculado por data. |
 | `v_historical_performance` | `race_results` + `car_group_members` | Performance por Contexto (Track/GT3/IMSA); inclui `road` para contexto, sem afetar os KPIs de carteira. |
 | `v_season_calendar` | Hardcoded (datas de início de season) | Calendário compartilhado por todas as views acima — adicionar uma linha a cada nova season. |
-| `v_race_irating_candidates` | `driving_sessions` + `race_rating_matches` (**legado**) | Não lida por nenhuma rota ativa desde 27/08. |
+
+~~`v_race_irating_candidates`~~ removida em 27/08 junto com `race_rating_matches` (órfã, ver acima).
 
 ## Consultas de auditoria rápidas
 

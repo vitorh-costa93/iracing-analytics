@@ -259,13 +259,33 @@ function nearestCorner(corners: Corner[], start: number, end: number): Corner | 
 
 function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners: Corner[]): Comparison | null {
   const bins = Array.from({ length: 401 }, (_, index) => index / 4);
-  const fields: ChannelKey[] = ["speed", "throttle", "brake", "steering", "rpm", "gear", "clutch", "latAccel", "longAccel", "yawRate", "abs", "drs", "pushToPass", "p2pStatus", "p2pCount"];
+  const fields: ChannelKey[] = ["speed", "throttle", "brake", "steering", "rpm", "gear", "clutch", "latAccel", "longAccel", "yawRate", "abs", "drs", "pushToPass", "p2pStatus", "p2pCount", "lat", "lon"];
   const samples = bins.map((distance) => {
     const values: Record<string, number | null> = { distance };
     for (const field of fields) { values[`own_${field}`] = interpolate(own.points, distance, field); values[`ref_${field}`] = interpolate(reference.points, distance, field); }
     return values;
   }).filter((item) => item.own_speed && item.ref_speed && item.own_speed > 1 && item.ref_speed > 1);
   if (samples.length < 100) return null;
+  // Signed lateral offset (meters) between your GPS point and the reference's, at each sampled
+  // distance — a flat-earth local projection (fine at track scale) using your OWN heading as the
+  // tangent, so the sign reads as "the reference is to your left/right" at that instant. This is
+  // the closest thing to Garage61's "line distance" chart the recorded GPS supports: not real
+  // track-edge geometry, just how far apart the two driven paths are and which side.
+  for (let index = 1; index < samples.length - 1; index += 1) {
+    const cur = samples[index];
+    const prevLat = samples[index - 1].own_lat, prevLon = samples[index - 1].own_lon;
+    const nextLat = samples[index + 1].own_lat, nextLon = samples[index + 1].own_lon;
+    const ownLat = cur.own_lat, ownLon = cur.own_lon, refLat = cur.ref_lat, refLon = cur.ref_lon;
+    if (prevLat == null || prevLon == null || nextLat == null || nextLon == null || ownLat == null || ownLon == null || refLat == null || refLon == null) continue;
+    const latRad = (Number(prevLat) + Number(nextLat)) / 2 * Math.PI / 180;
+    const tx = (Number(nextLon) - Number(prevLon)) * 111320 * Math.cos(latRad);
+    const ty = (Number(nextLat) - Number(prevLat)) * 110540;
+    const tlen = Math.hypot(tx, ty) || 1;
+    const ux = tx / tlen, uy = ty / tlen;
+    const rx = (Number(refLon) - Number(ownLon)) * 111320 * Math.cos(latRad);
+    const ry = (Number(refLat) - Number(ownLat)) * 110540;
+    cur.lateral = ux * ry - uy * rx;
+  }
   const ownIntegral = samples.reduce((sum, item) => sum + 1 / Number(item.own_speed), 0);
   const refIntegral = samples.reduce((sum, item) => sum + 1 / Number(item.ref_speed), 0);
   const scale = ownLapTime / ownIntegral;
@@ -283,7 +303,7 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     const avg = (key: string) => rows.reduce((sum, item) => sum + Number(item[key] ?? 0), 0) / Math.max(1, rows.length);
     const ownTime = rows.reduce((sum, item) => sum + 1 / Number(item.own_speed), 0) * scale;
     const refTime = rows.reduce((sum, item) => sum + 1 / Number(item.ref_speed), 0) * scale;
-    return { index, gain: ownTime - refTime, speedGap: (avg("ref_speed") - avg("own_speed")) * 3.6, throttleGap: avg("ref_throttle") - avg("own_throttle"), brakeGap: avg("own_brake") - avg("ref_brake"), steeringGap: Math.abs(avg("own_steering")) - Math.abs(avg("ref_steering")), rpmGap: avg("ref_rpm") - avg("own_rpm"), gearGap: avg("ref_gear") - avg("own_gear"), latAccelGap: Math.abs(avg("ref_latAccel")) - Math.abs(avg("own_latAccel")) };
+    return { index, gain: ownTime - refTime, speedGap: (avg("ref_speed") - avg("own_speed")) * 3.6, throttleGap: avg("ref_throttle") - avg("own_throttle"), brakeGap: avg("own_brake") - avg("ref_brake"), steeringGap: Math.abs(avg("own_steering")) - Math.abs(avg("ref_steering")), rpmGap: avg("ref_rpm") - avg("own_rpm"), gearGap: avg("ref_gear") - avg("own_gear"), latAccelGap: Math.abs(avg("ref_latAccel")) - Math.abs(avg("own_latAccel")), lateralOffsetMeters: avg("lateral") };
   }).filter((item) => item.gain > 0.008).sort((a, b) => b.gain - a.gain).slice(0, 6);
   const opportunities = segments.map((item, rankIndex) => {
     const start = item.index * 5, end = (item.index + 1) * 5;
@@ -333,8 +353,19 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
       clause: `a referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`,
       instruction: "isso sugere marcha diferente ou ponto de troca mais tardio — cruze com a informação de marcha antes de mudar qualquer coisa",
     });
+    // Best-effort: sign is derived from your own heading as the tangent, so "esquerda"/"direita" is
+    // internally consistent but not independently verified against a known-good reference — treat
+    // the direction as a strong hint to check on the map, not gospel, if it ever reads backwards.
+    if (Math.abs(item.lateralOffsetMeters) > .3) {
+      const refToRight = item.lateralOffsetMeters > 0;
+      findings.push({
+        type: "line", weight: Math.abs(item.lateralOffsetMeters) * 40,
+        clause: `a referência passa ${Math.abs(item.lateralOffsetMeters).toFixed(1)} m mais à ${refToRight ? "direita" : "esquerda"} que você aqui`,
+        instruction: `experimente ir um pouco mais para a ${refToRight ? "direita" : "esquerda"} sem abusar do limite de pista`,
+      });
+    }
     findings.sort((a, b) => b.weight - a.weight);
-    const primaryType = (findings[0]?.type ?? "speed") as "braking-early" | "braking-late" | "throttle" | "brake-pressure" | "steering" | "gear" | "rotation" | "speed";
+    const primaryType = (findings[0]?.type ?? "speed") as "braking-early" | "braking-late" | "throttle" | "brake-pressure" | "steering" | "gear" | "rotation" | "speed" | "line";
 
     const tenths = item.gain * 10;
     const magnitude = rankIndex === 0 && tenths >= 0.15 ? "Essa é a maior oportunidade da volta: " : tenths >= 0.12 ? "Ganho relevante aqui: " : "";
@@ -386,6 +417,9 @@ function nearestGpsPoint(points: TracePoint[], distance: number) {
 }
 
 function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean }) {
+  // Own zoom state per map instance (sticky map, hover panel map, and popup map each zoom
+  // independently) -- must be declared before the early return below, ahead of any other hook.
+  const [zoomLevel, setZoomLevel] = useState(1);
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
   const refGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
@@ -411,29 +445,44 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
   const mapReference = zoom && refSelected.length >= 2 ? refSelected : refGps;
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
-  return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
-    {/* The "asphalt" ribbon has no real track-edge geometry behind it — we only have per-lap GPS,
-     * not the physical track boundary Garage61 draws from. Drawing the outline from BOTH traces
-     * (not just the own line) at least widens visibly wherever the two laps diverge (braking
-     * point, apex), which is the closest honest approximation of "how the track was used" the
-     * available data supports. */}
-    <polyline points={mapGps.map(project).join(" ")} className="track-outline" />
-    {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-outline" />}
-    <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
-    {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
-    {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
-    {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
-    {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r="5" className="track-marker" />}
-  </svg>;
+  return <div className="track-map-zoom-wrap">
+    <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
+      {/* Zoom, like Garage61's own map, is a plain scale around the view center — no new bounds are
+       * computed, it just magnifies/clips the same projected points. There is nothing to gain from
+       * refitting bounds per zoom level here: this map only ever has the GPS this lap recorded. */}
+      <g style={{ transform: `translate(150px,100px) scale(${zoomLevel}) translate(-150px,-100px)` }}>
+        {/* The "asphalt" ribbon has no real track-edge geometry behind it — we only have per-lap GPS,
+         * not the physical track boundary Garage61 draws from. Drawing the outline from BOTH traces
+         * (not just the own line) at least widens visibly wherever the two laps diverge (braking
+         * point, apex), which is the closest honest approximation of "how the track was used" the
+         * available data supports. */}
+        <polyline points={mapGps.map(project).join(" ")} className="track-outline" />
+        {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-outline" />}
+        <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
+        {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
+        {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
+        {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
+        {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r="5" className="track-marker" />}
+      </g>
+    </svg>
+    <div className="track-map-zoom-controls">
+      <button type="button" onClick={() => setZoomLevel((level) => Math.min(4, level * 1.5))} aria-label="Aproximar mapa">+</button>
+      <button type="button" onClick={() => setZoomLevel((level) => Math.max(1, level / 1.5))} aria-label="Afastar mapa">–</button>
+    </div>
+  </div>;
 }
 
 const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: number }[] = [
   { field: "speed", label: "SPEED", top: 4, height: 90 },
   { field: "throttle", label: "THROTTLE", top: 106, height: 56 },
   { field: "brake", label: "BRAKE", top: 174, height: 56 },
-  { field: "steering", label: "STEERING", top: 242, height: 94 },
+  // Gear as its own row (not just in the free-scroll main chart) so a corner insight popup shows
+  // shift timing/choice at a glance, not just pedal/wheel inputs — asked for explicitly since gear
+  // choice and shift point are themselves part of what "driving the corner well" means.
+  { field: "gear", label: "GEAR", top: 238, height: 40 },
+  { field: "steering", label: "STEERING", top: 286, height: 94 },
 ];
-const FOCUSED_HEIGHT = 344;
+const FOCUSED_HEIGHT = 386;
 
 /** Hover here drives the position marker on the linked TrackMap (via onHover), instead of a value
  * readout — the driver asked to see WHERE on track a point is, not read exact numbers off a tooltip. */
@@ -455,7 +504,7 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
       .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
   }
   return (
-    <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} preserveAspectRatio="none" className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio e volante; passe o mouse para ver a posição no mapa ao lado"
+    <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} preserveAspectRatio="none" className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio, marcha e volante; passe o mouse para ver a posição no mapa ao lado"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const x = (event.clientX - rect.left) / rect.width * width;
