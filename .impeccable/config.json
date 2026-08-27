@@ -26,6 +26,15 @@
         ],
         "createdAt": "2026-08-25T12:13:02.632Z",
         "reason": "sanctioned exception: simple progress-bar width transition in the irstats-import bookmarklet's injected debug overlay — a lightweight internal tool, not app UI subject to the design system"
+      },
+      {
+        "rule": "side-tab",
+        "value": "border-left: 3px solid var(--border-strong)",
+        "files": [
+          "app/globals.css"
+        ],
+        "createdAt": "2026-08-27T14:22:41.767Z",
+        "reason": "functional severity indicator (great/good/warn/bad per sector row), not decorative -- consistent with the .sector-map-segment color-coding pattern used throughout this component"
       }
     ]
   }
