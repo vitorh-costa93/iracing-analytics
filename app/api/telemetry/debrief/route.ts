@@ -5,7 +5,7 @@ import { lookupCornerNames } from "@/lib/track-corners";
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
 
 const GARAGE61_BASE = "https://garage61.net/api/v1";
-const MIN_RACE_MINUTES = 15;
+const MIN_LAPS = 5;
 const MAX_LAPS = 10;
 const PAGE_SIZE = 250;
 // "gtp_car" is a debrief-only grouping, not an iRacing/Garage61 iRating category — Garage61 only
@@ -197,7 +197,7 @@ async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCat
 
   const { data: sessions, error: sessionsError } = await supabaseAdmin
     .from("driving_sessions")
-    .select("id,garage61_event_id,car_id,track_id,started_at,ended_at")
+    .select("id,garage61_event_id,car_id,track_id,started_at,ended_at,lap_count")
     .eq("driver_id", driverId).eq("session_type", 3)
     .not("garage61_event_id", "is", null).not("car_id", "is", null).not("track_id", "is", null)
     .order("started_at", { ascending: false }).limit(200);
@@ -207,13 +207,14 @@ async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCat
 
   for (const category of RATING_CATEGORIES) {
     const carIds = new Set(carIdsForCategory.get(category) ?? []);
-    const candidate = (sessions ?? []).find((row) => {
-      if (!carIds.has(row.car_id)) return false;
-      const minutes = (new Date(row.ended_at).getTime() - new Date(row.started_at).getTime()) / 60000;
-      return Number.isFinite(minutes) && minutes >= MIN_RACE_MINUTES;
-    });
+    // Validity is completed laps, not session duration: a race abandoned on lap 2 can still sit on
+    // track/in the pits long enough to clear a minutes-based threshold, wrongly picking an invalid
+    // race over an earlier one that was actually raced. MIN_LAPS matches the sector-consistency
+    // sub-tab's own floor (app/api/telemetry/sectors/route.ts) so "valid" means the same thing in
+    // both places instead of one silently rejecting what the other just accepted.
+    const candidate = (sessions ?? []).find((row) => carIds.has(row.car_id) && (row.lap_count ?? 0) >= MIN_LAPS);
     const categoryLabel = category === "formula_car" ? "Formula Car" : category === "gtp_car" ? "GTP" : "Sports Car";
-    if (!candidate) { results[category] = { status: "ok", session: null, message: `Nenhuma corrida de ${categoryLabel} com pelo menos ${MIN_RACE_MINUTES} minutos encontrada.` }; continue; }
+    if (!candidate) { results[category] = { status: "ok", session: null, message: `Nenhuma corrida de ${categoryLabel} com pelo menos ${MIN_LAPS} voltas completadas encontrada.` }; continue; }
 
     const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", category).maybeSingle();
     // "trackOutline" was added after some payloads were already cached — treat its absence as a stale

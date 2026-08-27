@@ -140,7 +140,7 @@ export default function RaceDebrief() {
     return () => { active = false; };
   }, [retryCount]);
 
-  if (loading) return <div className="telemetry-state">Buscando sua última corrida válida (mínimo 15 minutos) em cada categoria e baixando telemetria das melhores voltas...</div>;
+  if (loading) return <div className="telemetry-state">Buscando sua última corrida válida (mínimo 5 voltas completadas) em cada categoria e baixando telemetria das melhores voltas...</div>;
   if (error) return <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={() => setRetryCount((count) => count + 1)}>Tentar novamente</button></div>;
 
   const data = categories?.[selected];
