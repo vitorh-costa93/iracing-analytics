@@ -112,6 +112,12 @@ function parseTelemetryCsv(csv: string): Trace {
   };
 }
 
+function traceUsesOvertake(trace: Trace) {
+  return trace.points.some((point) =>
+    Number(point.pushToPass ?? 0) > 0 || Number(point.p2pStatus ?? 0) > 0 || Number(point.p2pCount ?? 0) > 0
+  );
+}
+
 function readIbtValue(view: DataView, offset: number, type: number) {
   if (type === 0) return view.getInt8(offset);
   if (type === 1) return view.getUint8(offset);
@@ -160,6 +166,7 @@ function ibtToBestLapCsv(buffer: ArrayBuffer) {
   let points: LapPoint[] = [];
   let touchedPit = false;
   let best: { duration: number; points: LapPoint[] } | null = null;
+  const overtakeIndexes = ["PushToPass", "P2P_Status", "P2P_Count"].map((name) => exported.indexOf(name)).filter((index) => index >= 0);
   const finishLap = () => {
     if (points.length < 100 || touchedPit) return;
     const ordered = [...points].sort((a, b) => a.distance - b.distance);
@@ -167,6 +174,7 @@ function ibtToBestLapCsv(buffer: ArrayBuffer) {
     const maxDistance = ordered[ordered.length - 1].distance;
     const duration = points[points.length - 1].time - points[0].time;
     if (minDistance > 0.03 || maxDistance < 0.97 || duration <= 10) return;
+    if (overtakeIndexes.some((index) => points.some((point) => Number(point.values[index] ?? 0) > 0))) return;
     if (!best || duration < best.duration) best = { duration, points: ordered };
   };
 
@@ -377,12 +385,15 @@ function nearestGpsPoint(points: TracePoint[], distance: number) {
   return best;
 }
 
-function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, opportunities }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; opportunities?: Comparison["opportunities"] }) {
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean }) {
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
   const refGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
-  const selected = range ? gps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
-  const refSelected = range && refGps.length ? refGps.filter((point) => point.distance >= range[0] && point.distance <= range[1]) : [];
+  // Keep the map window slightly wider than the input window: a hover must always have visible
+  // approach and exit context on the linked trajectory.
+  const mapRange = range ? [Math.max(0, range[0] - 3), Math.min(100, range[1] + 3)] as [number, number] : null;
+  const selected = mapRange ? gps.filter((point) => point.distance >= mapRange[0] && point.distance <= mapRange[1]) : [];
+  const refSelected = mapRange && refGps.length ? refGps.filter((point) => point.distance >= mapRange[0] && point.distance <= mapRange[1]) : [];
 
   let boundsPoints = gps;
   if (zoom && (selected.length >= 2 || refSelected.length >= 2)) {
@@ -391,7 +402,8 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, opportuni
     const center = (range[0] + range[1]) / 2;
     boundsPoints = [...gps, ...refGps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 16);
   }
-  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, zoom ? 18 : 18, Boolean(zoom));
+  // Never stretch X and Y independently: it made real corners look physically impossible.
+  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, 18, false);
   const project = (point: TracePoint) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   // In the hover card, render only the local section. Drawing the entire lap against local bounds
   // compressed the useful traces into an unreadable line at the edge of the map.
@@ -401,10 +413,7 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, opportuni
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
     <polyline points={mapGps.map(project).join(" ")} className="track-outline" />
-    {!zoom && opportunities?.map((item) => {
-      const segment = gps.filter((point) => point.distance >= item.start && point.distance <= item.end);
-      return segment.length > 1 ? <polyline key={`${item.start}-${item.end}`} points={segment.map(project).join(" ")} className={`track-opportunity track-opportunity-${item.primaryType}`} /> : null;
-    })}
+    <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
     {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
     {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
     {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
@@ -416,9 +425,9 @@ const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: num
   { field: "speed", label: "SPEED", top: 4, height: 90 },
   { field: "throttle", label: "THROTTLE", top: 106, height: 56 },
   { field: "brake", label: "BRAKE", top: 174, height: 56 },
-  { field: "steering", label: "STEERING", top: 242, height: 78 },
+  { field: "steering", label: "STEERING", top: 242, height: 94 },
 ];
-const FOCUSED_HEIGHT = 324;
+const FOCUSED_HEIGHT = 344;
 
 /** Hover here drives the position marker on the linked TrackMap (via onHover), instead of a value
  * readout — the driver asked to see WHERE on track a point is, not read exact numbers off a tooltip. */
@@ -554,8 +563,10 @@ export default function ActiveWeekTelemetry() {
         const result = await response.json();
         if (!response.ok) throw new Error(result.message ?? "Erro ao carregar referência");
         if (active && result.reference) {
+          const parsed = parseTelemetryCsv(result.reference.csv);
+          if (/super formula sf23/i.test(selected.car.name) && traceUsesOvertake(parsed)) throw new Error("A referência ativa usa P2P/Overtake. Envie ou mantenha uma volta sem esse recurso.");
           setReference(result.reference);
-          setReferenceTrace(parseTelemetryCsv(result.reference.csv));
+          setReferenceTrace(parsed);
         }
       })
       .catch((reason) => active && setReferenceMessage(reason instanceof Error ? reason.message : String(reason)));
@@ -582,6 +593,8 @@ export default function ActiveWeekTelemetry() {
         uploadFile = new File([converted.csv], name, { type: "text/csv" });
         setReferenceMessage(`Volta de ${formatLapTime(converted.duration)} extraída com ${converted.samples.toLocaleString("pt-BR")} amostras. Enviando referência normalizada...`);
       }
+      const parsedUpload = parseTelemetryCsv(await uploadFile.text());
+      if (/super formula sf23/i.test(selected.car.name) && traceUsesOvertake(parsedUpload)) throw new Error("A referência usa P2P/Overtake. Escolha uma volta sem esse recurso.");
       const form = new FormData();
       form.set("file", uploadFile);
       form.set("carId", String(selected.car.id));
@@ -589,8 +602,10 @@ export default function ActiveWeekTelemetry() {
       const response = await fetch("/api/telemetry/reference", { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "Erro no upload da referência");
+      const parsedReference = parseTelemetryCsv(result.reference.csv);
+      if (/super formula sf23/i.test(selected.car.name) && traceUsesOvertake(parsedReference)) throw new Error("A referência armazenada usa P2P/Overtake. Escolha uma volta sem esse recurso.");
       setReference(result.reference);
-      setReferenceTrace(parseTelemetryCsv(result.reference.csv));
+      setReferenceTrace(parsedReference);
       setReferenceMessage("Referência ativa atualizada.");
     } catch (reason) {
       setReferenceMessage(reason instanceof Error ? reason.message : String(reason));
@@ -660,7 +675,6 @@ export default function ActiveWeekTelemetry() {
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
                     </button>
                   )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos segmentos analisados.</p>}</div>
-              <div className="track-opportunity-overview"><div><span className="section-kicker">MAPA DE OPORTUNIDADES</span><h3>A pista toda, com os trechos priorizados</h3><p>Os trechos coloridos reproduzem as Maiores Oportunidades; selecione o card acima para abrir o recorte detalhado nos inputs.</p></div><TrackMap trace={trace} referenceTrace={referenceTrace} range={null} opportunities={comparison.opportunities} /></div>
               <div className="channel-report"><h3>Relatório de inputs</h3>{comparison.channelInsights.map((insight) => <p key={insight}>{insight}</p>)}</div>
               <p className="comparison-note">Tempos e ganhos são estimados pela integração de velocidade normalizada por distância. Confirme cada hipótese nos traços; combustível, setup, clima e aderência podem explicar diferenças.</p>
             </div>

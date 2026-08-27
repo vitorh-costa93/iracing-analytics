@@ -38,6 +38,42 @@ type Garage61Lap = {
 
 type Garage61LapsResponse = { items?: Garage61Lap[] };
 
+function median(values: number[]) {
+  const ordered = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(ordered.length / 2);
+  return ordered.length % 2 ? ordered[middle] : (ordered[middle - 1] + ordered[middle]) / 2;
+}
+
+/** Garage61 does not reliably include P2P flags in every lap listing. On SF23, exclude only a
+ * clearly implausible low-time outlier so an overtake-assisted lap cannot become the selected lap. */
+function withoutLikelyOvertakeLaps(laps: Garage61Lap[]) {
+  if (laps.length < 5) return laps;
+  const times = laps.map((lap) => Number(lap.lapTime)).filter(Number.isFinite);
+  const center = median(times);
+  const mad = median(times.map((time) => Math.abs(time - center)));
+  const threshold = Math.max(0.45, mad * 3.5);
+  return laps.filter((lap) => Number(lap.lapTime) >= center - threshold);
+}
+
+async function fetchWeekLaps(carId: number, trackId: number, weekStart: Date, weekEnd: Date) {
+  const laps: Garage61Lap[] = [];
+  for (let offset = 0; ; offset += PAGE_SIZE) {
+    const response = await garage61Get<Garage61LapsResponse>("/laps", { cars: carId, tracks: trackId, drivers: "me", group: "none", unclean: "true", lapTypes: "1,2,3,4", limit: PAGE_SIZE, offset });
+    const page = response.items ?? [];
+    laps.push(...page);
+    if (page.length < PAGE_SIZE) break;
+    const oldest = page.reduce<Date | null>((value, lap) => {
+      const date = lap.startTime ? new Date(lap.startTime) : null;
+      return date && Number.isFinite(date.getTime()) && (!value || date < value) ? date : value;
+    }, null);
+    if (oldest && oldest < weekStart) break;
+  }
+  return laps.filter((lap) => {
+    const date = lap.startTime ? new Date(lap.startTime) : null;
+    return !!date && Number.isFinite(date.getTime()) && date >= weekStart && date < weekEnd;
+  });
+}
+
 function isEligibleLap(lap: Garage61Lap, weekStart: Date, weekEnd: Date) {
   if (!lap.startTime || !lap.clean || !lap.canViewTelemetry) return false;
   const startedAt = new Date(lap.startTime);
@@ -132,27 +168,14 @@ export async function GET() {
     const tracks = new Map(((tracksResult.data ?? []) as CatalogRow[]).map((item) => [item.id, item]));
 
     const combinations = await Promise.all(pairs.map(async (pair) => {
-      const response = await garage61Get<Garage61LapsResponse>("/laps", {
-        cars: pair.carId,
-        tracks: pair.trackId,
-        drivers: "me",
-        group: "none",
-        unclean: "true",
-        lapTypes: "1,2,3,4",
-        limit: PAGE_SIZE,
-        offset: 0,
-      });
-      const currentWeekLaps = (response.items ?? []).filter((lap) => {
-        if (!lap.startTime) return false;
-        const date = new Date(lap.startTime);
-        return Number.isFinite(date.getTime()) && date >= weekStart && date < weekEnd;
-      });
+      const currentWeekLaps = await fetchWeekLaps(pair.carId, pair.trackId, weekStart, weekEnd);
       const eligibleLaps = currentWeekLaps
         .filter((lap) => isEligibleLap(lap, weekStart, weekEnd));
       const car = cars.get(pair.carId);
       const isSuperFormula = /super formula sf23/i.test(car?.name ?? "");
       const usedOvertake = (lap: Garage61Lap) => Boolean(lap.pushToPass) || Boolean(lap.p2pStatus) || Number(lap.p2pCount ?? 0) > 0;
-      const raceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && (!isSuperFormula || !usedOvertake(lap)));
+      const rawRaceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && (!isSuperFormula || !usedOvertake(lap)));
+      const raceLaps = isSuperFormula ? withoutLikelyOvertakeLaps(rawRaceLaps) : rawRaceLaps;
       const practiceLaps = eligibleLaps.filter((lap) => lap.sessionType === 1);
       // Race pace is the representative reference once a race exists; otherwise practice is the
       // best way to prepare for a scheduled race. Qualifying is only a last-resort fallback.

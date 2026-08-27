@@ -16,7 +16,7 @@ const RATING_CATEGORIES = ["formula_car", "sports_car", "gtp_car"] as const;
 type RatingCategory = (typeof RATING_CATEGORIES)[number];
 
 type Garage61Lap = {
-  id: string; startTime?: string; lapTime?: number; lapNumber?: number; sessionType?: number; event?: string;
+  id: string; startTime?: string; lapTime?: number; lapNumber?: number; sessionType?: number; event?: string | { id?: string };
   clean?: boolean; joker?: boolean; discontinuity?: boolean; missing?: boolean; incomplete?: boolean;
   offtrack?: boolean; pitLane?: boolean; pitIn?: boolean; pitOut?: boolean; canViewTelemetry?: boolean;
 };
@@ -218,7 +218,7 @@ async function computeDebrief(driverId: string, rowCarIds: Map<number, RatingCat
     const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", category).maybeSingle();
     // "trackOutline" was added after some payloads were already cached — treat its absence as a stale
     // schema and force a rebuild once, rather than serving old payloads without the corner map forever.
-    const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && (cached.payload as Record<string, unknown>)?.cornerDetectionVersion === 2;
+    const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && (cached.payload as Record<string, unknown>)?.cornerDetectionVersion === 3;
     if (cachedIsFresh) { results[category] = cached!.payload; continue; }
 
     try {
@@ -242,7 +242,7 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
 
   const allLaps = await fetchAllLaps(session.car_id, session.track_id);
   const eventLaps = allLaps.filter((lap) =>
-    lap.event === session.garage61_event_id && lap.canViewTelemetry &&
+    (typeof lap.event === "string" ? lap.event : lap.event?.id) === session.garage61_event_id && lap.canViewTelemetry &&
     Number.isFinite(lap.lapTime) && Number(lap.lapTime) > 0 &&
     !lap.incomplete && !lap.missing && !lap.pitLane && !lap.pitIn && !lap.pitOut
   );
@@ -407,7 +407,7 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     corners: cornerReports,
     cornerNarratives,
     trackOutline,
-    cornerDetectionVersion: 2,
+    cornerDetectionVersion: 3,
     summary: `Analisei suas ${validTraces.length} voltas mais rápidas dessa corrida (${formatLapTime(sortedLapTimes[0])} a ${formatLapTime(sortedLapTimes[sortedLapTimes.length - 1])}, desvio padrão de ${lapTimeStddev.toFixed(3)}s), com ${cornerReports.length} curvas identificadas e comparadas volta a volta. Seu ritmo foi ${consistencyWord} entre as voltas.${trendText}${excludedOutliers.length ? ` Descartei ${excludedOutliers.length} volta(s) estatisticamente anômala(s) (rápida(s) demais para o seu ritmo real, provável overtake): ${excludedOutliers.map((item) => `volta ${item.lapNumber ?? "?"} em ${item.lapTime}`).join(", ")}.` : ""}${!overtakeChannelAvailable && isSuperFormula ? " Aviso: a Garage61 não exporta o canal de overtake/push-to-pass nessas voltas, então a detecção acima é estatística (outlier de tempo), não uma leitura direta do overtake — confira manualmente se restar dúvida." : ""}`,
     strengths,
     improvements,

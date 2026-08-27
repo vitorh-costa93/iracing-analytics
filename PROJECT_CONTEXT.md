@@ -262,6 +262,8 @@ Em 26/08/2026 foi adicionada a extensão local Chrome `chrome-extension/`, neces
 
 Na revisão seguinte, o carregamento remoto por tag `<script>` foi substituído por execução dos importadores empacotados na própria extensão, via `chrome.scripting.executeScript` no mundo principal da aba. Isso evita bloqueio por Content Security Policy de iRStats/Garage61. Após atualizar a extensão local, é preciso usar o botão Recarregar em `chrome://extensions` antes de disparar um novo sync.
 
+Em 27/08/2026, a comparação de telemetria voltou ao modelo solicitado: uma linha base mais grossa para a pista e duas linhas finas contínuas/tracejadas para a volta do piloto e a referência. O mapa geral de oportunidades foi removido porque não fazia parte do fluxo de análise. Os recortes de hover e popup preservam a proporção geográfica (sem esticar eixos) e incluem contexto de entrada/saída; o gráfico focalizado ganhou altura para não cortar o volante. A telemetria semanal agora pagina voltas do Garage61 em vez de assumir que a primeira página contém toda a semana. Para SF23, flags explícitas de P2P são excluídas e, quando o Garage61 não envia o canal, somente um outlier de tempo claramente incompatível é excluído de forma conservadora. Referências CSV/IBT que indicam P2P ativo são recusadas; o leitor IBT escolhe a melhor volta completa sem P2P. O cache de debrief foi elevado para a versão 3 e aceita as duas formas observadas de identificador de evento do Garage61.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:
