@@ -204,8 +204,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .hover-line { stroke: var(--text); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .telemetry-hover-panel { position: sticky; top: 16px; min-width: 0; padding: 14px; border: 1px solid var(--border-strong); background: #08080a; color: var(--text); align-self: start; }
 .telemetry-hover-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.telemetry-hover-map { margin: 4px 0 10px; border-radius: 3px; overflow: hidden; background: var(--surface-raised); }
-.telemetry-hover-map .track-map { height: 220px; }
+.telemetry-hover .telemetry-hover-map { display: block; margin: 4px 0 10px; border-radius: 3px; overflow: hidden; background: var(--surface-raised); }
+.telemetry-hover-map .track-map { width: 100%; height: auto; aspect-ratio: 3 / 2; }
 .telemetry-hover-map .track-outline { stroke: var(--border-strong); }
 .telemetry-hover > strong { display: block; margin-bottom: 7px; font-size: 13px; font-family: var(--display); }.telemetry-hover div { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; padding: 2px 0; font-family: var(--mono); font-size: 11px; }.telemetry-hover span { color: var(--muted); text-transform: uppercase; }.telemetry-hover b { font-weight: 500; }.telemetry-hover em { color: #d0a8f0; font-style: normal; }
 .insights-grid button ul { margin: 8px 0 0; padding-left: 15px; color: var(--muted); font-size: 11px; line-height: 1.6; }
@@ -241,9 +241,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insights-grid button p, .comparison-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .comparison-note { margin: 10px 0 0; }
 .track-map-panel { margin-top: 20px; padding: 14px; border: 1px solid var(--border); background: var(--surface-muted); }.track-map-panel h3 { margin: 4px 0 8px; font-size: 16px; }.track-map-panel > p, .track-map-empty { margin: 6px 0 0; color: var(--soft); font-size: 11px; }
-.track-map { width: 100%; height: 220px; display: block; }.track-outline { fill: none; stroke: var(--border-strong); stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }.track-own-line { fill: none; stroke: var(--red); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 3; }.track-marker-ref { fill: var(--bg); stroke: var(--blue); stroke-width: 3; }.track-reference { fill: none; stroke: var(--blue); stroke-width: 2.25; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
+.track-map { width: 100%; height: 220px; display: block; }.track-outline { fill: none; stroke: var(--border-strong); stroke-width: 7; stroke-linejoin: round; stroke-linecap: round; }.track-own-line { fill: none; stroke: var(--red); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 4; }.track-marker-ref { fill: var(--bg); stroke: var(--blue); stroke-width: 4; }.track-reference { fill: none; stroke: var(--blue); stroke-width: 4; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 8 5; vector-effect: non-scaling-stroke; }
 .track-map-legend { display: flex; gap: 14px; margin: 6px 0 0; font-family: var(--mono); font-size: 10px; color: var(--muted); }.track-map-legend span { display: inline-flex; align-items: center; gap: 5px; }.track-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; }.track-map-legend .own::before { background: var(--red); }.track-map-legend .reference::before { background: var(--blue); background-image: repeating-linear-gradient(90deg, var(--blue) 0 3px, transparent 3px 6px); }
-.telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(260px, 310px); gap: 18px; align-items: start; margin-top: 10px; }.telemetry-map-sticky { display: none; }.interactive-chart { grid-column: 1; grid-row: 1; }.telemetry-hover-panel { grid-column: 2; grid-row: 1; }.telemetry-hover-map .track-map { height: 290px; }
+.telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); gap: 18px; align-items: start; margin-top: 10px; }.telemetry-map-sticky { display: none; }.interactive-chart { grid-column: 1; grid-row: 1; }.telemetry-hover-panel { grid-column: 2; grid-row: 1; }
 
 .insight-popup-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(3,5,7,.72); padding: 20px; }
 .insight-popup { width: min(760px, 100%); max-height: 88vh; overflow: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 3px; padding: 22px; box-shadow: 0 24px 70px rgba(0,0,0,.5); }
@@ -257,7 +257,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-map .track-map { height: 100%; min-height: 360px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
-.focused-chart { width: 100%; height: 364px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; }
+.focused-chart { width: 100%; height: 100%; min-height: 360px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; }
 .focused-chart text { fill: var(--soft); font-size: 10px; font-family: var(--mono); }
 .focused-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .focused-chart .trace-steering { stroke-width: 2.5; }
@@ -376,7 +376,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .rating-chart-grid, .setup-grid, .official-results-grid { grid-template-columns: 1fr; }
   .telemetry-workspace, .corner-mini-row, .sector-map-layout { grid-template-columns: 1fr; }
   .telemetry-map-sticky, .interactive-chart, .telemetry-hover-panel { grid-column: 1; grid-row: auto; position: static; }
-  .telemetry-map-sticky .track-map { height: 330px; }
+  .telemetry-map-sticky .track-map { height: auto; aspect-ratio: 3 / 2; }
   .corner-mini-map { height: 220px; }
   .setup-diff article { grid-template-columns: 1fr; gap: 10px; }
 }
