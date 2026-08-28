@@ -33,6 +33,7 @@ type Comparison = {
   averageSpeedDifference: number;
   opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; kind: "corner" | "straight"; cornerNumber: number | null; cornerLabel: string | null; primaryType: string }[];
   channelInsights: string[];
+  lineDistance: { distance: number; meters: number }[];
 };
 
 type IbtVariable = { type: number; offset: number };
@@ -440,7 +441,46 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
       ? [`Push-to-pass: a referência IBT contém os canais de acionamento, estado e contagem. Use o tooltip para separar ganho de potência de ganho de pilotagem.`]
       : []),
   ];
-  return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
+  // Full-lap line-distance series (Garage61's own "line distance" chart) -- the same signed lateral
+  // metric already used for the per-opportunity insight text above, just exposed point-by-point
+  // instead of averaged into 5% buckets, so it can be drawn as an actual chart instead of only read
+  // as a sentence. This is the honest, data-backed way to show "how far apart the two lines are" —
+  // the track map's ribbon can't (see TrackMap's own comments on why).
+  const lineDistance = samples.filter((item) => item.lateral !== undefined).map((item) => ({ distance: Number(item.distance), meters: Number(item.lateral) }));
+  return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights, lineDistance };
+}
+
+/** Garage61's "line distance" chart, replicated with our own GPS math (see compareTraces): signed
+ * lateral offset in meters between your line and the reference's, across the whole lap. This is
+ * the honest way to show line divergence — the track map's ribbon can't (no real track-edge
+ * geometry to draw against; see TrackMap's comments), but real GPS math absolutely can chart it. */
+function LineDistanceChart({ points, hoveredDistance, onHover }: { points: { distance: number; meters: number }[]; hoveredDistance: number | null; onHover: (distance: number | null) => void }) {
+  const width = 1000, height = 130, pad = { left: 44, right: 14, top: 16, bottom: 22 };
+  if (points.length < 2) return null;
+  const maxAbs = Math.max(1, ...points.map((point) => Math.abs(point.meters)));
+  const usableHeight = height - pad.top - pad.bottom, usableWidth = width - pad.left - pad.right;
+  const scaleY = (value: number) => pad.top + (1 - (value + maxAbs) / (2 * maxAbs)) * usableHeight;
+  const scaleX = (distance: number) => pad.left + (distance / 100) * usableWidth;
+  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${scaleX(point.distance).toFixed(1)} ${scaleY(point.meters).toFixed(1)}`).join(" ");
+  const hoverPoint = hoveredDistance !== null ? points.reduce((best, point) => Math.abs(point.distance - hoveredDistance) < Math.abs(best.distance - hoveredDistance) ? point : best, points[0]) : null;
+  const ticks = [maxAbs, maxAbs / 2, 0, -maxAbs / 2, -maxAbs];
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="line-distance-chart" role="img" aria-label="Distância lateral entre sua linha e a da referência ao longo da volta, em metros"
+      onMouseMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = (event.clientX - rect.left) / rect.width * width;
+        onHover(Math.max(0, Math.min(100, ((x - pad.left) / usableWidth) * 100)));
+      }}
+      onMouseLeave={() => onHover(null)}>
+      {ticks.map((tick) => <g key={tick}><line x1={pad.left} x2={width - pad.right} y1={scaleY(tick)} y2={scaleY(tick)} className={tick === 0 ? "line-distance-zero" : "line-distance-grid"} /><text x={pad.left - 6} y={scaleY(tick) + 3} textAnchor="end" className="debrief-axis">{tick > 0 ? `+${tick.toFixed(0)}` : tick.toFixed(0)}</text></g>)}
+      <path d={path} className="line-distance-path" />
+      {hoverPoint && <>
+        <line x1={scaleX(hoverPoint.distance)} x2={scaleX(hoverPoint.distance)} y1={pad.top} y2={height - pad.bottom} className="hover-line" />
+        <circle cx={scaleX(hoverPoint.distance)} cy={scaleY(hoverPoint.meters)} r="4.5" className="line-distance-marker" />
+        <text x={Math.min(width - pad.right - 130, scaleX(hoverPoint.distance) + 10)} y={pad.top + 12} className="line-distance-label">{hoverPoint.meters >= 0 ? "Direita" : "Esquerda"} {Math.abs(hoverPoint.meters).toFixed(2)} m</text>
+      </>}
+    </svg>
+  );
 }
 
 function nearestGpsPoint(points: TracePoint[], distance: number) {
@@ -526,9 +566,34 @@ const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: num
   // shift timing/choice at a glance, not just pedal/wheel inputs — asked for explicitly since gear
   // choice and shift point are themselves part of what "driving the corner well" means.
   { field: "gear", label: "GEAR", top: 238, height: 40 },
-  { field: "steering", label: "STEERING", top: 286, height: 94 },
 ];
+// Steering is rendered as two rotating wheels (own/reference), not a line — a line graph forces
+// you to read numbers and infer the motion; a wheel that visibly turns the same amount you turned
+// it shows the actual movement at a glance, which is what "did I match the reference's hand
+// motion here" really asks.
+const STEERING_ROW_TOP = 286, STEERING_ROW_HEIGHT = 100;
 const FOCUSED_HEIGHT = 386;
+
+function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: number; cy: number; radius: number; angleRad: number | null; label: string; className: string }) {
+  const degrees = angleRad !== null ? angleRad * 180 / Math.PI : 0;
+  const spokeAngles = [90, 210, 330]; // one spoke pointing "up" at rest, like a real wheel's 12 o'clock mark
+  return (
+    <g>
+      <circle cx={cx} cy={cy} r={radius + 12} className="steering-wheel-backdrop" />
+      <g transform={`translate(${cx},${cy}) rotate(${degrees})`} className={`steering-wheel ${className} ${angleRad === null ? "steering-wheel-empty" : ""}`}>
+        <circle r={radius} className="steering-wheel-rim" />
+        {spokeAngles.map((deg) => {
+          const rad = deg * Math.PI / 180;
+          return <line key={deg} x1="0" y1="0" x2={Math.cos(rad) * radius} y2={-Math.sin(rad) * radius} className="steering-wheel-spoke" />;
+        })}
+        <circle r="5" className="steering-wheel-hub" />
+        <circle cx="0" cy={-radius} r="3.5" className="steering-wheel-mark" />
+      </g>
+      <text x={cx} y={cy + radius + 26} textAnchor="middle" className="steering-wheel-label">{label}</text>
+      <text x={cx} y={cy + radius + 40} textAnchor="middle" className="steering-wheel-value">{angleRad !== null ? `${degrees >= 0 ? "" : "−"}${Math.abs(degrees).toFixed(0)}°` : "—"}</text>
+    </g>
+  );
+}
 
 /** Hover here drives the position marker on the linked TrackMap (via onHover), instead of a value
  * readout — the driver asked to see WHERE on track a point is, not read exact numbers off a tooltip. */
@@ -567,6 +632,20 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
           {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
         </g>
       ))}
+      {(() => {
+        // Defaults to the middle of the focused range before any hover, so the wheels never sit
+        // blank on first render — matches what the line-based rows already show (a static shape)
+        // instead of forcing a mouse move just to see anything at all.
+        const wheelDistance = hoverDistance ?? (range[0] + range[1]) / 2;
+        const ownAngle = interpolate(ownPts, wheelDistance, "steering");
+        const refAngle = reference ? interpolate(refPts, wheelDistance, "steering") : null;
+        const wheelY = STEERING_ROW_TOP + STEERING_ROW_HEIGHT / 2;
+        return <g>
+          <text x="4" y={STEERING_ROW_TOP + 12} className="channel-label">STEERING</text>
+          <SteeringWheel cx={width * 0.32} cy={wheelY} radius={34} angleRad={ownAngle} label="VOCÊ" className="own" />
+          {reference && <SteeringWheel cx={width * 0.68} cy={wheelY} radius={34} angleRad={refAngle} label="REFERÊNCIA" className="reference" />}
+        </g>;
+      })()}
       {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
     </svg>
   );
@@ -772,6 +851,12 @@ export default function ActiveWeekTelemetry() {
                 <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
+              {comparison.lineDistance.length > 1 && (
+                <div className="line-distance-block">
+                  <div className="insights-heading"><span className="section-kicker">LINE DISTANCE</span><h3>Distância lateral entre as duas linhas</h3><p>Positivo = referência mais à direita da sua linha; negativo = mais à esquerda. Passe o mouse para ver o valor exato em qualquer ponto da volta.</p></div>
+                  <LineDistanceChart points={comparison.lineDistance} hoveredDistance={hoveredDistance} onHover={setHoveredDistance} />
+                </div>
+              )}
               <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As curvas são numeradas na ordem em que aparecem na volta. Quando eu sei o nome real da curva, uso ele; quando não sei, mostro só o número.</p></div>
                   <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
                     <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); }} key={item.title}>
