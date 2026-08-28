@@ -22,10 +22,11 @@
         "rule": "layout-transition",
         "value": "width",
         "files": [
-          "public/irstats-import.js"
+          "public/irstats-import.js",
+          "chrome-extension/garage61-import.js"
         ],
         "createdAt": "2026-08-25T12:13:02.632Z",
-        "reason": "sanctioned exception: simple progress-bar width transition in the irstats-import bookmarklet's injected debug overlay — a lightweight internal tool, not app UI subject to the design system"
+        "reason": "sanctioned exception: simple progress-bar width transition in an injected debug overlay (irstats-import bookmarklet and the garage61-import extension content script share this exact pattern) — a lightweight internal tool, not app UI subject to the design system"
       },
       {
         "rule": "side-tab",
