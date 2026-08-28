@@ -43,14 +43,27 @@ export async function GET(request: NextRequest) {
     if (importedError) throw importedError;
     const importedEvents = new Set((importedSetups ?? []).map((row) => row.garage61_event_id).filter((id): id is string => typeof id === "string"));
 
+    // Events already visited recently (whether a setup was found or not) don't need a full
+    // hidden-iframe revisit every run -- each one costs several Garage61 API calls. A checked-empty
+    // event gets a week's grace before being retried, in case it was a transient failure.
+    const RECHECK_AFTER_DAYS = 7;
+    const recheckCutoff = new Date(Date.now() - RECHECK_AFTER_DAYS * 24 * 60 * 60 * 1000).toISOString();
+    const { data: recentlyChecked, error: checkedError } = await supabaseAdmin
+      .from("setup_import_checks")
+      .select("garage61_event_id")
+      .eq("driver_id", driver.id)
+      .gte("checked_at", recheckCutoff);
+    if (checkedError) throw checkedError;
+    const skipEvents = new Set([...importedEvents, ...(recentlyChecked ?? []).map((row) => row.garage61_event_id)]);
+
     const seen = new Set<string>();
     const events = (data ?? []).filter((row) => {
       if (seen.has(row.garage61_event_id as string)) return false;
       seen.add(row.garage61_event_id as string);
-      return !importedEvents.has(row.garage61_event_id as string);
+      return !skipEvents.has(row.garage61_event_id as string);
     }).map((row) => ({ eventId: row.garage61_event_id, car: row.car_id, track: row.track_id, startedAt: row.started_at }));
 
-    return NextResponse.json({ status: "ok", days, events, alreadyImported: importedEvents.size }, { headers: CORS_HEADERS });
+    return NextResponse.json({ status: "ok", days, events, alreadyImported: importedEvents.size, recentlyChecked: (recentlyChecked ?? []).length }, { headers: CORS_HEADERS });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400, headers: CORS_HEADERS });
   }

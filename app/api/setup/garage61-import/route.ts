@@ -46,9 +46,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "error", message: "Chave de importação inválida" }, { status: 401, headers: CORS_HEADERS });
     }
 
-    const body = await request.json() as { items?: IncomingSetup[] };
+    const body = await request.json() as { items?: IncomingSetup[]; checkedEvents?: { eventId: string; car?: number; track?: number }[] };
     const items = body.items ?? [];
-    if (!items.length) throw new Error("Nenhum setup recebido");
+    const checkedEvents = body.checkedEvents ?? [];
+    if (!items.length && !checkedEvents.length) throw new Error("Nenhum setup recebido");
 
     const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (driverError || !driver) throw new Error("Piloto não encontrado");
@@ -88,6 +89,17 @@ export async function POST(request: NextRequest) {
         const detail = itemError instanceof Error ? itemError.message : (itemError && typeof itemError === "object" && "message" in itemError ? String((itemError as { message: unknown }).message) : JSON.stringify(itemError));
         errors.push(`${item.name ?? "?"}: ${detail}`);
       }
+    }
+
+    if (checkedEvents.length) {
+      const foundEventIds = new Set(items.map((item) => item.event).filter((id): id is string => typeof id === "string"));
+      const checkRows = checkedEvents.map((event) => ({
+        driver_id: driver.id, garage61_event_id: event.eventId,
+        car_id: event.car ?? null, track_id: event.track ?? null,
+        found: foundEventIds.has(event.eventId), checked_at: new Date().toISOString(),
+      }));
+      const { error: checksError } = await supabaseAdmin.from("setup_import_checks").upsert(checkRows, { onConflict: "driver_id,garage61_event_id" });
+      if (checksError) errors.push(`Falha ao registrar eventos verificados: ${checksError.message}`);
     }
 
     return NextResponse.json({ status: "ok", imported, skipped, errors: errors.slice(0, 20) }, { headers: CORS_HEADERS });
