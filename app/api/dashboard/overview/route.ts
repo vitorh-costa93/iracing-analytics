@@ -97,13 +97,18 @@ function parseLapTimeSeconds(text: string | null): number | null {
  * being silently dropped for lacking a fastest lap at all. Falls back to the driver's own fastest
  * lap only if the race-wide one wasn't captured (older imports, or the block was absent).
  */
-function estimateDurationMinutes(row: RaceResultRow): number | null {
+function estimateDurationMinutes(row: RaceResultRow, fallbackPaceSecondsByCar: Map<string, number>): number | null {
   if (row.laps === null) return null;
   // Zero completed laps is ~0 minutes by definition — no pace reference needed or possible (the
   // driver never set a timed lap), and older imports predating race_fastest_lap_time would
   // otherwise have no pace source at all here, wrongly dropping a real early-DNF point.
   if (row.laps === 0) return 0;
-  const paceSeconds = parseLapTimeSeconds(row.race_fastest_lap_time) ?? parseLapTimeSeconds(row.fastest_lap_time);
+  // Some race pages don't expose either fastest-lap field at all (seen on a 10th-place, 3-lap
+  // result — likely a short/incomplete race page layout irstats renders differently; not fully
+  // diagnosed since irstats.com can't be re-fetched from here to compare the raw HTML). Rather than
+  // silently dropping a real result from the Race Survival chart for a parsing gap on ONE field,
+  // fall back to this driver's own best known pace with that car this season.
+  const paceSeconds = parseLapTimeSeconds(row.race_fastest_lap_time) ?? parseLapTimeSeconds(row.fastest_lap_time) ?? fallbackPaceSecondsByCar.get(row.car_name ?? "") ?? null;
   if (paceSeconds === null) return null;
   return (paceSeconds * row.laps) / 60;
 }
@@ -456,11 +461,21 @@ export async function GET() {
       (row) => new Date(row.raced_at).getTime() >= currentSeasonStartMs
     );
 
+    // Best known pace per car this season, used only when a specific race's own fastest-lap fields
+    // are both missing (see estimateDurationMinutes) -- built from whichever rows DO have a pace.
+    const fallbackPaceSecondsByCar = new Map<string, number>();
+    for (const row of currentSeasonRaces) {
+      const pace = parseLapTimeSeconds(row.race_fastest_lap_time) ?? parseLapTimeSeconds(row.fastest_lap_time);
+      if (pace === null) continue;
+      const existing = fallbackPaceSecondsByCar.get(row.car_name);
+      if (existing === undefined || pace < existing) fallbackPaceSecondsByCar.set(row.car_name, pace);
+    }
+
     const races = currentSeasonRaces.map((row) => ({
       id: row.irstats_race_id,
       startedAt: row.raced_at,
       endedAt: row.raced_at,
-      durationMinutes: estimateDurationMinutes(row),
+      durationMinutes: estimateDurationMinutes(row, fallbackPaceSecondsByCar),
       delta: row.irating_after - row.irating_before,
       ratingCategory: row.category,
       car: row.car_name,

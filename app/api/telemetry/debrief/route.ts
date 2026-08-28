@@ -191,6 +191,34 @@ function cornerBand(validTraces: { points: TracePoint[] }[], cornerDistance: num
   return band;
 }
 
+/** Time (seconds) integrated over a distance range via Σ(Δ% / speed), then rescaled by this lap's
+ * own lapTime/fullLapIntegral ratio — the same technique compareTraces already uses to turn a
+ * reference lap's %-space integral into a comparable time. Used both for a whole lap (scale=1, to
+ * derive that ratio) and for a narrow corner window (to rank laps by pace through ONE corner,
+ * independent of how fast the rest of the lap was). */
+function integrateInverseSpeed(points: TracePoint[], windowStart: number, windowEnd: number, step = 0.5) {
+  let integral = 0;
+  for (let distance = windowStart; distance <= windowEnd; distance += step) {
+    const wrapped = ((distance % 100) + 100) % 100;
+    const speed = interpolate(points, wrapped, "speed");
+    if (speed !== null && speed > 1) integral += step / speed;
+  }
+  return integral;
+}
+
+/** Fine-grained (0.5%-step) brake/throttle/speed trace of ONE specific lap around a corner — unlike
+ * cornerBand's mean±stddev across all laps, this is a single real lap's actual curve, detailed
+ * enough to trace by eye: "brake like this, at this exact point, and you're faster here." */
+function laneCurve(points: TracePoint[], cornerDistance: number, channel: "brake" | "throttle" | "speed") {
+  const curve: { offset: number; value: number }[] = [];
+  for (let offset = -CORNER_WINDOW; offset <= CORNER_WINDOW; offset += 0.5) {
+    const distance = ((cornerDistance + offset) % 100 + 100) % 100;
+    const value = interpolate(points, distance, channel);
+    if (value !== null) curve.push({ offset: Number(offset.toFixed(1)), value: Number(value.toFixed(3)) });
+  }
+  return curve;
+}
+
 const SESSION_MATCH_WINDOW_MS = 3 * 3600_000; // driving_sessions.started_at vs race_results.raced_at drift observed in practice is minutes, not hours
 
 /** Locates the driving_sessions row that holds the telemetry for a given race_results row. There is
@@ -248,7 +276,7 @@ async function computeDebrief(driverId: string, gtpCarIds: Set<number>) {
     const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", category).maybeSingle();
     // "trackOutline" was added after some payloads were already cached — treat its absence as a stale
     // schema and force a rebuild once, rather than serving old payloads without the corner map forever.
-    const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && (cached.payload as Record<string, unknown>)?.cornerDetectionVersion === 3;
+    const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && (cached.payload as Record<string, unknown>)?.cornerDetectionVersion === 4;
     if (cachedIsFresh) { results[category] = cached!.payload; continue; }
 
     try {
@@ -350,6 +378,13 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
   const trackDisplayName = trackRow.data?.name ?? "";
   const trackVariant = trackRow.data?.variant ?? "";
   const researchedNames = lookupCornerNames(trackDisplayName, trackVariant, detected.length);
+  // Per-lap %-to-seconds scale, computed once (not per corner): lapTime ÷ that lap's own full-lap
+  // Σ(Δ%/speed). Reused below to rank laps by pace through EACH corner window independently of
+  // whole-lap pace — the fastest lap overall is not always the fastest through any given corner.
+  const lapScale = new Map(validTraces.map(({ lap, lapTime, points }) => {
+    const fullLapIntegral = integrateInverseSpeed(points, 0, 100);
+    return [lap.id, fullLapIntegral > 0 ? lapTime / fullLapIntegral : 0] as const;
+  }));
   const cornerReports = cornerDistances.map((distance, index) => {
     const perLap = validTraces.map(({ lap, points }) => ({ lapNumber: lap.lapNumber ?? null, ...analyzeCornerForLap(points, distance) }));
     const brakeOnsets = perLap.map((item) => item.brakeOnset).filter((value): value is number => value !== null);
@@ -367,6 +402,27 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     const brakeShapeSd = brakeBand.length ? mean(brakeBand.map((point) => point.stddev)) : null;
     const throttleShapeSd = throttleBand.length ? mean(throttleBand.map((point) => point.stddev)) : null;
 
+    // "Copy this braking/throttle curve" reference: not the fastest lap overall, but whichever
+    // valid lap was fastest through THIS specific corner window — a driver can nail one corner on
+    // an otherwise average lap. Ranked by real seconds (via lapScale), not just apex speed, so it
+    // accounts for the whole entry-mid-exit shape, not one instant.
+    const segmentTimes = validTraces.map(({ lap, points }) => {
+      const scale = lapScale.get(lap.id) ?? 0;
+      if (scale <= 0) return null;
+      const seconds = integrateInverseSpeed(points, distance - CORNER_WINDOW, distance + CORNER_WINDOW) * scale;
+      return seconds > 0 ? { lap, points, seconds } : null;
+    }).filter((item): item is { lap: Garage61Lap; points: TracePoint[]; seconds: number } => item !== null);
+    const idealEntry = segmentTimes.length >= 3 ? segmentTimes.reduce((best, item) => item.seconds < best.seconds ? item : best) : null;
+    const avgSegmentSeconds = segmentTimes.length ? mean(segmentTimes.map((item) => item.seconds)) : null;
+    const idealLine = idealEntry && avgSegmentSeconds !== null ? {
+      lapNumber: idealEntry.lap.lapNumber ?? null,
+      seconds: Number(idealEntry.seconds.toFixed(3)),
+      gainSeconds: Number((avgSegmentSeconds - idealEntry.seconds).toFixed(3)),
+      brakeCurve: laneCurve(idealEntry.points, distance, "brake"),
+      throttleCurve: laneCurve(idealEntry.points, distance, "throttle"),
+      speedCurve: laneCurve(idealEntry.points, distance, "speed"),
+    } : null;
+
     return {
       cornerNumber: index + 1,
       name: researchedNames?.[index] ?? null,
@@ -377,7 +433,7 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
       throttleReapply: reapplySd === null ? null : { meanDistancePct: Number(reapplyMean!.toFixed(1)), stddev: Number(reapplySd.toFixed(2)), consistency: consistencyLabel(reapplySd, 1.5) },
       brakeShape: brakeShapeSd === null ? null : { consistency: consistencyLabel(brakeShapeSd, 0.05) },
       throttleShape: throttleShapeSd === null ? null : { consistency: consistencyLabel(throttleShapeSd, 0.05) },
-      brakeBand, throttleBand,
+      brakeBand, throttleBand, idealLine,
     };
   });
   const isGood = (consistency: string) => consistency === "muito consistente" || consistency === "consistente";
@@ -402,6 +458,9 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
       parts.push(isGood(corner.throttleShape.consistency)
         ? "e você volta a acelerar sempre do mesmo jeito na saída, sem hesitar"
         : "na saída, você às vezes acelera rápido demais e às vezes devagar demais — pise no acelerador de forma constante e crescente, sem tranco, assim que o carro estiver reto o suficiente");
+    }
+    if (corner.idealLine && corner.idealLine.gainSeconds > 0.03) {
+      parts.push(`na volta ${corner.idealLine.lapNumber ?? "?"} você passou por aqui ${corner.idealLine.gainSeconds.toFixed(2)}s mais rápido que sua própria média nesse trecho — veja no gráfico como você freou e acelerou nessa passagem específica, é o seu próprio padrão pra repetir, não uma referência externa`);
     }
     const label = corner.name ?? `Curva ${corner.cornerNumber}`;
     return `${label} (~${corner.distancePct}% da volta): ${parts.join("; ")}.`;

@@ -83,7 +83,12 @@ function parseTelemetryCsv(csv: string): Trace {
   if (distanceIndex < 0) throw new Error("O Garage61 não retornou um canal de distância reconhecido");
 
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
-  const points = raw.map((cells) => {
+  // Kept in FILE order here (not sorted yet) -- lap-boundary detection below needs to see the real
+  // chronological sequence, since sorting by distance across a multi-lap file interleaves samples
+  // from different laps into one meaningless Frankenstein trace (e.g. a P2P burst near the end of
+  // lap 2 could sort right next to the start of lap 1, and the "track shape" stops being any real
+  // lap's actual path).
+  const chronological = raw.map((cells) => {
     const point = { distance: Number(cells[distanceIndex]) } as TracePoint;
     for (const key of Object.keys(indexes) as ChannelKey[]) {
       const index = indexes[key];
@@ -91,10 +96,39 @@ function parseTelemetryCsv(csv: string): Trace {
       point[key] = Number.isFinite(parsed) ? parsed : null;
     }
     return point;
-  }).filter((point) => Number.isFinite(point.distance)).sort((a, b) => a.distance - b.distance);
-  if (!points.length) throw new Error("A telemetria não contém amostras válidas");
-  const maxDistance = Math.max(...points.map((point) => point.distance));
-  if (maxDistance > 0 && maxDistance <= 1.01) points.forEach((point) => { point.distance *= 100; });
+  }).filter((point) => Number.isFinite(point.distance));
+  if (!chronological.length) throw new Error("A telemetria não contém amostras válidas");
+  const maxRawDistance = Math.max(...chronological.map((point) => point.distance));
+  if (maxRawDistance > 0 && maxRawDistance <= 1.01) chronological.forEach((point) => { point.distance *= 100; });
+
+  // Split into individual laps wherever distance drops sharply (lap wrap, ~100% -> ~0%) -- a
+  // reference file exported "for the session" rather than "for one lap" is common (this is exactly
+  // what a Garage61/iRStats driver uploading their own .csv is likely to do), and the file's byte
+  // size alone is often the tell (a single lap is rarely more than a few hundred KB).
+  const lapSegments: TracePoint[][] = [];
+  let currentLap: TracePoint[] = [];
+  for (const point of chronological) {
+    if (currentLap.length && point.distance < currentLap[currentLap.length - 1].distance - 50) {
+      lapSegments.push(currentLap);
+      currentLap = [];
+    }
+    currentLap.push(point);
+  }
+  if (currentLap.length) lapSegments.push(currentLap);
+
+  const completeLaps = lapSegments
+    .map((segment) => [...segment].sort((a, b) => a.distance - b.distance))
+    .filter((segment) => segment.length >= 50 && segment[0].distance <= 3 && segment[segment.length - 1].distance >= 97);
+  // Sample count is a proxy for lap duration (roughly constant capture rate) -- CSV exports don't
+  // reliably carry a time/session-time column to measure duration directly, unlike the IBT path.
+  const cleanLaps = completeLaps.filter((segment) => !segment.some((point) =>
+    Number(point.pushToPass ?? 0) > 0 || Number(point.p2pStatus ?? 0) > 0 || Number(point.p2pCount ?? 0) > 0));
+  const pool = cleanLaps.length ? cleanLaps : completeLaps;
+  const bestLap = pool.length ? pool.reduce((fastest, segment) => segment.length < fastest.length ? segment : fastest) : null;
+  // Fall back to the whole file as one trace only when no segment reached a recognizable full lap
+  // span (e.g. a file that's already a single, slightly-trimmed lap) -- same result as before this
+  // fix for the common single-lap case, just routed through the same lap-detection path.
+  const points = bestLap ?? [...chronological].sort((a, b) => a.distance - b.distance);
   const stride = Math.max(1, Math.ceil(points.length / 900));
   let trackLengthMeters = 0;
   for (let index = 1; index < points.length; index += 1) {
@@ -208,7 +242,9 @@ function ibtToBestLapCsv(buffer: ArrayBuffer) {
 function polyline(points: TracePoint[], field: ChannelKey, top: number, height: number, scalePoints = points) {
   const values = scalePoints.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
   if (!values.length) return "";
-  const min = field === "speed" ? Math.min(...values) : 0;
+  // Steering and yaw rate are signed (left/right), not a 0-based pedal input — same fix as the
+  // popup's line() below, so full left-steering traces stop getting clipped off the row.
+  const min = field === "speed" || field === "steering" || field === "yaw" || field === "yawRate" ? Math.min(...values) : 0;
   const max = Math.max(...values);
   const span = Math.max(0.0001, max - min);
   return points.filter((point) => point[field] !== null && Number.isFinite(point[field])).map((point) => {
@@ -443,6 +479,11 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
   // compressed the useful traces into an unreadable line at the edge of the map.
   const mapGps = zoom && selected.length >= 2 ? selected : gps;
   const mapReference = zoom && refSelected.length >= 2 ? refSelected : refGps;
+  // 12m is a plain approximation (typical road-circuit width; we have no per-track real value) --
+  // but calibrating it in real meters, rather than an arbitrary constant, at least makes the
+  // ribbon's width and the own/reference lines' real GPS separation share one consistent scale.
+  // Clamped so it stays legible at both a full-lap zoomed-out view and a single-corner close-up.
+  const trackWidthPx = Math.max(3, Math.min(40, projectGps.metersToPixels(12)));
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <div className="track-map-zoom-wrap">
@@ -456,8 +497,8 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
          * (not just the own line) at least widens visibly wherever the two laps diverge (braking
          * point, apex), which is the closest honest approximation of "how the track was used" the
          * available data supports. */}
-        <polyline points={mapGps.map(project).join(" ")} className="track-outline" />
-        {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-outline" />}
+        <polyline points={mapGps.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} />
+        {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} />}
         <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
         {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
         {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
@@ -465,10 +506,15 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
         {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r="5" className="track-marker" />}
       </g>
     </svg>
-    <div className="track-map-zoom-controls">
-      <button type="button" onClick={() => setZoomLevel((level) => Math.min(4, level * 1.5))} aria-label="Aproximar mapa">+</button>
-      <button type="button" onClick={() => setZoomLevel((level) => Math.max(1, level / 1.5))} aria-label="Afastar mapa">–</button>
-    </div>
+    {/* Manual zoom only makes sense on the FULL-track map (zoom prop falsy). The hover-panel and
+     * insight-popup maps already auto-fit to a narrow local window — adding +/- there on top of
+     * that auto-zoom was redundant and, worse, ate into their already-small footprint. */}
+    {!zoom && (
+      <div className="track-map-zoom-controls">
+        <button type="button" onClick={() => setZoomLevel((level) => Math.min(4, level * 1.5))} aria-label="Aproximar mapa">+</button>
+        <button type="button" onClick={() => setZoomLevel((level) => Math.max(1, level / 1.5))} aria-label="Afastar mapa">–</button>
+      </div>
+    )}
   </div>;
 }
 
@@ -497,7 +543,9 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
   function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
     const values = all.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
     if (!values.length) return "";
-    const min = field === "speed" ? Math.min(...values) : 0;
+    // Steering is signed (positive = right, negative = left) like speed, not a 0-based pedal input
+    // — forcing min=0 here clipped every left-steering sample off the bottom of the row.
+    const min = field === "speed" || field === "steering" ? Math.min(...values) : 0;
     const max = Math.max(...values);
     const span = Math.max(0.0001, max - min);
     return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
@@ -739,7 +787,11 @@ export default function ActiveWeekTelemetry() {
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
               <div className="channel-key"><span className="speed">Velocidade</span><span className="throttle">Acelerador</span><span className="brake">Freio</span><span className="steering">Volante</span><span className="rpm">RPM</span><span className="gear">Marcha</span><span className="clutch">Embreagem</span><span className="dynamics">Dinâmica</span></div>
               <div className="telemetry-workspace">
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={selectedRange ?? (hoveredDistance !== null ? [Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)] : null)} hoverDistance={hoveredDistance} zoom={hoveredDistance !== null || selectedRange !== null} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight. O mapa amplia uma janela de 10% da pista para revelar a trajetória das duas voltas.</p></aside>
+              {/* Persistent, full-track map (like Garage61's own analysis view): always the whole
+               * lap, own+reference lines at their real GPS positions, manual zoom/pan instead of
+               * auto-narrowing on hover — the hover-panel's own small map (below) already covers
+               * the "zoom to where I'm hovering" job, so this one's job is the overview. */}
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={null} hoverDistance={hoveredDistance} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight para localizar o ponto no mapa.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
                 aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."

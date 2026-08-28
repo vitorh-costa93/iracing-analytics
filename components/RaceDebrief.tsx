@@ -11,12 +11,14 @@ type ExcludedOutlier = { lapNumber: number | null; lapTime: string; zScore: numb
 type CornerMetric = { meanDistancePct?: number; mean?: number; stddev: number; consistency: string };
 type ShapeMetric = { consistency: string };
 type BandPoint = { offset: number; mean: number; stddev: number };
+type CurvePoint = { offset: number; value: number };
+type IdealLine = { lapNumber: number | null; seconds: number; gainSeconds: number; brakeCurve: CurvePoint[]; throttleCurve: CurvePoint[]; speedCurve: CurvePoint[] };
 type TrackOutlinePoint = { distance: number; lat: number; lon: number };
 type CornerReport = {
   cornerNumber: number; name: string | null; distancePct: number; sampleSize: number;
   braking: CornerMetric | null; apexSpeed: CornerMetric | null; throttleReapply: CornerMetric | null;
   brakeShape: ShapeMetric | null; throttleShape: ShapeMetric | null;
-  brakeBand: BandPoint[]; throttleBand: BandPoint[];
+  brakeBand: BandPoint[]; throttleBand: BandPoint[]; idealLine: IdealLine | null;
 };
 type CategoryDebrief = {
   session: { startedAt: string; endedAt: string; durationMinutes: number; car: string; track: string } | null;
@@ -64,7 +66,7 @@ function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
   );
 }
 
-function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: BandPoint[]; throttleBand: BandPoint[]; onHover: (offset: number | null) => void }) {
+function CornerBandChart({ brakeBand, throttleBand, idealLine, onHover }: { brakeBand: BandPoint[]; throttleBand: BandPoint[]; idealLine: IdealLine | null; onHover: (offset: number | null) => void }) {
   const width = 520, height = 112, pad = { left: 6, right: 6, top: 6, bottom: 5 };
   const offsets = [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
   if (!offsets.length) return null;
@@ -74,8 +76,12 @@ function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: Band
   const y = (value: number) => pad.top + (1 - value) * (height - pad.top - pad.bottom);
   const bandPath = (band: BandPoint[]) => band.length ? `${band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(Math.min(1, p.mean + p.stddev)).toFixed(1)}`).join(" ")} ${[...band].reverse().map((p) => `L ${x(p.offset).toFixed(1)} ${y(Math.max(0, p.mean - p.stddev)).toFixed(1)}`).join(" ")} Z` : "";
   const meanPath = (band: BandPoint[]) => band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(p.mean).toFixed(1)}`).join(" ");
+  const curvePath = (curve: CurvePoint[]) => curve.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(p.value).toFixed(1)}`).join(" ");
+  // The ideal-lap curves are drawn fine-grained (0.5% step, from a single real lap) over the mean
+  // band (1% step, averaged across laps) -- deliberately a crisper, more detailed line on top, so
+  // it reads as "trace this exact shape" rather than another statistical summary.
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas; passe o mouse para localizar no mapa"
+    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas, com a curva da sua execução mais rápida em destaque; passe o mouse para localizar no mapa"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const px = (event.clientX - rect.left) / rect.width * width;
@@ -87,6 +93,8 @@ function CornerBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: Band
       <path d={meanPath(brakeBand)} className="corner-mini-line brake" />
       <path d={bandPath(throttleBand)} className="corner-mini-band throttle" />
       <path d={meanPath(throttleBand)} className="corner-mini-line throttle" />
+      {idealLine && <path d={curvePath(idealLine.brakeCurve)} className="corner-mini-ideal brake" />}
+      {idealLine && <path d={curvePath(idealLine.throttleCurve)} className="corner-mini-ideal throttle" />}
     </svg>
   );
 }
@@ -234,9 +242,12 @@ export default function RaceDebrief() {
                   <div className="race-debrief-corner-card" key={corner.cornerNumber}>
                     <h5>{corner.name ?? `Curva ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
                     <div className="corner-mini-row">
-                      <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
+                      <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} idealLine={corner.idealLine} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
                       {data.trackOutline && <CornerTrackMap outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />}
                     </div>
+                    {corner.idealLine && corner.idealLine.gainSeconds > 0.03 && (
+                      <p className="corner-mini-legend"><span className="corner-mini-ideal-swatch" /> Sua execução mais rápida aqui — volta {corner.idealLine.lapNumber ?? "?"}, {corner.idealLine.gainSeconds.toFixed(2)}s mais rápida que sua média nesse trecho</p>
+                    )}
                     {data.cornerNarratives?.[index] && <p className="corner-narrative">{data.cornerNarratives[index].replace(/^.*?\(~\d+% da volta\):\s*/, "")}</p>}
                     <div className="corner-metric-grid">
                       {corner.braking && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>Ponto de freada: {corner.braking.consistency}</span>}

@@ -123,9 +123,15 @@ async function runIncrementalSessionSync() {
     let recentLaps = 0;
 
     for (const pair of recentPairs) {
-      // Paginação completa: alguns pares carro+pista já passam de 250 voltas na season, e
-      // buscar só offset=0 descartava silenciosamente as voltas mais antigas (ou mais novas,
-      // dependendo da ordenação) — inclusive sessões de corrida inteiras.
+      // Paginação completa (não só offset=0): alguns pares carro+pista já passam de 250 voltas na
+      // season, e parar cedo demais descartava silenciosamente voltas — inclusive sessões de
+      // corrida inteiras. MAS paginar até o fim do histórico inteiro do par a cada execução, só
+      // para descartar 99% como "antigo demais" depois, é o oposto do problema: é a razão real de
+      // "Atualizar Dados" bater rate limit e demorar mais que o necessário, mesmo sendo chamado de
+      // hora em hora. A API retorna as voltas mais recentes primeiro (mesmo padrão já usado em
+      // fetchWeekLaps, active-week/route.ts) — parar assim que uma página inteira já ficou mais
+      // antiga que o cutoff é seguro (nada A PARTIR do cutoff pode estar em páginas posteriores)
+      // e transforma isso de "sempre a temporada inteira" em de fato incremental.
       const laps: Garage61Lap[] = [];
       for (let offset = 0; ; offset += PAGE_SIZE) {
         const response = await garage61Get<Garage61LapsResponse>("/laps", {
@@ -141,6 +147,11 @@ async function runIncrementalSessionSync() {
         const batch = response.items ?? [];
         laps.push(...batch);
         if (batch.length < PAGE_SIZE) break;
+        const oldestInBatch = batch.reduce<Date | null>((value, lap) => {
+          const date = lap.startTime ? new Date(lap.startTime) : null;
+          return date && Number.isFinite(date.getTime()) && (!value || date < value) ? date : value;
+        }, null);
+        if (oldestInBatch && oldestInBatch < cutoff) break;
       }
       lapsReceived += laps.length;
 

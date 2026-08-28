@@ -9,9 +9,9 @@ type PlottablePoint = RaceScatterPoint & { durationMinutes: number };
 export default function RaceScatterPlot({ points }: { points: RaceScatterPoint[] }) {
   const [hovered, setHovered] = useState<PlottablePoint | null>(null);
   const width = 640, height = 290, pad = { left: 48, right: 18, top: 18, bottom: 38 };
-  // durationMinutes is always null for irstats-sourced races (irstats exposes no session-duration
-  // concept) — only Garage61-era rows (if any remain visible) still carry a real value. Points
-  // without a duration can't be placed on this axis, so they're dropped rather than crashing.
+  // durationMinutes is an estimate (laps × pace) computed server-side, null only when a race's
+  // page had no fastest-lap field to estimate pace from at all (rare parsing gap, not the norm).
+  // Points without a duration can't be placed on this axis, so they're dropped rather than crashing.
   const plottable = useMemo<PlottablePoint[]>(
     () => points.filter((point): point is PlottablePoint => point.durationMinutes !== null),
     [points]
