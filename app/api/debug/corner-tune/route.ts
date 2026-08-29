@@ -136,15 +136,22 @@ export async function GET(request: NextRequest) {
     if (!candidates.length) return NextResponse.json({ status: "error", message: "no lap with stored telemetry", trackId, lapsError, lapsCount: laps?.length ?? null, sampleLaps: laps?.slice(0, 5) }, { status: 404 });
     let points: ReturnType<typeof parseLapCsv> = [];
     let usedLapId = "";
+    let bestScore = -1;
     for (const candidate of candidates) {
       const { data: file } = await supabaseAdmin.storage.from("telemetry").download(candidate.telemetry_path as string);
       if (!file) continue;
       const parsed = parseLapCsv(await file.text());
-      const validGps = parsed.filter((p) => p.lat !== null && p.lon !== null).length;
-      if (validGps > points.filter((p) => p.lat !== null && p.lon !== null).length) { points = parsed; usedLapId = candidate.id; }
-      if (validGps >= 400) break; // good enough sample, stop scanning
+      const validGps = parsed.filter((p) => p.lat !== null && p.lon !== null);
+      // Reject anything whose distance channel doesn't cover a full lap (0-100%, allowing a little
+      // slack for a lap that starts a hair after 0 or ends a hair before 100) -- a partial file (out
+      // lap, pit lap, raw-km odometer instead of %) would otherwise get treated as if it were 100%.
+      const maxDistance = validGps.length ? Math.max(...validGps.map((p) => p.distance)) : 0;
+      const looksFullLap = maxDistance >= 90 && maxDistance <= 100.5;
+      const score = looksFullLap ? validGps.length : -1;
+      if (score > bestScore) { bestScore = score; points = parsed; usedLapId = candidate.id; }
+      if (score >= 800) break; // good enough sample, stop scanning
     }
-    if (!points.length) return NextResponse.json({ status: "error", message: "no candidate lap parsed", candidateCount: candidates.length }, { status: 500 });
+    if (!points.length || bestScore < 0) return NextResponse.json({ status: "error", message: "no full-lap candidate found", candidateCount: candidates.length, bestScore }, { status: 500 });
 
     const grid: Array<{ step: number; thresholdPercentile: number; thresholdRatio: number; splitRatio: number; mergeGapPct: number; count: number }> = [];
     const steps = [0.15, 0.1];
