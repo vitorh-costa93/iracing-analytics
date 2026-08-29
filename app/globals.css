@@ -233,13 +233,6 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .comparison-summary strong { font-family: var(--mono); font-size: 20px; font-variant-numeric: tabular-nums; }
 .insights-heading { margin-top: 20px; }
 .insights-heading h3 { margin: 4px 0 0; font-size: 16px; }
-.line-distance-block { margin-top: 4px; }
-.line-distance-chart { width: 100%; height: 130px; display: block; margin-top: 10px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; cursor: crosshair; }
-.line-distance-zero { stroke: var(--border-strong); stroke-width: 1; }
-.line-distance-grid { stroke: var(--border); stroke-width: 1; stroke-dasharray: 3 3; }
-.line-distance-path { fill: none; stroke: var(--blue); stroke-width: 1.6; }
-.line-distance-marker { fill: var(--bg); stroke: var(--blue); stroke-width: 2; }
-.line-distance-label { fill: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 500; }
 .steering-wheel-backdrop { fill: var(--surface-raised); stroke: var(--border); stroke-width: 1; }
 .steering-wheel-rim { fill: none; stroke-width: 5; stroke-linecap: round; }
 .steering-wheel.own .steering-wheel-rim, .steering-wheel.own .steering-wheel-spoke, .steering-wheel.own .steering-wheel-mark { stroke: var(--red); }

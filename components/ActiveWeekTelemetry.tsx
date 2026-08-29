@@ -450,39 +450,6 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights, lineDistance };
 }
 
-/** Garage61's "line distance" chart, replicated with our own GPS math (see compareTraces): signed
- * lateral offset in meters between your line and the reference's, across the whole lap. This is
- * the honest way to show line divergence — the track map's ribbon can't (no real track-edge
- * geometry to draw against; see TrackMap's comments), but real GPS math absolutely can chart it. */
-function LineDistanceChart({ points, hoveredDistance, onHover }: { points: { distance: number; meters: number }[]; hoveredDistance: number | null; onHover: (distance: number | null) => void }) {
-  const width = 1000, height = 130, pad = { left: 44, right: 14, top: 16, bottom: 22 };
-  if (points.length < 2) return null;
-  const maxAbs = Math.max(1, ...points.map((point) => Math.abs(point.meters)));
-  const usableHeight = height - pad.top - pad.bottom, usableWidth = width - pad.left - pad.right;
-  const scaleY = (value: number) => pad.top + (1 - (value + maxAbs) / (2 * maxAbs)) * usableHeight;
-  const scaleX = (distance: number) => pad.left + (distance / 100) * usableWidth;
-  const path = points.map((point, index) => `${index === 0 ? "M" : "L"} ${scaleX(point.distance).toFixed(1)} ${scaleY(point.meters).toFixed(1)}`).join(" ");
-  const hoverPoint = hoveredDistance !== null ? points.reduce((best, point) => Math.abs(point.distance - hoveredDistance) < Math.abs(best.distance - hoveredDistance) ? point : best, points[0]) : null;
-  const ticks = [maxAbs, maxAbs / 2, 0, -maxAbs / 2, -maxAbs];
-  return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="line-distance-chart" role="img" aria-label="Distância lateral entre sua linha e a da referência ao longo da volta, em metros"
-      onMouseMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width * width;
-        onHover(Math.max(0, Math.min(100, ((x - pad.left) / usableWidth) * 100)));
-      }}
-      onMouseLeave={() => onHover(null)}>
-      {ticks.map((tick) => <g key={tick}><line x1={pad.left} x2={width - pad.right} y1={scaleY(tick)} y2={scaleY(tick)} className={tick === 0 ? "line-distance-zero" : "line-distance-grid"} /><text x={pad.left - 6} y={scaleY(tick) + 3} textAnchor="end" className="debrief-axis">{tick > 0 ? `+${tick.toFixed(0)}` : tick.toFixed(0)}</text></g>)}
-      <path d={path} className="line-distance-path" />
-      {hoverPoint && <>
-        <line x1={scaleX(hoverPoint.distance)} x2={scaleX(hoverPoint.distance)} y1={pad.top} y2={height - pad.bottom} className="hover-line" />
-        <circle cx={scaleX(hoverPoint.distance)} cy={scaleY(hoverPoint.meters)} r="4.5" className="line-distance-marker" />
-        <text x={Math.min(width - pad.right - 130, scaleX(hoverPoint.distance) + 10)} y={pad.top + 12} className="line-distance-label">{hoverPoint.meters >= 0 ? "Direita" : "Esquerda"} {Math.abs(hoverPoint.meters).toFixed(2)} m</text>
-      </>}
-    </svg>
-  );
-}
-
 function nearestGpsPoint(points: TracePoint[], distance: number) {
   let best: TracePoint | null = null, bestDelta = Infinity;
   for (const point of points) {
@@ -492,13 +459,61 @@ function nearestGpsPoint(points: TracePoint[], distance: number) {
   return best;
 }
 
-function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean }) {
+/** Linear-interpolates the signed lateral offset (meters) at an arbitrary distance from the
+ * compareTraces-computed series (see compareTraces' own comment for the sign convention). */
+function interpolateLineDistance(lineDistance: { distance: number; meters: number }[], distance: number) {
+  if (!lineDistance.length) return null;
+  let prev = lineDistance[0], next = lineDistance[lineDistance.length - 1];
+  for (const point of lineDistance) {
+    if (point.distance >= distance) { next = point; break; }
+    prev = point;
+  }
+  const span = next.distance - prev.distance;
+  const ratio = span > 0 ? (distance - prev.distance) / span : 0;
+  return prev.meters + (next.meters - prev.meters) * ratio;
+}
+
+/** Reconstructs where the reference car was, in lat/lon, from YOUR own GPS point plus the already
+ * -computed lateral offset at that same distance — the exact inverse of the math compareTraces used
+ * to derive that offset in the first place. This is used instead of the reference's raw GPS trace
+ * for the ON-MAP line: raw GPS noise (this environment has no way to compare against Garage61's own
+ * likely-smoothed/filtered internal telemetry) was swallowing real, small divergence at map scale,
+ * while the offset series itself is already a clean, meter-accurate, non-noisy signal. */
+function offsetGpsPoint(prevLat: number, prevLon: number, curLat: number, curLon: number, nextLat: number, nextLon: number, offsetMeters: number) {
+  const latRad = (prevLat + nextLat) / 2 * Math.PI / 180;
+  const tx = (nextLon - prevLon) * 111320 * Math.cos(latRad);
+  const ty = (nextLat - prevLat) * 110540;
+  const tlen = Math.hypot(tx, ty) || 1;
+  const ux = tx / tlen, uy = ty / tlen;
+  // Perpendicular consistent with compareTraces' `lateral = ux*ry - uy*rx`: solving for the
+  // perpendicular unit vector p such that ux*p.y - uy*p.x = 1 gives p = (-uy, ux).
+  const dxMeters = -uy * offsetMeters, dyMeters = ux * offsetMeters;
+  return { lat: curLat + dyMeters / 110540, lon: curLon + dxMeters / (111320 * Math.cos(latRad)) };
+}
+
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDistance }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; lineDistance?: { distance: number; meters: number }[] }) {
   // Own zoom state per map instance (sticky map, hover panel map, and popup map each zoom
   // independently) -- must be declared before the early return below, ahead of any other hook.
+  // zoomCenter is in viewBox units (0-300, 0-200): where the zoom is anchored. Garage61 lets you
+  // zoom into any part of the track, not just the center -- clicking the map moves this anchor to
+  // that point before zooming, instead of always scaling around the fixed (150,100) middle.
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomCenter, setZoomCenter] = useState({ x: 150, y: 100 });
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
-  const refGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
+  const rawRefGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
+  // Reconstructed (own point + the already-computed lateral offset) instead of the reference's raw
+  // GPS trace, when available — see offsetGpsPoint's comment for why. Falls back to raw GPS when no
+  // lineDistance was passed in (e.g. no reference loaded at all yet).
+  const refGps: TracePoint[] = lineDistance && lineDistance.length > 10 && rawRefGps.length
+    ? gps.map((point, index) => {
+      const prevPoint = gps[Math.max(0, index - 1)], nextPoint = gps[Math.min(gps.length - 1, index + 1)];
+      const offsetMeters = interpolateLineDistance(lineDistance, point.distance);
+      if (offsetMeters === null || prevPoint.lat === null || nextPoint.lat === null || point.lat === null) return null;
+      const reconstructed = offsetGpsPoint(Number(prevPoint.lat), Number(prevPoint.lon), Number(point.lat), Number(point.lon), Number(nextPoint.lat), Number(nextPoint.lon), offsetMeters);
+      return { ...point, lat: reconstructed.lat, lon: reconstructed.lon } as TracePoint;
+    }).filter((point): point is TracePoint => point !== null)
+    : rawRefGps;
   // Keep the map window slightly wider than the input window: a hover must always have visible
   // approach and exit context on the linked trajectory.
   const mapRange = range ? [Math.max(0, range[0] - 3), Math.min(100, range[1] + 3)] as [number, number] : null;
@@ -527,11 +542,24 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <div className="track-map-zoom-wrap">
-    <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado">
-      {/* Zoom, like Garage61's own map, is a plain scale around the view center — no new bounds are
-       * computed, it just magnifies/clips the same projected points. There is nothing to gain from
-       * refitting bounds per zoom level here: this map only ever has the GPS this lap recorded. */}
-      <g style={{ transform: `translate(150px,100px) scale(${zoomLevel}) translate(-150px,-100px)` }}>
+    <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado"
+      onClick={!zoom ? (event) => {
+        // Click-to-recenter: like Garage61, zoom anchors wherever you click, not just the map's
+        // fixed center. getScreenCTM().inverse() converts the click's screen position into viewBox
+        // units correctly regardless of how the SVG is scaled/letterboxed on the page.
+        const svg = event.currentTarget;
+        const ctm = svg.getScreenCTM();
+        if (!ctm) return;
+        const point = svg.createSVGPoint();
+        point.x = event.clientX; point.y = event.clientY;
+        const local = point.matrixTransform(ctm.inverse());
+        setZoomCenter({ x: local.x, y: local.y });
+        setZoomLevel((level) => (level === 1 ? 2 : level));
+      } : undefined}>
+      {/* Zoom, like Garage61's own map, lets you anchor anywhere on the track (click to recenter),
+       * not just the fixed middle — no new bounds are computed, it just magnifies/clips the same
+       * projected points around wherever zoomCenter currently is. */}
+      <g style={{ transform: `translate(${zoomCenter.x}px,${zoomCenter.y}px) scale(${zoomLevel}) translate(${-zoomCenter.x}px,${-zoomCenter.y}px)` }}>
         {/* The "asphalt" ribbon has no real track-edge geometry behind it — we only have per-lap GPS,
          * not the physical track boundary Garage61 draws from. Drawing the outline from BOTH traces
          * (not just the own line) at least widens visibly wherever the two laps diverge (braking
@@ -551,8 +579,8 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom }: { trace
      * that auto-zoom was redundant and, worse, ate into their already-small footprint. */}
     {!zoom && (
       <div className="track-map-zoom-controls">
-        <button type="button" onClick={() => setZoomLevel((level) => Math.min(4, level * 1.5))} aria-label="Aproximar mapa">+</button>
-        <button type="button" onClick={() => setZoomLevel((level) => Math.max(1, level / 1.5))} aria-label="Afastar mapa">–</button>
+        <button type="button" onClick={(event) => { event.stopPropagation(); setZoomLevel((level) => Math.min(6, level * 1.5)); }} aria-label="Aproximar mapa">+</button>
+        <button type="button" onClick={(event) => { event.stopPropagation(); setZoomLevel((level) => { const next = Math.max(1, level / 1.5); if (next === 1) setZoomCenter({ x: 150, y: 100 }); return next; }); }} aria-label="Afastar mapa">–</button>
       </div>
     )}
   </div>;
@@ -575,7 +603,11 @@ const STEERING_ROW_TOP = 286, STEERING_ROW_HEIGHT = 100;
 const FOCUSED_HEIGHT = 386;
 
 function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: number; cy: number; radius: number; angleRad: number | null; label: string; className: string }) {
-  const degrees = angleRad !== null ? angleRad * 180 / Math.PI : 0;
+  // Verified against a real corner: Red Bull Ring's Turn 1 (Niki Lauda Kurve) is a right-hander,
+  // but the raw channel's positive sign rotated the wheel left there — Garage61's own CSV export
+  // uses positive = left / negative = right, the opposite of the assumption this had before. Negated
+  // once here so every consumer (rotation, the printed angle) reads correctly without re-deriving it.
+  const degrees = angleRad !== null ? -angleRad * 180 / Math.PI : 0;
   const spokeAngles = [90, 210, 330]; // one spoke pointing "up" at rest, like a real wheel's 12 o'clock mark
   return (
     <g>
@@ -608,7 +640,8 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
   function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
     const values = all.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
     if (!values.length) return "";
-    // Steering is signed (positive = right, negative = left) like speed, not a 0-based pedal input
+    // Steering is signed (positive = left, negative = right, per Garage61's CSV export -- verified
+    // against a real corner) like speed, not a 0-based pedal input
     // — forcing min=0 here clipped every left-steering sample off the bottom of the row.
     const min = field === "speed" || field === "steering" ? Math.min(...values) : 0;
     const max = Math.max(...values);
@@ -851,12 +884,10 @@ export default function ActiveWeekTelemetry() {
                 <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
-              {comparison.lineDistance.length > 1 && (
-                <div className="line-distance-block">
-                  <div className="insights-heading"><span className="section-kicker">LINE DISTANCE</span><h3>Distância lateral entre as duas linhas</h3><p>Positivo = referência mais à direita da sua linha; negativo = mais à esquerda. Passe o mouse para ver o valor exato em qualquer ponto da volta.</p></div>
-                  <LineDistanceChart points={comparison.lineDistance} hoveredDistance={hoveredDistance} onHover={setHoveredDistance} />
-                </div>
-              )}
+              {/* No standalone chart here by design: this same lateral-offset data (comparison.lineDistance)
+               * is instead used to draw the actual track-usage divergence directly on the map (see
+               * TrackMap below) and to drive the per-corner "line" insight above -- the number itself
+               * isn't the point, where it puts you on track is. */}
               <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As curvas são numeradas na ordem em que aparecem na volta. Quando eu sei o nome real da curva, uso ele; quando não sei, mostro só o número.</p></div>
                   <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
                     <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); }} key={item.title}>
@@ -876,7 +907,7 @@ export default function ActiveWeekTelemetry() {
                * lap, own+reference lines at their real GPS positions, manual zoom/pan instead of
                * auto-narrowing on hover — the hover-panel's own small map (below) already covers
                * the "zoom to where I'm hovering" job, so this one's job is the overview. */}
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={null} hoverDistance={hoveredDistance} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight para localizar o ponto no mapa.</p></aside>
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight para localizar o ponto no mapa.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
                 aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."
@@ -910,7 +941,7 @@ export default function ActiveWeekTelemetry() {
                   const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
                   return <div className="telemetry-hover">
                     <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
-                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} range={[Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)]} hoverDistance={hoveredDistance} zoom /></div>
+                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} range={[Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)]} hoverDistance={hoveredDistance} zoom lineDistance={comparison?.lineDistance} /></div>
                     {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
                   </div>;
                 })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
@@ -934,7 +965,7 @@ export default function ActiveWeekTelemetry() {
                   <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} onHover={setPopupHoverDistance} />
                   <div className="insight-popup-map">
                     <span className="section-kicker">TRAÇADO</span>
-                    <TrackMap trace={trace} referenceTrace={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom />
+                    <TrackMap trace={trace} referenceTrace={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom lineDistance={comparison?.lineDistance} />
                     {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
                     <p className="focused-hover-hint">{popupHoverDistance !== null ? `${popupHoverDistance.toFixed(1)}% da volta` : "Passe o mouse no gráfico ao lado para localizar o ponto no mapa."}</p>
                   </div>
