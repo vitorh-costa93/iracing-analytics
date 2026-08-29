@@ -2,7 +2,6 @@
   var APP_BASE = "https://iracing-analytics.vercel.app";
   var PENDING_URL = APP_BASE + "/api/setup/garage61-import/pending?days=15";
   var IMPORT_URL = APP_BASE + "/api/setup/garage61-import";
-  var EVENT_LOAD_WAIT_MS = 4500;
   var GAP_BETWEEN_EVENTS_MS = 400;
 
   var existing = document.getElementById("iracing-import-overlay");
@@ -104,81 +103,34 @@
     }
   }
 
-  function patchWindow(win, eventId, onEventPayload) {
-    if (!win || win.__iriPatched) return;
-    try {
-      var originalFetch = win.fetch;
-      if (!originalFetch) return;
-      win.__iriPatched = true;
-      win.fetch = function () {
-        var args = arguments;
-        return originalFetch.apply(win, args).then(function (response) {
-          try {
-            // /api/internal/events/{id} is the specific call that carries the setup data (confirmed
-            // live, 29/08/2026) -- used as the "the page's real data has actually arrived" signal,
-            // since a fixed wait long enough for a fast desktop/wifi load (the only environment this
-            // was originally tested in) was too short for Garage61's whole SPA to boot inside a
-            // hidden iframe on a slower mobile connection, silently finding zero setups every run.
-            if (String(args[0]).indexOf("/api/internal/events/") !== -1) onEventPayload();
-            response.clone().json().then(function (json) {
-              var fallbackCar = json && typeof json.car_id === "number" ? json.car_id : undefined;
-              var fallbackTrack = json && typeof json.track_id === "number" ? json.track_id : undefined;
-              captureIfSetup(json, eventId, fallbackCar, fallbackTrack, 0);
-            }).catch(function () {});
-          } catch (e) { /* not JSON, ignore */ }
-          return response;
-        });
-      };
-    } catch (e) { /* cross-origin or inaccessible window, ignore */ }
-  }
+  function sleep(ms) { return new Promise(function (resolve) { setTimeout(resolve, ms); }); }
 
-  // Minimum time every visit gets regardless of how fast the event payload arrives (lets secondary
-  // calls -- car/track lookups, etc. -- finish too); hard ceiling so one truly-broken event can't hang
-  // the whole run forever; extra settle time once the real payload is seen, to let its .json() parse
-  // complete. 12s wasn't enough on a real weak-signal mobile connection (confirmed live, 29/08/2026):
-  // Garage61's event page loads a few dozen chunk/asset/API requests SEQUENTIALLY before it even
-  // reaches the one call this waits for, and each round trip on a slow link adds up fast. Raised to
-  // 45s -- still bounded (so a genuinely broken event doesn't hang the whole run), but generous enough
-  // that this ceiling should now only ever trigger on an actual dead event, not a slow-but-working one.
-  var MIN_WAIT_MS = 2000, MAX_WAIT_MS = 45000, SETTLE_AFTER_PAYLOAD_MS = 1200;
-
-  function visitAll(events) {
-    var index = 0;
-    function next() {
-      if (index >= events.length) return finish();
+  // No hidden iframe anymore. This bookmarklet already runs as a script ON a garage61.net page, so a
+  // plain same-origin fetch to the exact API call the event page itself makes carries the session
+  // cookie automatically -- no need to load Garage61's whole SPA (a few dozen JS/chunk/asset requests
+  // per event) inside an invisible iframe just to trigger that one call. That iframe approach kept
+  // timing out on a real weak-signal mobile connection (confirmed live, 29/08/2026) no matter how long
+  // the wait was raised, because the bottleneck was the SPA's own boot cost, not this one request.
+  // Confirmed this exact endpoint returns the same JSON shape captureIfSetup already knows how to walk.
+  async function visitAll(events) {
+    for (var index = 0; index < events.length; index++) {
       var event = events[index];
-      index += 1;
-      setProgress((index / events.length) * 85);
-      setStatus(index + " / " + events.length + " corridas visitadas");
+      setProgress(((index + 1) / events.length) * 85);
+      setStatus((index + 1) + " / " + events.length + " corridas — buscando #" + event.eventId);
       visited.push({ eventId: event.eventId, car: event.car, track: event.track });
-
-      var iframe = document.createElement("iframe");
-      iframe.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;bottom:0;right:0;";
-      document.body.appendChild(iframe);
-      var startedAt = Date.now();
-      var sawPayloadAt = null;
-      var done = false;
-      function onEventPayload() { if (sawPayloadAt === null) sawPayloadAt = Date.now(); }
-      try { patchWindow(iframe.contentWindow, event.eventId, onEventPayload); } catch (e) {}
-      var patchTimer = setInterval(function () { try { patchWindow(iframe.contentWindow, event.eventId, onEventPayload); } catch (e) {} }, 150);
-
-      iframe.src = "https://garage61.net/app/event/" + event.eventId;
-
-      var pollTimer = setInterval(function () {
-        if (done) return;
-        var elapsed = Date.now() - startedAt;
-        var payloadSettled = sawPayloadAt !== null && Date.now() - sawPayloadAt >= SETTLE_AFTER_PAYLOAD_MS;
-        var readyToAdvance = elapsed >= MIN_WAIT_MS && (payloadSettled || elapsed >= MAX_WAIT_MS);
-        if (!readyToAdvance) return;
-        done = true;
-        clearInterval(patchTimer);
-        clearInterval(pollTimer);
-        iframe.remove();
-        if (sawPayloadAt === null) log("Evento " + event.eventId + ": página não terminou de carregar em " + MAX_WAIT_MS + "ms, seguindo assim mesmo.");
-        setTimeout(next, GAP_BETWEEN_EVENTS_MS);
-      }, 250);
+      try {
+        var res = await fetch("https://garage61.net/api/internal/events/" + event.eventId, { credentials: "same-origin" });
+        if (!res.ok) { log("Evento " + event.eventId + ": HTTP " + res.status + ", pulando."); }
+        else {
+          var json = await res.json();
+          var fallbackCar = json && typeof json.car_id === "number" ? json.car_id : undefined;
+          var fallbackTrack = json && typeof json.track_id === "number" ? json.track_id : undefined;
+          captureIfSetup(json, event.eventId, fallbackCar, fallbackTrack, 0);
+        }
+      } catch (e) { log("Evento " + event.eventId + ": erro de rede, pulando."); }
+      await sleep(GAP_BETWEEN_EVENTS_MS);
     }
-    next();
+    finish();
   }
 
   function finish() {
