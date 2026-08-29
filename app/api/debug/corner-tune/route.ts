@@ -129,11 +129,11 @@ function detect(points: { distance: number; lat: number | null; lon: number | nu
 export async function GET(request: NextRequest) {
   try {
     const { data: tracks } = await supabaseAdmin.from("tracks").select("id,name,variant").ilike("name", "%algarve%");
-    const trackId = tracks?.[0]?.id;
-    if (!trackId) return NextResponse.json({ status: "error", message: "track not found" }, { status: 404 });
-    const { data: laps } = await supabaseAdmin.from("laps").select("id,telemetry_path,started_at,lap_time").eq("track_id", trackId).not("telemetry_path", "is", null).order("started_at", { ascending: false }).limit(1);
-    const lap = laps?.[0];
-    if (!lap?.telemetry_path) return NextResponse.json({ status: "error", message: "no lap with stored telemetry", laps }, { status: 404 });
+    const trackId = Number(request.nextUrl.searchParams.get("trackId")) || tracks?.[0]?.id;
+    if (!trackId) return NextResponse.json({ status: "error", message: "track not found", tracks }, { status: 404 });
+    const { data: laps } = await supabaseAdmin.from("laps").select("id,telemetry_path,started_at,lap_time").eq("track_id", trackId).order("started_at", { ascending: false }).limit(30);
+    const lap = laps?.find((item) => item.telemetry_path);
+    if (!lap?.telemetry_path) return NextResponse.json({ status: "error", message: "no lap with stored telemetry", tracks, sampleLaps: laps?.slice(0, 5) }, { status: 404 });
     const { data: file, error: downloadError } = await supabaseAdmin.storage.from("telemetry").download(lap.telemetry_path);
     if (downloadError || !file) return NextResponse.json({ status: "error", message: "download failed", downloadError }, { status: 500 });
     const points = parseLapCsv(await file.text());
