@@ -384,7 +384,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .state-box.error { color: var(--red); }
 .week-context-section { margin-top: 18px; }
 .manual-sync-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
-.manual-sync-bookmarklet { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--border); background: var(--surface); cursor: grab; text-decoration: none; }
+.manual-sync-bookmarklet { display: grid; gap: 5px; padding: 16px; border: 1px dashed var(--border); background: var(--surface-muted); cursor: grab; text-decoration: none; }
 .manual-sync-bookmarklet:active { cursor: grabbing; }
 .manual-sync-bookmarklet strong { font-size: 14px; color: var(--text); }
 .manual-sync-bookmarklet span { color: var(--muted); font-size: 12px; line-height: 1.4; }

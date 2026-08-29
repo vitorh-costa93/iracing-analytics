@@ -272,15 +272,15 @@ export default function Home() {
          * that one tab, and leaves nothing installed -- unlike a browser extension, which is why an
          * installed extension existed for this before and no longer needs to. */}
         <section className="section-block manual-sync-section">
-          <div className="section-title-row"><div><span className="section-kicker">SINCRONIZAÇÃO MANUAL</span><h2>Resultados e setups, de qualquer dispositivo</h2><p>Arraste os dois botões abaixo para a barra de favoritos do navegador (uma vez só, em cada dispositivo). Depois, sempre que quiser resultados ou setups novos: abra o site correspondente já logado e clique no favorito — sem instalar nada.</p></div></div>
+          <div className="section-title-row"><div><span className="section-kicker">CONFIGURAÇÃO ÚNICA — NÃO SÃO BOTÕES DAQUI</span><h2>Favoritos para resultados e setups</h2><p>"Atualizar dados" acima já cobre tudo que dá pra buscar sem sair daqui. Resultados (iRStats) e setups (Garage61) só existem em sites de terceiros que bloqueiam acesso automático — não tem como um clique nesta página alcançar outra aba de outro site. Os dois links abaixo não são pra clicar aqui: <strong>arraste cada um pra barra de favoritos do navegador, uma vez só</strong>. Depois, quando quiser resultados ou setups novos, abra o site correspondente já logado e clique no favorito lá.</p></div></div>
           <div className="manual-sync-grid">
             <a className="manual-sync-bookmarklet" href="javascript:(function(){var d=document,s=d.createElement('script');s.src='https://iracing-analytics.vercel.app/irstats-import.js?v='+Date.now();d.body.appendChild(s);})();" onClick={(event) => event.preventDefault()}>
-              <strong>📥 iRStats: importar resultados</strong>
-              <span>Abra irstats.com/driver/958741 logado e clique neste favorito.</span>
+              <strong>🔖 Arraste → iRStats: importar resultados</strong>
+              <span>Depois de arrastado: abra irstats.com/driver/958741 logado e clique nele lá.</span>
             </a>
             <a className="manual-sync-bookmarklet" href="javascript:(function(){var d=document,s=d.createElement('script');s.src='https://iracing-analytics.vercel.app/garage61-import.js?v='+Date.now();d.body.appendChild(s);})();" onClick={(event) => event.preventDefault()}>
-              <strong>📥 Garage61: importar setups</strong>
-              <span>Abra garage61.net/app logado e clique neste favorito.</span>
+              <strong>🔖 Arraste → Garage61: importar setups</strong>
+              <span>Depois de arrastado: abra garage61.net/app logado e clique nele lá.</span>
             </a>
           </div>
           <p className="comparison-note">No celular, arrastar não funciona: toque e segure para copiar o link, crie um favorito qualquer e edite a URL dele colando o link copiado. Só funciona no Safari do iPhone — o Chrome bloqueia favoritos com javascript:, tanto no Android quanto no iPhone (é restrição do próprio app do Chrome, existe mesmo no iPhone onde ele usa o motor do Safari por baixo). Fora do Safari, só dá pra fazer pelo computador mesmo.</p>
