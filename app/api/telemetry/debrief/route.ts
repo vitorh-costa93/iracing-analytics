@@ -4,6 +4,13 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { lookupCornerNames } from "@/lib/track-corners";
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
 
+// Same missing-maxDuration bug as the sync routes (see app/api/sync/incremental/route.ts's comment):
+// this is the heaviest route in the app -- up to MAX_LAPS laps across up to 3 rating categories, each
+// needing its own paginated Garage61 /laps fetch plus telemetry download/decode -- and Vercel was
+// killing it at the platform default well before that finished, which is exactly the "Meu Debrief não
+// tá carregando" symptom reported (29/08/2026): the request just hangs client-side with no error.
+export const maxDuration = 300;
+
 const GARAGE61_BASE = "https://garage61.net/api/v1";
 const MIN_LAPS = 5;
 const MAX_LAPS = 10;

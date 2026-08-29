@@ -247,6 +247,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .steering-wheel-empty { opacity: .3; }
 .steering-wheel-label { fill: var(--muted); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .04em; text-anchor: middle; }
 .steering-wheel-value { fill: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 600; text-anchor: middle; }
+.gear-readout { font-family: var(--mono); font-size: 20px; font-weight: 700; text-anchor: middle; }
+.gear-readout.own { fill: var(--red); }
+.gear-readout.reference { fill: var(--blue); }
 .insights-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .insights-grid button { padding: 13px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .insights-grid button:hover, .insights-grid button.active { background: var(--brand-pale); border-color: var(--brand-dark); }

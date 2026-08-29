@@ -638,17 +638,25 @@ const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: num
   { field: "speed", label: "SPEED", top: 4, height: 90 },
   { field: "throttle", label: "THROTTLE", top: 106, height: 56 },
   { field: "brake", label: "BRAKE", top: 174, height: 56 },
-  // Gear as its own row (not just in the free-scroll main chart) so a corner insight popup shows
-  // shift timing/choice at a glance, not just pedal/wheel inputs — asked for explicitly since gear
-  // choice and shift point are themselves part of what "driving the corner well" means.
-  { field: "gear", label: "GEAR", top: 238, height: 40 },
 ];
 // Steering is rendered as two rotating wheels (own/reference), not a line — a line graph forces
 // you to read numbers and infer the motion; a wheel that visibly turns the same amount you turned
 // it shows the actual movement at a glance, which is what "did I match the reference's hand
-// motion here" really asks.
-const STEERING_ROW_TOP = 286, STEERING_ROW_HEIGHT = 100;
-const FOCUSED_HEIGHT = 386;
+// motion here" really asks. Gear used to be its own line-chart row below brake; moved to a plain
+// number printed above each wheel instead — a shift is a discrete, instantaneous event, not a
+// value with meaningful shape over distance, so a number reads faster than a stepped line.
+const STEERING_ROW_TOP = 242, STEERING_ROW_HEIGHT = 138;
+const FOCUSED_HEIGHT = 380;
+
+/** Gear as a discrete label, not a raw number: 0 is neutral ("N"), negative is reverse ("R") -- a
+ * bare "0" or "-1" reads as a data glitch to a driver, not as what those values actually mean. */
+function formatGear(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const rounded = Math.round(value);
+  if (rounded === 0) return "N";
+  if (rounded < 0) return "R";
+  return String(rounded);
+}
 
 function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: number; cy: number; radius: number; angleRad: number | null; label: string; className: string }) {
   // Verified against a real corner: Red Bull Ring's Turn 1 (Niki Lauda Kurve) is a right-hander,
@@ -756,11 +764,19 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
         const wheelDistance = hoverDistance ?? (range[0] + range[1]) / 2;
         const ownAngle = interpolate(ownPts, wheelDistance, "steering");
         const refAngle = reference ? interpolate(refPts, wheelDistance, "steering") : null;
-        const wheelY = STEERING_ROW_TOP + STEERING_ROW_HEIGHT / 2;
+        const ownGear = interpolate(ownPts, wheelDistance, "gear");
+        const refGear = reference ? interpolate(refPts, wheelDistance, "gear") : null;
+        const wheelRadius = 34;
+        // Not vertically centered in the row: shifted down from the row's true middle to leave room
+        // above for the gear number, and below for the wheel's own angle-value label.
+        const wheelY = STEERING_ROW_TOP + 58;
+        const gearY = wheelY - wheelRadius - 10;
         return <g>
           <text x="4" y={STEERING_ROW_TOP + 12} className="channel-label">STEERING</text>
-          <SteeringWheel cx={width * 0.32} cy={wheelY} radius={34} angleRad={ownAngle} label="VOCÊ" className="own" />
-          {reference && <SteeringWheel cx={width * 0.68} cy={wheelY} radius={34} angleRad={refAngle} label="REFERÊNCIA" className="reference" />}
+          <text x={width * 0.32} y={gearY} textAnchor="middle" className="gear-readout own">{formatGear(ownGear)}</text>
+          {reference && <text x={width * 0.68} y={gearY} textAnchor="middle" className="gear-readout reference">{formatGear(refGear)}</text>}
+          <SteeringWheel cx={width * 0.32} cy={wheelY} radius={wheelRadius} angleRad={ownAngle} label="VOCÊ" className="own" />
+          {reference && <SteeringWheel cx={width * 0.68} cy={wheelY} radius={wheelRadius} angleRad={refAngle} label="REFERÊNCIA" className="reference" />}
         </g>;
       })()}
       {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
