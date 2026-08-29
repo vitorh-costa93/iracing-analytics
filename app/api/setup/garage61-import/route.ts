@@ -57,7 +57,20 @@ export async function POST(request: NextRequest) {
     const { data: currentSeason } = await supabaseAdmin.from("v_season_summary").select("season_id").order("season_id", { ascending: false }).limit(1).maybeSingle();
     const fallbackSeasonId = currentSeason?.season_id ?? null;
 
+    // The same commercial/fixed setup gets attached to every event of a race week (qual, race,
+    // practice all reuse "algarve_fixed"), and a re-run of the bookmarklet re-fetches events whose
+    // setup hasn't changed -- both routinely re-upsert an UNCHANGED row. `imported` used to count
+    // every successful upsert regardless, so the on-screen result kept claiming "N novo(s)" for
+    // setups that were already there, confirmed live (29/08/2026: "leu setups que já haviam sido
+    // trazidos"). Known keys fetched once up front so new vs. already-existing can be told apart.
+    const { data: existingRows, error: existingError } = await supabaseAdmin
+      .from("setup_files").select("season_id,car_id,track_id,filename")
+      .eq("driver_id", driver.id).eq("source", "garage61");
+    if (existingError) throw existingError;
+    const existingKeys = new Set((existingRows ?? []).map((row) => `${row.season_id}::${row.car_id}::${row.track_id}::${row.filename}`));
+
     let imported = 0;
+    let updated = 0;
     let skipped = 0;
     const errors: string[] = [];
 
@@ -68,6 +81,8 @@ export async function POST(request: NextRequest) {
         if (!seasonId) { skipped += 1; errors.push(`${item.name}: sem season identificável`); continue; }
         const setupKind = item.setupFixed ? "fixed" : item.setupCommercial ? "commercial" : "open";
         const filename = item.name;
+        const key = `${seasonId}::${item.car}::${item.track}::${filename}`;
+        const alreadyExisted = existingKeys.has(key);
         const storagePath = `${driver.id}/${seasonId}/${item.car}/${item.track}/garage61/${safeName(filename)}.json`;
         const payload = { source: "garage61", seasonId, event: item.event, runId: item.runId, setupFixed: item.setupFixed, setupCommercial: item.setupCommercial, setup: { car: item.car, track: item.track, name: item.name, parameters: item.parameters } };
         const bytes = Buffer.from(JSON.stringify(payload));
@@ -83,7 +98,7 @@ export async function POST(request: NextRequest) {
           external_decode_consent_at: null, updated_at: new Date().toISOString(),
         }, { onConflict: "driver_id,season_id,car_id,track_id,filename" });
         if (upsertError) throw upsertError;
-        imported += 1;
+        if (alreadyExisted) updated += 1; else { imported += 1; existingKeys.add(key); }
       } catch (itemError) {
         skipped += 1;
         const detail = itemError instanceof Error ? itemError.message : (itemError && typeof itemError === "object" && "message" in itemError ? String((itemError as { message: unknown }).message) : JSON.stringify(itemError));
@@ -102,7 +117,7 @@ export async function POST(request: NextRequest) {
       if (checksError) errors.push(`Falha ao registrar eventos verificados: ${checksError.message}`);
     }
 
-    return NextResponse.json({ status: "ok", imported, skipped, errors: errors.slice(0, 20) }, { headers: CORS_HEADERS });
+    return NextResponse.json({ status: "ok", imported, updated, skipped, errors: errors.slice(0, 20) }, { headers: CORS_HEADERS });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400, headers: CORS_HEADERS });
   }

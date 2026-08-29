@@ -66,6 +66,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .season-chip strong { margin-top: 2px; font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
 .primary-button { border: 1px solid var(--brand); background: var(--brand); color: var(--on-brand); padding: 12px 17px; font-weight: 700; font-size: 14px; cursor: pointer; border-radius: 3px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .primary-button:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); }
+.quick-open-button { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 12px 14px; font-weight: 600; font-size: 13px; cursor: pointer; border-radius: 3px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
+.quick-open-button:hover { background: var(--surface-raised); border-color: var(--border-strong); }
 .primary-button:disabled, .primary-button.disabled { opacity: .5; cursor: wait; pointer-events: none; }
 
 .status-banner { margin-top: 14px; padding: 10px 13px; border: 1px solid var(--border-strong); background: var(--brand-pale); color: var(--on-brand); font-size: 14px; border-radius: 3px; }

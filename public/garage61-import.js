@@ -155,7 +155,7 @@
       .then(function (result) {
         setProgress(100);
         if (!result.ok) { setStatus("Erro ao enviar: " + result.data.message); return; }
-        complete("Garage61 lido: " + result.data.imported + " setup(s) novo(s) importado(s), " + result.data.skipped + " já existentes. " + (unique.length < visited.length ? (visited.length - unique.length) + " evento(s) sem setup ficam de fora por 7 dias." : ""), result.data.imported, result.data.skipped);
+        complete("Garage61 lido: " + result.data.imported + " setup(s) novo(s), " + (result.data.updated || 0) + " já existente(s) atualizado(s), " + result.data.skipped + " ignorado(s). " + (unique.length < visited.length ? (visited.length - unique.length) + " evento(s) sem setup ficam de fora por 7 dias." : ""), result.data.imported, result.data.skipped);
         (result.data.errors || []).forEach(function (err) { log(err); });
       })
       .catch(function (err) { setStatus("Erro de rede ao enviar: " + err.message); });

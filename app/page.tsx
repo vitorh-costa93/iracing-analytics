@@ -257,6 +257,14 @@ export default function Home() {
             <button type="button" className={`primary-button ${syncing ? "disabled" : ""}`} disabled={syncing} onClick={() => void syncData()}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
             </button>
+            {/* These open the site in a new tab -- a real convenience (no typing the URL, no hunting
+             * for the bookmarklet in Favoritos) but NOT the same as running the import: a page can't
+             * inject/run a script into another origin's tab it doesn't control, so the bookmarklet
+             * click on that tab is still a separate, required step. Explicit in the label so it never
+             * reads as "this button does the whole sync" — it doesn't, and can't, without an
+             * extension. */}
+            <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
+            <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
           </div>
         </header>
         <AppTabs />
