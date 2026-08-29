@@ -2,6 +2,14 @@ import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
+// This is the slowest of the three "Atualizar dados" calls -- measured 67s live (29/08/2026), mostly
+// spent paginating Garage61's /laps per recent car/track pair plus up to TELEMETRY_DOWNLOAD_CAP
+// telemetry downloads. Without an explicit maxDuration, Vercel kills the function at its platform
+// default (10s on Hobby) well before that finishes -- the button then just hangs client-side with no
+// error, which is exactly the "não carregou as corridas mais recentes" symptom reported. 300s is the
+// ceiling Vercel allows; harmless to request even on a plan whose own cap is lower.
+export const maxDuration = 300;
+
 const OVERLAP_HOURS = 7 * 24;
 const INITIAL_LOOKBACK_DAYS = 14;
 const PAGE_SIZE = 250;

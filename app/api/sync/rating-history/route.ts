@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
+// See app/api/sync/incremental/route.ts's comment -- same reasoning, so the third leg of "Atualizar
+// dados" can't be the one that silently times out either.
+export const maxDuration = 300;
+
 type RatingHistoryItem = {
   at: string;
   rating: number;

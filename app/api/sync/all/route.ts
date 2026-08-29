@@ -2,6 +2,13 @@ import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
+// Without this, Vercel kills the function at its platform default (10s on Hobby) long before this
+// route's real Garage61 calls (catalog + statistics, sometimes several seconds each) finish -- the
+// "Atualizar dados" button would then just hang from the browser's side with no error, exactly what
+// was reported (29/08/2026). 300s is the ceiling Vercel allows a serverless function; harmless to
+// request even on a plan whose own cap is lower, since Vercel just clamps to that plan's real max.
+export const maxDuration = 300;
+
 type Garage61Account = {
   platform: string;
   id: string;
