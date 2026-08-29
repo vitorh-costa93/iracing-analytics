@@ -123,12 +123,13 @@ const ENTRIES: TrackCornerEntry[] = [
     names: ["Expo '92", "Michelin", null, null, "Sito Pons", "Dani Pedrosa", "Carmelo Ezpeleta", "Jorge Martínez 'Aspar'", "Ángel Nieto", "Peluqui", "Álex Crivillé", "Ferrari", "Jorge Lorenzo"],
   },
   {
-    // Cross-checked turn-by-turn against two independent track guides (29/08/2026) after the Garage61
-    // reference lap's own map confirmed this is the GP layout (15 turns). Previous version was missing
-    // "Torre Vip" (T5) and "Craig Jones" (T9) entirely, and had "Portimão" one turn late (T11 instead
-    // of T10, per the numbered T-by-T guide rather than the looser "double apex 10-11" phrasing).
+    // Superseded the earlier web-guide cross-check with OpenStreetMap's own `ref` tags on each named
+    // raceway way (29/08/2026) -- literal corner-marker numbering, not paraphrased blog prose, and it
+    // disagreed with 3 of the earlier positions: Lagos is T4 (not T3), Torre Vip is T6 (not T5), and
+    // Samsung/Craig Jones/Portimão are T9/T10/T11 (each one later than previously listed). Sagres (T14)
+    // and Galp (T15) were already correct in both sources.
     match: (t) => /algarve|portim[aã]o/i.test(t),
-    names: ["Primeira", null, "Lagos", null, "Torre Vip", null, null, "Samsung", "Craig Jones", "Portimão", null, null, null, "Sagres", "Galp"],
+    names: ["Primeira", null, null, "Lagos", null, "Torre Vip", null, null, "Samsung", "Craig Jones", "Portimão", null, null, "Sagres", "Galp"],
   },
   {
     match: (t) => /sebring/i.test(t),

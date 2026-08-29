@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
 import { createTrackProjector } from "@/lib/track-map";
+import { getTrackBoundary } from "@/lib/track-boundaries";
 
 type Combination = {
   key: string;
@@ -511,7 +512,7 @@ function offsetGpsPoint(prevLat: number, prevLon: number, curLat: number, curLon
   return { lat: curLat + dyMeters / 110540, lon: curLon + dxMeters / (111320 * Math.cos(latRad)) };
 }
 
-function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDistance }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; lineDistance?: { distance: number; meters: number }[] }) {
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDistance, trackId }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; lineDistance?: { distance: number; meters: number }[]; trackId?: number | null }) {
   // Own zoom state per map instance (sticky map, hover panel map, and popup map each zoom
   // independently) -- must be declared before the early return below, ahead of any other hook.
   // zoomCenter is in viewBox units (0-300, 0-200): where the zoom is anchored. Garage61 lets you
@@ -540,12 +541,25 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   const selected = mapRange ? gps.filter((point) => point.distance >= mapRange[0] && point.distance <= mapRange[1]) : [];
   const refSelected = mapRange && refGps.length ? refGps.filter((point) => point.distance >= mapRange[0] && point.distance <= mapRange[1]) : [];
 
+  // Real track-edge geometry (OSM `highway=raceway`, see lib/track-boundaries.ts) when we have it for
+  // this track -- replaces the old synthetic ribbon, which was just a thick stroke drawn around
+  // whichever GPS trace was being compared. That construction could never show real track position:
+  // with two similar-pace drivers' lines nearly coincident, the "ribbon" was in effect just a tube
+  // around one path, so both lines always looked centered in it no matter where they really were on
+  // the physical track. A real boundary gives the thin lines something true to sit inside.
+  const boundary = getTrackBoundary(trackId);
+  const boundaryPoints = boundary ? boundary.segments.flatMap((segment) => segment.pts.map(([lat, lon]) => ({ lat, lon }))) : [];
+
   let boundsPoints = gps;
   if (zoom && (selected.length >= 2 || refSelected.length >= 2)) {
     boundsPoints = [...selected, ...refSelected];
   } else if (zoom && range) {
     const center = (range[0] + range[1]) / 2;
     boundsPoints = [...gps, ...refGps].sort((a, b) => Math.abs(a.distance - center) - Math.abs(b.distance - center)).slice(0, 16);
+  } else if (!zoom && boundaryPoints.length) {
+    // Full-track view: fit the REAL track outline, not just wherever this one lap happened to drive --
+    // a lap that cuts a corner or misses part of the track shouldn't shrink/skew the whole map.
+    boundsPoints = boundaryPoints.map((point) => ({ distance: 0, lat: point.lat, lon: point.lon } as TracePoint));
   }
   // Never stretch X and Y independently: it made real corners look physically impossible.
   const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, 18, false);
@@ -554,10 +568,10 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   // compressed the useful traces into an unreadable line at the edge of the map.
   const mapGps = zoom && selected.length >= 2 ? selected : gps;
   const mapReference = zoom && refSelected.length >= 2 ? refSelected : refGps;
-  // 12m is a plain approximation (typical road-circuit width; we have no per-track real value) --
-  // but calibrating it in real meters, rather than an arbitrary constant, at least makes the
-  // ribbon's width and the own/reference lines' real GPS separation share one consistent scale.
-  // Clamped so it stays legible at both a full-lap zoomed-out view and a single-corner close-up.
+  // 12m is a plain approximation (typical road-circuit width) used only when there's no real
+  // boundary for this track -- calibrating it in real meters at least makes the synthetic ribbon's
+  // width and the own/reference lines' real GPS separation share one consistent scale. Clamped so it
+  // stays legible at both a full-lap zoomed-out view and a single-corner close-up.
   const trackWidthPx = Math.max(6, Math.min(40, projectGps.metersToPixels(12)));
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
@@ -580,13 +594,18 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
        * not just the fixed middle — no new bounds are computed, it just magnifies/clips the same
        * projected points around wherever zoomCenter currently is. */}
       <g style={{ transform: `translate(${zoomCenter.x}px,${zoomCenter.y}px) scale(${zoomLevel}) translate(${-zoomCenter.x}px,${-zoomCenter.y}px)` }}>
-        {/* The "asphalt" ribbon has no real track-edge geometry behind it — we only have per-lap GPS,
-         * not the physical track boundary Garage61 draws from. Drawing the outline from BOTH traces
-         * (not just the own line) at least widens visibly wherever the two laps diverge (braking
-         * point, apex), which is the closest honest approximation of "how the track was used" the
-         * available data supports. */}
-        <polyline points={mapGps.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} />
-        {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} />}
+        {/* Real track edges (OSM) when we have them for this track — each way segment drawn separately
+         * at its own real-meters width; see lib/track-boundaries.ts for why they're deliberately not
+         * stitched into one ordered polyline. Falls back to the old synthetic per-lap ribbon (thick
+         * stroke drawn around whichever GPS trace is on screen) for a track we haven't sourced yet. */}
+        {boundary
+          ? boundary.segments.map((segment, index) => (
+            <polyline key={index} points={segment.pts.map(([lat, lon]) => project({ lat, lon } as unknown as TracePoint)).join(" ")} className="track-outline" style={{ strokeWidth: Math.max(2, projectGps.metersToPixels(segment.width)) }} />
+          ))
+          : <>
+            <polyline points={mapGps.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} />
+            {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} />}
+          </>}
         <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
         {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
         {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
@@ -938,7 +957,7 @@ export default function ActiveWeekTelemetry() {
                * lap, own+reference lines at their real GPS positions, manual zoom/pan instead of
                * auto-narrowing on hover — the hover-panel's own small map (below) already covers
                * the "zoom to where I'm hovering" job, so this one's job is the overview. */}
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight para localizar o ponto no mapa.</p></aside>
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight para localizar o ponto no mapa.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
                 aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."
@@ -981,7 +1000,7 @@ export default function ActiveWeekTelemetry() {
                   const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
                   return <div className="telemetry-hover">
                     <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
-                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} range={[Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)]} hoverDistance={hoveredDistance} zoom lineDistance={comparison?.lineDistance} /></div>
+                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)]} hoverDistance={hoveredDistance} zoom lineDistance={comparison?.lineDistance} /></div>
                     {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
                   </div>;
                 })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
@@ -1005,7 +1024,7 @@ export default function ActiveWeekTelemetry() {
                   <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} onHover={setPopupHoverDistance} />
                   <div className="insight-popup-map">
                     <span className="section-kicker">TRAÇADO</span>
-                    <TrackMap trace={trace} referenceTrace={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom lineDistance={comparison?.lineDistance} />
+                    <TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom lineDistance={comparison?.lineDistance} />
                     {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
                     <p className="focused-hover-hint">{popupHoverDistance !== null ? `${popupHoverDistance.toFixed(1)}% da volta` : "Passe o mouse no gráfico ao lado para localizar o ponto no mapa."}</p>
                   </div>

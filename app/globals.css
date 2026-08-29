@@ -263,6 +263,16 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  often under a meter, i.e. sub-pixel once projected across an entire circuit -- a 4px stroke turned
  that into one solid blob. Thinned to 1.5px (still readable, but leaves room for the ribbon and for
  real divergence to show as two separate threads once you zoom into a corner). */.track-own-line { fill: none; stroke: var(--red); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 4; }.track-marker-ref { fill: var(--bg); stroke: var(--blue); stroke-width: 4; }.track-reference { fill: none; stroke: var(--blue); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+/* vector-effect: non-scaling-stroke keeps these lines a fixed number of real screen pixels wide --
+ needed so the click-to-zoom +/- controls make lines stay thin while the real gap between them grows
+ (see the comment above). But that same fixed-real-pixel width means the line-to-ribbon ratio breaks
+ across screen sizes: the ribbon's width is in viewBox units and shrinks with the whole SVG's rendered
+ size, while a non-scaling stroke doesn't -- on a narrow phone viewport the SVG renders far smaller
+ than on desktop, so the same 1.5px line reads as proportionally much thicker relative to the ribbon.
+ Thinning it at narrow widths keeps the same visual ratio confirmed correct on desktop. */
+@media (max-width: 520px) {
+  .track-own-line, .track-reference { stroke-width: .7; }
+}
 .track-map-legend { display: flex; gap: 14px; margin: 6px 0 0; font-family: var(--mono); font-size: 10px; color: var(--muted); }.track-map-legend span { display: inline-flex; align-items: center; gap: 5px; }.track-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; }.track-map-legend .own::before { background: var(--red); }.track-map-legend .reference::before { background: var(--blue); background-image: repeating-linear-gradient(90deg, var(--blue) 0 3px, transparent 3px 6px); }
 .telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); grid-template-rows: auto auto; gap: 18px; align-items: start; margin-top: 10px; }
 .telemetry-map-sticky { grid-column: 1 / -1; grid-row: 1; position: static; padding: 14px; border: 1px solid var(--border-strong); background: #08080a; }
