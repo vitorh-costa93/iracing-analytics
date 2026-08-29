@@ -383,6 +383,11 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .state-box { max-width: 720px; margin: 90px auto; padding: 22px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
 .state-box.error { color: var(--red); }
 .week-context-section { margin-top: 18px; }
+.manual-sync-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.manual-sync-bookmarklet { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--border); background: var(--surface); cursor: grab; text-decoration: none; }
+.manual-sync-bookmarklet:active { cursor: grabbing; }
+.manual-sync-bookmarklet strong { font-size: 14px; color: var(--text); }
+.manual-sync-bookmarklet span { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .week-context-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .week-context-card { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); }
 .week-context-card > span, .week-context-card small { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
@@ -390,7 +395,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 
 @media (max-width: 1080px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .week-context-grid { grid-template-columns: 1fr; }
+  .week-context-grid, .manual-sync-grid { grid-template-columns: 1fr; }
   .performance-grid { grid-template-columns: 1fr; }
   .ranking-split { grid-template-columns: 1fr; }
   .ranking-panel { min-height: auto; }

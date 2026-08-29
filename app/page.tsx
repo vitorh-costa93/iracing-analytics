@@ -159,36 +159,30 @@ export default function Home() {
     return () => window.removeEventListener("message", onImportComplete);
   }, [loadDashboard]);
 
+  // Server-side only, no browser extension involved (or needed) at all — this talks exclusively to
+  // our own API, which already syncs telemetry/laps/ratings/catalog on its own via the hourly cron.
+  // Getting NEW race results or setups still needs a real logged-in browser tab (see the bookmarklet
+  // section below this button), since neither irstats.com nor Garage61's setup data can be reached
+  // any other way, but that's a deliberate, separate, occasional action now — not tied to this click.
   async function syncData() {
     setSyncing(true);
-    setMessage("Abrindo Garage61 e iRStats, depois atualizando dados via Supabase...");
+    setMessage("Atualizando dados via Supabase...");
     try {
-      // The Garage61 page is the popup opened from this handler. iRStats is the native anchor
-      // navigation below: Chrome permits that direct navigation more reliably than a second popup.
-      const bridgeInstalled = document.documentElement.dataset.iracingAnalyticsSyncBridge === "ready";
-      if (bridgeInstalled) {
-        // A Chrome extension is the only safe way to run the importers in their respective
-        // origins. It receives this event and opens both pages without exposing either secret.
-        window.postMessage({ source: "iracing-analytics", type: "start-external-sync" }, window.location.origin);
-      } else {
-        window.open("https://garage61.net/app?iracingAnalyticsSync=1", "iracing-analytics-garage61");
-      }
-
       const generalResponse = await fetch("/api/sync/all", { method: "POST" });
       const generalResult = await generalResponse.json();
       if (!generalResponse.ok) throw new Error(generalResult.message ?? "Erro na sincronização geral");
 
-      setMessage("Atualizando sessões recentes do Garage61...");
+      setMessage("Atualizando sessões, voltas e telemetria recentes do Garage61...");
       const sessionsResponse = await fetch("/api/sync/incremental", { method: "POST" });
       const sessionsResult = await sessionsResponse.json();
       if (!sessionsResponse.ok) throw new Error(sessionsResult.message ?? "Erro na sincronização de sessões");
 
-      setMessage("Atualizando histórico de rating do Garage61...");
+      setMessage("Atualizando histórico de Safety Rating do Garage61...");
       const ratingsResponse = await fetch("/api/sync/rating-history", { method: "POST" });
       const ratingsResult = await ratingsResponse.json();
       if (!ratingsResponse.ok) throw new Error(ratingsResult.message ?? "Erro na sincronização de ratings");
 
-      setMessage(`Garage61 lido: ${sessionsResult.sessionsUpserted ?? 0} sessões recentes consolidadas e ${ratingsResult.recordsSynced ?? 0} pontos de rating verificados. ${bridgeInstalled ? "A extensão iniciou os importadores no Garage61 e iRStats; as abas fecham ao concluir." : "A aba do iRStats foi aberta para o importador incremental."}`);
+      setMessage(`Sincronização concluída: ${sessionsResult.sessionsUpserted ?? 0} sessões, ${sessionsResult.lapsUpserted ?? 0} voltas e ${sessionsResult.telemetryDownloaded ?? 0} telemetrias novas; ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para resultados/setups novos, use os favoritos abaixo.`);
       await loadDashboard();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
@@ -260,12 +254,37 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <a className={`primary-button ${syncing ? "disabled" : ""}`} href="https://irstats.com/driver/958741?iracingAnalyticsSync=1" target="_blank" onClick={(event) => { if (syncing || document.documentElement.dataset.iracingAnalyticsSyncBridge === "ready") event.preventDefault(); if (!syncing) void syncData(); }}>
+            <button type="button" className={`primary-button ${syncing ? "disabled" : ""}`} disabled={syncing} onClick={() => void syncData()}>
               {syncing ? "Atualizando..." : "Atualizar dados"}
-            </a>
+            </button>
           </div>
         </header>
         <AppTabs />
+
+        {/* No browser extension required for any of this, on any device (phone, a locked-down work
+         * laptop, whatever) -- "Atualizar dados" above only talks to our own server, which already
+         * syncs telemetry/laps/ratings/catalog fully on its own via the hourly cron. Race results
+         * (irstats.com) and personal setups (Garage61) are the two things that genuinely need a
+         * real logged-in browser tab to fetch at all -- Cloudflare blocks irstats.com for anything
+         * that isn't one, and Garage61's public API has no endpoint for setup file contents, only a
+         * "is one visible" flag (checked against their own community API wrapper's source). A saved
+         * bookmarklet is the least-privileged way to do that: it runs only when clicked, only in
+         * that one tab, and leaves nothing installed -- unlike a browser extension, which is why an
+         * installed extension existed for this before and no longer needs to. */}
+        <section className="section-block manual-sync-section">
+          <div className="section-title-row"><div><span className="section-kicker">SINCRONIZAÇÃO MANUAL</span><h2>Resultados e setups, de qualquer dispositivo</h2><p>Arraste os dois botões abaixo para a barra de favoritos do navegador (uma vez só, em cada dispositivo). Depois, sempre que quiser resultados ou setups novos: abra o site correspondente já logado e clique no favorito — sem instalar nada.</p></div></div>
+          <div className="manual-sync-grid">
+            <a className="manual-sync-bookmarklet" href="javascript:(function(){var d=document,s=d.createElement('script');s.src='https://iracing-analytics.vercel.app/irstats-import.js?v='+Date.now();d.body.appendChild(s);})();" onClick={(event) => event.preventDefault()}>
+              <strong>📥 iRStats: importar resultados</strong>
+              <span>Abra irstats.com/driver/958741 logado e clique neste favorito.</span>
+            </a>
+            <a className="manual-sync-bookmarklet" href="javascript:(function(){var d=document,s=d.createElement('script');s.src='https://iracing-analytics.vercel.app/garage61-import.js?v='+Date.now();d.body.appendChild(s);})();" onClick={(event) => event.preventDefault()}>
+              <strong>📥 Garage61: importar setups</strong>
+              <span>Abra garage61.net/app logado e clique neste favorito.</span>
+            </a>
+          </div>
+          <p className="comparison-note">No celular, arrastar não funciona: toque e segure para copiar o link, depois adicione manualmente como favorito no navegador (funciona no Safari do iPhone; o Chrome do Android não permite favoritos com javascript:, então nesse caso só dá pra fazer pelo computador mesmo).</p>
+        </section>
 
         {message && <div className="status-banner">{message}</div>}
 

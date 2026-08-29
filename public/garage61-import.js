@@ -58,6 +58,9 @@
     });
 
   var collected = [];
+  var visited = []; // every event actually visited this run, whether or not a setup was captured --
+  // reported back so the backend can skip a checked-but-empty event for a while instead of
+  // revisiting it (and Garage61's own several API calls per event page) on every single run.
 
   function captureIfSetup(url, jsonBody, eventId) {
     try {
@@ -104,6 +107,7 @@
       index += 1;
       setProgress((index / events.length) * 85);
       setStatus(index + " / " + events.length + " corridas visitadas");
+      visited.push({ eventId: event.eventId, car: event.car, track: event.track });
 
       var iframe = document.createElement("iframe");
       iframe.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;bottom:0;right:0;";
@@ -130,22 +134,21 @@
     });
     var unique = Object.keys(byKey).map(function (k) { return byKey[k]; });
 
-    if (!unique.length) {
+    if (!unique.length && !visited.length) {
       complete("Garage61 lido: nenhum setup novo para importar.", 0, 0);
-      log("Se isso persistir, o site pode ter mudado a URL do evento ou o formato da resposta. Avise o desenvolvedor com este log.");
       return;
     }
 
-    setStatus("Enviando " + unique.length + " setup(s) para o iRacing Analytics...");
+    setStatus(unique.length ? "Enviando " + unique.length + " setup(s) para o iRacing Analytics..." : "Registrando " + visited.length + " evento(s) sem setup capturável...");
     fetch(IMPORT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json", "x-import-key": key },
-      body: JSON.stringify({ items: unique }),
+      body: JSON.stringify({ items: unique, checkedEvents: visited }),
     }).then(function (res) { return res.json().then(function (data) { return { ok: res.ok, data: data }; }); })
       .then(function (result) {
         setProgress(100);
         if (!result.ok) { setStatus("Erro ao enviar: " + result.data.message); return; }
-        complete("Garage61 lido: " + result.data.imported + " setup(s) novo(s) importado(s), " + result.data.skipped + " já existentes.", result.data.imported, result.data.skipped);
+        complete("Garage61 lido: " + result.data.imported + " setup(s) novo(s) importado(s), " + result.data.skipped + " já existentes. " + (unique.length < visited.length ? (visited.length - unique.length) + " evento(s) sem setup ficam de fora por 7 dias." : ""), result.data.imported, result.data.skipped);
         (result.data.errors || []).forEach(function (err) { log(err); });
       })
       .catch(function (err) { setStatus("Erro de rede ao enviar: " + err.message); });
