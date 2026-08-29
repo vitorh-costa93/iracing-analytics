@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { detectCorners as detectCornersFromLatAccel } from "@/lib/corner-detection";
+import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
 import { createTrackProjector } from "@/lib/track-map";
 
@@ -289,12 +289,16 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey) 
 
 type Corner = { number: number; distance: number; name: string | null };
 
-/** Detects every real corner (any part of the track that isn't a straight, via lateral acceleration —
- * not just braking zones), then attaches a researched name when the number of corners we detect on
- * this lap plausibly matches the track's known corner count. Shared with the race debrief so corner
- * numbering/naming is identical across the whole app instead of two independent implementations. */
+/** Detects every real corner (any part of the track that isn't a straight), then attaches a researched
+ * name when the number of corners we detect on this lap plausibly matches the track's known corner
+ * count. GPS heading-change is tried first -- it caught Algarve's flat-out/high-speed corners (Curva
+ * Grande-style bends with little lateral-accel signal, or ones close enough together that the
+ * lat-accel threshold merged them into one run) that lateral acceleration alone under-counted (11
+ * detected vs the real 15, confirmed 29/08/2026), matching the debrief route's own GPS-first fallback
+ * order. Falls back to lateral acceleration only when GPS is too sparse to trust. */
 function detectCorners(points: TracePoint[], trackName: string, trackVariant: string): Corner[] {
-  const raw = detectCornersFromLatAccel(points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel })));
+  const gpsDetected = detectCornersFromGps(points.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null })));
+  const raw = gpsDetected.length >= 3 ? gpsDetected : detectCornersFromLatAccel(points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel })));
   const names = lookupCornerNames(trackName, trackVariant, raw.length);
   return raw.map((corner, index) => ({ number: corner.number, distance: corner.distance, name: names?.[index] ?? null }));
 }
