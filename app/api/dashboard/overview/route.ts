@@ -526,12 +526,28 @@ export async function GET() {
     // snapshot is refreshed by the hourly cron (sync/all) regardless of whether the driver ever ran
     // the iRStats bookmarklet, so a Garage61-sourced fallback here meant the iRating card could
     // visibly move on a day with real races but NO iRStats sync at all — a real bug the driver
-    // caught directly (raced Super Formula only, never synced iRStats, KPI still updated). If
-    // v_race_results_irating has no result for a category, that category's iRating stays null
-    // (shown as "sem dados") rather than silently borrowing Garage61's number.
+    // caught directly (raced Super Formula only, never synced iRStats, KPI still updated).
+    //
+    // But "iRStats-only" does not mean "blank when there's no race today" — same carry-forward
+    // principle as v_season_weekly_irating: iRating doesn't change when you don't race, so the
+    // headline number should be the last one actually recorded, however long ago that was. Most of
+    // the time seasonRaces (already 2 seasons deep) already contains it; the extra unbounded query
+    // below only fires for the rarer case where a category hasn't been raced in over a season.
     for (const category of ["formula_car", "sports_car"] as const) {
       const latestResult = seasonRaces.find((row) => row.category === category && Number.isFinite(row.irating_after));
       if (latestResult) latestRatings[category] = latestResult.irating_after;
+    }
+    const categoriesMissingRating = (["formula_car", "sports_car"] as const).filter((category) => latestRatings[category] === null);
+    if (categoriesMissingRating.length) {
+      const fallbackResults = await Promise.all(categoriesMissingRating.map((category) =>
+        supabaseAdmin.from("v_race_results_irating").select("irating_after")
+          .eq("driver_id", driver.id).eq("category", category)
+          .order("raced_at", { ascending: false }).limit(1).maybeSingle()
+      ));
+      categoriesMissingRating.forEach((category, index) => {
+        const value = fallbackResults[index].data?.irating_after;
+        if (Number.isFinite(value)) latestRatings[category] = value as number;
+      });
     }
 
     const safetyScore = (row: RatingRow) => {
