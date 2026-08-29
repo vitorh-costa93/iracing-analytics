@@ -503,6 +503,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 
 @media (max-width: 720px) {
   .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
+  .setup-comparison-head { grid-template-columns: 1fr; }
 }
 
 .sector-consistency { margin-top: 18px; }

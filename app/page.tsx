@@ -283,7 +283,7 @@ export default function Home() {
               <span>Abra garage61.net/app logado e clique neste favorito.</span>
             </a>
           </div>
-          <p className="comparison-note">No celular, arrastar não funciona: toque e segure para copiar o link, depois adicione manualmente como favorito no navegador (funciona no Safari do iPhone; o Chrome do Android não permite favoritos com javascript:, então nesse caso só dá pra fazer pelo computador mesmo).</p>
+          <p className="comparison-note">No celular, arrastar não funciona: toque e segure para copiar o link, crie um favorito qualquer e edite a URL dele colando o link copiado. Só funciona no Safari do iPhone — o Chrome bloqueia favoritos com javascript:, tanto no Android quanto no iPhone (é restrição do próprio app do Chrome, existe mesmo no iPhone onde ele usa o motor do Safari por baixo). Fora do Safari, só dá pra fazer pelo computador mesmo.</p>
         </section>
 
         {message && <div className="status-banner">{message}</div>}
