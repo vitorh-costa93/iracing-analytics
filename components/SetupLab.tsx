@@ -55,19 +55,12 @@ export default function SetupLab() {
     fetch("/api/setup/library", { cache: "no-store" }).then((response) => response.json()).then((data) => { if (data.status === "ok") setLibrary({ total: data.total ?? 0, importedAt: data.importedAt ?? null, items: data.items ?? [] }); });
   }, []);
 
-  useEffect(() => {
-    if (!context) return;
-    const selectedContext = contexts.find((item) => item.key === context);
-    if (!selectedContext || selectedContext.garage61.scanned) return;
-    setMessage("Consultando setups deste contexto no Garage61...");
-    fetch(`/api/setup/inventory?carId=${selectedContext.car.id}&trackId=${selectedContext.track.id}`, { cache: "no-store" })
-      .then((response) => response.json())
-      .then((data) => {
-        if (data.status !== "ok") throw new Error(data.message ?? "Erro ao consultar Garage61");
-        setContexts(data.contexts ?? []); setMessage(null);
-      })
-      .catch((error) => setMessage(error instanceof Error ? error.message : String(error)));
-  }, [context, contexts]);
+  // There used to be a second effect here that re-fetched /api/setup/inventory with
+  // ?carId=&trackId= whenever a not-yet-"scanned" context was selected, because that used to
+  // trigger a live Garage61 lookup scoped to just that pair. It no longer does -- the route reads
+  // only the already-synced `laps` table now, and doesn't even look at those query params anymore,
+  // so a per-context refetch just re-asked the same question and got the same (still Supabase-only)
+  // answer. Removed; loadInventory()'s one fetch already has everything for every context.
 
   const selected = contexts.find((item) => item.key === context) ?? null;
   const setupA = selected?.uploads.find((item) => item.id === baseSetupId) ?? null;
