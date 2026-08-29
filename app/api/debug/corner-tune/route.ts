@@ -128,8 +128,11 @@ function detect(points: { distance: number; lat: number | null; lon: number | nu
 
 export async function GET(request: NextRequest) {
   try {
-    const { data: tracks } = await supabaseAdmin.from("tracks").select("id,name,variant").ilike("name", "%algarve%");
-    const trackId = Number(request.nextUrl.searchParams.get("trackId")) || tracks?.[0]?.id;
+    const trackIdParam = Number(request.nextUrl.searchParams.get("trackId"));
+    const { data: tracks } = trackIdParam
+      ? { data: null }
+      : await supabaseAdmin.from("tracks").select("id,name,variant").ilike("name", "%algarve%");
+    const trackId = trackIdParam || tracks?.[0]?.id;
     if (!trackId) return NextResponse.json({ status: "error", message: "track not found", tracks }, { status: 404 });
     const { data: laps, error: lapsError } = await supabaseAdmin.from("laps").select("id,telemetry_path,lap_time").eq("track_id", trackId).order("id", { ascending: false }).limit(50);
     const candidates = (laps ?? []).filter((item) => item.telemetry_path);
