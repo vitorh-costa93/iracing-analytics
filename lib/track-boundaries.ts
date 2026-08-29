@@ -17,12 +17,20 @@ import raw from "./track-boundaries.json";
  * visual result for a map (real-world adjacent segments land adjacent on screen) without needing that
  * ordering at all -- SVG doesn't care whether the polylines composing a shape were drawn in path order.
  *
+ * What DOES need doing before use: each track's raw Overpass result also includes any other raceway
+ * sharing the same bounding box -- Red Bull Ring's short "Südschleife" national circuit, Road
+ * Atlanta's motorcycle-only turn, disconnected chicane-bypass variants -- which show up as a second,
+ * disconnected loop floating near the real one if left in. A union-find over endpoint proximity
+ * (segments within ~150m of each other are the same physical loop) and keeping only the largest
+ * connected component removes these cleanly; see the regeneration steps below.
+ *
  * Regenerating for a track not covered here: query
  * https://overpass-api.de/api/interpreter with
  * `[out:json];way["highway"="raceway"](south,west,north,east);out geom;` for that circuit's real-world
  * bounding box (found via https://nominatim.openstreetmap.org/search?q=<track name>), keep only
- * `tags.width` and `geometry[].{lat,lon}` per way, drop anything named "pit" (pit lane/entry -- not
- * part of the racing line), and add the result here under the internal `tracks.id`.
+ * `tags.width` and `geometry[].{lat,lon}` per way, drop anything named "pit"/"box" (pit lane/entry --
+ * not part of the racing line), run the largest-connected-component filter described above to drop
+ * any other raceway sharing the bounding box, and add the result here under the internal `tracks.id`.
  */
 
 export type TrackBoundarySegment = { width: number; pts: [number, number][] };
