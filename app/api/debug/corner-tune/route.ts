@@ -161,7 +161,8 @@ export async function GET(request: NextRequest) {
     const detail = detect(points, 0.15, 0.7, 0.55, Number(request.nextUrl.searchParams.get("splitRatio") ?? 0.72), 1);
 
     const validGpsCount = points.filter((p) => p.lat !== null && p.lon !== null).length;
-    return NextResponse.json({ status: "ok", pointCount: points.length, validGpsCount, candidatesScanned: candidates.length, samplePoints: points.slice(0, 3), lapId: usedLapId, gridResultsAt15: only15, allCounts: grid.map((g) => g.count), detail });
+    const distances = points.map((p) => p.distance);
+    return NextResponse.json({ status: "ok", pointCount: points.length, validGpsCount, candidatesScanned: candidates.length, minDistance: Math.min(...distances), maxDistance: Math.max(...distances), midSample: points[Math.floor(points.length / 2)], samplePoints: points.slice(0, 3), lapId: usedLapId, gridResultsAt15: only15, allCounts: grid.map((g) => g.count), detail });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
