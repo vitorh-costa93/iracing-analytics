@@ -745,11 +745,14 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
     return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
       .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
   }
-  // Throttle/brake share this one fixed 0-100% scale (not each independently normalized) -- see
-  // FOCUSED_ROWS' own comment for why, matching iRacing's own widget.
+  // Throttle/brake share this one fixed 0-1 scale (not each independently normalized) -- see
+  // FOCUSED_ROWS' own comment for why, matching iRacing's own widget. Confirmed live (29/08/2026)
+  // against the raw CSV: both channels are already a 0-1 fraction (full throttle/brake = 1), not a
+  // 0-100 value -- an earlier version of this divided by 100 here, which crushed every real value to
+  // within 1% of the row's floor.
   function pedalLine(points: TracePoint[], field: "throttle" | "brake", top: number, h: number) {
     return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
-      .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - (Number(point[field]) / 100) * h).toFixed(1)}`).join(" ");
+      .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - Number(point[field]) * h).toFixed(1)}`).join(" ");
   }
   const wheelDistance = hoverDistance ?? (range[0] + range[1]) / 2;
   const ownAngle = interpolate(ownPts, wheelDistance, "steering");
