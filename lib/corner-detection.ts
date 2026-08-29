@@ -188,7 +188,7 @@ export function detectCornersFromGps(points: Array<{ distance: number; lat: numb
     return { distance, value: Math.abs(angleDelta(headingIn, headingOut)) };
   });
   const sorted = samples.map((item) => item.value).sort((a, b) => a - b);
-  const threshold = (sorted[Math.floor(sorted.length * .7)] ?? 0) * .55;
+  const threshold = (sorted[Math.floor(sorted.length * .65)] ?? 0) * .55;
   if (threshold <= 0) return [];
 
   // Broad turning runs as sample-INDEX ranges, so a run straddling the start/finish line wraps
@@ -219,8 +219,12 @@ export function detectCornersFromGps(points: Array<{ distance: number; lat: numb
   }
 
   const at = (idx: number) => samples[((idx % total) + total) % total];
-  const SPLIT_RATIO = 0.72; // a valley between two apexes must drop to <=72% of the smaller neighboring
-                             // peak to count as two real corners rather than one continuous complex
+  // Grid-searched against two real, independently-known corner counts (Algarve GP = 15, Red Bull Ring
+  // GP = 10) via a temporary tuning route, 29/08/2026: 0.85 hits both exactly and stayed correct
+  // across every step/threshold combination tried. A valley only needs to drop to <=85% of the
+  // smaller neighboring peak to count as two real corners -- double-apex complexes (Samsung, Portimao)
+  // barely dip between apexes, so a stricter (lower) ratio was merging them into one.
+  const SPLIT_RATIO = 0.85;
 
   const corners: Array<{ start: number; end: number; peakDistance: number; peak: number }> = [];
   for (const run of merged) {
