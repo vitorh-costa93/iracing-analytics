@@ -278,7 +278,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-map .track-map { height: 100%; min-height: 360px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
-.focused-chart { width: 100%; height: 100%; min-height: 360px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; }
+.focused-chart { width: 100%; height: 100%; min-height: 360px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
 .focused-chart text { fill: var(--soft); font-size: 10px; font-family: var(--mono); }
 .focused-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .focused-chart .trace-steering { stroke-width: 2.5; }
@@ -316,7 +316,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .results-row b { min-width: 28px; color: var(--blue); font-family: var(--mono); font-size: 18px; text-align: right; }.results-category.sports .results-row b { color: var(--amber); }
 .official-results-note { margin: 11px 0 0; color: var(--soft); font-size: 11px; }
 .rating-chart-grid .panel-heading h2 { font-size: 17px; }.rating-chart-grid .panel-heading p { font-size: 12px; }.rating-chart-grid .chart-canvas { min-height: 180px; }
-.scatter-wrap { position: relative; margin-top: 14px; }.scatter-wrap svg { width: 100%; min-height: 250px; overflow: visible; }.scatter-wrap text { fill: var(--soft); font-family: var(--mono); font-size: 10px; }.scatter-grid { stroke: var(--border); stroke-width: 1; }.scatter-zero { stroke: var(--border-strong); stroke-width: 1.5; }.scatter-positive { fill: var(--green); opacity: .85; cursor: pointer; }.scatter-negative { fill: var(--red); opacity: .85; cursor: pointer; }.scatter-wrap circle:hover { opacity: 1; stroke: var(--text); stroke-width: 2; }.scatter-tooltip { position: absolute; right: 12px; top: 8px; display: grid; gap: 3px; max-width: 280px; padding: 10px 12px; border-radius: 3px; background: #08080a; border: 1px solid var(--border-strong); color: var(--text); pointer-events: none; }.scatter-tooltip strong { font-family: var(--mono); font-size: 15px; }.scatter-tooltip span { color: var(--muted); font-size: 11px; }
+.scatter-wrap { position: relative; margin-top: 14px; }.scatter-wrap svg { width: 100%; min-height: 250px; overflow: visible; }.scatter-wrap text { fill: var(--soft); font-family: var(--mono); font-size: 10px; }.scatter-grid { stroke: var(--border); stroke-width: 1; }.scatter-zero { stroke: var(--border-strong); stroke-width: 1.5; }.scatter-positive { fill: var(--green); opacity: .85; }.scatter-negative { fill: var(--red); opacity: .85; }.scatter-hit { fill: transparent; cursor: pointer; }.scatter-tooltip { position: absolute; right: 12px; top: 8px; display: grid; gap: 3px; max-width: 280px; padding: 10px 12px; border-radius: 3px; background: #08080a; border: 1px solid var(--border-strong); color: var(--text); pointer-events: none; }.scatter-tooltip strong { font-family: var(--mono); font-size: 15px; }.scatter-tooltip span { color: var(--muted); font-size: 11px; }
 .season-races-panel { margin-top: 18px; padding: 20px; }.race-table-wrap { margin-top: 16px; overflow: auto; }.race-table-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }.race-table-pagination button { padding: 8px 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 3px; }.race-table-pagination button:hover:not(:disabled) { background: var(--surface-muted); border-color: var(--brand); }.race-table-pagination button:disabled { opacity: .4; cursor: not-allowed; }.race-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }.race-table th { padding: 9px 10px; background: var(--surface-muted); color: var(--soft); text-align: left; text-transform: uppercase; letter-spacing: .05em; font-weight: 500; }.race-table td { padding: 10px; border-top: 1px solid var(--border); }.race-table td:nth-child(2), .race-table td:nth-child(3), .race-table td:nth-child(4) { white-space: normal; min-width: 150px; font-family: var(--body); }
 
 .insights-grid button strong { font-size: 16px; }.insights-grid button span { font-size: 14px; }.insights-grid button p { font-size: 15px; line-height: 1.55; }.insights-grid button ul { font-size: 13px; }
@@ -414,8 +414,11 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .section-title-row, .panel-heading { align-items: flex-start; flex-direction: column; }
   .kpi-grid { grid-template-columns: 1fr; }
   .large-panel { padding: 16px 10px 8px; }
-  .chart-canvas { overflow-x: auto; }
-  .chart-canvas svg { min-width: 760px; }
+  /* Was forced to min-width:760px + horizontal scroll here -- unlike the multi-channel telemetry
+   * chart (ten stacked rows that genuinely need width to stay legible), this is one line/area per
+   * series with a 12-point x-axis: it scales down to the viewport fine, and forcing scroll instead
+   * pushed roughly half the season (and its now-tappable dots) off-screen by default, discoverable
+   * only by realizing you needed to scroll sideways at all. */
   .chart-tooltip { position: sticky; left: 10px; right: auto; top: 10px; }
   .telemetry-heading { flex-direction: column; }
   .telemetry-selector { min-width: 100%; }
@@ -474,7 +477,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .race-debrief-corner-card h5 { margin: 0 0 10px; font-size: 15px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .race-debrief-corner-card h5 span { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; white-space: nowrap; }
 .corner-mini-row { display: grid; grid-template-columns: minmax(420px, 1fr) minmax(220px, 30%); gap: 12px; align-items: stretch; margin-bottom: 8px; }
-.corner-mini-chart { width: 100%; height: 112px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; cursor: crosshair; }
+.corner-mini-chart { width: 100%; height: 112px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; cursor: crosshair; touch-action: none; }
 .corner-mini-map { width: 100%; height: 112px; min-height: 112px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
 .corner-mini-map-outline { fill: none; stroke: var(--border-strong); stroke-width: 2.5; stroke-linejoin: round; stroke-linecap: round; }
 .corner-mini-map-marker { fill: var(--brand-red); stroke: var(--bg); stroke-width: 1; }

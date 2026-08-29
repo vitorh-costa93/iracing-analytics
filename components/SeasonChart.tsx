@@ -99,15 +99,20 @@ export default function SeasonChart({ current, previous, currentName, previousNa
           <path d={pathFor(previous)} className="season-line previous" />
           <path d={pathFor(current)} className="season-line current" />
 
+          {/* onClick (in addition to hover) so a tap toggles the tooltip open on touch devices --
+           * mouseenter/mouseleave alone never fires there, which is exactly why these dots were
+           * unusable on mobile: nothing happened on tap. Tapping the same point again closes it;
+           * tapping another point switches straight to it. */}
           {previous.filter((p) => pointValue(p) !== null).map((point) => (
             <circle
               key={`previous-${point.week}`}
               cx={x(point.week)}
               cy={y(pointValue(point) as number)}
-              r="8"
+              r="12"
               className="chart-hit"
               onMouseEnter={() => setHovered({ point, series: "previous" })}
               onMouseLeave={() => setHovered(null)}
+              onClick={() => setHovered((prevHovered) => prevHovered?.point.week === point.week && prevHovered.series === "previous" ? null : { point, series: "previous" })}
             />
           ))}
 
@@ -116,10 +121,11 @@ export default function SeasonChart({ current, previous, currentName, previousNa
               key={`current-${point.week}`}
               cx={x(point.week)}
               cy={y(pointValue(point) as number)}
-              r="8"
+              r="12"
               className="chart-hit"
               onMouseEnter={() => setHovered({ point, series: "current" })}
               onMouseLeave={() => setHovered(null)}
+              onClick={() => setHovered((existing) => existing?.point.week === point.week && existing.series === "current" ? null : { point, series: "current" })}
             />
           ))}
         </svg>

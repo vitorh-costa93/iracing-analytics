@@ -666,13 +666,24 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
       .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
   }
   return (
-    <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} preserveAspectRatio="none" className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio, marcha e volante; passe o mouse para ver a posição no mapa ao lado"
+    <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} preserveAspectRatio="none" className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio, marcha e volante; passe o mouse ou arraste o dedo para ver a posição no mapa ao lado"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const x = (event.clientX - rect.left) / rect.width * width;
         onHover(Math.max(from, Math.min(to, unscaleX(x))));
       }}
-      onMouseLeave={() => onHover(null)}>
+      onMouseLeave={() => onHover(null)}
+      onTouchStart={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = (event.touches[0].clientX - rect.left) / rect.width * width;
+        onHover(Math.max(from, Math.min(to, unscaleX(x))));
+      }}
+      onTouchMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const x = (event.touches[0].clientX - rect.left) / rect.width * width;
+        onHover(Math.max(from, Math.min(to, unscaleX(x))));
+      }}
+      onTouchEnd={() => onHover(null)}>
       <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
       {FOCUSED_ROWS.map((row) => (
         <g key={row.field}>
@@ -930,6 +941,15 @@ export default function ActiveWeekTelemetry() {
                 onMouseLeave={() => setHoveredDistance(null)} onMouseMove={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect();
                   setHoveredDistance(Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100)));
+                }}
+                // Tap only (no touchmove/touch-action:none) here on purpose: this chart is forced
+                // wide on mobile (min-width below) specifically so its ten stacked channels stay
+                // readable instead of squished, which means it needs native horizontal SCROLL to
+                // work on a narrow screen -- capturing drag for scrubbing would break that. A tap
+                // still sets the hover position; dragging pans the chart like anywhere else.
+                onTouchStart={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  setHoveredDistance(Math.max(0, Math.min(100, (event.touches[0].clientX - rect.left) / rect.width * 100)));
                 }}
                 onKeyDown={(event) => {
                   const step = event.shiftKey ? 5 : 0.5;

@@ -81,13 +81,26 @@ function CornerBandChart({ brakeBand, throttleBand, idealLine, onHover }: { brak
   // band (1% step, averaged across laps) -- deliberately a crisper, more detailed line on top, so
   // it reads as "trace this exact shape" rather than another statistical summary.
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas, com a curva da sua execução mais rápida em destaque; passe o mouse para localizar no mapa"
+    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas, com a curva da sua execução mais rápida em destaque; passe o mouse ou arraste o dedo para localizar no mapa"
       onMouseMove={(event) => {
         const rect = event.currentTarget.getBoundingClientRect();
         const px = (event.clientX - rect.left) / rect.width * width;
         onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
       }}
-      onMouseLeave={() => onHover(null)}>
+      onMouseLeave={() => onHover(null)}
+      // Touch has no hover concept, so mousemove/mouseleave alone left this dead on mobile --
+      // touchmove/touchstart drive the same locate-on-map behavior via a dragging finger instead.
+      onTouchStart={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const px = (event.touches[0].clientX - rect.left) / rect.width * width;
+        onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
+      }}
+      onTouchMove={(event) => {
+        const rect = event.currentTarget.getBoundingClientRect();
+        const px = (event.touches[0].clientX - rect.left) / rect.width * width;
+        onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
+      }}
+      onTouchEnd={() => onHover(null)}>
       <line x1={x(0)} x2={x(0)} y1={pad.top} y2={height - pad.bottom} className="corner-mini-axis" />
       <path d={bandPath(brakeBand)} className="corner-mini-band brake" />
       <path d={meanPath(brakeBand)} className="corner-mini-line brake" />
