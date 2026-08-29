@@ -132,11 +132,19 @@ export async function GET(request: NextRequest) {
     const trackId = Number(request.nextUrl.searchParams.get("trackId")) || tracks?.[0]?.id;
     if (!trackId) return NextResponse.json({ status: "error", message: "track not found", tracks }, { status: 404 });
     const { data: laps, error: lapsError } = await supabaseAdmin.from("laps").select("id,telemetry_path,lap_time").eq("track_id", trackId).order("id", { ascending: false }).limit(50);
-    const lap = laps?.find((item) => item.telemetry_path);
-    if (!lap?.telemetry_path) return NextResponse.json({ status: "error", message: "no lap with stored telemetry", trackId, lapsError, lapsCount: laps?.length ?? null, sampleLaps: laps?.slice(0, 5) }, { status: 404 });
-    const { data: file, error: downloadError } = await supabaseAdmin.storage.from("telemetry").download(lap.telemetry_path);
-    if (downloadError || !file) return NextResponse.json({ status: "error", message: "download failed", downloadError }, { status: 500 });
-    const points = parseLapCsv(await file.text());
+    const candidates = (laps ?? []).filter((item) => item.telemetry_path);
+    if (!candidates.length) return NextResponse.json({ status: "error", message: "no lap with stored telemetry", trackId, lapsError, lapsCount: laps?.length ?? null, sampleLaps: laps?.slice(0, 5) }, { status: 404 });
+    let points: ReturnType<typeof parseLapCsv> = [];
+    let usedLapId = "";
+    for (const candidate of candidates) {
+      const { data: file } = await supabaseAdmin.storage.from("telemetry").download(candidate.telemetry_path as string);
+      if (!file) continue;
+      const parsed = parseLapCsv(await file.text());
+      const validGps = parsed.filter((p) => p.lat !== null && p.lon !== null).length;
+      if (validGps > points.filter((p) => p.lat !== null && p.lon !== null).length) { points = parsed; usedLapId = candidate.id; }
+      if (validGps >= 400) break; // good enough sample, stop scanning
+    }
+    if (!points.length) return NextResponse.json({ status: "error", message: "no candidate lap parsed", candidateCount: candidates.length }, { status: 500 });
 
     const grid: Array<{ step: number; thresholdPercentile: number; thresholdRatio: number; splitRatio: number; mergeGapPct: number; count: number }> = [];
     const steps = [0.15, 0.1];
@@ -152,7 +160,8 @@ export async function GET(request: NextRequest) {
     const only15 = grid.filter((g) => g.count === 15);
     const detail = detect(points, 0.15, 0.7, 0.55, Number(request.nextUrl.searchParams.get("splitRatio") ?? 0.72), 1);
 
-    return NextResponse.json({ status: "ok", pointCount: points.length, lapId: lap.id, gridResultsAt15: only15, allCounts: grid.map((g) => g.count), detail });
+    const validGpsCount = points.filter((p) => p.lat !== null && p.lon !== null).length;
+    return NextResponse.json({ status: "ok", pointCount: points.length, validGpsCount, candidatesScanned: candidates.length, samplePoints: points.slice(0, 3), lapId: usedLapId, gridResultsAt15: only15, allCounts: grid.map((g) => g.count), detail });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
