@@ -634,19 +634,27 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   </div>;
 }
 
+// Modeled directly on iRacing's own in-sim telemetry widget (the driver asked to match it): throttle
+// and brake share ONE graph instead of two separate rows, both against the same 0-100% pedal-position
+// scale (not each independently normalized to its own min/max like speed or steering) -- reading "was
+// I still on the brake when I got back to throttle" is the point, and that only works if both traces
+// sit on one shared axis.
 const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: number }[] = [
   { field: "speed", label: "SPEED", top: 4, height: 90 },
-  { field: "throttle", label: "THROTTLE", top: 106, height: 56 },
-  { field: "brake", label: "BRAKE", top: 174, height: 56 },
 ];
+const PEDALS_ROW_TOP = 108, PEDALS_ROW_HEIGHT = 118;
+const FOCUSED_HEIGHT = 230;
+
 // Steering is rendered as two rotating wheels (own/reference), not a line — a line graph forces
 // you to read numbers and infer the motion; a wheel that visibly turns the same amount you turned
 // it shows the actual movement at a glance, which is what "did I match the reference's hand
-// motion here" really asks. Gear used to be its own line-chart row below brake; moved to a plain
-// number printed above each wheel instead — a shift is a discrete, instantaneous event, not a
-// value with meaningful shape over distance, so a number reads faster than a stepped line.
-const STEERING_ROW_TOP = 242, STEERING_ROW_HEIGHT = 138;
-const FOCUSED_HEIGHT = 380;
+// motion here" really asks. Gear is a plain number above each wheel, not a line chart row either —
+// a shift is a discrete, instantaneous event, not a value with meaningful shape over distance, so a
+// number reads faster than a stepped line. Also matching iRacing's own widget: the gauge cluster is
+// its own column to the LEFT of the input graphs (own on top, reference below), not a row underneath.
+const GAUGE_COLUMN_WIDTH = 130;
+const GAUGE_WHEEL_RADIUS = 22;
+const GAUGE_OWN_CENTER_Y = 55, GAUGE_REFERENCE_CENTER_Y = 165;
 
 /** Gear as a discrete label, not a raw number: 0 is neutral ("N"), negative is reverse ("R") -- a
  * bare "0" or "-1" reads as a data glitch to a driver, not as what those values actually mean. */
@@ -712,12 +720,19 @@ function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: num
  * readout — the driver asked to see WHERE on track a point is, not read exact numbers off a tooltip. */
 function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: Trace; reference: Trace | null; range: [number, number]; hoverDistance: number | null; onHover: (distance: number | null) => void }) {
   const width = 480;
+  const totalWidth = GAUGE_COLUMN_WIDTH + width;
   const from = Math.max(0, range[0] - 3), to = Math.min(100, range[1] + 3);
   const ownPts = own.points.filter((point) => point.distance >= from && point.distance <= to);
   const refPts = reference ? reference.points.filter((point) => point.distance >= from && point.distance <= to) : [];
   const all = [...ownPts, ...refPts];
   const scaleX = (distance: number) => (distance - from) / Math.max(0.001, to - from) * width;
   const unscaleX = (x: number) => from + (x / width) * (to - from);
+  // Pointer position arrives in the SVG's full rendered box (gauge column + chart); convert to the
+  // chart's own local x (0..width) by first landing in viewBox units, then subtracting the column.
+  function localChartX(clientX: number, rect: DOMRect) {
+    const viewBoxX = (clientX - rect.left) / rect.width * totalWidth;
+    return viewBoxX - GAUGE_COLUMN_WIDTH;
+  }
   function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
     const values = all.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
     if (!values.length) return "";
@@ -730,56 +745,65 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
     return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
       .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
   }
+  // Throttle/brake share this one fixed 0-100% scale (not each independently normalized) -- see
+  // FOCUSED_ROWS' own comment for why, matching iRacing's own widget.
+  function pedalLine(points: TracePoint[], field: "throttle" | "brake", top: number, h: number) {
+    return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
+      .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - (Number(point[field]) / 100) * h).toFixed(1)}`).join(" ");
+  }
+  const wheelDistance = hoverDistance ?? (range[0] + range[1]) / 2;
+  const ownAngle = interpolate(ownPts, wheelDistance, "steering");
+  const refAngle = reference ? interpolate(refPts, wheelDistance, "steering") : null;
+  const ownGear = interpolate(ownPts, wheelDistance, "gear");
+  const refGear = reference ? interpolate(refPts, wheelDistance, "gear") : null;
+  const gaugeCenterX = GAUGE_COLUMN_WIDTH / 2;
+  // Default preserveAspectRatio (xMidYMid meet), not "none" like the old taller/narrower layout used
+  // -- this one is much wider relative to its height (the gauge column made it so), and stretching
+  // independently on each axis would squash the steering wheels' circles into ovals.
   return (
-    <svg viewBox={`0 0 ${width} ${FOCUSED_HEIGHT}`} preserveAspectRatio="none" className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio, marcha e volante; passe o mouse ou arraste o dedo para ver a posição no mapa ao lado"
+    <svg viewBox={`0 0 ${totalWidth} ${FOCUSED_HEIGHT}`} className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio, marcha e volante; passe o mouse ou arraste o dedo para ver a posição no mapa ao lado"
       onMouseMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const x = (event.clientX - rect.left) / rect.width * width;
+        const x = localChartX(event.clientX, event.currentTarget.getBoundingClientRect());
         onHover(Math.max(from, Math.min(to, unscaleX(x))));
       }}
       onMouseLeave={() => onHover(null)}
       onTouchStart={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const x = (event.touches[0].clientX - rect.left) / rect.width * width;
+        const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect());
         onHover(Math.max(from, Math.min(to, unscaleX(x))));
       }}
       onTouchMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const x = (event.touches[0].clientX - rect.left) / rect.width * width;
+        const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect());
         onHover(Math.max(from, Math.min(to, unscaleX(x))));
       }}
       onTouchEnd={() => onHover(null)}>
-      <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
-      {FOCUSED_ROWS.map((row) => (
-        <g key={row.field}>
-          <text x="4" y={row.top + 12} className="channel-label">{row.label}</text>
-          <polyline points={line(ownPts, row.field, row.top, row.height)} className={`trace-${row.field}`} />
-          {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
+      {/* Gauge column: gear + wheel, own on top / reference below — left of the input graphs, matching
+       * iRacing's own widget layout (asked for explicitly). Defaults to the middle of the focused
+       * range before any hover, so the gauges never sit blank on first render. */}
+      <text x={gaugeCenterX} y={GAUGE_OWN_CENTER_Y - GAUGE_WHEEL_RADIUS - 10} textAnchor="middle" className="gear-readout own">{formatGear(ownGear)}</text>
+      <SteeringWheel cx={gaugeCenterX} cy={GAUGE_OWN_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={ownAngle} label="VOCÊ" className="own" />
+      {reference && <>
+        <text x={gaugeCenterX} y={GAUGE_REFERENCE_CENTER_Y - GAUGE_WHEEL_RADIUS - 10} textAnchor="middle" className="gear-readout reference">{formatGear(refGear)}</text>
+        <SteeringWheel cx={gaugeCenterX} cy={GAUGE_REFERENCE_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={refAngle} label="REFERÊNCIA" className="reference" />
+      </>}
+      <line x1={GAUGE_COLUMN_WIDTH} x2={GAUGE_COLUMN_WIDTH} y1="0" y2={FOCUSED_HEIGHT} className="gauge-divider" />
+      <g transform={`translate(${GAUGE_COLUMN_WIDTH},0)`}>
+        <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
+        {FOCUSED_ROWS.map((row) => (
+          <g key={row.field}>
+            <text x="4" y={row.top + 12} className="channel-label">{row.label}</text>
+            <polyline points={line(ownPts, row.field, row.top, row.height)} className={`trace-${row.field}`} />
+            {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
+          </g>
+        ))}
+        <g>
+          <text x="4" y={PEDALS_ROW_TOP + 12} className="channel-label">PEDALS</text>
+          <polyline points={pedalLine(ownPts, "brake", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake" />
+          {reference && <polyline points={pedalLine(refPts, "brake", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake reference-line" />}
+          <polyline points={pedalLine(ownPts, "throttle", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle" />
+          {reference && <polyline points={pedalLine(refPts, "throttle", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle reference-line" />}
         </g>
-      ))}
-      {(() => {
-        // Defaults to the middle of the focused range before any hover, so the wheels never sit
-        // blank on first render — matches what the line-based rows already show (a static shape)
-        // instead of forcing a mouse move just to see anything at all.
-        const wheelDistance = hoverDistance ?? (range[0] + range[1]) / 2;
-        const ownAngle = interpolate(ownPts, wheelDistance, "steering");
-        const refAngle = reference ? interpolate(refPts, wheelDistance, "steering") : null;
-        const ownGear = interpolate(ownPts, wheelDistance, "gear");
-        const refGear = reference ? interpolate(refPts, wheelDistance, "gear") : null;
-        const wheelRadius = 34;
-        // Not vertically centered in the row: shifted down from the row's true middle to leave room
-        // above for the gear number, and below for the wheel's own angle-value label.
-        const wheelY = STEERING_ROW_TOP + 58;
-        const gearY = wheelY - wheelRadius - 10;
-        return <g>
-          <text x="4" y={STEERING_ROW_TOP + 12} className="channel-label">STEERING</text>
-          <text x={width * 0.32} y={gearY} textAnchor="middle" className="gear-readout own">{formatGear(ownGear)}</text>
-          {reference && <text x={width * 0.68} y={gearY} textAnchor="middle" className="gear-readout reference">{formatGear(refGear)}</text>}
-          <SteeringWheel cx={width * 0.32} cy={wheelY} radius={wheelRadius} angleRad={ownAngle} label="VOCÊ" className="own" />
-          {reference && <SteeringWheel cx={width * 0.68} cy={wheelY} radius={wheelRadius} angleRad={refAngle} label="REFERÊNCIA" className="reference" />}
-        </g>;
-      })()}
-      {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
+        {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
+      </g>
     </svg>
   );
 }

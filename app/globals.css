@@ -205,6 +205,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .trace-speed { stroke: var(--blue); }.trace-throttle { stroke: var(--green); }.trace-brake { stroke: var(--red); }.trace-steering { stroke: #e0973b; }.trace-rpm { stroke: #a97ee0; }.trace-gear { stroke: var(--muted); }.trace-clutch { stroke: #c99a4a; }.trace-latAccel, .trace-longAccel, .trace-yawRate { stroke: #4fc3d6; }
 .reference-line { stroke-dasharray: 6 5; opacity: .55; }
 .hover-line { stroke: var(--text); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
+.gauge-divider { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .telemetry-hover-panel { position: sticky; top: 16px; min-width: 0; padding: 14px; border: 1px solid var(--border-strong); background: #08080a; color: var(--text); align-self: start; }
 .telemetry-hover-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
 .telemetry-hover .telemetry-hover-map { display: block; margin: 4px 0 10px; border-radius: 3px; overflow: hidden; background: var(--surface-raised); }
@@ -302,7 +303,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-map .track-map { height: 100%; min-height: 360px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
-.focused-chart { width: 100%; height: 100%; min-height: 360px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
+/* Not height:100%/align-self:stretch like before -- the gauge column made this SVG's own aspect
+ * ratio much wider/shorter than the map it sits next to (which still wants real vertical room for a
+ * 2D track shape), and stretching it to match would just letterbox a lot of empty space around the
+ * actual content instead of the content filling its box. */
+.focused-chart { width: 100%; min-height: 220px; align-self: start; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
 .focused-chart text { fill: var(--soft); font-size: 10px; font-family: var(--mono); }
 .focused-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .focused-chart .trace-steering { stroke-width: 2.5; }
