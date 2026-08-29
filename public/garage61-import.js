@@ -133,9 +133,14 @@
   }
 
   // Minimum time every visit gets regardless of how fast the event payload arrives (lets secondary
-  // calls -- car/track lookups, etc. -- finish too); hard ceiling so one slow/broken event can't hang
-  // the whole run; extra settle time once the real payload is seen, to let its .json() parse complete.
-  var MIN_WAIT_MS = 2000, MAX_WAIT_MS = 12000, SETTLE_AFTER_PAYLOAD_MS = 1000;
+  // calls -- car/track lookups, etc. -- finish too); hard ceiling so one truly-broken event can't hang
+  // the whole run forever; extra settle time once the real payload is seen, to let its .json() parse
+  // complete. 12s wasn't enough on a real weak-signal mobile connection (confirmed live, 29/08/2026):
+  // Garage61's event page loads a few dozen chunk/asset/API requests SEQUENTIALLY before it even
+  // reaches the one call this waits for, and each round trip on a slow link adds up fast. Raised to
+  // 45s -- still bounded (so a genuinely broken event doesn't hang the whole run), but generous enough
+  // that this ceiling should now only ever trigger on an actual dead event, not a slow-but-working one.
+  var MIN_WAIT_MS = 2000, MAX_WAIT_MS = 45000, SETTLE_AFTER_PAYLOAD_MS = 1200;
 
   function visitAll(events) {
     var index = 0;
