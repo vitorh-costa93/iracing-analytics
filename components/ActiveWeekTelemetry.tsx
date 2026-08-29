@@ -554,7 +554,7 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   // but calibrating it in real meters, rather than an arbitrary constant, at least makes the
   // ribbon's width and the own/reference lines' real GPS separation share one consistent scale.
   // Clamped so it stays legible at both a full-lap zoomed-out view and a single-corner close-up.
-  const trackWidthPx = Math.max(3, Math.min(40, projectGps.metersToPixels(12)));
+  const trackWidthPx = Math.max(6, Math.min(40, projectGps.metersToPixels(12)));
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
   return <div className="track-map-zoom-wrap">
