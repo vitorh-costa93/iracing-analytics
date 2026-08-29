@@ -100,6 +100,68 @@ export function detectCorners(points: CornerSample[]): DetectedCorner[] {
     }));
 }
 
+/** Splits one broad "turning" run into one or more real corners when it contains multiple distinct
+ * apexes separated by a valley deep enough to count as a genuine separation, rather than reporting a
+ * double-apex complex (Algarve's Samsung and Portimao corners, both same-direction and connected
+ * without an intervening straight) as a single corner. Standard topographic-prominence peak merging:
+ * repeatedly collapse the pair of adjacent peaks whose separating valley is shallowest, until the
+ * shallowest remaining valley is deep enough (below `splitRatio` of the smaller neighboring peak) to
+ * be trusted as two real corners. Operates purely on array position, not `distance`, so it works
+ * unmodified on a run that has been unwrapped across the start/finish line. */
+function splitByProminence(segment: { distance: number; value: number }[], splitRatio: number): Array<{ start: number; end: number; peakDistance: number; peak: number }> {
+  const n = segment.length;
+  if (n === 0) return [];
+  if (n < 3) {
+    let peakIdx = 0;
+    for (let i = 1; i < n; i++) if (segment[i].value > segment[peakIdx].value) peakIdx = i;
+    return [{ start: segment[0].distance, end: segment[n - 1].distance, peakDistance: segment[peakIdx].distance, peak: segment[peakIdx].value }];
+  }
+
+  type Extremum = { index: number; value: number };
+  const peaks: Extremum[] = [];
+  for (let i = 0; i < n; i++) {
+    const value = segment[i].value;
+    const prev = i > 0 ? segment[i - 1].value : -Infinity;
+    const next = i < n - 1 ? segment[i + 1].value : -Infinity;
+    if (value >= prev && value > next) peaks.push({ index: i, value });
+  }
+  if (peaks.length === 0) peaks.push({ index: n - 1, value: segment[n - 1].value });
+
+  const valleyBetween = (a: number, b: number) => {
+    let min = Infinity;
+    for (let i = a; i <= b; i++) min = Math.min(min, segment[i].value);
+    return min;
+  };
+
+  const kept = peaks.slice();
+  while (kept.length > 1) {
+    let weakestPos = -1, weakestRatio = -Infinity;
+    for (let i = 0; i < kept.length - 1; i++) {
+      const ratio = valleyBetween(kept[i].index, kept[i + 1].index) / Math.min(kept[i].value, kept[i + 1].value);
+      if (ratio > weakestRatio) { weakestRatio = ratio; weakestPos = i; }
+    }
+    if (weakestRatio < splitRatio) break; // deepest-cut remaining valley is still a real separation
+    const a = kept[weakestPos], b = kept[weakestPos + 1];
+    kept.splice(weakestPos, 2, a.value >= b.value ? a : b); // merge the weaker peak into the stronger
+  }
+
+  return kept.map((peak, i) => {
+    let startIdx = 0;
+    if (i > 0) {
+      let minIdx = kept[i - 1].index, minVal = Infinity;
+      for (let j = kept[i - 1].index; j <= peak.index; j++) if (segment[j].value < minVal) { minVal = segment[j].value; minIdx = j; }
+      startIdx = minIdx;
+    }
+    let endIdx = n - 1;
+    if (i < kept.length - 1) {
+      let minIdx = peak.index, minVal = Infinity;
+      for (let j = peak.index; j <= kept[i + 1].index; j++) if (segment[j].value < minVal) { minVal = segment[j].value; minIdx = j; }
+      endIdx = minIdx;
+    }
+    return { start: segment[startIdx].distance, end: segment[endIdx].distance, peakDistance: segment[peak.index].distance, peak: peak.value };
+  });
+}
+
 /** GPS geometry is the authoritative fallback for corner ORDER.  Lateral acceleration can miss
  * a gentle turn when the driver is coasting, which made Indianapolis' first reported "corner"
  * land at the exit of Turn 3.  The heading change of the physical trace is independent of pedal
@@ -111,8 +173,15 @@ export function detectCornersFromGps(points: Array<{ distance: number; lat: numb
   const lonScale = Math.cos(meanLat * Math.PI / 180);
   const nearest = (distance: number) => valid.reduce((best, point) => Math.abs(point.distance - distance) < Math.abs(best.distance - distance) ? point : best, valid[0]);
   const angleDelta = (a: number, b: number) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
-  const samples = Array.from({ length: 200 }, (_, index) => {
-    const distance = index * .5;
+
+  // 0.15% steps (~7m on a 4.7km lap) -- much finer than the original 0.5% (~23m). The coarse grid was
+  // smoothing away the brief straightening between apexes of a double-apex complex (Algarve's Samsung
+  // and Portimao corners connect with no real straight between them), which under-counted Algarve's
+  // real 15 turns as 11-12 even after this function replaced the lateral-accel-only detector.
+  const STEP = 0.15;
+  const total = Math.round(100 / STEP);
+  const samples = Array.from({ length: total }, (_, index) => {
+    const distance = index * STEP;
     const before = nearest((distance - 1 + 100) % 100), center = nearest(distance), after = nearest((distance + 1) % 100);
     const headingIn = Math.atan2(center.lat - before.lat, (center.lon - before.lon) * lonScale);
     const headingOut = Math.atan2(after.lat - center.lat, (after.lon - center.lon) * lonScale);
@@ -121,14 +190,46 @@ export function detectCornersFromGps(points: Array<{ distance: number; lat: numb
   const sorted = samples.map((item) => item.value).sort((a, b) => a - b);
   const threshold = (sorted[Math.floor(sorted.length * .7)] ?? 0) * .55;
   if (threshold <= 0) return [];
-  const runs: Array<{ start: number; end: number; peak: number; peakDistance: number }> = [];
-  let run: { start: number; end: number; peak: number; peakDistance: number } | null = null;
-  for (const sample of samples) {
-    if (sample.value >= threshold) {
-      if (!run) run = { start: sample.distance, end: sample.distance, peak: sample.value, peakDistance: sample.distance };
-      else { run.end = sample.distance; if (sample.value > run.peak) { run.peak = sample.value; run.peakDistance = sample.distance; } }
-    } else if (run) { runs.push(run); run = null; }
+
+  // Broad turning runs as sample-INDEX ranges, so a run straddling the start/finish line wraps
+  // cleanly (no distance-comparison edge case once the run is later unwrapped for prominence-splitting).
+  const runs: Array<{ startIdx: number; endIdx: number }> = [];
+  let runStartIdx: number | null = null;
+  for (let i = 0; i < total; i++) {
+    if (samples[i].value >= threshold) { if (runStartIdx === null) runStartIdx = i; }
+    else if (runStartIdx !== null) { runs.push({ startIdx: runStartIdx, endIdx: i - 1 }); runStartIdx = null; }
   }
-  if (run) runs.push(run);
-  return runs.filter((item) => item.end - item.start >= .5).map((item, index) => ({ number: index + 1, distance: Number(item.peakDistance.toFixed(1)), startDistance: item.start, endDistance: item.end, peak: Number(item.peak.toFixed(2)) }));
+  if (runStartIdx !== null) runs.push({ startIdx: runStartIdx, endIdx: total - 1 });
+
+  // A corner can straddle the start/finish line -- merge the first and last run if both touch an edge.
+  if (runs.length >= 2) {
+    const first = runs[0], last = runs[runs.length - 1];
+    if (first.startIdx === 0 && last.endIdx === total - 1) {
+      runs[0] = { startIdx: last.startIdx, endIdx: first.endIdx + total }; // endIdx left unwrapped (may exceed total)
+      runs.pop();
+    }
+  }
+
+  const MERGE_GAP = Math.max(1, Math.round(1 / STEP)); // runs separated by <1% of lap are one corner complex
+  const merged: Array<{ startIdx: number; endIdx: number }> = [];
+  for (const run of runs) {
+    const last = merged[merged.length - 1];
+    if (last && run.startIdx - last.endIdx < MERGE_GAP) last.endIdx = Math.max(last.endIdx, run.endIdx);
+    else merged.push({ ...run });
+  }
+
+  const at = (idx: number) => samples[((idx % total) + total) % total];
+  const SPLIT_RATIO = 0.72; // a valley between two apexes must drop to <=72% of the smaller neighboring
+                             // peak to count as two real corners rather than one continuous complex
+
+  const corners: Array<{ start: number; end: number; peakDistance: number; peak: number }> = [];
+  for (const run of merged) {
+    const length = run.endIdx - run.startIdx + 1;
+    const segment = Array.from({ length }, (_, k) => at(run.startIdx + k));
+    corners.push(...splitByProminence(segment, SPLIT_RATIO));
+  }
+
+  return corners
+    .filter((item) => item.end - item.start >= STEP * 2)
+    .map((item, index) => ({ number: index + 1, distance: Number(item.peakDistance.toFixed(1)), startDistance: Number(item.start.toFixed(1)), endDistance: Number(item.end.toFixed(1)), peak: Number(item.peak.toFixed(3)) }));
 }
