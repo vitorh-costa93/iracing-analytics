@@ -53,6 +53,19 @@ Isso significa que **sincronização 100% automática do iRStats não é viável
 
 **Recomendação:** manter o bookmarklet como está. Ele já é rápido (um comando, ~3-5 min para o incremental do dia a dia já que só busca corridas novas) e resiliente (retry automático em bloqueio temporário, retoma de onde parou). O ganho de automatizar 100% não compensa o custo/risco de qualquer alternativa viável hoje. Se o Cloudflare da irstats.com mudar de comportamento no futuro, a rota `/api/sync/irstats` já existe e pode voltar a ser chamada pelo cron sem mudança de schema.
 
+### Setups: caminho real para eliminar o scraping via iframe (29/08/2026)
+
+O import de setup hoje (`public/garage61-import.js`) visita cada evento em um iframe oculto e intercepta respostas `fetch` — porque a API pública do Garage61 **não tem** endpoint pra baixar o setup de uma volta qualquer. Mas existe um caminho oficial diferente: **Data Packs**, o sistema de pacotes de setup por assinatura do Garage61 (o time do usuário — "Torugates Racing Team" — já usa isso, é de onde vêm os nomes "HYMO"/"P1Doks" na biblioteca do Setup Lab).
+
+Endpoint confirmado (via `garage61.net/developer/endpoints`, autenticado):
+```
+GET /api/v1/teams/{team}/datapacks/{id}/content/{item}/setup.sto
+```
+
+Testei contra a API real com nosso token de servidor: o endpoint existe e o team ID já é conhecido (`01M02QCW0CT3AJDPS23AZKEKWP`), mas a chamada retorna `401 Missing app scope (not approved): team_datapacks_read`. Esse escopo, junto com `team_datapacks_subscribers_read` (opcional, só se precisarmos de quem assina), está listado em `garage61.net/developer/permissions` como **"Requires approval" + "Requires user acceptance"** — precisa ser aprovado pelo Garage61 para a aplicação registrada, e o usuário autenticado precisa aceitar o escopo.
+
+**Próximo passo (ação do usuário, não do agente):** em `garage61.net/developer` → "My applications", solicitar o escopo `team_datapacks_read` para a aplicação já registrada (ou via o link "Contact" do portal, citando o endpoint acima). Se aprovado, dá pra listar os data packs do time, seus itens de conteúdo, e baixar `.sto` diretamente pelo servidor — eliminando o bookmarklet de setup por completo (só o de resultados, via iRStats, continuaria manual, por causa do Cloudflare).
+
 ## Tabelas base
 
 | Tabela | Fonte | Papel | Amostra real |
