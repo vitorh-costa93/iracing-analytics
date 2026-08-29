@@ -236,23 +236,26 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .comparison-summary strong { font-family: var(--mono); font-size: 20px; font-variant-numeric: tabular-nums; }
 .insights-heading { margin-top: 20px; }
 .insights-heading h3 { margin: 4px 0 0; font-size: 16px; }
+/* Colors here match iRacing's own in-sim telemetry widget exactly (asked for explicitly, 29/08/2026:
+ * "as mesmas cores, uma replicação perfeita") -- neutral gray wheel, bright yellow gear, white speed,
+ * red center-mark, regardless of own vs reference. That widget only ever shows one car, so it has no
+ * own/reference color convention to replicate; own/reference here stay distinguishable only through
+ * the VOCÊ/REFERÊNCIA label text color (red/blue, matching the rest of the app's own/reference
+ * convention) and the dashed vs solid input-graph lines above, not by recoloring the gauge itself. */
 .steering-wheel-backdrop { fill: var(--surface-raised); stroke: var(--border); stroke-width: 1; }
-.steering-wheel-rim { fill: none; stroke-width: 6; stroke-linejoin: round; }
-.steering-wheel.own .steering-wheel-rim, .steering-wheel.own .steering-wheel-spoke, .steering-wheel.own .steering-wheel-grip, .steering-wheel.own .steering-wheel-mark { stroke: var(--red); }
-.steering-wheel.reference .steering-wheel-rim, .steering-wheel.reference .steering-wheel-spoke, .steering-wheel.reference .steering-wheel-grip, .steering-wheel.reference .steering-wheel-mark { stroke: var(--blue); }
-.steering-wheel-grip { stroke-width: 1.2; opacity: .5; }
-.steering-wheel-spoke { stroke-width: 4; stroke-linecap: round; }
+.steering-wheel-rim { fill: none; stroke: #c4c9d1; stroke-width: 6; stroke-linejoin: round; }
+.steering-wheel-grip { stroke: #c4c9d1; stroke-width: 1.2; opacity: .5; }
+.steering-wheel-spoke { stroke: #c4c9d1; stroke-width: 4; stroke-linecap: round; }
 .steering-wheel-hub { fill: var(--surface-raised); stroke: var(--border-strong); stroke-width: 1.5; }
 .steering-wheel-screen { fill: var(--bg); }
 .steering-wheel-button { fill: var(--border-strong); }
-.steering-wheel-mark { fill: var(--amber); }
-.steering-wheel.own .steering-wheel-mark, .steering-wheel.reference .steering-wheel-mark { stroke: none; }
+.steering-wheel-mark { fill: #e5342b; }
 .steering-wheel-empty { opacity: .3; }
-.steering-wheel-label { fill: var(--muted); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .04em; text-anchor: middle; }
-.steering-wheel-value { fill: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 600; text-anchor: middle; }
-.gear-readout { font-family: var(--mono); font-size: 20px; font-weight: 700; text-anchor: middle; }
-.gear-readout.own { fill: var(--red); }
-.gear-readout.reference { fill: var(--blue); }
+.steering-wheel-label { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .04em; text-anchor: middle; }
+.steering-wheel-label.own { fill: var(--red); }
+.steering-wheel-label.reference { fill: var(--blue); }
+.steering-wheel-value { fill: #fff; font-family: var(--mono); font-size: 13px; font-weight: 700; text-anchor: middle; }
+.gear-readout { fill: #f3c614; font-family: var(--mono); font-size: 20px; font-weight: 700; text-anchor: middle; }
 .insights-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .insights-grid button { padding: 13px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .insights-grid button:hover, .insights-grid button.active { background: var(--brand-pale); border-color: var(--brand-dark); }

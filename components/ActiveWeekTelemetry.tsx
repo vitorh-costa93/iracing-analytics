@@ -710,7 +710,7 @@ function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: num
         {/* Center-mark chevron at 12 o'clock — the colored "wheel straight" LED strip real wheels have. */}
         <path d={`M -4 ${-radius + 8} L 4 ${-radius + 8} L 0 ${-radius + 1} Z`} className="steering-wheel-mark" />
       </g>
-      <text x={cx} y={cy + radius + 26} textAnchor="middle" className="steering-wheel-label">{label}</text>
+      <text x={cx} y={cy + radius + 26} textAnchor="middle" className={`steering-wheel-label ${className}`}>{label}</text>
       <text x={cx} y={cy + radius + 40} textAnchor="middle" className="steering-wheel-value">{angleRad !== null ? `${degrees >= 0 ? "" : "−"}${Math.abs(degrees).toFixed(0)}°` : "—"}</text>
     </g>
   );
