@@ -148,9 +148,15 @@ function parseTelemetryCsv(csv: string): Trace {
 }
 
 function traceUsesOvertake(trace: Trace) {
-  return trace.points.some((point) =>
-    Number(point.pushToPass ?? 0) > 0 || Number(point.p2pStatus ?? 0) > 0 || Number(point.p2pCount ?? 0) > 0
-  );
+  // p2pCount reads as a session-cumulative total, not a per-lap value -- a lap recorded after P2P
+  // was used earlier in the same session/file still carries that nonzero count throughout, even if
+  // P2P was never engaged DURING this specific lap. Checking that the count actually rose across
+  // this trace's own points (not just that it's nonzero) is what tells "used here" apart from
+  // "carried over from earlier". PushToPass/p2pStatus are per-instant flags, checked as before.
+  const instantUsed = trace.points.some((point) => Number(point.pushToPass ?? 0) > 0 || Number(point.p2pStatus ?? 0) > 0);
+  const counts = trace.points.map((point) => point.p2pCount).filter((value): value is number => value !== null);
+  const countUsed = counts.length >= 2 && counts[counts.length - 1] > counts[0];
+  return instantUsed || countUsed;
 }
 
 function readIbtValue(view: DataView, offset: number, type: number) {
@@ -201,7 +207,15 @@ function ibtToBestLapCsv(buffer: ArrayBuffer) {
   let points: LapPoint[] = [];
   let touchedPit = false;
   let best: { duration: number; points: LapPoint[] } | null = null;
-  const overtakeIndexes = ["PushToPass", "P2P_Status", "P2P_Count"].map((name) => exported.indexOf(name)).filter((index) => index >= 0);
+  // PushToPass/P2P_Status are per-instant flags (checking "was it ever 1 during this lap" is
+  // correct as-is), but P2P_Count reads as a SESSION-CUMULATIVE total, not a per-lap value — a
+  // driver who engaged P2P even once anywhere in the recording would otherwise have every lap
+  // AFTER that point permanently read count > 0, excluding every real lap that came after (the
+  // exact failure reported: "a referência usa P2P" on a file where most laps never touched it).
+  // Comparing the count at lap-start vs lap-end instead detects USE DURING THIS LAP specifically,
+  // independent of how many times it was used earlier in the session.
+  const instantIndexes = ["PushToPass", "P2P_Status"].map((name) => exported.indexOf(name)).filter((index) => index >= 0);
+  const countIndex = exported.indexOf("P2P_Count");
   const finishLap = () => {
     if (points.length < 100 || touchedPit) return;
     const ordered = [...points].sort((a, b) => a.distance - b.distance);
@@ -209,7 +223,9 @@ function ibtToBestLapCsv(buffer: ArrayBuffer) {
     const maxDistance = ordered[ordered.length - 1].distance;
     const duration = points[points.length - 1].time - points[0].time;
     if (minDistance > 0.03 || maxDistance < 0.97 || duration <= 10) return;
-    if (overtakeIndexes.some((index) => points.some((point) => Number(point.values[index] ?? 0) > 0))) return;
+    const usedInstant = instantIndexes.some((index) => points.some((point) => Number(point.values[index] ?? 0) > 0));
+    const usedCount = countIndex >= 0 && Number(ordered[ordered.length - 1].values[countIndex] ?? 0) > Number(ordered[0].values[countIndex] ?? 0);
+    if (usedInstant || usedCount) return;
     if (!best || duration < best.duration) best = { duration, points: ordered };
   };
 
