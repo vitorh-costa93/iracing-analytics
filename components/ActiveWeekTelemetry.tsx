@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
 import { createTrackProjector } from "@/lib/track-map";
-import { getTrackBoundary } from "@/lib/track-boundaries";
+import { getTrackBoundary, type TrackBoundary } from "@/lib/track-boundaries";
 
 type Combination = {
   key: string;
@@ -520,6 +520,16 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   // that point before zooming, instead of always scaling around the fixed (150,100) middle.
   const [zoomLevel, setZoomLevel] = useState(1);
   const [zoomCenter, setZoomCenter] = useState({ x: 150, y: 100 });
+  // Fetched once per trackId (see lib/track-boundaries.ts for why this is a runtime fetch, not a
+  // bundled import) and shared across all three TrackMap instances on the page via that module's own
+  // cache -- only the first one triggers a network request, the rest resolve from the same promise.
+  const [boundary, setBoundary] = useState<TrackBoundary | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    setBoundary(null);
+    getTrackBoundary(trackId).then((result) => { if (!cancelled) setBoundary(result); });
+    return () => { cancelled = true; };
+  }, [trackId]);
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
   const rawRefGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
@@ -547,7 +557,6 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   // with two similar-pace drivers' lines nearly coincident, the "ribbon" was in effect just a tube
   // around one path, so both lines always looked centered in it no matter where they really were on
   // the physical track. A real boundary gives the thin lines something true to sit inside.
-  const boundary = getTrackBoundary(trackId);
   const boundaryPoints = boundary ? boundary.segments.flatMap((segment) => segment.pts.map(([lat, lon]) => ({ lat, lon }))) : [];
 
   let boundsPoints = gps;

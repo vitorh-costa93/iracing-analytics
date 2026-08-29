@@ -1,12 +1,18 @@
-import raw from "./track-boundaries.json";
-
 /**
  * Real track-edge geometry, sourced from OpenStreetMap's `highway=raceway` ways (ODbL-licensed,
  * https://www.openstreetmap.org/copyright) via a one-time Overpass API query per track, 29/08/2026.
  * This is what makes the track map's asphalt ribbon an actual track boundary instead of a synthetic
  * tube drawn around whichever GPS trace happened to be compared -- see TrackMap's own comment for why
  * that synthetic ribbon could never show real track position ("aparenta estar tudo no meio da pista"
- * was a structural consequence of it, not a rendering bug).
+ * was a structural consequence of it, not a rendering bug). Covers 46 of the 47 tracks in this
+ * driver's library; the one holdout is Mount Panorama (Bathurst) -- a public road circuit closed for
+ * racing only race week, so its roads are tagged as ordinary streets in OSM, not `highway=raceway`,
+ * and isolating just the racing line from the general road network wasn't attempted here.
+ *
+ * Served from public/track-boundaries.json and fetched once at runtime (see getTrackBoundary below)
+ * rather than bundled into the JS chunk -- at ~440KB uncompressed this would otherwise ship to every
+ * visitor of the Telemetry tab regardless of which single track they're actually looking at; a runtime
+ * fetch lets the browser cache it once and only pay for it when the tab is actually opened.
  *
  * Segments are intentionally NOT stitched into one continuous ordered polyline -- OSM splits a real
  * circuit into many short ways (per corner, per straight, sometimes per lane), and reassembling them
@@ -24,21 +30,33 @@ import raw from "./track-boundaries.json";
  * (segments within ~150m of each other are the same physical loop) and keeping only the largest
  * connected component removes these cleanly; see the regeneration steps below.
  *
- * Regenerating for a track not covered here: query
+ * Regenerating for a track not covered here (or missing, like Mount Panorama): query
  * https://overpass-api.de/api/interpreter with
  * `[out:json];way["highway"="raceway"](south,west,north,east);out geom;` for that circuit's real-world
- * bounding box (found via https://nominatim.openstreetmap.org/search?q=<track name>), keep only
- * `tags.width` and `geometry[].{lat,lon}` per way, drop anything named "pit"/"box" (pit lane/entry --
- * not part of the racing line), run the largest-connected-component filter described above to drop
- * any other raceway sharing the bounding box, and add the result here under the internal `tracks.id`.
+ * bounding box (found via https://nominatim.openstreetmap.org/search?q=<track name> -- watch for a
+ * same-named unrelated place winning the geocode, as happened for "Road Atlanta" matching a Swiss
+ * street; prefer a `leisure`-class or `relation` result), keep only `tags.width` and
+ * `geometry[].{lat,lon}` per way, drop anything named "pit"/"box" (pit lane/entry -- not part of the
+ * racing line), run the largest-connected-component filter described above to drop any other raceway
+ * sharing the bounding box, and add the result to public/track-boundaries.json under the internal
+ * `tracks.id`.
  */
 
 export type TrackBoundarySegment = { width: number; pts: [number, number][] };
 export type TrackBoundary = { trackId: number; segments: TrackBoundarySegment[] };
 
-const boundaries = raw as unknown as Record<string, TrackBoundary>;
+let cache: Promise<Record<string, TrackBoundary>> | null = null;
 
-export function getTrackBoundary(trackId: number | null | undefined): TrackBoundary | null {
-  if (trackId === null || trackId === undefined) return null;
-  return boundaries[String(trackId)] ?? null;
+function loadAll(): Promise<Record<string, TrackBoundary>> {
+  if (!cache) {
+    cache = fetch("/track-boundaries.json")
+      .then((response) => (response.ok ? response.json() : {}))
+      .catch(() => ({}));
+  }
+  return cache;
+}
+
+export function getTrackBoundary(trackId: number | null | undefined): Promise<TrackBoundary | null> {
+  if (trackId === null || trackId === undefined) return Promise.resolve(null);
+  return loadAll().then((boundaries) => boundaries[String(trackId)] ?? null);
 }
