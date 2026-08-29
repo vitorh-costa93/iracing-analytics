@@ -647,18 +647,43 @@ function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: num
   // uses positive = left / negative = right, the opposite of the assumption this had before. Negated
   // once here so every consumer (rotation, the printed angle) reads correctly without re-deriving it.
   const degrees = angleRad !== null ? -angleRad * 180 / Math.PI : 0;
-  const spokeAngles = [90, 210, 330]; // one spoke pointing "up" at rest, like a real wheel's 12 o'clock mark
+
+  // Flat-bottom rim, like an open-wheel/GT racing wheel rather than a plain road-car circle. The
+  // bottom is cut off at y = flatY (SVG-down coords); the two intersection points with the circle of
+  // radius `radius` are where the flat chord meets the arc.
+  const flatY = radius * 0.6;
+  const halfChord = Math.sqrt(Math.max(0, radius * radius - flatY * flatY));
+  const rimPath = `M ${-halfChord} ${flatY} A ${radius} ${radius} 0 1 1 ${halfChord} ${flatY} L ${-halfChord} ${flatY} Z`;
+
+  // Grip texture: short ticks around the rim (skipping the flat bottom, where a real wheel's thumb
+  // grips/paddle shifters would be, not a grip-taped surface).
+  const ticks = Array.from({ length: 14 }, (_, i) => {
+    const deg = -172 + i * (344 / 13); // spans the rim excluding roughly the bottom flat arc
+    const rad = deg * Math.PI / 180;
+    const ox = Math.cos(rad), oy = Math.sin(rad);
+    const rOuter = radius + 1.5, rInner = radius - 3.5;
+    return { x1: ox * rOuter, y1: oy * rOuter, x2: ox * rInner, y2: oy * rInner, key: i };
+  });
+
   return (
     <g>
       <circle cx={cx} cy={cy} r={radius + 12} className="steering-wheel-backdrop" />
       <g transform={`translate(${cx},${cy}) rotate(${degrees})`} className={`steering-wheel ${className} ${angleRad === null ? "steering-wheel-empty" : ""}`}>
-        <circle r={radius} className="steering-wheel-rim" />
-        {spokeAngles.map((deg) => {
-          const rad = deg * Math.PI / 180;
-          return <line key={deg} x1="0" y1="0" x2={Math.cos(rad) * radius} y2={-Math.sin(rad) * radius} className="steering-wheel-spoke" />;
-        })}
-        <circle r="5" className="steering-wheel-hub" />
-        <circle cx="0" cy={-radius} r="3.5" className="steering-wheel-mark" />
+        <path d={rimPath} className="steering-wheel-rim" />
+        {ticks.map((t) => <line key={t.key} x1={t.x1} y1={t.y1} x2={t.x2} y2={t.y2} className="steering-wheel-grip" />)}
+        {/* Lower spokes run from the hub down to the two corners where the flat bottom meets the rim —
+         * the load-bearing look of a real wheel's spider, not three thin lines at 120°. */}
+        <line x1="0" y1="0" x2={-halfChord * 0.72} y2={flatY * 0.86} className="steering-wheel-spoke" />
+        <line x1="0" y1="0" x2={halfChord * 0.72} y2={flatY * 0.86} className="steering-wheel-spoke" />
+        {/* Center display pod, like a wheel-mounted dash — a rounded button cluster reads more
+         * "Formula" than a bare circle hub. */}
+        <rect x={-9} y={-6.5} width="18" height="13" rx="2.5" className="steering-wheel-hub" />
+        <rect x={-6} y={-4} width="12" height="5.5" rx="1" className="steering-wheel-screen" />
+        <circle cx="-6.5" cy="4" r="1.1" className="steering-wheel-button" />
+        <circle cx="0" cy="4" r="1.1" className="steering-wheel-button" />
+        <circle cx="6.5" cy="4" r="1.1" className="steering-wheel-button" />
+        {/* Center-mark chevron at 12 o'clock — the colored "wheel straight" LED strip real wheels have. */}
+        <path d={`M -4 ${-radius + 8} L 4 ${-radius + 8} L 0 ${-radius + 1} Z`} className="steering-wheel-mark" />
       </g>
       <text x={cx} y={cy + radius + 26} textAnchor="middle" className="steering-wheel-label">{label}</text>
       <text x={cx} y={cy + radius + 40} textAnchor="middle" className="steering-wheel-value">{angleRad !== null ? `${degrees >= 0 ? "" : "−"}${Math.abs(degrees).toFixed(0)}°` : "—"}</text>
