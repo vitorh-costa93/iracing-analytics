@@ -104,7 +104,7 @@
     }
   }
 
-  function patchWindow(win, eventId) {
+  function patchWindow(win, eventId, onEventPayload) {
     if (!win || win.__iriPatched) return;
     try {
       var originalFetch = win.fetch;
@@ -114,6 +114,12 @@
         var args = arguments;
         return originalFetch.apply(win, args).then(function (response) {
           try {
+            // /api/internal/events/{id} is the specific call that carries the setup data (confirmed
+            // live, 29/08/2026) -- used as the "the page's real data has actually arrived" signal,
+            // since a fixed wait long enough for a fast desktop/wifi load (the only environment this
+            // was originally tested in) was too short for Garage61's whole SPA to boot inside a
+            // hidden iframe on a slower mobile connection, silently finding zero setups every run.
+            if (String(args[0]).indexOf("/api/internal/events/") !== -1) onEventPayload();
             response.clone().json().then(function (json) {
               var fallbackCar = json && typeof json.car_id === "number" ? json.car_id : undefined;
               var fallbackTrack = json && typeof json.track_id === "number" ? json.track_id : undefined;
@@ -125,6 +131,11 @@
       };
     } catch (e) { /* cross-origin or inaccessible window, ignore */ }
   }
+
+  // Minimum time every visit gets regardless of how fast the event payload arrives (lets secondary
+  // calls -- car/track lookups, etc. -- finish too); hard ceiling so one slow/broken event can't hang
+  // the whole run; extra settle time once the real payload is seen, to let its .json() parse complete.
+  var MIN_WAIT_MS = 2000, MAX_WAIT_MS = 12000, SETTLE_AFTER_PAYLOAD_MS = 1000;
 
   function visitAll(events) {
     var index = 0;
@@ -139,16 +150,28 @@
       var iframe = document.createElement("iframe");
       iframe.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;bottom:0;right:0;";
       document.body.appendChild(iframe);
-      try { patchWindow(iframe.contentWindow, event.eventId); } catch (e) {}
-      var patchTimer = setInterval(function () { try { patchWindow(iframe.contentWindow, event.eventId); } catch (e) {} }, 150);
+      var startedAt = Date.now();
+      var sawPayloadAt = null;
+      var done = false;
+      function onEventPayload() { if (sawPayloadAt === null) sawPayloadAt = Date.now(); }
+      try { patchWindow(iframe.contentWindow, event.eventId, onEventPayload); } catch (e) {}
+      var patchTimer = setInterval(function () { try { patchWindow(iframe.contentWindow, event.eventId, onEventPayload); } catch (e) {} }, 150);
 
       iframe.src = "https://garage61.net/app/event/" + event.eventId;
 
-      setTimeout(function () {
+      var pollTimer = setInterval(function () {
+        if (done) return;
+        var elapsed = Date.now() - startedAt;
+        var payloadSettled = sawPayloadAt !== null && Date.now() - sawPayloadAt >= SETTLE_AFTER_PAYLOAD_MS;
+        var readyToAdvance = elapsed >= MIN_WAIT_MS && (payloadSettled || elapsed >= MAX_WAIT_MS);
+        if (!readyToAdvance) return;
+        done = true;
         clearInterval(patchTimer);
+        clearInterval(pollTimer);
         iframe.remove();
+        if (sawPayloadAt === null) log("Evento " + event.eventId + ": página não terminou de carregar em " + MAX_WAIT_MS + "ms, seguindo assim mesmo.");
         setTimeout(next, GAP_BETWEEN_EVENTS_MS);
-      }, EVENT_LOAD_WAIT_MS);
+      }, 250);
     }
     next();
   }
