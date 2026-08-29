@@ -313,10 +313,26 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
   const token = process.env.GARAGE61_API_TOKEN;
   if (!token) throw new Error("GARAGE61_API_TOKEN não configurado");
 
+  // Storage-first, same as the telemetry viewer (app/api/garage61/laps/[id]/telemetry): the
+  // recurring sync should have already downloaded these laps' CSVs, so this normally reads
+  // Supabase, not Garage61. Live-fetch only covers a lap the sync hasn't reached yet, and stores
+  // it opportunistically so the next debrief/telemetry view of that same lap is already fast.
+  const { data: storedPaths } = await supabaseAdmin.from("laps").select("id,telemetry_path,track_id").in("id", candidateLaps.map((lap) => lap.id));
+  const pathByLapId = new Map((storedPaths ?? []).map((row) => [row.id, row]));
   const traces = await Promise.all(candidateLaps.map(async (lap) => {
+    const stored = pathByLapId.get(lap.id);
+    if (stored?.telemetry_path) {
+      const { data: file, error: downloadError } = await supabaseAdmin.storage.from("telemetry").download(stored.telemetry_path);
+      if (!downloadError && file) return { lap, lapTime: Number(lap.lapTime), ...parseLapCsv(await file.text()) };
+    }
     const response = await fetch(`${GARAGE61_BASE}/laps/${encodeURIComponent(lap.id)}/csv`, { headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" }, cache: "no-store" });
     if (!response.ok) return null;
     const csv = await response.text();
+    if (stored?.track_id) {
+      const path = `laps/${stored.track_id}/${lap.id}.csv`;
+      const { error: uploadError } = await supabaseAdmin.storage.from("telemetry").upload(path, csv, { contentType: "text/csv; charset=utf-8", upsert: true });
+      if (!uploadError) await supabaseAdmin.from("laps").update({ telemetry_path: path }).eq("id", lap.id);
+    }
     const parsed = parseLapCsv(csv);
     return { lap, lapTime: Number(lap.lapTime), ...parsed };
   }));

@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const BUCKET = "telemetry-references";
@@ -14,11 +13,11 @@ function parseIds(request: NextRequest) {
   return { carId, trackId };
 }
 
+// Single-user app: the driver is whichever row synced most recently, same lookup every other route
+// already uses. This used to call Garage61 live (/me/accounts) just to resolve the SAME id on
+// every single reference-tab load -- no telemetry involved here, purely wasted API load.
 async function currentDriverId() {
-  const accounts = await garage61Get<{ items?: { platform?: string; id?: string }[] }>("/me/accounts");
-  const account = accounts.items?.find((item) => item.platform === "iracing");
-  if (!account?.id) throw new Error("Conta iRacing não encontrada");
-  const { data, error } = await supabaseAdmin.from("drivers").select("id").eq("platform_driver_id", account.id).single();
+  const { data, error } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
   if (error || !data) throw new Error("Driver não encontrado");
   return data.id as string;
 }

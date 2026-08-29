@@ -117,7 +117,8 @@ async function runIncrementalSessionSync() {
     // any car/track pair raced for the first time after that manual run (e.g. a one-off Algarve
     // race) silently had zero rows in `laps` forever — breaking the sector-consistency sub-tab
     // for that pair specifically, while race debrief kept working because it reads Garage61 live.
-    const lapRows: Record<string, unknown>[] = [];
+    type LapRow = { id: string; car_id: number; track_id: number; can_view_telemetry: boolean; telemetry_path: string | null } & Record<string, unknown>;
+    const lapRows: LapRow[] = [];
     const sectorRows: { lap_id: string; sector_number: number; sector_time: number | null; incomplete: boolean }[] = [];
     let lapsReceived = 0;
     let recentLaps = 0;
@@ -198,7 +199,7 @@ async function runIncrementalSessionSync() {
           driver_rating: lap.driverRating ?? null, fuel_level: lap.fuelLevel ?? null, fuel_used: lap.fuelUsed ?? null,
           fuel_added: lap.fuelAdded ?? null, weight_penalty: lap.weightPenalty ?? null, power_adjust: lap.powerAdjust ?? null,
           tire_compound: lap.tireCompound ?? null, can_view_telemetry: lap.canViewTelemetry ?? false, can_view_setup: lap.canViewSetup ?? false,
-          garage61_payload: lap, synced_at: new Date().toISOString(),
+          garage61_payload: lap, synced_at: new Date().toISOString(), telemetry_path: null,
         });
         if (Array.isArray(lap.sectors)) {
           lap.sectors.forEach((sector, index) => sectorRows.push({ lap_id: lap.id, sector_number: index + 1, sector_time: sector.sectorTime ?? null, incomplete: sector.incomplete ?? false }));
@@ -212,6 +213,43 @@ async function runIncrementalSessionSync() {
         onConflict: "driver_id,garage61_event_id,garage61_session_id,car_id,track_id",
       });
       if (upsertError) throw upsertError;
+    }
+
+    // Stores lap telemetry CSV in Supabase Storage as part of this same recurring sync -- this is
+    // meant to be the ONLY place telemetry is ever fetched from Garage61. Every reading path (the
+    // telemetry viewer, race debrief, sector consistency) should read laps.telemetry_path from
+    // Storage, not call Garage61 on a page view. Capped per run (gradual backfill, not a burst --
+    // Garage61 is already rate-limited as of this writing) and skips laps that already have a
+    // stored path, which covers most laps here since the 168h overlap window reprocesses them.
+    const TELEMETRY_DOWNLOAD_CAP = 40;
+    let telemetryDownloaded = 0;
+    const telemetryCandidates = lapRows.filter((row) => row.can_view_telemetry);
+    if (telemetryCandidates.length) {
+      const { data: existingPaths, error: existingError } = await supabaseAdmin
+        .from("laps").select("id,telemetry_path").in("id", telemetryCandidates.map((row) => row.id));
+      if (existingError) throw existingError;
+      const alreadyStored = new Set((existingPaths ?? []).filter((row) => row.telemetry_path).map((row) => row.id as string));
+      const token = process.env.GARAGE61_API_TOKEN;
+      if (token) {
+        for (const row of telemetryCandidates) {
+          if (alreadyStored.has(row.id) || telemetryDownloaded >= TELEMETRY_DOWNLOAD_CAP) continue;
+          try {
+            const response = await fetch(`https://garage61.net/api/v1/laps/${encodeURIComponent(row.id)}/csv`, {
+              headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" }, cache: "no-store",
+            });
+            if (!response.ok) continue;
+            const csv = await response.text();
+            const path = `laps/${row.track_id}/${row.id}.csv`;
+            const { error: uploadError } = await supabaseAdmin.storage.from("telemetry")
+              .upload(path, csv, { contentType: "text/csv; charset=utf-8", upsert: true });
+            if (uploadError) continue;
+            row.telemetry_path = path;
+            telemetryDownloaded += 1;
+          } catch {
+            // One lap's telemetry failing (network blip, malformed response) must not abort the sync.
+          }
+        }
+      }
     }
 
     // Chunked: Supabase/PostgREST has a payload-size ceiling and a busy week can produce thousands
@@ -248,6 +286,7 @@ async function runIncrementalSessionSync() {
       sessionsUpserted: rows.length,
       lapsUpserted: lapRows.length,
       sectorsUpserted: sectorRows.length,
+      telemetryDownloaded,
     };
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
