@@ -36,12 +36,26 @@ export async function GET(request: NextRequest) {
 
     const { data: importedSetups, error: importedError } = await supabaseAdmin
       .from("setup_files")
-      .select("garage61_event_id")
+      .select("garage61_event_id,car_id,track_id,setup_kind")
       .eq("driver_id", driver.id)
       .eq("source", "garage61")
       .not("garage61_event_id", "is", null);
     if (importedError) throw importedError;
     const importedEvents = new Set((importedSetups ?? []).map((row) => row.garage61_event_id).filter((id): id is string => typeof id === "string"));
+
+    // The real ask: don't even look at a car/track pair we already have BOTH setup kinds for --
+    // not "check each event individually", check the PAIR first. A pair with fixed+commercial
+    // already covered skips Garage61 entirely for every event of that pair, new or old, instead of
+    // visiting each one to independently discover the same answer.
+    const kindsByPair = new Map<string, Set<string>>();
+    for (const row of importedSetups ?? []) {
+      if (row.car_id === null || row.track_id === null || !row.setup_kind) continue;
+      const key = `${row.car_id}:${row.track_id}`;
+      const kinds = kindsByPair.get(key) ?? new Set<string>();
+      kinds.add(row.setup_kind);
+      kindsByPair.set(key, kinds);
+    }
+    const completePairs = new Set([...kindsByPair.entries()].filter(([, kinds]) => kinds.has("fixed") && kinds.has("commercial")).map(([key]) => key));
 
     // Events already visited recently (whether a setup was found or not) don't need a full
     // hidden-iframe revisit every run -- each one costs several Garage61 API calls. A checked-empty
@@ -60,10 +74,12 @@ export async function GET(request: NextRequest) {
     const events = (data ?? []).filter((row) => {
       if (seen.has(row.garage61_event_id as string)) return false;
       seen.add(row.garage61_event_id as string);
-      return !skipEvents.has(row.garage61_event_id as string);
+      if (skipEvents.has(row.garage61_event_id as string)) return false;
+      if (row.car_id !== null && row.track_id !== null && completePairs.has(`${row.car_id}:${row.track_id}`)) return false;
+      return true;
     }).map((row) => ({ eventId: row.garage61_event_id, car: row.car_id, track: row.track_id, startedAt: row.started_at }));
 
-    return NextResponse.json({ status: "ok", days, events, alreadyImported: importedEvents.size, recentlyChecked: (recentlyChecked ?? []).length }, { headers: CORS_HEADERS });
+    return NextResponse.json({ status: "ok", days, events, alreadyImported: importedEvents.size, recentlyChecked: (recentlyChecked ?? []).length, completePairsSkipped: completePairs.size }, { headers: CORS_HEADERS });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400, headers: CORS_HEADERS });
   }

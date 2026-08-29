@@ -522,31 +522,13 @@ export async function GET() {
       sports_car: null,
     };
 
-    for (const row of ratings) {
-      if (row.rating_type !== "irating") continue;
-      if (
-        row.category !==
-          "formula_car" &&
-        row.category !==
-          "sports_car"
-      ) {
-        continue;
-      }
-
-      if (
-        latestRatings[
-          row.category
-        ] === null
-      ) {
-        latestRatings[
-          row.category
-        ] = row.rating;
-      }
-    }
-
-    // iRStats results arrive through the browser bridge before Garage61's rating-history poll
-    // necessarily catches up. v_race_results_irating exposes the exact chained value for each
-    // imported result, so let the most recent official result win for the headline KPI.
+    // iRating KPIs are iRStats-only, period — never seeded from Garage61's `ratings` snapshot. That
+    // snapshot is refreshed by the hourly cron (sync/all) regardless of whether the driver ever ran
+    // the iRStats bookmarklet, so a Garage61-sourced fallback here meant the iRating card could
+    // visibly move on a day with real races but NO iRStats sync at all — a real bug the driver
+    // caught directly (raced Super Formula only, never synced iRStats, KPI still updated). If
+    // v_race_results_irating has no result for a category, that category's iRating stays null
+    // (shown as "sem dados") rather than silently borrowing Garage61's number.
     for (const category of ["formula_car", "sports_car"] as const) {
       const latestResult = seasonRaces.find((row) => row.category === category && Number.isFinite(row.irating_after));
       if (latestResult) latestRatings[category] = latestResult.irating_after;

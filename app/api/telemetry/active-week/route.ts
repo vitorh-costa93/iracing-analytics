@@ -1,8 +1,5 @@
 import { NextResponse } from "next/server";
-import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-
-const PAGE_SIZE = 250;
 
 type WeekRow = {
   season_id: string;
@@ -14,20 +11,18 @@ type WeekRow = {
 
 type CatalogRow = { id: number; name: string; variant: string | null };
 
-type Garage61Lap = {
+type Garage61LapPayload = {
   id: string;
   startTime?: string;
   lapTime?: number;
   sessionType?: number;
-  car?: { id?: number };
-  track?: { id?: number };
   clean?: boolean;
   joker?: boolean;
   discontinuity?: boolean;
   missing?: boolean;
   incomplete?: boolean;
   offtrack?: boolean;
-  pitLane?: boolean;
+  pitlane?: boolean;
   pitIn?: boolean;
   pitOut?: boolean;
   canViewTelemetry?: boolean;
@@ -36,7 +31,7 @@ type Garage61Lap = {
   p2pCount?: number;
 };
 
-type Garage61LapsResponse = { items?: Garage61Lap[] };
+type LapRow = { id: string; car_id: number | null; track_id: number | null; garage61_payload: Garage61LapPayload | null };
 
 function median(values: number[]) {
   const ordered = [...values].sort((a, b) => a - b);
@@ -46,7 +41,7 @@ function median(values: number[]) {
 
 /** Garage61 does not reliably include P2P flags in every lap listing. On SF23, exclude only a
  * clearly implausible low-time outlier so an overtake-assisted lap cannot become the selected lap. */
-function withoutLikelyOvertakeLaps(laps: Garage61Lap[]) {
+function withoutLikelyOvertakeLaps(laps: Garage61LapPayload[]) {
   if (laps.length < 5) return laps;
   const times = laps.map((lap) => Number(lap.lapTime)).filter(Number.isFinite);
   const center = median(times);
@@ -55,33 +50,14 @@ function withoutLikelyOvertakeLaps(laps: Garage61Lap[]) {
   return laps.filter((lap) => Number(lap.lapTime) >= center - threshold);
 }
 
-async function fetchWeekLaps(carId: number, trackId: number, weekStart: Date, weekEnd: Date) {
-  const laps: Garage61Lap[] = [];
-  for (let offset = 0; ; offset += PAGE_SIZE) {
-    const response = await garage61Get<Garage61LapsResponse>("/laps", { cars: carId, tracks: trackId, drivers: "me", group: "none", unclean: "true", lapTypes: "1,2,3,4", limit: PAGE_SIZE, offset });
-    const page = response.items ?? [];
-    laps.push(...page);
-    if (page.length < PAGE_SIZE) break;
-    const oldest = page.reduce<Date | null>((value, lap) => {
-      const date = lap.startTime ? new Date(lap.startTime) : null;
-      return date && Number.isFinite(date.getTime()) && (!value || date < value) ? date : value;
-    }, null);
-    if (oldest && oldest < weekStart) break;
-  }
-  return laps.filter((lap) => {
-    const date = lap.startTime ? new Date(lap.startTime) : null;
-    return !!date && Number.isFinite(date.getTime()) && date >= weekStart && date < weekEnd;
-  });
-}
-
-function isEligibleLap(lap: Garage61Lap, weekStart: Date, weekEnd: Date) {
+function isEligibleLap(lap: Garage61LapPayload, weekStart: Date, weekEnd: Date) {
   if (!lap.startTime || !lap.clean || !lap.canViewTelemetry) return false;
   const startedAt = new Date(lap.startTime);
   if (!Number.isFinite(startedAt.getTime()) || startedAt < weekStart || startedAt >= weekEnd) return false;
   if (!Number.isFinite(lap.lapTime) || Number(lap.lapTime) <= 0) return false;
   return !(
     lap.joker || lap.discontinuity || lap.missing || lap.incomplete || lap.offtrack ||
-    lap.pitLane || lap.pitIn || lap.pitOut
+    lap.pitlane || lap.pitIn || lap.pitOut
   );
 }
 
@@ -167,13 +143,30 @@ export async function GET() {
     const cars = new Map(((carsResult.data ?? []) as CatalogRow[]).map((item) => [item.id, item]));
     const tracks = new Map(((tracksResult.data ?? []) as CatalogRow[]).map((item) => [item.id, item]));
 
-    const combinations = await Promise.all(pairs.map(async (pair) => {
-      const currentWeekLaps = await fetchWeekLaps(pair.carId, pair.trackId, weekStart, weekEnd);
-      const eligibleLaps = currentWeekLaps
-        .filter((lap) => isEligibleLap(lap, weekStart, weekEnd));
+    // Reads the already-synced `laps` table (populated by app/api/sync/incremental) instead of
+    // calling Garage61 live — this page must stay usable off already-known data even when Garage61
+    // itself is unreachable (rate-limited or down); the only thing that should be unavailable then
+    // is picking up a NEW lap the sync hasn't reached yet, not the whole page.
+    let lapsData: LapRow[] = [];
+    if (carIds.length && trackIds.length) {
+      const { data, error } = await supabaseAdmin
+        .from("laps")
+        .select("id,car_id,track_id,garage61_payload")
+        .eq("driver_id", driver.id)
+        .in("car_id", carIds)
+        .in("track_id", trackIds);
+      if (error) throw error;
+      lapsData = (data ?? []) as LapRow[];
+    }
+
+    const combinations = pairs.map((pair) => {
+      const currentWeekLaps = lapsData
+        .filter((row) => row.car_id === pair.carId && row.track_id === pair.trackId && row.garage61_payload)
+        .map((row) => row.garage61_payload as Garage61LapPayload);
+      const eligibleLaps = currentWeekLaps.filter((lap) => isEligibleLap(lap, weekStart, weekEnd));
       const car = cars.get(pair.carId);
       const isSuperFormula = /super formula sf23/i.test(car?.name ?? "");
-      const usedOvertake = (lap: Garage61Lap) => Boolean(lap.pushToPass) || Boolean(lap.p2pStatus) || Number(lap.p2pCount ?? 0) > 0;
+      const usedOvertake = (lap: Garage61LapPayload) => Boolean(lap.pushToPass) || Boolean(lap.p2pStatus) || Number(lap.p2pCount ?? 0) > 0;
       const rawRaceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && (!isSuperFormula || !usedOvertake(lap)));
       const raceLaps = isSuperFormula ? withoutLikelyOvertakeLaps(rawRaceLaps) : rawRaceLaps;
       const practiceLaps = eligibleLaps.filter((lap) => lap.sessionType === 1);
@@ -201,7 +194,7 @@ export async function GET() {
           telemetryUrl: `/api/garage61/laps/${encodeURIComponent(bestLap.id)}/telemetry`,
         } : null,
       };
-    }));
+    });
 
     combinations.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
     return NextResponse.json({
