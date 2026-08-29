@@ -62,23 +62,46 @@
   // reported back so the backend can skip a checked-but-empty event for a while instead of
   // revisiting it (and Garage61's own several API calls per event page) on every single run.
 
-  function captureIfSetup(url, jsonBody, eventId) {
+  // Confirmed live (29/08/2026) against GET /api/internal/events/{id}: this is the actual response
+  // the event page fetches, and "setup" is buried several levels deep --
+  // event.sessions[].run_groups[].runs[].setup -- not a top-level field on the fetched JSON at all,
+  // which is what the old flat captureIfSetup() checked. That's why setups silently stopped
+  // capturing after Garage61 changed this response shape: the check never matched, so nothing was
+  // ever wrong-looking in the UI, it just quietly found zero setups every run. Walking the whole
+  // response recursively instead of assuming one fixed path survives the next shape change too.
+  var capturedRunIds = {};
+  function captureIfSetup(node, eventId, fallbackCar, fallbackTrack, depth) {
+    if (!node || typeof node !== "object" || depth > 8) return;
     try {
-      if (jsonBody && jsonBody.setup && jsonBody.setup.parameters && jsonBody.setup.name) {
-        collected.push({
-          car: jsonBody.car ? jsonBody.car.id : undefined,
-          track: jsonBody.track ? jsonBody.track.id : undefined,
-          name: jsonBody.setup.name,
-          seasonId: jsonBody.season ? jsonBody.season.id : undefined,
-          runId: jsonBody.id,
-          event: eventId,
-          setupFixed: !!jsonBody.setupFixed,
-          setupCommercial: !!jsonBody.setupCommercial,
-          parameters: jsonBody.setup.parameters,
-        });
-        log("Capturado: " + jsonBody.setup.name);
+      if (node.setup && typeof node.setup === "object" && node.setup.parameters && node.setup.name) {
+        var setup = node.setup;
+        var runId = node.id || setup.id;
+        if (!runId || !capturedRunIds[runId]) {
+          if (runId) capturedRunIds[runId] = true;
+          var car = typeof setup.car === "number" ? setup.car : (typeof node.car_id === "number" ? node.car_id : fallbackCar);
+          var track = typeof setup.track === "number" ? setup.track : fallbackTrack;
+          collected.push({
+            car: car,
+            track: track,
+            name: setup.name,
+            seasonId: undefined,
+            runId: runId,
+            event: eventId,
+            setupFixed: !!node.setup_fixed,
+            setupCommercial: !node.setup_fixed,
+            parameters: setup.parameters,
+          });
+          log("Capturado: " + setup.name);
+        }
       }
-    } catch (e) { /* ignore malformed payloads */ }
+    } catch (e) { /* malformed node, keep walking siblings */ }
+    if (Array.isArray(node)) {
+      for (var i = 0; i < node.length; i++) captureIfSetup(node[i], eventId, fallbackCar, fallbackTrack, depth + 1);
+      return;
+    }
+    for (var key in node) {
+      if (Object.prototype.hasOwnProperty.call(node, key)) captureIfSetup(node[key], eventId, fallbackCar, fallbackTrack, depth + 1);
+    }
   }
 
   function patchWindow(win, eventId) {
@@ -91,7 +114,11 @@
         var args = arguments;
         return originalFetch.apply(win, args).then(function (response) {
           try {
-            response.clone().json().then(function (json) { captureIfSetup(String(args[0]), json, eventId); }).catch(function () {});
+            response.clone().json().then(function (json) {
+              var fallbackCar = json && typeof json.car_id === "number" ? json.car_id : undefined;
+              var fallbackTrack = json && typeof json.track_id === "number" ? json.track_id : undefined;
+              captureIfSetup(json, eventId, fallbackCar, fallbackTrack, 0);
+            }).catch(function () {});
           } catch (e) { /* not JSON, ignore */ }
           return response;
         });
