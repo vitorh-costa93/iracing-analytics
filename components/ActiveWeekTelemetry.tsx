@@ -673,24 +673,31 @@ function formatGear(value: number | null) {
 }
 
 /** A close copy of iRacing's own telemetry-widget wheel icon (asked for explicitly, repeatedly,
- * 29/08/2026: "o volante quero idêntico ao do iRacing") -- a solid filled gray disk (not just an
- * outlined rim), darker gray spokes and hub laid on top for the same shaded/3D look the reference
- * has, and a short red tick sitting just outside the rim at 12 o'clock. No numeric angle readout
- * underneath either -- the source widget doesn't show one, just the wheel. */
+ * 29/08/2026: "o volante quero idêntico ao do iRacing"). Corrected the same day after a solid filled
+ * disk was shipped ("o volante tem que ter os vazamentos, não pode ser inteiriço") -- a real wheel
+ * silhouette is a RING (rim) with three spokes to a center hub, and the three pie-shaped gaps between
+ * the spokes are open, showing whatever is behind the wheel, not solid gray. Built that way here: the
+ * rim is a stroked circle (fill: none), so only the ring itself paints; the wedges between spokes are
+ * simply never filled, which is what makes them read as cutouts/vazamentos instead of solid fill. Hub
+ * stays a small filled disk, and a short red tick sits just outside the rim at 12 o'clock. No numeric
+ * angle readout underneath either -- the source widget doesn't show one, just the wheel. */
 function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: number; cy: number; radius: number; angleRad: number | null; label: string; className: string }) {
   // Verified against a real corner: Red Bull Ring's Turn 1 (Niki Lauda Kurve) is a right-hander,
   // but the raw channel's positive sign rotated the wheel left there — Garage61's own CSV export
   // uses positive = left / negative = right, the opposite of the assumption this had before. Negated
   // once here so every consumer (rotation, the printed angle) reads correctly without re-deriving it.
   const degrees = angleRad !== null ? -angleRad * 180 / Math.PI : 0;
+  const rimStroke = radius * 0.16;
+  const rimRadius = radius - rimStroke / 2;
+  const hubRadius = radius * 0.26;
   return (
     <g>
       <g transform={`translate(${cx},${cy}) rotate(${degrees})`} className={`steering-wheel ${className} ${angleRad === null ? "steering-wheel-empty" : ""}`}>
-        <circle r={radius} className="steering-wheel-disk" />
-        <line x1="0" y1="0" x2="0" y2={-radius * 0.85} className="steering-wheel-spoke" />
-        <line x1="0" y1="0" x2={-radius * 0.72} y2={radius * 0.5} className="steering-wheel-spoke" />
-        <line x1="0" y1="0" x2={radius * 0.72} y2={radius * 0.5} className="steering-wheel-spoke" />
-        <circle r={radius * 0.3} className="steering-wheel-hub" />
+        <circle r={rimRadius} className="steering-wheel-rim" style={{ strokeWidth: rimStroke }} />
+        <line x1="0" y1={-hubRadius} x2="0" y2={-radius + rimStroke * 0.4} className="steering-wheel-spoke" />
+        <line x1={-hubRadius * 0.5} y1={hubRadius * 0.87} x2={-(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} className="steering-wheel-spoke" />
+        <line x1={hubRadius * 0.5} y1={hubRadius * 0.87} x2={(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} className="steering-wheel-spoke" />
+        <circle r={hubRadius} className="steering-wheel-hub" />
         <rect x={-radius * 0.09} y={-radius - 6} width={radius * 0.18} height={radius * 0.18} rx="1.5" className="steering-wheel-mark" />
       </g>
       <text x={cx} y={cy + radius + 16} textAnchor="middle" className={`steering-wheel-label ${className}`}>{label}</text>

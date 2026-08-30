@@ -242,9 +242,9 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * own/reference color convention to replicate; own/reference here stay distinguishable only through
  * the VOCÊ/REFERÊNCIA label text color (red/blue, matching the rest of the app's own/reference
  * convention) and the dashed vs solid input-graph lines above, not by recoloring the gauge itself. */
-.steering-wheel-disk { fill: #b9bec6; stroke: #8b9198; stroke-width: 1; }
-.steering-wheel-spoke { stroke: #7d838b; stroke-width: 9; stroke-linecap: round; }
-.steering-wheel-hub { fill: #4a4f56; }
+.steering-wheel-rim { fill: none; stroke: #b9bec6; }
+.steering-wheel-spoke { stroke: #b9bec6; stroke-width: 9; stroke-linecap: round; }
+.steering-wheel-hub { fill: #8b9198; }
 .steering-wheel-mark { fill: #e5342b; }
 .steering-wheel-empty { opacity: .3; }
 .steering-wheel-label { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .04em; text-anchor: middle; }
