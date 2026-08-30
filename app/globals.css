@@ -253,11 +253,13 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 /* Thin double-chevron outline (∧∧ / ∨∨), not a solid triangle -- matches the reference's thinner
  * arrow style, stacked above/below the gear number (not beside it). */
 .gear-chevron { fill: none; stroke: #b7bcc3; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
-/* text.gear-readout, not just .gear-readout: ".focused-chart text" (element+class, specificity 0,1,1)
- * otherwise beats a bare ".gear-readout" (0,1,0) and silently wins the fill, which is exactly what was
- * happening here -- rule looked right in the CSS but the rendered/computed color was var(--soft) gray,
- * not yellow, confirmed live (29/08/2026) via a getComputedStyle + matching-rules check in the browser. */
-text.gear-readout { fill: #f3c614; font-family: var(--mono); font-size: 26px; font-weight: 800; text-anchor: middle; }
+/* .focused-chart text.gear-readout, not just .gear-readout or text.gear-readout: ".focused-chart text"
+ * (class+element, specificity 0,1,1) otherwise TIES a bare ".gear-readout" (0,1,0) or "text.gear-readout"
+ * (element+class, also 0,1,1) on specificity, so source order decides and the gray rule (declared later
+ * in this file) kept winning -- confirmed live (29/08/2026) via a getComputedStyle + matching-rules check
+ * in the browser, twice, after each of the first two attempted fixes still rendered gray not yellow.
+ * class+class+element (0,2,1) actually outranks it instead of merely tying. */
+.focused-chart text.gear-readout { fill: #f3c614; font-family: var(--mono); font-size: 26px; font-weight: 800; text-anchor: middle; }
 .insights-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .insights-grid button { padding: 13px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .insights-grid button:hover, .insights-grid button.active { background: var(--brand-pale); border-color: var(--brand-dark); }
