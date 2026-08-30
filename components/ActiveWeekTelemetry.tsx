@@ -701,8 +701,8 @@ function GearBox({ cx, cy, value }: { cx: number; cy: number; value: number | nu
   return (
     <g>
       <rect x={x} y={y} width={w} height={h} rx={4} className="gear-box" />
-      <path d={`M ${x + 10} ${y + 12} l -4 4.5 l 8 0 Z`} className="gear-chevron" />
-      <path d={`M ${x + 10} ${y + 16} l -4 -4.5 l 8 0 Z`} className="gear-chevron" />
+      <path d={`M ${x + 10} ${y + 7} L ${x + 7} ${y + 11} L ${x + 13} ${y + 11} Z`} className="gear-chevron" />
+      <path d={`M ${x + 10} ${y + 21} L ${x + 7} ${y + 17} L ${x + 13} ${y + 17} Z`} className="gear-chevron" />
       <text x={x + 30} y={y + h / 2 + 6} textAnchor="middle" className="gear-readout">{formatGear(value)}</text>
     </g>
   );
