@@ -208,9 +208,6 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .gauge-divider { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .telemetry-hover-panel { position: sticky; top: 16px; min-width: 0; padding: 14px; border: 1px solid var(--border-strong); background: #08080a; color: var(--text); align-self: start; }
 .telemetry-hover-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.telemetry-hover .telemetry-hover-map { display: block; margin: 4px 0 10px; border-radius: 3px; overflow: hidden; background: var(--surface-raised); }
-.telemetry-hover-map .track-map { width: 100%; height: auto; aspect-ratio: 3 / 2; }
-.telemetry-hover-map .track-outline { stroke: var(--border-strong); }
 .telemetry-hover > strong { display: block; margin-bottom: 7px; font-size: 13px; font-family: var(--display); }.telemetry-hover div { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; padding: 2px 0; font-family: var(--mono); font-size: 11px; }.telemetry-hover span { color: var(--muted); text-transform: uppercase; }.telemetry-hover b { font-weight: 500; }.telemetry-hover em { color: #d0a8f0; font-style: normal; }
 .insights-grid button ul { margin: 8px 0 0; padding-left: 15px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .selected-segment { fill: rgba(79,209,232,.09); stroke: rgba(79,209,232,.35); stroke-width: 1; pointer-events: none; }

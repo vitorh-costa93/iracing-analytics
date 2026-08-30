@@ -1085,7 +1085,10 @@ export default function ActiveWeekTelemetry() {
                   const visible = (["speed","throttle","brake","steering","rpm","gear","clutch","latAccel","longAccel","yawRate","pushToPass","p2pStatus","p2pCount"] as ChannelKey[]).filter((field) => own(field) !== null || ref(field) !== null);
                   return <div className="telemetry-hover">
                     <strong>{hoveredDistance.toFixed(1)}% {trace.trackLengthMeters ? `• ${(hoveredDistance / 100 * trace.trackLengthMeters).toFixed(0)} m` : ""}</strong>
-                    <div className="telemetry-hover-map"><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[Math.max(0, hoveredDistance - 5), Math.min(100, hoveredDistance + 5)]} hoverDistance={hoveredDistance} zoom lineDistance={comparison?.lineDistance} /></div>
+                    {/* The sticky full-track map above (telemetry-map-sticky) already tracks this same
+                     * hoveredDistance and is bigger/easier to read, so this hover panel's own small map
+                     * is redundant now -- removed 29/08/2026 per "Agora que tem o mapa maior, não precisa
+                     * desse minimapa aqui, deixe só os valores dos inputs". */}
                     {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
                   </div>;
                 })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
