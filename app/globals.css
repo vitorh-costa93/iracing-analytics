@@ -242,19 +242,18 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * own/reference color convention to replicate; own/reference here stay distinguishable only through
  * the VOCÊ/REFERÊNCIA label text color (red/blue, matching the rest of the app's own/reference
  * convention) and the dashed vs solid input-graph lines above, not by recoloring the gauge itself. */
-.steering-wheel-rim { fill: none; stroke: #c4c9d1; stroke-width: 5; stroke-linejoin: round; stroke-linecap: round; }
-.steering-wheel-spoke { stroke: #c4c9d1; stroke-width: 4; stroke-linecap: round; }
-.steering-wheel-hub { fill: #c4c9d1; }
+.steering-wheel-disk { fill: #b9bec6; stroke: #8b9198; stroke-width: 1; }
+.steering-wheel-spoke { stroke: #7d838b; stroke-width: 9; stroke-linecap: round; }
+.steering-wheel-hub { fill: #4a4f56; }
 .steering-wheel-mark { fill: #e5342b; }
 .steering-wheel-empty { opacity: .3; }
 .steering-wheel-label { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .04em; text-anchor: middle; }
 .steering-wheel-label.own { fill: var(--red); }
 .steering-wheel-label.reference { fill: var(--blue); }
-/* Small dark box with up/down chevrons and the gear number -- the other half of iRacing's own
- * gear/speed widget element, replicated alongside the wheel above (same request). */
-.gear-box { fill: #14171b; stroke: #2b3138; stroke-width: 1; }
-.gear-chevron { fill: #e8eaed; }
-.gear-readout { fill: #f3c614; font-family: var(--mono); font-size: 15px; font-weight: 700; text-anchor: middle; }
+/* Thin double-chevron outline (∧∧ / ∨∨), not a solid triangle -- matches the reference's thinner
+ * arrow style, stacked above/below the gear number (not beside it). */
+.gear-chevron { fill: none; stroke: #b7bcc3; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+.gear-readout { fill: #f3c614; font-family: var(--mono); font-size: 26px; font-weight: 800; text-anchor: middle; }
 .insights-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .insights-grid button { padding: 13px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .insights-grid button:hover, .insights-grid button.active { background: var(--brand-pale); border-color: var(--brand-dark); }

@@ -652,10 +652,15 @@ const FOCUSED_HEIGHT = 230;
 // a shift is a discrete, instantaneous event, not a value with meaningful shape over distance, so a
 // number reads faster than a stepped line. Also matching iRacing's own widget: the gauge cluster is
 // its own column to the LEFT of the input graphs (own on top, reference below), not a row underneath.
+// Side-by-side, not stacked -- the driver's own reference screenshot (29/08/2026) shows the gear
+// number to the LEFT of the wheel, same size relative to it, not above. Own/reference stay two
+// separate widgets stacked vertically (own on top, reference below), each internally laid out this
+// same gear-left/wheel-right way.
 const GAUGE_COLUMN_WIDTH = 130;
-const GAUGE_WHEEL_RADIUS = 22;
-const GAUGE_GEAR_BOX_OFFSET = 42; // gear box's center, this far above the wheel's own center
-const GAUGE_OWN_CENTER_Y = 60, GAUGE_REFERENCE_CENTER_Y = 170;
+const GAUGE_WHEEL_RADIUS = 32;
+const GAUGE_GEAR_X = 24;
+const GAUGE_WHEEL_X = GAUGE_COLUMN_WIDTH - GAUGE_WHEEL_RADIUS - 8;
+const GAUGE_OWN_CENTER_Y = 62, GAUGE_REFERENCE_CENTER_Y = 172;
 
 /** Gear as a discrete label, not a raw number: 0 is neutral ("N"), negative is reverse ("R") -- a
  * bare "0" or "-1" reads as a data glitch to a driver, not as what those values actually mean. */
@@ -667,11 +672,11 @@ function formatGear(value: number | null) {
   return String(rounded);
 }
 
-/** A close copy of iRacing's own telemetry-widget wheel icon (asked for explicitly, 29/08/2026: "o
- * mesmo volante, tudo igual") -- a plain full-round rim (no flat-bottom cut, no grip texture, no
- * button pod; those were an earlier "make it look more Formula" pass that this replaces), a simple
- * 3-spoke Y, a small round hub, and a short red tick sitting just outside the rim at 12 o'clock. No
- * numeric angle readout underneath either -- the source widget doesn't show one, just the wheel. */
+/** A close copy of iRacing's own telemetry-widget wheel icon (asked for explicitly, repeatedly,
+ * 29/08/2026: "o volante quero idêntico ao do iRacing") -- a solid filled gray disk (not just an
+ * outlined rim), darker gray spokes and hub laid on top for the same shaded/3D look the reference
+ * has, and a short red tick sitting just outside the rim at 12 o'clock. No numeric angle readout
+ * underneath either -- the source widget doesn't show one, just the wheel. */
 function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: number; cy: number; radius: number; angleRad: number | null; label: string; className: string }) {
   // Verified against a real corner: Red Bull Ring's Turn 1 (Niki Lauda Kurve) is a right-hander,
   // but the raw channel's positive sign rotated the wheel left there — Garage61's own CSV export
@@ -681,29 +686,34 @@ function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: num
   return (
     <g>
       <g transform={`translate(${cx},${cy}) rotate(${degrees})`} className={`steering-wheel ${className} ${angleRad === null ? "steering-wheel-empty" : ""}`}>
-        <circle r={radius} className="steering-wheel-rim" />
-        <line x1="0" y1="0" x2="0" y2={-radius} className="steering-wheel-spoke" />
-        <line x1="0" y1="0" x2={-radius * 0.82} y2={radius * 0.56} className="steering-wheel-spoke" />
-        <line x1="0" y1="0" x2={radius * 0.82} y2={radius * 0.56} className="steering-wheel-spoke" />
-        <circle r={radius * 0.17} className="steering-wheel-hub" />
-        <rect x={-radius * 0.075} y={-radius - 5} width={radius * 0.15} height="6" rx="1" className="steering-wheel-mark" />
+        <circle r={radius} className="steering-wheel-disk" />
+        <line x1="0" y1="0" x2="0" y2={-radius * 0.85} className="steering-wheel-spoke" />
+        <line x1="0" y1="0" x2={-radius * 0.72} y2={radius * 0.5} className="steering-wheel-spoke" />
+        <line x1="0" y1="0" x2={radius * 0.72} y2={radius * 0.5} className="steering-wheel-spoke" />
+        <circle r={radius * 0.3} className="steering-wheel-hub" />
+        <rect x={-radius * 0.09} y={-radius - 6} width={radius * 0.18} height={radius * 0.18} rx="1.5" className="steering-wheel-mark" />
       </g>
       <text x={cx} y={cy + radius + 16} textAnchor="middle" className={`steering-wheel-label ${className}`}>{label}</text>
     </g>
   );
 }
 
-/** Small dark rounded box with up/down chevrons beside the gear number -- the other half of the
- * same iRacing widget element, replicated together with the wheel above. */
-function GearBox({ cx, cy, value }: { cx: number; cy: number; value: number | null }) {
-  const w = 46, h = 28;
-  const x = cx - w / 2, y = cy - h / 2;
+/** Double-chevron up/down markers (a thin "∧∧" / "∨∨", stroked outline -- not a solid filled
+ * triangle, matching the reference's thinner arrow style) flanking the gear number above and below,
+ * not beside it -- the reference stacks them vertically around the number, not next to it. */
+function GearCluster({ x, y, value }: { x: number; y: number; value: number | null }) {
+  const chevron = (rowY: number, pointsUp: boolean) => {
+    const tip = pointsUp ? rowY - 2.2 : rowY + 2.2;
+    const base = pointsUp ? rowY + 2.2 : rowY - 2.2;
+    return `${x - 5},${base} ${x},${tip} ${x + 5},${base}`;
+  };
   return (
     <g>
-      <rect x={x} y={y} width={w} height={h} rx={4} className="gear-box" />
-      <path d={`M ${x + 10} ${y + 7} L ${x + 7} ${y + 11} L ${x + 13} ${y + 11} Z`} className="gear-chevron" />
-      <path d={`M ${x + 10} ${y + 21} L ${x + 7} ${y + 17} L ${x + 13} ${y + 17} Z`} className="gear-chevron" />
-      <text x={x + 30} y={y + h / 2 + 6} textAnchor="middle" className="gear-readout">{formatGear(value)}</text>
+      <polyline points={chevron(y - 22, true)} className="gear-chevron" />
+      <polyline points={chevron(y - 16, true)} className="gear-chevron" />
+      <text x={x} y={y + 9} textAnchor="middle" className="gear-readout">{formatGear(value)}</text>
+      <polyline points={chevron(y + 16, false)} className="gear-chevron" />
+      <polyline points={chevron(y + 22, false)} className="gear-chevron" />
     </g>
   );
 }
@@ -751,7 +761,6 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
   const refAngle = reference ? interpolate(refPts, wheelDistance, "steering") : null;
   const ownGear = interpolate(ownPts, wheelDistance, "gear");
   const refGear = reference ? interpolate(refPts, wheelDistance, "gear") : null;
-  const gaugeCenterX = GAUGE_COLUMN_WIDTH / 2;
   // Default preserveAspectRatio (xMidYMid meet), not "none" like the old taller/narrower layout used
   // -- this one is much wider relative to its height (the gauge column made it so), and stretching
   // independently on each axis would squash the steering wheels' circles into ovals.
@@ -771,14 +780,14 @@ function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: 
         onHover(Math.max(from, Math.min(to, unscaleX(x))));
       }}
       onTouchEnd={() => onHover(null)}>
-      {/* Gauge column: gear + wheel, own on top / reference below — left of the input graphs, matching
-       * iRacing's own widget layout (asked for explicitly). Defaults to the middle of the focused
-       * range before any hover, so the gauges never sit blank on first render. */}
-      <GearBox cx={gaugeCenterX} cy={GAUGE_OWN_CENTER_Y - GAUGE_GEAR_BOX_OFFSET} value={ownGear} />
-      <SteeringWheel cx={gaugeCenterX} cy={GAUGE_OWN_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={ownAngle} label="VOCÊ" className="own" />
+      {/* Gauge column: gear (left) + wheel (right), own on top / reference below — left of the input
+       * graphs, matching iRacing's own widget layout. Defaults to the middle of the focused range
+       * before any hover, so the gauges never sit blank on first render. */}
+      <GearCluster x={GAUGE_GEAR_X} y={GAUGE_OWN_CENTER_Y} value={ownGear} />
+      <SteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_OWN_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={ownAngle} label="VOCÊ" className="own" />
       {reference && <>
-        <GearBox cx={gaugeCenterX} cy={GAUGE_REFERENCE_CENTER_Y - GAUGE_GEAR_BOX_OFFSET} value={refGear} />
-        <SteeringWheel cx={gaugeCenterX} cy={GAUGE_REFERENCE_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={refAngle} label="REFERÊNCIA" className="reference" />
+        <GearCluster x={GAUGE_GEAR_X} y={GAUGE_REFERENCE_CENTER_Y} value={refGear} />
+        <SteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_REFERENCE_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={refAngle} label="REFERÊNCIA" className="reference" />
       </>}
       <line x1={GAUGE_COLUMN_WIDTH} x2={GAUGE_COLUMN_WIDTH} y1="0" y2={FOCUSED_HEIGHT} className="gauge-divider" />
       <g transform={`translate(${GAUGE_COLUMN_WIDTH},0)`}>
