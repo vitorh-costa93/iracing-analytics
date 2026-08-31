@@ -312,18 +312,31 @@ function isValidLap(lap: LapRow) {
   return Number(lap.lap_time) > MIN_PLAUSIBLE_LAP_SECONDS && !lap.off_track && !lap.pit_lane && !lap.pit_in && !lap.pit_out && !lap.missing;
 }
 
-/** The real, per-track/category fix for the broken-record problem above: a fixed time floor can't
- * work across every track's own lap-time scale (20s excludes junk at Spa but would also exclude a
- * genuine short-oval lap elsewhere), so instead this computes the pool's own median lap time and
- * excludes anything under half of it. A real practice lap -- even a messy, off-pace one -- is very
- * rarely under half the field's typical pace; a broken/partial telemetry record reporting a handful
- * of seconds for a 2+ minute circuit always is. Needs at least 4 laps in the pool to trust the
- * median; smaller pools are left alone (not enough signal to safely reject anything). */
+/** The real, per-track/category fix for the broken-record problem above. A single "half the pool's
+ * median" floor (tried first) still failed live at Spa: legit ~2:15 McLaren laps survived, but so
+ * did clearly-broken 1:27-1:52 "laps" for other cars -- broken/partial telemetry records made up
+ * MORE than half of some cars' pools (confirmed: one had incomplete=true on 38 of 39 laps), so the
+ * median itself was contaminated and no longer reflected genuine race pace.
+ * Density clustering instead: sort every lap time in the pool, and single-link neighbors within 30%
+ * of each other into the same cluster (broken records are scattered arbitrary fractions of a real
+ * lap, so they essentially never cluster tightly with each other OR with the real pace group -- a
+ * genuine lap, even an off-pace practice one, reliably lands within 30% of another genuine lap on
+ * the same track). Keep only the LARGEST cluster; ties broken toward the slower one, since this
+ * failure mode only ever produces bogus SHORT times, never bogus long ones. Needs at least 4 laps in
+ * the pool to safely cluster; smaller pools are left alone (not enough signal to reject anything). */
 function filterPlausibleTimes<T extends { lap_time: number | null }>(laps: T[]) {
-  const times = laps.map((lap) => Number(lap.lap_time)).filter((value) => value > 0);
-  if (times.length < 4) return laps;
-  const floor = median(times) * 0.5;
-  return laps.filter((lap) => Number(lap.lap_time) >= floor);
+  const withTimes = laps.filter((lap) => Number(lap.lap_time) > 0);
+  if (withTimes.length < 4) return laps;
+  const sorted = [...withTimes].sort((a, b) => Number(a.lap_time) - Number(b.lap_time));
+  const clusters: T[][] = [[sorted[0]]];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = Number(sorted[i - 1].lap_time), current = Number(sorted[i].lap_time);
+    if (current / prev <= 1.3) clusters[clusters.length - 1].push(sorted[i]);
+    else clusters.push([sorted[i]]);
+  }
+  const maxSize = Math.max(...clusters.map((cluster) => cluster.length));
+  const best = clusters.filter((cluster) => cluster.length === maxSize).pop()!; // pop = slowest among tied-largest
+  return best;
 }
 
 async function downloadTrace(lapId: string, trackId: number, telemetryPath: string | null): Promise<TracePoint[] | null> {
