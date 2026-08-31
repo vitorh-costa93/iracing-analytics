@@ -75,7 +75,7 @@ function parseLapCsv(csv: string, debugTag?: string): TracePoint[] {
   if (!points.length) return [];
   const maxDistance = Math.max(...points.map((point) => point.distance));
   if (maxDistance > 0 && maxDistance <= 1.01) points.forEach((point) => { point.distance *= 100; });
-  if (debugTag) console.log(`PANORAMA_DEBUG[${debugTag}] pointCount=${points.length} minDistance=${points[0].distance} maxDistance=${points[points.length - 1].distance} rawMaxBeforeScale=${maxDistance}`);
+  if (debugTag) console.log(`PANORAMA_DEBUG[${debugTag}] pointCount=${points.length} minDistance=${points[0].distance} maxDistance=${points[points.length - 1].distance} rawMaxBeforeScale=${maxDistance} lat0=${points[0].lat} lon0=${points[0].lon} latMid=${points[Math.floor(points.length / 2)].lat} lonMid=${points[Math.floor(points.length / 2)].lon}`);
   return points;
 }
 
@@ -720,6 +720,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
 
     const chosen = fullCoverage[0]; // candidateLaps was already time-sorted ascending, so this is the fastest VERIFIED-genuine lap
     const bestLapSeconds = Number(chosen.lap.lap_time);
+    if (trackId === 79) console.log(`PANORAMA_DEBUG[chosen] lapId=${chosen.lap.id.slice(0, 8)} recordedLapTime=${chosen.lap.lap_time} tracePointCount=${chosen.trace.length}`);
     const traces = fullCoverage.slice(0, TELEMETRY_SAMPLE_LAPS).map((item) => item.trace);
 
     // Same idea for the consistency pool: only laps within a sane pace band of the verified genuine
