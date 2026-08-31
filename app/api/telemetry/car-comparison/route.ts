@@ -12,6 +12,8 @@ export const maxDuration = 300;
 const GARAGE61_BASE = "https://garage61.net/api/v1";
 const MAX_CARS = 6; // bounds cost if a driver has tested many cars at one track; covers every real case seen so far (2-4)
 const TELEMETRY_SAMPLE_LAPS = 5; // per car, for input-consistency and track-usage -- same pool size logic as debrief's MAX_LAPS
+const CANDIDATE_POOL_LAPS = 10; // wider than TELEMETRY_SAMPLE_LAPS -- see the GPS-coverage check below for why
+const MIN_LAP_COVERAGE_PCT = 85; // a genuine full lap's telemetry spans nearly the whole 0-100% lap distance
 const TIME_POOL_LAPS = 10; // per car, for lap-time consistency -- mirrors debrief's MAX_LAPS
 
 type LapRow = {
@@ -162,6 +164,28 @@ function cornerConsistencyScore(traces: TracePoint[][], start: number, end: numb
   if (!channelScores.length) return null;
   const score = mean(channelScores);
   return { score: Number(score.toFixed(2)), label: consistencyRatioLabel(score) };
+}
+
+/** Same width-usage metric as trackWidthUsage (below), scoped to one corner window instead of the
+ * whole lap -- feeds the per-corner narrative (29/08/2026: "incorporar [track usage] dentro da
+ * análise do deep-dive por curva... 'com um uso melhor da pista'"), which is now where this
+ * information actually lives instead of a separate flat section. Declared up here since it needs
+ * distanceToEdgeMeters/BoundaryEdge, defined further down -- hoisted like every other function
+ * declaration in this file. */
+function cornerTrackUsage(points: TracePoint[], boundary: BoundaryEdge[] | null, start: number, end: number) {
+  if (!boundary) return null;
+  const samples: number[] = [];
+  for (let distance = start; distance <= end; distance += 0.75) {
+    const lat = interpolate(points, distance, "lat"), lon = interpolate(points, distance, "lon");
+    if (lat === null || lon === null) continue;
+    let bestDist = Infinity, bestWidth = 0;
+    for (const edge of boundary) {
+      const dist = distanceToEdgeMeters(lat, lon, edge);
+      if (dist < bestDist) { bestDist = dist; bestWidth = edge.width; }
+    }
+    if (bestWidth > 0) samples.push(bestDist / (bestWidth / 2));
+  }
+  return samples.length ? Number((mean(samples) * 100).toFixed(1)) : null;
 }
 
 /** "Quero que ali seja de fato um engenheiro me aconselhando, enxergar os white spaces que eu não
@@ -480,6 +504,15 @@ function filterPlausibleTimes<T extends { lap_time: number | null }>(laps: T[]) 
   return best;
 }
 
+/** How much of the 0-100% lap distance a downloaded trace actually covers -- see its call site
+ * (perCar, further down) for why this is the real signal for "is this a genuine full lap", not the
+ * recorded lap_time field, which is exactly what's wrong on a broken/partial telemetry record. */
+function traceCoveragePct(points: TracePoint[]) {
+  if (!points.length) return 0;
+  const distances = points.map((point) => point.distance);
+  return Math.max(...distances) - Math.min(...distances);
+}
+
 async function downloadTrace(lapId: string, trackId: number, telemetryPath: string | null): Promise<TracePoint[] | null> {
   if (telemetryPath) {
     const { data: file, error } = await supabaseAdmin.storage.from("telemetry").download(telemetryPath);
@@ -658,10 +691,36 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   ]);
   const carNames = new Map((carsResult.data ?? []).map((row) => [row.id, row.name as string]));
 
-  const perCar = await Promise.all(carIds.map(async (carId) => {
+  const perCarOrNull = await Promise.all(carIds.map(async (carId) => {
     const laps = byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time));
-    const bestLapSeconds = Number(laps[0].lap_time);
-    const cleanedTimes = trimSlowOutliers(laps.map((lap) => Number(lap.lap_time))).sort((a, b) => a - b);
+
+    // The density-clustering plausibility filter (filterPlausibleTimes) operates on the recorded
+    // lap_time alone, which is exactly the field that's wrong for a broken/partial telemetry record
+    // -- confirmed live at Mount Panorama, where every car's "best lap" came back 38-86s against a
+    // real ~2min05s circuit (all 5 cars, so not one bad car, the whole cluster it picked was wrong).
+    // The one thing that can't lie about how much of the lap was actually recorded is the telemetry's
+    // own GPS distance coverage: a genuine full lap spans nearly the whole 0-100% range, a broken
+    // record usually only covers a fraction of it. Downloads a wider candidate pool than
+    // TELEMETRY_SAMPLE_LAPS specifically to have a real shot at finding ONE genuine full lap even
+    // when the fastest-by-recorded-time candidates are all broken.
+    const candidateLaps = laps.slice(0, CANDIDATE_POOL_LAPS);
+    const candidateTraces = await Promise.all(candidateLaps.map((lap) => downloadTrace(lap.id, trackId, lap.telemetry_path)));
+    const withCoverage = candidateLaps
+      .map((lap, index) => ({ lap, trace: candidateTraces[index] }))
+      .filter((item): item is { lap: LapRow; trace: TracePoint[] } => !!item.trace);
+    const fullCoverage = withCoverage.filter((item) => traceCoveragePct(item.trace) >= MIN_LAP_COVERAGE_PCT);
+    // No genuine full lap found anywhere in the candidate pool -- this car's whole cluster for this
+    // track/season/category is untrustworthy. Better to drop it from the comparison than show a
+    // confidently wrong "38s lap" next to real ~2min ones.
+    if (!fullCoverage.length) return null;
+
+    const chosen = fullCoverage[0]; // candidateLaps was already time-sorted ascending, so this is the fastest VERIFIED-genuine lap
+    const bestLapSeconds = Number(chosen.lap.lap_time);
+    const traces = fullCoverage.slice(0, TELEMETRY_SAMPLE_LAPS).map((item) => item.trace);
+
+    // Same idea for the consistency pool: only laps within a sane pace band of the verified genuine
+    // lap (not the raw density cluster, which just got shown to be unreliable) count toward stddev.
+    const cleanedTimes = trimSlowOutliers(laps.map((lap) => Number(lap.lap_time)).filter((seconds) => seconds >= bestLapSeconds * 0.97 && seconds <= bestLapSeconds * 1.6)).sort((a, b) => a - b);
     const timePool = cleanedTimes.slice(0, TIME_POOL_LAPS);
     const lapTimeConsistency = timePool.length >= 3 ? (() => {
       const avg = mean(timePool);
@@ -669,23 +728,26 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       return { stddev: Number(sd.toFixed(3)), label: consistencyRatioLabel(sd / 0.4) };
     })() : null;
 
-    const sampleLaps = laps.slice(0, TELEMETRY_SAMPLE_LAPS);
-    const traces = (await Promise.all(sampleLaps.map((lap) => downloadTrace(lap.id, trackId, lap.telemetry_path))))
-      .filter((points): points is TracePoint[] => !!points);
-
     const inputConsistency = inputConsistencyScore(traces);
     const trackUsage = boundary && traces.length ? trackWidthUsage(traces[0], boundary) : null;
     const trackUsageSegments = boundary && traces.length ? trackWidthUsageBySegment(traces[0], boundary) : null;
 
     return {
       carId, carName: carNames.get(carId) ?? `Carro ${carId}`,
-      lapsAnalyzed: laps.length,
+      lapsAnalyzed: timePool.length,
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
       lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments,
       fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
       sampleTraces: traces, // same -- kept for per-corner consistency below, stripped before response
     };
   }));
+  const perCar = perCarOrNull.filter((car): car is NonNullable<typeof car> => car !== null);
+  if (perCar.length < 2) {
+    return {
+      status: "ok", track: null, cars: [], seasons, selectedSeasonId,
+      message: `Não encontrei voltas com telemetria completa e confiável de pelo menos 2 carros de ${CATEGORY_LABEL[category]} nessa pista. Os tempos registrados aqui parecem vir de voltas parciais/quebradas, não de voltas completas -- provavelmente precisa ressincronizar essas sessões.`,
+    };
+  }
 
   const overallBest = Math.min(...perCar.map((car) => car.bestLapSeconds));
   const ranked = perCar
@@ -736,11 +798,12 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     }));
     const gps = withTraces.map((car) => ({ carId: car.carId, points: segmentGps(car.fastestTrace!, start, end) }));
     const consistency = ranked.map((car) => ({ carId: car.carId, ...(cornerConsistencyScore(car.sampleTraces, start, end) ?? { score: null, label: null }) }));
+    const trackUsage = withTraces.map((car) => ({ carId: car.carId, avgPct: cornerTrackUsage(car.fastestTrace!, boundary, start, end) }));
     return {
       segment: index, name: cornerNames?.[index] ?? null, cornerNumber: corner.number, startPct: start, endPct: end,
       winnerCarId: winner?.carId ?? null,
       times: times.map((item) => ({ ...item, deltaSeconds: winner ? Number((item.seconds - winner.seconds).toFixed(3)) : 0 })).sort((a, b) => a.seconds - b.seconds),
-      curves, gps, consistency,
+      curves, gps, consistency, trackUsage,
     };
   });
 
