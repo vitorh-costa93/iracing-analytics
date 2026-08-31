@@ -281,8 +281,9 @@ async function resolveCarCategories(carIds: number[]): Promise<Map<number, Categ
   return result;
 }
 
-// No road course this feature covers (GT3/GTP only, never ovals) has a real lap anywhere near this
-// short -- generous floor to reject broken/partial telemetry records, see isValidLap below.
+// Coarse backstop only (used for the track-eligibility list, where getting the exact right
+// threshold matters less than in the real comparison below) -- no road course this feature covers
+// (GT3/GTP only, never ovals) has a real lap anywhere near this short.
 const MIN_PLAUSIBLE_LAP_SECONDS = 20;
 
 /** Deliberately does NOT require Garage61's own `clean` flag, unlike debrief.ts and sectors.ts
@@ -298,16 +299,31 @@ const MIN_PLAUSIBLE_LAP_SECONDS = 20;
  * `incomplete` ALSO isn't required, for the same reason -- for these same cars it was true on
  * almost the exact same rows as `clean=false` (McLaren: 38/39 both), so keeping it as a hard gate
  * just reintroduces the same near-total exclusion under a different flag. But dropping it naively
- * let through bogus sub-3-second "lap times" from genuinely broken/partial telemetry records
- * (Ferrari 296 GT3's fastest "lap" at Spa came back as 2.65s) that wrecked the ranking outright --
- * so MIN_PLAUSIBLE_LAP_SECONDS catches those directly instead, without re-excluding the legitimate
- * practice laps `incomplete` was also flagging.
+ * let through broken/partial telemetry records with implausible lap times (Ferrari 296 GT3's
+ * fastest "lap" at Spa came back as 2.65s; other cars landed at 20-90s against a real ~2:15 Spa GT3
+ * lap) that wrecked the ranking outright. A single fixed floor doesn't work across every track's own
+ * lap-time scale -- see filterPlausibleTimes below, applied in buildComparison, for the real (dynamic,
+ * per-track) fix; MIN_PLAUSIBLE_LAP_SECONDS here is only a cheap backstop for the track list.
  * off_track/pit/missing stay excluded -- those mean the lap genuinely isn't representative -- but a
  * real, plausibly-timed lap is fair game even if Garage61 wouldn't call it an official clean lap.
  * trimSlowOutliers (see below) is what keeps a wild practice lap from wrecking the consistency
  * numbers now that `clean`/`incomplete` alone no longer gate everything. */
 function isValidLap(lap: LapRow) {
   return Number(lap.lap_time) > MIN_PLAUSIBLE_LAP_SECONDS && !lap.off_track && !lap.pit_lane && !lap.pit_in && !lap.pit_out && !lap.missing;
+}
+
+/** The real, per-track/category fix for the broken-record problem above: a fixed time floor can't
+ * work across every track's own lap-time scale (20s excludes junk at Spa but would also exclude a
+ * genuine short-oval lap elsewhere), so instead this computes the pool's own median lap time and
+ * excludes anything under half of it. A real practice lap -- even a messy, off-pace one -- is very
+ * rarely under half the field's typical pace; a broken/partial telemetry record reporting a handful
+ * of seconds for a 2+ minute circuit always is. Needs at least 4 laps in the pool to trust the
+ * median; smaller pools are left alone (not enough signal to safely reject anything). */
+function filterPlausibleTimes<T extends { lap_time: number | null }>(laps: T[]) {
+  const times = laps.map((lap) => Number(lap.lap_time)).filter((value) => value > 0);
+  if (times.length < 4) return laps;
+  const floor = median(times) * 0.5;
+  return laps.filter((lap) => Number(lap.lap_time) >= floor);
 }
 
 async function downloadTrace(lapId: string, trackId: number, telemetryPath: string | null): Promise<TracePoint[] | null> {
@@ -448,8 +464,14 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     .sort((a, b) => b.latestStartedAt.localeCompare(a.latestStartedAt));
   const selectedSeasonId = seasonParam === "all" ? null : seasonParam ?? seasons[0]?.seasonId ?? null;
 
+  // Plausibility floor computed once, across every car in this category+season pool together (not
+  // per car) -- a single car might legitimately have very few laps, too few to trust its own
+  // median, but the whole pool sharing one track always has enough signal.
+  const pooledLaps = [...byCarCategory.values()].flatMap((laps) => selectedSeasonId ? laps.filter((lap) => lap.sessions?.season_id === selectedSeasonId) : laps);
+  const plausibleLapIds = new Set(filterPlausibleTimes(pooledLaps).map((lap) => lap.id));
+
   const byCar = new Map([...byCarCategory]
-    .map(([carId, laps]): [number, LapRow[]] => [carId, selectedSeasonId ? laps.filter((lap) => lap.sessions?.season_id === selectedSeasonId) : laps])
+    .map(([carId, laps]): [number, LapRow[]] => [carId, (selectedSeasonId ? laps.filter((lap) => lap.sessions?.season_id === selectedSeasonId) : laps).filter((lap) => plausibleLapIds.has(lap.id))])
     .filter(([, laps]) => laps.length > 0));
 
   const carIds = [...byCar.keys()]
