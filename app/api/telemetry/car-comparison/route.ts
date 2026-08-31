@@ -516,6 +516,28 @@ function traceCoveragePct(points: TracePoint[]) {
   return Math.max(...distances) - Math.min(...distances);
 }
 
+/** Real-world GPS path length of a trace, in meters -- confirmed live at Mount Panorama (31/08/2026)
+ * that traceCoveragePct alone isn't enough: some laps there report a clean 0-100% lapDistPct sweep
+ * (so they pass the coverage check) in a physically impossible time (a 6.2km real circuit "covered"
+ * in 92s at 60Hz sample count matching the recorded lap_time almost exactly -- self-consistent, not
+ * a parsing artifact) while their GPS trace's own halfway point sits nowhere near the real track's
+ * geographic midpoint. lapDistPct itself is apparently mis-scaled for these laps (a known class of
+ * iRacing SDK issue when a track's declared length is off), so the only channel that can't lie about
+ * how far the car actually drove is the raw lat/lon path length -- summed as flat-earth planar
+ * segments (same approximation as distanceToEdgeMeters), which is accurate enough at track scale. */
+function traceGpsDistanceMeters(points: TracePoint[]) {
+  let total = 0;
+  for (let index = 1; index < points.length; index += 1) {
+    const a = points[index - 1], b = points[index];
+    if (a.lat == null || a.lon == null || b.lat == null || b.lon == null) continue;
+    const cosRef = Math.cos((a.lat * Math.PI) / 180);
+    const dx = (b.lon - a.lon) * METERS_PER_DEGREE_LAT * cosRef;
+    const dy = (b.lat - a.lat) * METERS_PER_DEGREE_LAT;
+    total += Math.sqrt(dx * dx + dy * dy);
+  }
+  return total;
+}
+
 async function downloadTrace(lapId: string, trackId: number, telemetryPath: string | null): Promise<TracePoint[] | null> {
   const debugTag = trackId === 79 ? lapId.slice(0, 8) : undefined; // TEMP DEBUG, remove after Mount Panorama diagnosis
   if (telemetryPath) {
@@ -695,7 +717,14 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   ]);
   const carNames = new Map((carsResult.data ?? []).map((row) => [row.id, row.name as string]));
 
-  const perCarOrNull = await Promise.all(carIds.map(async (carId) => {
+  // Two-phase per-car processing -- see the comment on traceGpsDistanceMeters for why phase 1's
+  // lapDistPct-coverage check isn't the whole story: a lap can sweep a clean 0-100% lapDistPct range
+  // in a physically impossible time when lapDistPct itself is mis-scaled for that track. Phase 1
+  // gathers every coverage-verified candidate across every car along with its real GPS path length;
+  // phase 2 then uses the LONGEST path length seen across ALL cars at this track as the "this is
+  // what a genuine full lap actually covers on the ground" reference, and rejects any candidate whose
+  // own path length falls well short of it, before finally picking each car's fastest survivor.
+  const perCarPrepared = await Promise.all(carIds.map(async (carId) => {
     const laps = byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time));
 
     // The density-clustering plausibility filter (filterPlausibleTimes) operates on the recorded
@@ -712,16 +741,32 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     const withCoverage = candidateLaps
       .map((lap, index) => ({ lap, trace: candidateTraces[index] }))
       .filter((item): item is { lap: LapRow; trace: TracePoint[] } => !!item.trace);
-    const fullCoverage = withCoverage.filter((item) => traceCoveragePct(item.trace) >= MIN_LAP_COVERAGE_PCT);
+    const fullCoverage = withCoverage
+      .filter((item) => traceCoveragePct(item.trace) >= MIN_LAP_COVERAGE_PCT)
+      .map((item) => ({ ...item, gpsDistanceMeters: traceGpsDistanceMeters(item.trace) }));
+    return { carId, laps, fullCoverage };
+  }));
+
+  // The reference "real lap length" -- the longest GPS path any car's coverage-verified candidate
+  // actually drove at this track. A car whose own best candidates all fall well short of this (in
+  // meters actually driven, not lapDistPct) never had a genuine full lap in its pool.
+  const referenceLapMeters = Math.max(0, ...perCarPrepared.flatMap((car) => car.fullCoverage.map((item) => item.gpsDistanceMeters)));
+  const MIN_GPS_DISTANCE_RATIO = 0.85;
+
+  const perCarOrNull = perCarPrepared.map(({ carId, fullCoverage }) => {
+    const verified = referenceLapMeters > 0
+      ? fullCoverage.filter((item) => item.gpsDistanceMeters >= referenceLapMeters * MIN_GPS_DISTANCE_RATIO)
+      : fullCoverage;
     // No genuine full lap found anywhere in the candidate pool -- this car's whole cluster for this
     // track/season/category is untrustworthy. Better to drop it from the comparison than show a
     // confidently wrong "38s lap" next to real ~2min ones.
-    if (!fullCoverage.length) return null;
+    if (!verified.length) return null;
 
-    const chosen = fullCoverage[0]; // candidateLaps was already time-sorted ascending, so this is the fastest VERIFIED-genuine lap
+    const chosen = verified[0]; // candidateLaps was already time-sorted ascending, so this is the fastest VERIFIED-genuine lap
     const bestLapSeconds = Number(chosen.lap.lap_time);
-    if (trackId === 79) console.log(`PANORAMA_DEBUG[chosen] lapId=${chosen.lap.id.slice(0, 8)} recordedLapTime=${chosen.lap.lap_time} tracePointCount=${chosen.trace.length}`);
-    const traces = fullCoverage.slice(0, TELEMETRY_SAMPLE_LAPS).map((item) => item.trace);
+    if (trackId === 79) console.log(`PANORAMA_DEBUG[chosen] lapId=${chosen.lap.id.slice(0, 8)} recordedLapTime=${chosen.lap.lap_time} tracePointCount=${chosen.trace.length} gpsDistanceMeters=${chosen.gpsDistanceMeters.toFixed(0)} referenceLapMeters=${referenceLapMeters.toFixed(0)}`);
+    const traces = verified.slice(0, TELEMETRY_SAMPLE_LAPS).map((item) => item.trace);
+    const laps = byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time));
 
     // Same idea for the consistency pool: only laps within a sane pace band of the verified genuine
     // lap (not the raw density cluster, which just got shown to be unreliable) count toward stddev.
@@ -745,7 +790,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
       sampleTraces: traces, // same -- kept for per-corner consistency below, stripped before response
     };
-  }));
+  });
   const perCar = perCarOrNull.filter((car): car is NonNullable<typeof car> => car !== null);
   if (perCar.length < 2) {
     return {
