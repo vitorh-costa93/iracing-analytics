@@ -281,21 +281,33 @@ async function resolveCarCategories(carIds: number[]): Promise<Map<number, Categ
   return result;
 }
 
-/** Deliberately does NOT require Garage61's own `clean`/`incomplete` flags, unlike debrief.ts and
- * sectors.ts (which analyze RACE laps, where those flags are the right bar). Confirmed live
- * (29/08/2026, driver-reported: "Spa... por que não apareceu?"): McLaren 720S GT3 EVO had 39 real
- * laps at Spa across practice/qualy/race, with real positive lap times -- but only 1 of them was
- * Garage61 "clean", so this feature returned zero valid laps for that car and it silently vanished
- * from the comparison, while Dallara P217's 145 laps (mostly race-session) were 77% clean and showed
- * up fine. That's not a data gap, and it's not a bug in `clean` either -- it's Garage61 legitimately
- * flagging most PRACTICE/test-drive laps unclean (track-limit exploration, setup testing), which is
- * exactly the kind of lap this feature exists to compare. Requiring "clean" here would silently drop
- * whichever car the driver tested the most aggressively. off_track/pit/missing stay excluded --
- * those mean the lap genuinely isn't representative -- but a lap with a real recorded time is fair
- * game even if Garage61 wouldn't count it as an official clean lap. trimSlowOutliers (see below)
- * is what actually keeps a wild practice lap from wrecking the consistency numbers now. */
+// No road course this feature covers (GT3/GTP only, never ovals) has a real lap anywhere near this
+// short -- generous floor to reject broken/partial telemetry records, see isValidLap below.
+const MIN_PLAUSIBLE_LAP_SECONDS = 20;
+
+/** Deliberately does NOT require Garage61's own `clean` flag, unlike debrief.ts and sectors.ts
+ * (which analyze RACE laps, where that's the right bar). Confirmed live (29/08/2026, driver-reported:
+ * "Spa... por que não apareceu?"): McLaren 720S GT3 EVO had 39 real laps at Spa across
+ * practice/qualy/race, with real positive lap times -- but only 1 was Garage61-"clean", so this
+ * feature returned zero valid laps for that car and it silently vanished from the comparison, while
+ * Dallara P217's 145 laps (mostly race-session) were 77% clean and showed up fine. That's not a sync
+ * gap, and not a bug in `clean` either -- it's Garage61 legitimately flagging most PRACTICE/test-drive
+ * laps unclean (track-limit exploration, setup testing), which is exactly the kind of lap this
+ * feature exists to compare. Requiring "clean" here would silently drop whichever car the driver
+ * tested the most aggressively.
+ * `incomplete` ALSO isn't required, for the same reason -- for these same cars it was true on
+ * almost the exact same rows as `clean=false` (McLaren: 38/39 both), so keeping it as a hard gate
+ * just reintroduces the same near-total exclusion under a different flag. But dropping it naively
+ * let through bogus sub-3-second "lap times" from genuinely broken/partial telemetry records
+ * (Ferrari 296 GT3's fastest "lap" at Spa came back as 2.65s) that wrecked the ranking outright --
+ * so MIN_PLAUSIBLE_LAP_SECONDS catches those directly instead, without re-excluding the legitimate
+ * practice laps `incomplete` was also flagging.
+ * off_track/pit/missing stay excluded -- those mean the lap genuinely isn't representative -- but a
+ * real, plausibly-timed lap is fair game even if Garage61 wouldn't call it an official clean lap.
+ * trimSlowOutliers (see below) is what keeps a wild practice lap from wrecking the consistency
+ * numbers now that `clean`/`incomplete` alone no longer gate everything. */
 function isValidLap(lap: LapRow) {
-  return Number(lap.lap_time) > 0 && !lap.off_track && !lap.pit_lane && !lap.pit_in && !lap.pit_out && !lap.missing;
+  return Number(lap.lap_time) > MIN_PLAUSIBLE_LAP_SECONDS && !lap.off_track && !lap.pit_lane && !lap.pit_in && !lap.pit_out && !lap.missing;
 }
 
 async function downloadTrace(lapId: string, trackId: number, telemetryPath: string | null): Promise<TracePoint[] | null> {
