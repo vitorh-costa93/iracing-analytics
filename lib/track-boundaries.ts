@@ -4,10 +4,17 @@
  * This is what makes the track map's asphalt ribbon an actual track boundary instead of a synthetic
  * tube drawn around whichever GPS trace happened to be compared -- see TrackMap's own comment for why
  * that synthetic ribbon could never show real track position ("aparenta estar tudo no meio da pista"
- * was a structural consequence of it, not a rendering bug). Covers 46 of the 47 tracks in this
- * driver's library; the one holdout is Mount Panorama (Bathurst) -- a public road circuit closed for
- * racing only race week, so its roads are tagged as ordinary streets in OSM, not `highway=raceway`,
- * and isolating just the racing line from the general road network wasn't attempted here.
+ * was a structural consequence of it, not a rendering bug). Covers every track in this driver's
+ * library, including Mount Panorama (Bathurst) -- a public road circuit closed for racing only race
+ * week, so unlike every other track here its roads are tagged as ordinary streets in OSM, not
+ * `highway=raceway` (31/08/2026: queried by the circuit's known corner/straight names --
+ * "Mountain Straight", "Griffins Bend", "The Cutting", "Reid Park", "Sulman Park", "McPhillamy Park",
+ * "Brocks Skyline", "Forrest's Elbow", "The Chase", "Conrod Straight", "Murrays Corner", "Pit
+ * Straight", "Hell Corner" -- rather than the `highway=raceway` tag filter used everywhere else; all
+ * 16 matched ways share the same `alt_name` "Mount Panorama Scenic Road", confirming they're the one
+ * real circuit and not some other road. None of them carry a `width` tag the way purpose-built
+ * `highway=raceway` ways usually do, so this track's ribbon uses a flat estimated 10m width instead
+ * of a per-segment OSM value).
  *
  * Served from public/track-boundaries.json and fetched once at runtime (see getTrackBoundary below)
  * rather than bundled into the JS chunk -- at ~440KB uncompressed this would otherwise ship to every
