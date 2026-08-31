@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent, type TouchEvent } from "react";
 import SectorConsistency from "@/components/SectorConsistency";
 import { createTrackProjector } from "@/lib/track-map";
 
@@ -66,48 +66,82 @@ function LapScatterChart({ points }: { points: LapScatterPoint[] }) {
   );
 }
 
-function CornerBandChart({ brakeBand, throttleBand, idealLine, onHover }: { brakeBand: BandPoint[]; throttleBand: BandPoint[]; idealLine: IdealLine | null; onHover: (offset: number | null) => void }) {
-  const width = 520, height = 112, pad = { left: 6, right: 6, top: 6, bottom: 5 };
-  const offsets = [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
-  if (!offsets.length) return null;
-  const minOffset = Math.min(...offsets), maxOffset = Math.max(...offsets);
+/** Shared axis math + hover wiring for the two corner mini-charts below -- they used to be one
+ * combined chart (consistency bands + ideal-lap curves overlaid in the same SVG), split apart
+ * 29/08/2026 per "separe em dois gráficos a parte da consistência e a parte da melhor freada" so
+ * each reads on its own instead of competing for the same lines, side by side in the width that
+ * one combined chart used to leave partly unused. */
+function cornerChartScale(offsets: number[], width: number, pad: { left: number; right: number; top: number; bottom: number }) {
+  const minOffset = offsets.length ? Math.min(...offsets) : 0;
+  const maxOffset = offsets.length ? Math.max(...offsets) : 1;
   const x = (offset: number) => pad.left + ((offset - minOffset) / Math.max(1, maxOffset - minOffset)) * (width - pad.left - pad.right);
   const unx = (px: number) => minOffset + ((px - pad.left) / Math.max(1, width - pad.left - pad.right)) * (maxOffset - minOffset);
+  return { minOffset, maxOffset, x, unx };
+}
+
+function cornerChartHoverHandlers(width: number, minOffset: number, maxOffset: number, unx: (px: number) => number, onHover: (offset: number | null) => void) {
+  return {
+    onMouseMove: (event: MouseEvent<SVGSVGElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const px = (event.clientX - rect.left) / rect.width * width;
+      onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
+    },
+    onMouseLeave: () => onHover(null),
+    // Touch has no hover concept, so mousemove/mouseleave alone left this dead on mobile --
+    // touchmove/touchstart drive the same locate-on-map behavior via a dragging finger instead.
+    onTouchStart: (event: TouchEvent<SVGSVGElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const px = (event.touches[0].clientX - rect.left) / rect.width * width;
+      onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
+    },
+    onTouchMove: (event: TouchEvent<SVGSVGElement>) => {
+      const rect = event.currentTarget.getBoundingClientRect();
+      const px = (event.touches[0].clientX - rect.left) / rect.width * width;
+      onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
+    },
+    onTouchEnd: () => onHover(null),
+  };
+}
+
+function ConsistencyBandChart({ brakeBand, throttleBand, onHover }: { brakeBand: BandPoint[]; throttleBand: BandPoint[]; onHover: (offset: number | null) => void }) {
+  const width = 320, height = 112, pad = { left: 6, right: 6, top: 6, bottom: 5 };
+  const offsets = [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
+  if (!offsets.length) return null;
+  const { minOffset, maxOffset, x, unx } = cornerChartScale(offsets, width, pad);
   const y = (value: number) => pad.top + (1 - value) * (height - pad.top - pad.bottom);
   const bandPath = (band: BandPoint[]) => band.length ? `${band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(Math.min(1, p.mean + p.stddev)).toFixed(1)}`).join(" ")} ${[...band].reverse().map((p) => `L ${x(p.offset).toFixed(1)} ${y(Math.max(0, p.mean - p.stddev)).toFixed(1)}`).join(" ")} Z` : "";
   const meanPath = (band: BandPoint[]) => band.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(p.mean).toFixed(1)}`).join(" ");
-  const curvePath = (curve: CurvePoint[]) => curve.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(p.value).toFixed(1)}`).join(" ");
-  // The ideal-lap curves are drawn fine-grained (0.5% step, from a single real lap) over the mean
-  // band (1% step, averaged across laps) -- deliberately a crisper, more detailed line on top, so
-  // it reads as "trace this exact shape" rather than another statistical summary.
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas, com a curva da sua execução mais rápida em destaque; passe o mouse ou arraste o dedo para localizar no mapa"
-      onMouseMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const px = (event.clientX - rect.left) / rect.width * width;
-        onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
-      }}
-      onMouseLeave={() => onHover(null)}
-      // Touch has no hover concept, so mousemove/mouseleave alone left this dead on mobile --
-      // touchmove/touchstart drive the same locate-on-map behavior via a dragging finger instead.
-      onTouchStart={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const px = (event.touches[0].clientX - rect.left) / rect.width * width;
-        onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
-      }}
-      onTouchMove={(event) => {
-        const rect = event.currentTarget.getBoundingClientRect();
-        const px = (event.touches[0].clientX - rect.left) / rect.width * width;
-        onHover(Math.max(minOffset, Math.min(maxOffset, unx(px))));
-      }}
-      onTouchEnd={() => onHover(null)}>
+    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Consistência de freio e acelerador nessa curva, entre as voltas analisadas; passe o mouse ou arraste o dedo para localizar no mapa"
+      {...cornerChartHoverHandlers(width, minOffset, maxOffset, unx, onHover)}>
       <line x1={x(0)} x2={x(0)} y1={pad.top} y2={height - pad.bottom} className="corner-mini-axis" />
       <path d={bandPath(brakeBand)} className="corner-mini-band brake" />
       <path d={meanPath(brakeBand)} className="corner-mini-line brake" />
       <path d={bandPath(throttleBand)} className="corner-mini-band throttle" />
       <path d={meanPath(throttleBand)} className="corner-mini-line throttle" />
-      {idealLine && <path d={curvePath(idealLine.brakeCurve)} className="corner-mini-ideal brake" />}
-      {idealLine && <path d={curvePath(idealLine.throttleCurve)} className="corner-mini-ideal throttle" />}
+    </svg>
+  );
+}
+
+function BestBrakingChart({ idealLine, brakeBand, throttleBand, onHover }: { idealLine: IdealLine | null; brakeBand: BandPoint[]; throttleBand: BandPoint[]; onHover: (offset: number | null) => void }) {
+  const width = 320, height = 112, pad = { left: 6, right: 6, top: 6, bottom: 5 };
+  const offsets = idealLine ? [...idealLine.brakeCurve.map((p) => p.offset), ...idealLine.throttleCurve.map((p) => p.offset)] : [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
+  if (!offsets.length) return null;
+  const { minOffset, maxOffset, x, unx } = cornerChartScale(offsets, width, pad);
+  const y = (value: number) => pad.top + (1 - value) * (height - pad.top - pad.bottom);
+  const curvePath = (curve: CurvePoint[]) => curve.map((p, i) => `${i === 0 ? "M" : "L"} ${x(p.offset).toFixed(1)} ${y(p.value).toFixed(1)}`).join(" ");
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="corner-mini-chart" role="img" aria-label="Curva de freio e acelerador da sua execução mais rápida nessa curva; passe o mouse ou arraste o dedo para localizar no mapa"
+      {...cornerChartHoverHandlers(width, minOffset, maxOffset, unx, onHover)}>
+      <line x1={x(0)} x2={x(0)} y1={pad.top} y2={height - pad.bottom} className="corner-mini-axis" />
+      {idealLine ? (
+        <>
+          <path d={curvePath(idealLine.brakeCurve)} className="corner-mini-ideal brake" />
+          <path d={curvePath(idealLine.throttleCurve)} className="corner-mini-ideal throttle" />
+        </>
+      ) : (
+        <text x={width / 2} y={height / 2} textAnchor="middle" className="corner-mini-empty">sem execução destacada aqui</text>
+      )}
     </svg>
   );
 }
@@ -255,7 +289,14 @@ export default function RaceDebrief() {
                   <div className="race-debrief-corner-card" key={corner.cornerNumber}>
                     <h5>{corner.name ?? `Curva ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
                     <div className="corner-mini-row">
-                      <CornerBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} idealLine={corner.idealLine} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
+                      <div className="corner-mini-col">
+                        <span className="corner-mini-col-label">Consistência</span>
+                        <ConsistencyBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
+                      </div>
+                      <div className="corner-mini-col">
+                        <span className="corner-mini-col-label">Melhor freada</span>
+                        <BestBrakingChart idealLine={corner.idealLine} brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
+                      </div>
                       {data.trackOutline && <CornerTrackMap outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />}
                     </div>
                     {corner.idealLine && corner.idealLine.gainSeconds > 0.03 && (
