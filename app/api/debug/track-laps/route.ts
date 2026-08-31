@@ -15,14 +15,27 @@ export async function GET(request: Request) {
 
     const { data: laps, error } = await supabaseAdmin
       .from("laps")
-      .select("id,car_id,lap_time,clean,off_track,session_id,synced_at")
+      .select("id,car_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,session_id,synced_at")
       .eq("driver_id", driver.id).eq("track_id", trackId);
     if (error) throw error;
-    const byCarLocal = new Map<number, { total: number; withSession: number; earliestSynced: string; latestSynced: string }>();
+    const isValid = (lap: typeof laps extends (infer T)[] | null ? T : never) =>
+      lap.clean && Number(lap.lap_time) > 0 && !lap.off_track && !lap.pit_lane && !lap.pit_in && !lap.pit_out && !lap.incomplete && !lap.missing;
+    const byCarLocal = new Map<number, { total: number; valid: number; withSession: number; earliestSynced: string; latestSynced: string; flagCounts: Record<string, number> }>();
     for (const lap of laps ?? []) {
-      const entry = byCarLocal.get(lap.car_id) ?? { total: 0, withSession: 0, earliestSynced: lap.synced_at, latestSynced: lap.synced_at };
+      const entry = byCarLocal.get(lap.car_id) ?? { total: 0, valid: 0, withSession: 0, earliestSynced: lap.synced_at, latestSynced: lap.synced_at, flagCounts: { clean_true: 0, clean_false: 0, clean_null: 0, off_track: 0, pit_lane: 0, pit_in: 0, pit_out: 0, incomplete: 0, missing: 0, lap_time_bad: 0 } };
       entry.total += 1;
+      if (isValid(lap)) entry.valid += 1;
       if (lap.session_id) entry.withSession += 1;
+      if (lap.clean === true) entry.flagCounts.clean_true += 1;
+      else if (lap.clean === false) entry.flagCounts.clean_false += 1;
+      else entry.flagCounts.clean_null += 1;
+      if (lap.off_track) entry.flagCounts.off_track += 1;
+      if (lap.pit_lane) entry.flagCounts.pit_lane += 1;
+      if (lap.pit_in) entry.flagCounts.pit_in += 1;
+      if (lap.pit_out) entry.flagCounts.pit_out += 1;
+      if (lap.incomplete) entry.flagCounts.incomplete += 1;
+      if (lap.missing) entry.flagCounts.missing += 1;
+      if (!(Number(lap.lap_time) > 0)) entry.flagCounts.lap_time_bad += 1;
       if (lap.synced_at < entry.earliestSynced) entry.earliestSynced = lap.synced_at;
       if (lap.synced_at > entry.latestSynced) entry.latestSynced = lap.synced_at;
       byCarLocal.set(lap.car_id, entry);
