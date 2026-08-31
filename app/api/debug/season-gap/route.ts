@@ -33,11 +33,24 @@ export async function GET(request: Request) {
     const sampleSessionIds = noSeasonSample.map((r) => r.session_id).filter((v): v is string => !!v);
     const { data: rawSessions } = sampleSessionIds.length ? await supabaseAdmin.from("sessions").select("*").in("id", sampleSessionIds) : { data: [] };
 
+    // Which cars are affected by NO_SEASON, and by NO_SESSION_ID specifically?
+    const noSeasonByCar = new Map<number, number>();
+    const noSessionIdByCar = new Map<number, number>();
+    for (const r of rows) {
+      if (!r.sessions?.season_id) noSeasonByCar.set(r.car_id, (noSeasonByCar.get(r.car_id) ?? 0) + 1);
+      if (!r.session_id) noSessionIdByCar.set(r.car_id, (noSessionIdByCar.get(r.car_id) ?? 0) + 1);
+    }
+    const affectedCarIds = [...new Set([...noSeasonByCar.keys(), ...noSessionIdByCar.keys()])];
+    const { data: affectedCars } = affectedCarIds.length ? await supabaseAdmin.from("cars").select("id,name").in("id", affectedCarIds) : { data: [] };
+    const carNames = new Map((affectedCars ?? []).map((c) => [c.id, c.name]));
+
     return NextResponse.json({
       status: "ok", total, noSessionId, sessionIdButNoJoin, joinButNoSeason, withSeason,
       bySeason: Object.fromEntries(bySeason),
       noSeasonSample: noSeasonSample.map((r) => ({ id: r.id, carId: r.car_id, sessionId: r.session_id })),
       rawSessionsForSample: rawSessions,
+      noSeasonByCar: [...noSeasonByCar.entries()].map(([carId, count]) => ({ carId, carName: carNames.get(carId) ?? `Carro ${carId}`, count })),
+      noSessionIdByCar: [...noSessionIdByCar.entries()].map(([carId, count]) => ({ carId, carName: carNames.get(carId) ?? `Carro ${carId}`, count })),
     });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
