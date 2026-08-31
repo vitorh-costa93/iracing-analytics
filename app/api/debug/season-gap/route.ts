@@ -23,10 +23,17 @@ export async function GET(request: Request) {
     const withSeason = rows.filter((r) => r.sessions?.season_id).length;
 
     const bySeason = new Map<string, number>();
+    const bySeasonCar = new Map<string, Set<number>>();
     for (const r of rows) {
       const key = r.sessions?.season_id ? `${r.sessions.season_id}:${r.sessions.season_name}` : "NO_SEASON";
       bySeason.set(key, (bySeason.get(key) ?? 0) + 1);
+      if (!bySeasonCar.has(key)) bySeasonCar.set(key, new Set());
+      bySeasonCar.get(key)!.add(r.car_id);
     }
+    const allCarIdsInRows = [...new Set(rows.map((r) => r.car_id))];
+    const { data: allCarNames } = allCarIdsInRows.length ? await supabaseAdmin.from("cars").select("id,name").in("id", allCarIdsInRows) : { data: [] };
+    const carNameMap = new Map((allCarNames ?? []).map((c) => [c.id, c.name]));
+    const bySeasonCarNamed = Object.fromEntries([...bySeasonCar.entries()].map(([key, ids]) => [key, [...ids].map((id) => carNameMap.get(id) ?? `Carro ${id}`)]));
 
     // Sample a few of the no-season rows to inspect their session_id / sessions row directly.
     const noSeasonSample = rows.filter((r) => !r.sessions?.season_id).slice(0, 5);
@@ -47,6 +54,7 @@ export async function GET(request: Request) {
     return NextResponse.json({
       status: "ok", total, noSessionId, sessionIdButNoJoin, joinButNoSeason, withSeason,
       bySeason: Object.fromEntries(bySeason),
+      bySeasonCar: bySeasonCarNamed,
       noSeasonSample: noSeasonSample.map((r) => ({ id: r.id, carId: r.car_id, sessionId: r.session_id })),
       rawSessionsForSample: rawSessions,
       noSeasonByCar: [...noSeasonByCar.entries()].map(([carId, count]) => ({ carId, carName: carNames.get(carId) ?? `Carro ${carId}`, count })),
