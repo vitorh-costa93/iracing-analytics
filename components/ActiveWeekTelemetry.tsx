@@ -378,38 +378,38 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
       findings.push({
         type: early ? "braking-early" : "braking-late", weight: Math.abs(braking.deltaMeters) * 1.5,
         clause: early ? `você está freando ${Math.abs(braking.deltaMeters).toFixed(0)} m antes da referência` : `você está freando ${Math.abs(braking.deltaMeters).toFixed(0)} m depois da referência`,
-        instruction: early ? `se a velocidade mínima e a saída não pioraram, empurre o ponto de freada progressivamente, décimo a décimo, até achar o limite` : `confira na telemetria se isso está gerando pico de freio, menor velocidade mínima ou atraso na retomada do acelerador — pode ser oportunidade, ou pode ser o seu limite de segurança`,
+        instruction: early ? `se a velocidade mínima e a saída continuarem boas, vá freando um pouco mais tarde a cada tentativa` : `veja no gráfico se isso está custando velocidade mínima ou atrasando o acelerador — pode ser espaço pra melhorar, ou pode ser o seu limite mesmo`,
       });
     }
     if (item.throttleGap > .06) findings.push({
       type: "throttle", weight: item.throttleGap * 200,
       clause: `a referência já está com ${(item.throttleGap * 100).toFixed(0)} pontos percentuais a mais de acelerador aqui`,
-      instruction: "solte o freio sem arrastar e reabra o pedal de forma progressiva assim que o carro apontar para a saída, em vez de esperar o carro estabilizar todo",
+      instruction: "solte o freio e já comece a acelerar assim que o carro apontar pra saída, sem esperar ele estabilizar de vez",
     });
     if (item.brakeGap > .06) findings.push({
       type: "brake-pressure", weight: item.brakeGap * 180,
       clause: `você está aplicando ${(item.brakeGap * 100).toFixed(0)} pontos percentuais a mais de freio que a referência`,
-      instruction: "teste uma pressão inicial menor ou uma liberação mais contínua — isso preserva velocidade mínima sem perder segurança na entrada",
+      instruction: "tente pisar um pouco mais leve no freio, ou soltar ele de forma mais suave — isso ajuda a manter velocidade sem perder segurança",
     });
     if (Math.abs(item.steeringGap) > .03) findings.push({
       type: "steering", weight: Math.abs(item.steeringGap) * 300,
       clause: item.steeringGap > 0 ? "você está usando mais volante que a referência" : "a referência usa mais volante que você aqui, provavelmente rotacionando o carro mais cedo",
-      instruction: item.steeringGap > 0 ? "busque uma entrada única e limpa, sem correções — cada correção extra sobrecarrega o pneu dianteiro e custa tempo" : "experimente antecipar a virada de forma suave, sem adicionar um segundo movimento de volante",
+      instruction: item.steeringGap > 0 ? "tente virar uma vez só, sem corrigir — cada correção a mais cansa o pneu da frente e custa tempo" : "tente começar a virar um pouco antes, num movimento só",
     });
     if (Math.abs(item.gearGap) >= .45) findings.push({
       type: "gear", weight: Math.abs(item.gearGap) * 20,
       clause: `a referência usa marcha ${item.gearGap > 0 ? "mais alta" : "mais baixa"} nesse trecho`,
-      instruction: "teste essa marcha e compare rotação, tração e estabilidade antes de levar pra corrida",
+      instruction: "teste essa marcha no treino e veja se dá mais tração e estabilidade antes de usar na corrida",
     });
     if (item.latAccelGap > .5) findings.push({
       type: "rotation", weight: item.latAccelGap * 20,
       clause: "a referência mantém mais velocidade no ponto mais fechado da curva",
-      instruction: "chegue com mais velocidade numa entrada limpa e solte o freio aos poucos até o ponto mais lento, sem corrigir o volante — cada correção sobrecarrega o pneu da frente e tira velocidade",
+      instruction: "tente entrar mais rápido na curva e soltar o freio aos poucos até o ponto mais lento, sem mexer no volante no meio do caminho",
     });
     if (item.rpmGap > 300) findings.push({
       type: "rpm", weight: item.rpmGap / 30,
       clause: `a referência mantém cerca de ${item.rpmGap.toFixed(0)} RPM a mais`,
-      instruction: "isso sugere marcha diferente ou ponto de troca mais tardio — cruze com a informação de marcha antes de mudar qualquer coisa",
+      instruction: "pode ser marcha diferente ou troca mais tarde — confira a marcha antes de mudar isso",
     });
     // Best-effort: sign is derived from your own heading as the tangent, so "esquerda"/"direita" is
     // internally consistent but not independently verified against a known-good reference — treat
@@ -419,7 +419,7 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
       findings.push({
         type: "line", weight: Math.abs(item.lateralOffsetMeters) * 40,
         clause: `a referência passa ${Math.abs(item.lateralOffsetMeters).toFixed(1)} m mais à ${refToRight ? "direita" : "esquerda"} que você aqui`,
-        instruction: `experimente ir um pouco mais para a ${refToRight ? "direita" : "esquerda"} sem abusar do limite de pista`,
+        instruction: `tente passar um pouco mais pra ${refToRight ? "direita" : "esquerda"} aqui, sem sair da pista`,
       });
     }
     findings.sort((a, b) => b.weight - a.weight);

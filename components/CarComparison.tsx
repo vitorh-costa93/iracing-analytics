@@ -30,10 +30,11 @@ type Sector = {
   segment: number; name: string | null; cornerNumber: number; startPct: number; endPct: number;
   winnerCarId: number | null; times: SectorTime[]; curves: SectorCurve[]; gps: SectorGps[]; consistency: SectorConsistencyEntry[];
 };
+type MapSegment = { startPct: number; endPct: number; winnerCarId: number | null };
 type TrackOutlinePoint = { distance: number; lat: number; lon: number };
 type ComparisonPayload = {
   status: string; track: { id: number; name: string; variant: string | null } | null;
-  cars: CarStat[]; trackOutline?: TrackOutlinePoint[] | null; sectors?: Sector[]; message?: string;
+  cars: CarStat[]; trackOutline?: TrackOutlinePoint[] | null; sectors?: Sector[]; mapSegments?: MapSegment[]; narrative?: string | null; message?: string;
 };
 
 const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
@@ -86,23 +87,24 @@ function biggestUsageDifferences(cars: CarStat[], segmentCount: number) {
   return rows.sort((a, b) => b.spread - a.spread).slice(0, 3);
 }
 
-/** Track map colored by which car was fastest through each corner (29/08/2026: "mostraria em cada
- * trecho qual carro foi mais rápido e isso que guiaria a coloração dos setores. Cada carro receberia
- * uma cor") -- same idea as SectorConsistency's own SectorTrackMap (components/SectorConsistency.tsx),
+/** Track map colored by which car was fastest through each fixed %-of-lap segment (29/08/2026:
+ * "eu ainda quero a coloração da pista por setor, não por curva" -- real corners left long gray gaps
+ * on every straight, since nothing gets "detected" as turning there; fixed segments give full, even
+ * coverage). Same idea as SectorConsistency's own SectorTrackMap (components/SectorConsistency.tsx),
  * just colored by car identity instead of a consistency label. Kept compact (29/08/2026: "o mapa
  * está ocupando espaço demais") -- lives beside the ranking bars now, not its own full-width block. */
-function SectorMap({ outline, sectors, cars }: { outline: TrackOutlinePoint[]; sectors: Sector[]; cars: CarStat[] }) {
+function SectorMap({ outline, mapSegments, cars }: { outline: TrackOutlinePoint[]; mapSegments: MapSegment[]; cars: CarStat[] }) {
   if (outline.length < 20) return null;
   const project = createTrackProjector(outline, 300, 220, 16);
   const colorByCarId = new Map(cars.map((car) => [car.carId, car.color]));
   return (
     <div className="sector-map-card compact">
-      <svg viewBox="0 0 300 220" className="sector-map compact" role="img" aria-label="Mapa da pista colorido pelo carro mais rápido em cada curva">
+      <svg viewBox="0 0 300 220" className="sector-map compact" role="img" aria-label="Mapa da pista colorido pelo carro mais rápido em cada trecho">
         <polyline points={outline.map(project).join(" ")} className="sector-map-base" />
-        {sectors.map((sector) => {
-          const points = outline.filter((point) => point.distance >= sector.startPct && point.distance <= sector.endPct);
-          const color = sector.winnerCarId !== null ? colorByCarId.get(sector.winnerCarId) : undefined;
-          return points.length > 1 && color ? <polyline key={sector.segment} points={points.map(project).join(" ")} style={{ stroke: color }} className="sector-map-segment-colored" /> : null;
+        {mapSegments.map((segment, index) => {
+          const points = outline.filter((point) => point.distance >= segment.startPct && point.distance <= segment.endPct);
+          const color = segment.winnerCarId !== null ? colorByCarId.get(segment.winnerCarId) : undefined;
+          return points.length > 1 && color ? <polyline key={index} points={points.map(project).join(" ")} style={{ stroke: color }} className="sector-map-segment-colored" /> : null;
         })}
       </svg>
       <div className="sector-map-legend">
@@ -134,6 +136,30 @@ function CornerInputChart({ curve }: { curve: SectorCurve | undefined }) {
   );
 }
 
+/** Computed client-side (not server-side) since it depends on whichever 2 cars are currently
+ * selected in the deep-dive picker, which the server doesn't know about. Analysis tone, not advice
+ * tone (29/08/2026: "com um tom mais de análise de performance dos carros, não tanto de conselho
+ * para melhorar") -- this is characterizing how the two CARS differ, not coaching the driver. */
+function cornerNarrative(sector: Sector, carA: CarStat, carB: CarStat): string {
+  const timeA = sector.times.find((item) => item.carId === carA.carId);
+  const timeB = sector.times.find((item) => item.carId === carB.carId);
+  if (!timeA || !timeB) return "Sem dado suficiente dos dois carros nessa curva.";
+  const diff = Math.abs(timeA.seconds - timeB.seconds);
+  const faster = timeA.seconds <= timeB.seconds ? carA : carB;
+  const slower = faster.carId === carA.carId ? carB : carA;
+  let text = diff < 0.01
+    ? `Praticamente empatados aqui — ${diff.toFixed(3)}s de diferença entre ${carA.carName} e ${carB.carName}.`
+    : `${faster.carName} é ${diff.toFixed(3)}s mais rápido que ${slower.carName} nessa curva.`;
+  const consA = sector.consistency.find((item) => item.carId === carA.carId);
+  const consB = sector.consistency.find((item) => item.carId === carB.carId);
+  if (consA?.label && consB?.label && consA.label !== consB.label) {
+    const moreConsistent = (consA.score ?? Infinity) < (consB.score ?? Infinity) ? carA : carB;
+    const label = moreConsistent.carId === carA.carId ? consA.label : consB.label;
+    text += ` ${moreConsistent.carName} repete mais o movimento aqui (${label}).`;
+  }
+  return text;
+}
+
 /** Real per-corner deep dive comparing exactly two cars at a time (29/08/2026: "esse comparativo eu
  * posso só selecionar dois carros para comparar... deixe os dois mais rápidos como default e no
  * drop-down list o restante"). Every detected real corner (not fixed %-of-lap bins, per "concordo, é
@@ -162,6 +188,7 @@ function CornerDeepDive({ sectors, cars, trackId, carAId, carBId }: { sectors: S
         return (
           <div className="corner-deep-card" key={sector.segment}>
             <h5>{sector.name ?? `Curva ${sector.cornerNumber}`} <span>~{sector.startPct.toFixed(0)}% da volta</span></h5>
+            <p className="corner-deep-narrative">{cornerNarrative(sector, carA, carB)}</p>
             <div className="corner-deep-body">
               <TrackMap trackId={trackId} lines={lines} width={220} height={150} className="corner-deep-map" />
               <div className="corner-deep-charts">
@@ -306,12 +333,18 @@ export default function CarComparison() {
                         formatted={car.deltaSeconds === 0 ? `${car.bestLapFormatted} (referência)` : `+${car.deltaSeconds.toFixed(3)}s`} />
                     ))}
                   </div>
+                  {/* Engineer-style read of the numbers above, not a restatement of them (29/08/2026:
+                   * "quero que ali seja de fato um engenheiro me aconselhando, enxergar os white
+                   * spaces que eu não estou vendo") -- the fastest car by lap time isn't automatically
+                   * the one worth racing; this surfaces where a slower car is actually more
+                   * consistent, wins more real corners, or lets him use more of the track. */}
+                  {data.narrative && <p className="car-compare-narrative">{data.narrative}</p>}
                 </div>
-                {!!data.trackOutline && !!data.sectors?.length && (
+                {!!data.trackOutline && !!data.mapSegments?.length && (
                   <div className="race-debrief-chart-block">
-                    <span className="section-kicker">MAIS RÁPIDO POR CURVA</span>
-                    <h4>Quem manda em cada curva</h4>
-                    <SectorMap outline={data.trackOutline} sectors={data.sectors} cars={data.cars} />
+                    <span className="section-kicker">MAIS RÁPIDO POR TRECHO</span>
+                    <h4>Quem manda em cada pedaço da pista</h4>
+                    <SectorMap outline={data.trackOutline} mapSegments={data.mapSegments} cars={data.cars} />
                   </div>
                 )}
               </div>

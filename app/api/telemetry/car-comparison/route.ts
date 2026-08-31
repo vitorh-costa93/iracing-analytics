@@ -163,6 +163,73 @@ function cornerConsistencyScore(traces: TracePoint[][], start: number, end: numb
   return { score: Number(score.toFixed(2)), label: consistencyRatioLabel(score) };
 }
 
+/** "Quero que ali seja de fato um engenheiro me aconselhando, enxergar os white spaces que eu não
+ * estou vendo" (29/08/2026) -- the fastest car by lap time isn't necessarily the one worth racing:
+ * this surfaces tensions the driver wouldn't spot from the ranking bar alone (a slower car that's
+ * actually more consistent, wins more real corners, or lets him use more of the track), the same way
+ * a race engineer would flag them, not just restate the numbers already on screen. Deliberately picks
+ * at most a few of these (one per axis) rather than dumping every metric as a sentence. */
+type NarrativeCar = {
+  carId: number; carName: string;
+  lapTimeConsistency: { stddev: number; label: string } | null;
+  inputConsistency: { overall: { score: number; label: string }; channels: { channel: string; name: string; score: number; label: string }[] } | null;
+  trackUsage: { avgPct: number; maxPct: number } | null;
+};
+type NarrativeSector = { winnerCarId: number | null };
+function buildCarComparisonNarrative(cars: NarrativeCar[], sectors: NarrativeSector[]): string | null {
+  if (cars.length < 2) return null;
+  const fastest = cars[0]; // cars[] is already sorted by bestLapSeconds ascending
+  const parts: string[] = [];
+
+  const withConsistency = cars.filter((car) => car.lapTimeConsistency);
+  if (withConsistency.length >= 2) {
+    const mostConsistent = withConsistency.reduce((best, car) => car.lapTimeConsistency!.stddev < best.lapTimeConsistency!.stddev ? car : best);
+    if (mostConsistent.carId !== fastest.carId) {
+      parts.push(`Apesar do ${fastest.carName} ter feito a volta mais rápida, você é mais consistente com o ${mostConsistent.carName} (desvio padrão de ${mostConsistent.lapTimeConsistency!.stddev.toFixed(3)}s contra ${fastest.lapTimeConsistency ? fastest.lapTimeConsistency.stddev.toFixed(3) : "—"}s do ${fastest.carName}) — numa corrida longa isso pode valer mais que o décimo de vantagem na volta rápida.`);
+    }
+  }
+
+  if (sectors.length >= 3) {
+    const winCounts = new Map<number, number>();
+    for (const sector of sectors) {
+      if (sector.winnerCarId !== null) winCounts.set(sector.winnerCarId, (winCounts.get(sector.winnerCarId) ?? 0) + 1);
+    }
+    const sortedWins = [...winCounts.entries()].sort((a, b) => b[1] - a[1]);
+    if (sortedWins.length >= 2 && sortedWins[0][0] !== fastest.carId) {
+      const winnerCar = cars.find((car) => car.carId === sortedWins[0][0]);
+      if (winnerCar) parts.push(`Curva a curva, quem mais vence é o ${winnerCar.carName} (${sortedWins[0][1]} de ${sectors.length} curvas), mesmo sem ter a volta mais rápida — o ${fastest.carName} deve estar recuperando essa diferença em outro trecho específico, vale olhar o deep-dive abaixo pra achar onde.`);
+    }
+  }
+
+  const channelNames = new Set<string>();
+  for (const car of cars) if (car.inputConsistency) for (const channel of car.inputConsistency.channels) channelNames.add(channel.channel);
+  for (const channelKey of channelNames) {
+    const withChannel = cars.filter((car) => car.inputConsistency?.channels.some((channel) => channel.channel === channelKey));
+    if (withChannel.length < 2) continue;
+    const best = withChannel.reduce((bestCar, car) => {
+      const score = car.inputConsistency!.channels.find((channel) => channel.channel === channelKey)!.score;
+      const bestScore = bestCar.inputConsistency!.channels.find((channel) => channel.channel === channelKey)!.score;
+      return score < bestScore ? car : bestCar;
+    });
+    if (best.carId !== fastest.carId) {
+      const label = best.inputConsistency!.channels.find((channel) => channel.channel === channelKey)!.name;
+      parts.push(`No ${label.toLowerCase()}, você também é mais consistente no ${best.carName} do que no ${fastest.carName}.`);
+      break; // one channel insight is enough here -- the per-car chips below already break all of them down
+    }
+  }
+
+  const withUsage = cars.filter((car) => car.trackUsage);
+  if (withUsage.length >= 2) {
+    const bestUsage = withUsage.reduce((bestCar, car) => car.trackUsage!.avgPct > bestCar.trackUsage!.avgPct ? car : bestCar);
+    if (bestUsage.carId !== fastest.carId) {
+      parts.push(`Você também usa mais da largura da pista no ${bestUsage.carName} (${bestUsage.trackUsage!.avgPct.toFixed(0)}% em média) do que no ${fastest.carName} — talvez esse carro te dê mais confiança pra explorar a pista inteira.`);
+    }
+  }
+
+  if (!parts.length) return `O ${fastest.carName} vem na frente em praticamente tudo aqui — mais rápido, mais consistente e sem sinal claro de que outro carro te atende melhor nessa pista.`;
+  return parts.join(" ");
+}
+
 const METERS_PER_DEGREE_LAT = 110_540;
 
 type BoundaryEdge = { lat1: number; lon1: number; lat2: number; lon2: number; width: number };
@@ -673,13 +740,36 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     };
   });
 
+  // Overview map coloring stays fixed %-of-lap bins, NOT the real corners above (29/08/2026: "eu
+  // ainda quero a coloração da pista por setor, não por curva") -- real corners leave long gray gaps
+  // on every straight (nothing detected as "turning" there), which reads as missing data on the
+  // summary map; fixed bins give full, even coverage for "who's fastest where" at a glance. The
+  // per-corner deep-dive below is where real corners actually matter. Finer than TRACK_USAGE_SEGMENTS
+  // (20 vs 10) since this is the only thing using these bins now, not shared with the width-usage
+  // strip -- smoother color transitions on the map.
+  const MAP_COLOR_SEGMENTS = 20;
+  const mapSegments = Array.from({ length: MAP_COLOR_SEGMENTS }, (_, index) => {
+    const start = (index / MAP_COLOR_SEGMENTS) * 100, end = ((index + 1) / MAP_COLOR_SEGMENTS) * 100;
+    const times = ranked.map((car) => {
+      if (!car.fastestTrace) return null;
+      const fullLapIntegral = integrateInverseSpeed(car.fastestTrace, 0, 100);
+      if (fullLapIntegral <= 0) return null;
+      const lapScale = car.bestLapSeconds / fullLapIntegral;
+      const segmentSeconds = integrateInverseSpeed(car.fastestTrace, start, end) * lapScale;
+      return segmentSeconds > 0 ? { carId: car.carId, seconds: segmentSeconds } : null;
+    }).filter((item): item is { carId: number; seconds: number } => item !== null);
+    const winner = times.length ? times.reduce((best, item) => (item.seconds < best.seconds ? item : best)) : null;
+    return { startPct: start, endPct: end, winnerCarId: winner?.carId ?? null };
+  });
+
   const cars = ranked.map(({ fastestTrace: _fastestTrace, sampleTraces: _sampleTraces, ...car }) => ({ ...car, color: carColor.get(car.carId)! }));
 
   return {
     status: "ok",
     track: trackResult.data ? { id: trackResult.data.id, name: trackResult.data.name, variant: trackResult.data.variant } : { id: trackId, name: `Pista ${trackId}`, variant: null },
     seasons, selectedSeasonId,
-    cars, trackOutline, sectors,
+    cars, trackOutline, sectors, mapSegments,
+    narrative: buildCarComparisonNarrative(cars, sectors),
   };
 }
 
