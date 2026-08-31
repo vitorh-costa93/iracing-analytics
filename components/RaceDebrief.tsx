@@ -119,10 +119,16 @@ function ConsistencyBandChart({ brakeBand, throttleBand, onHover }: { brakeBand:
       <path d={meanPath(brakeBand)} className="corner-mini-line brake" />
       <path d={bandPath(throttleBand)} className="corner-mini-band throttle" />
       <path d={meanPath(throttleBand)} className="corner-mini-line throttle" />
+      <text x={pad.left + 2} y={pad.top + 9} className="corner-mini-chart-label brake">FREIO</text>
+      <text x={pad.left + 2} y={pad.top + 20} className="corner-mini-chart-label throttle">ACEL</text>
     </svg>
   );
 }
 
+/** Same colors and line style as the consistency chart above (29/08/2026: "pode manter as cores e
+ * padrão de linha para os dois gráficos, não preciso diferenciar") -- both reuse corner-mini-line's
+ * solid brake/throttle stroke instead of this ever having its own white/yellow dashed treatment;
+ * the two charts already read as distinct just by being side by side under their own labels. */
 function BestBrakingChart({ idealLine, brakeBand, throttleBand, onHover }: { idealLine: IdealLine | null; brakeBand: BandPoint[]; throttleBand: BandPoint[]; onHover: (offset: number | null) => void }) {
   const width = 320, height = 112, pad = { left: 6, right: 6, top: 6, bottom: 5 };
   const offsets = idealLine ? [...idealLine.brakeCurve.map((p) => p.offset), ...idealLine.throttleCurve.map((p) => p.offset)] : [...brakeBand.map((p) => p.offset), ...throttleBand.map((p) => p.offset)];
@@ -136,8 +142,11 @@ function BestBrakingChart({ idealLine, brakeBand, throttleBand, onHover }: { ide
       <line x1={x(0)} x2={x(0)} y1={pad.top} y2={height - pad.bottom} className="corner-mini-axis" />
       {idealLine ? (
         <>
-          <path d={curvePath(idealLine.brakeCurve)} className="corner-mini-ideal brake" />
-          <path d={curvePath(idealLine.throttleCurve)} className="corner-mini-ideal throttle" />
+          <path d={curvePath(idealLine.brakeCurve)} className="corner-mini-line brake" />
+          <path d={curvePath(idealLine.throttleCurve)} className="corner-mini-line throttle" />
+          <text x={pad.left + 2} y={pad.top + 9} className="corner-mini-chart-label brake">FREIO</text>
+          <text x={pad.left + 2} y={pad.top + 20} className="corner-mini-chart-label throttle">ACEL</text>
+          {idealLine.gainSeconds > 0.005 && <text x={width - pad.right - 2} y={pad.top + 9} textAnchor="end" className="corner-mini-gain">até {idealLine.gainSeconds.toFixed(2)}s mais rápido</text>}
         </>
       ) : (
         <text x={width / 2} y={height / 2} textAnchor="middle" className="corner-mini-empty">sem execução destacada aqui</text>
@@ -300,7 +309,7 @@ export default function RaceDebrief() {
                       {data.trackOutline && <CornerTrackMap outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />}
                     </div>
                     {corner.idealLine && corner.idealLine.gainSeconds > 0.03 && (
-                      <p className="corner-mini-legend"><span className="corner-mini-ideal-swatch" /> Sua execução mais rápida aqui — volta {corner.idealLine.lapNumber ?? "?"}, {corner.idealLine.gainSeconds.toFixed(2)}s mais rápida que sua média nesse trecho</p>
+                      <p className="corner-mini-legend">Curva &quot;Melhor freada&quot; é sua execução mais rápida aqui — volta {corner.idealLine.lapNumber ?? "?"}</p>
                     )}
                     {data.cornerNarratives?.[index] && <p className="corner-narrative">{data.cornerNarratives[index].replace(/^.*?\(~\d+% da volta\):\s*/, "")}</p>}
                     <div className="corner-metric-grid">

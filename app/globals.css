@@ -507,6 +507,24 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 
 .race-debrief-outlier-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text); line-height: 1.6; }
 
+/* Comparar carros: one horizontal-bar idiom (CompareBar in CarComparison.tsx) reused for three very
+ * different units -- seconds of delta, a consistency ratio, a % of track width -- so the driver can
+ * scan "which car wins" the same way in all three sections instead of three different chart types. */
+.car-compare-picker { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
+.car-compare-picker select { padding: 8px 10px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); font-family: var(--mono); font-size: 13px; border-radius: 3px; max-width: 480px; }
+.car-compare-block { display: grid; gap: 8px; margin-bottom: 14px; }
+.car-compare-block:last-child { margin-bottom: 0; }
+.car-compare-row { display: grid; grid-template-columns: 130px 1fr 150px; align-items: center; gap: 10px; }
+.car-compare-row-label { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.car-compare-row-track { height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
+.car-compare-row-fill { height: 100%; background: var(--blue); border-radius: 5px; }
+.car-compare-row-fill.great { background: var(--green); }
+.car-compare-row-fill.good { background: var(--blue); }
+.car-compare-row-fill.warn { background: var(--amber); }
+.car-compare-row-fill.bad { background: var(--red); }
+.car-compare-row-value { font-family: var(--mono); font-size: 11px; color: var(--text); text-align: right; white-space: nowrap; }
+@media (max-width: 640px) { .car-compare-row { grid-template-columns: 96px 1fr 110px; gap: 6px; } }
+
 .race-debrief-corner-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .race-debrief-corner-card { padding: 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
 .race-debrief-corner-card h5 { margin: 0 0 10px; font-size: 15px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -531,11 +549,14 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .corner-mini-line.brake { stroke: var(--red); filter: drop-shadow(0 0 3px rgba(255,92,92,.5)); }
 .corner-mini-line.throttle { stroke: var(--green); filter: drop-shadow(0 0 3px rgba(53,212,136,.45)); }
 .corner-narrative { margin: 0 0 8px; color: var(--text); font-size: 12px; line-height: 1.4; max-width: 110ch; }
-.corner-mini-ideal { fill: none; stroke-width: 1.4; stroke-dasharray: 3 2; opacity: .95; }
-.corner-mini-ideal.brake { stroke: #fff; }
-.corner-mini-ideal.throttle { stroke: #ffd166; }
-.corner-mini-legend { margin: 6px 0 8px; color: var(--muted); font-size: 11px; display: flex; align-items: center; gap: 6px; }
-.corner-mini-ideal-swatch { width: 16px; height: 0; border-top: 2px dashed #ffd166; display: inline-block; }
+/* In-chart channel labels + gain callout (29/08/2026: "só nomeie dentro do gráfico e também
+ * indique quanto tempo eu conseguiria ganhar") -- both mini-charts share these, no dedicated
+ * ideal-line color/dash treatment anymore (see BestBrakingChart's own comment). */
+.corner-mini-chart-label { font-family: var(--mono); font-size: 8px; font-weight: 600; letter-spacing: .03em; }
+.corner-mini-chart-label.brake { fill: var(--red); }
+.corner-mini-chart-label.throttle { fill: var(--green); }
+.corner-mini-gain { fill: var(--text); font-family: var(--mono); font-size: 9px; font-weight: 600; }
+.corner-mini-legend { margin: 6px 0 8px; color: var(--muted); font-size: 11px; }
 .corner-metric-grid { display: flex; flex-wrap: wrap; gap: 6px; }
 .corner-chip { padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 3px; font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--surface); }
 .corner-chip.great { color: var(--green); border-color: var(--green); }

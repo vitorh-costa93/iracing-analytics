@@ -5,10 +5,12 @@ import { Activity, Gauge, Wrench, Bookmark, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
+// Renamed 29/08/2026 (kept the routes/hrefs as-is, only the labels changed): Overview stays,
+// Telemetria -> Analysis, Setup -> Laboratory.
 const tabs = [
   { href: "/", label: "Overview", icon: Gauge },
-  { href: "/telemetry", label: "Telemetria", icon: Activity },
-  { href: "/setup", label: "Setup", icon: Wrench },
+  { href: "/telemetry", label: "Analysis", icon: Activity },
+  { href: "/setup", label: "Laboratory", icon: Wrench },
 ];
 
 const IRSTATS_BOOKMARKLET = "javascript:(function(){var d=document,s=d.createElement('script');s.src='https://iracing-analytics.vercel.app/irstats-import.js?v='+Date.now();d.body.appendChild(s);})();";
