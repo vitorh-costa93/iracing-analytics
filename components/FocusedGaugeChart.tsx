@@ -31,13 +31,20 @@ export type FocusedSide = {
 };
 
 const CHART_WIDTH = 480;
-const GAUGE_WIDTH = 240;
+const GAUGE_WIDTH = 260;
 const ROW_HEIGHT = 110;
 const BAR_X = 14, BAR_WIDTH = 7, BAR_HEIGHT = 46, BAR_GAP = 6;
 const GEAR_X = 78;
 const SPEED_X = 128;
 const WHEEL_RADIUS = 24;
-const WHEEL_CX = GAUGE_WIDTH - WHEEL_RADIUS - 16;
+const WHEEL_CX = GAUGE_WIDTH - WHEEL_RADIUS - 22;
+
+/** Car names ("McLaren 720S GT3 EVO") can run much longer than the own/reference "VOCÊ"/"REFERÊNCIA"
+ * labels this widget was first built for -- truncate rather than let SVG text silently overflow past
+ * the gauge column's edge (SVG has no text-overflow/wrapping of its own). */
+function truncateLabel(label: string, max = 15) {
+  return label.length > max ? `${label.slice(0, max - 1).trimEnd()}…` : label;
+}
 
 function formatGear(value: number | null) {
   if (value === null || !Number.isFinite(value)) return "—";
@@ -66,7 +73,7 @@ function GaugeWheel({ cx, cy, radius, angleRad, label, labelColor }: { cx: numbe
         <circle r={hubRadius} className="steering-wheel-hub" />
         <rect x={-radius * 0.09} y={-radius - 5} width={radius * 0.18} height={radius * 0.18} rx="1.5" className="steering-wheel-mark" />
       </g>
-      <text x={cx} y={cy + radius + 14} textAnchor="middle" className="steering-wheel-label" style={{ fill: labelColor }}>{label}</text>
+      <text x={cx} y={cy + radius + 14} textAnchor="middle" className="steering-wheel-label" style={{ fill: labelColor }}>{truncateLabel(label)}</text>
     </g>
   );
 }
