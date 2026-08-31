@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { detectCornersFromGps } from "@/lib/corner-detection";
+import { lookupCornerNames } from "@/lib/track-corners";
 
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
@@ -139,6 +141,28 @@ function inputConsistencyScore(traces: TracePoint[][]) {
   };
 }
 
+/** Same technique as inputConsistencyScore, restricted to one corner's own distance window instead
+ * of the whole lap's BINS -- lets the per-corner deep-dive show "is this car more consistent than
+ * that one HERE" (29/08/2026: "a parte da consistência seria interessante que fosse por curva ou
+ * por setor") using the same multi-lap sample already downloaded for the whole-lap score, not just
+ * the single fastest lap's shape. */
+function cornerConsistencyScore(traces: TracePoint[][], start: number, end: number) {
+  if (traces.length < 3) return null;
+  const sampleDistances = Array.from({ length: 6 }, (_, index) => start + (index / 5) * (end - start));
+  const channelScores = CHANNELS.map((channel) => {
+    const pointScores = sampleDistances.map((distance) => {
+      const values = traces.map((points) => interpolate(points, distance, channel)).filter((value): value is number => value !== null);
+      if (values.length < 3) return null;
+      const avg = mean(values);
+      return stddev(values, avg) / CHANNEL_SCALE[channel];
+    }).filter((value): value is number => value !== null);
+    return pointScores.length ? mean(pointScores) : null;
+  }).filter((value): value is number => value !== null);
+  if (!channelScores.length) return null;
+  const score = mean(channelScores);
+  return { score: Number(score.toFixed(2)), label: consistencyRatioLabel(score) };
+}
+
 const METERS_PER_DEGREE_LAT = 110_540;
 
 type BoundaryEdge = { lat1: number; lon1: number; lat2: number; lon2: number; width: number };
@@ -268,6 +292,20 @@ function segmentCurve(points: TracePoint[], start: number, end: number, channel:
   for (let distance = start; distance <= end; distance += 0.5) {
     const value = interpolate(points, distance, channel);
     if (value !== null) curve.push({ offset: Number((distance - start).toFixed(1)), value: Number(value.toFixed(3)) });
+  }
+  return curve;
+}
+
+/** GPS points across a corner window (lat/lon, same 0.5%-step as segmentCurve) -- sent straight in
+ * the sectors payload so the deep-dive corner map (29/08/2026: "o minimapa focado naquela curva irá
+ * mostrar as linhas que cada carro fez") can render each car's real driven line without the frontend
+ * needing a second telemetry fetch/parse; the window is already narrow (one real corner), so this
+ * stays small even across every car. */
+function segmentGps(points: TracePoint[], start: number, end: number) {
+  const curve: { distance: number; lat: number; lon: number }[] = [];
+  for (let distance = start; distance <= end; distance += 0.5) {
+    const lat = interpolate(points, distance, "lat"), lon = interpolate(points, distance, "lon");
+    if (lat !== null && lon !== null) curve.push({ distance: Number(distance.toFixed(2)), lat, lon });
   }
   return curve;
 }
@@ -577,6 +615,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
       lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments,
       fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
+      sampleTraces: traces, // same -- kept for per-corner consistency below, stripped before response
     };
   }));
 
@@ -599,8 +638,16 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   // (29/08/2026: "cada carro receberia uma cor").
   const carColor = new Map(ranked.map((car, index) => [car.carId, CAR_COLORS[index % CAR_COLORS.length]]));
 
-  const sectors = Array.from({ length: TRACK_USAGE_SEGMENTS }, (_, segment) => {
-    const start = (segment / TRACK_USAGE_SEGMENTS) * 100, end = ((segment + 1) / TRACK_USAGE_SEGMENTS) * 100;
+  // Real detected corners (29/08/2026: "concordo, é isso que eu realmente quero, setores reais"),
+  // not fixed %-of-lap bins -- same GPS-based lateral-acceleration detector Meu Debrief already uses
+  // (lib/corner-detection.ts), run on whichever car's trace anchors the map above. Corner names come
+  // from the same researched lookup table debrief.ts uses, matched by detected count.
+  const gpsForDetection = outlineSource ? outlineSource.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null })) : [];
+  const detectedCorners = gpsForDetection.length ? detectCornersFromGps(gpsForDetection) : [];
+  const cornerNames = trackResult.data ? lookupCornerNames(trackResult.data.name, trackResult.data.variant ?? "", detectedCorners.length) : null;
+
+  const sectors = detectedCorners.map((corner, index) => {
+    const start = corner.startDistance, end = corner.endDistance;
     const times = ranked.map((car) => {
       if (!car.fastestTrace) return null;
       const fullLapIntegral = integrateInverseSpeed(car.fastestTrace, 0, 100);
@@ -610,20 +657,23 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       return segmentSeconds > 0 ? { carId: car.carId, carName: car.carName, seconds: Number(segmentSeconds.toFixed(3)) } : null;
     }).filter((item): item is { carId: number; carName: string; seconds: number } => item !== null);
     const winner = times.length ? times.reduce((best, item) => (item.seconds < best.seconds ? item : best)) : null;
-    const curves = ranked.filter((car) => car.fastestTrace).map((car) => ({
+    const withTraces = ranked.filter((car) => car.fastestTrace);
+    const curves = withTraces.map((car) => ({
       carId: car.carId,
       brake: segmentCurve(car.fastestTrace!, start, end, "brake"),
       throttle: segmentCurve(car.fastestTrace!, start, end, "throttle"),
     }));
+    const gps = withTraces.map((car) => ({ carId: car.carId, points: segmentGps(car.fastestTrace!, start, end) }));
+    const consistency = ranked.map((car) => ({ carId: car.carId, ...(cornerConsistencyScore(car.sampleTraces, start, end) ?? { score: null, label: null }) }));
     return {
-      segment, startPct: start, endPct: end,
+      segment: index, name: cornerNames?.[index] ?? null, cornerNumber: corner.number, startPct: start, endPct: end,
       winnerCarId: winner?.carId ?? null,
       times: times.map((item) => ({ ...item, deltaSeconds: winner ? Number((item.seconds - winner.seconds).toFixed(3)) : 0 })).sort((a, b) => a.seconds - b.seconds),
-      curves,
+      curves, gps, consistency,
     };
   });
 
-  const cars = ranked.map(({ fastestTrace: _fastestTrace, ...car }) => ({ ...car, color: carColor.get(car.carId)! }));
+  const cars = ranked.map(({ fastestTrace: _fastestTrace, sampleTraces: _sampleTraces, ...car }) => ({ ...car, color: carColor.get(car.carId)! }));
 
   return {
     status: "ok",

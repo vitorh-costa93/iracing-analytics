@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createTrackProjector } from "@/lib/track-map";
+import TrackMap, { type TrackMapLine } from "@/components/TrackMap";
 
 type Category = "gt3" | "gtp";
 const CATEGORIES: Category[] = ["gt3", "gtp"];
@@ -23,7 +24,12 @@ type CarStat = {
 type CurvePoint = { offset: number; value: number };
 type SectorTime = { carId: number; carName: string; seconds: number; deltaSeconds: number };
 type SectorCurve = { carId: number; brake: CurvePoint[]; throttle: CurvePoint[] };
-type Sector = { segment: number; startPct: number; endPct: number; winnerCarId: number | null; times: SectorTime[]; curves: SectorCurve[] };
+type SectorGps = { carId: number; points: { distance: number; lat: number; lon: number }[] };
+type SectorConsistencyEntry = { carId: number; score: number | null; label: string | null };
+type Sector = {
+  segment: number; name: string | null; cornerNumber: number; startPct: number; endPct: number;
+  winnerCarId: number | null; times: SectorTime[]; curves: SectorCurve[]; gps: SectorGps[]; consistency: SectorConsistencyEntry[];
+};
 type TrackOutlinePoint = { distance: number; lat: number; lon: number };
 type ComparisonPayload = {
   status: string; track: { id: number; name: string; variant: string | null } | null;
@@ -53,8 +59,6 @@ function CompareBar({ label, value, max, formatted }: { label: string; value: nu
 function usageColor(pct: number | null) {
   if (pct === null) return "transparent";
   const clamped = Math.max(0, Math.min(150, pct));
-  // green (center-hugging) -> amber -> red (riding the edge/curbs), same intent as the app's other
-  // consistency color scale, just continuous instead of bucketed.
   if (clamped < 50) return `color-mix(in srgb, var(--green) ${100 - clamped * 2}%, var(--amber) ${clamped * 2}%)`;
   return `color-mix(in srgb, var(--amber) ${100 - Math.min(100, (clamped - 50) * 2)}%, var(--red) ${Math.min(100, (clamped - 50) * 2)}%)`;
 }
@@ -69,9 +73,6 @@ function TrackUsageStrip({ segments }: { segments: (number | null)[] }) {
   );
 }
 
-/** For each fixed segment, the spread between the car using the MOST and the LEAST of the track's
- * width -- sorted descending, top few surfaced as text so the driver doesn't have to eyeball ten
- * thin strips per car to find where the cars actually diverge. */
 function biggestUsageDifferences(cars: CarStat[], segmentCount: number) {
   const rows: { segment: number; spread: number; maxCar: string; maxPct: number; minCar: string; minPct: number }[] = [];
   for (let segment = 0; segment < segmentCount; segment += 1) {
@@ -85,18 +86,18 @@ function biggestUsageDifferences(cars: CarStat[], segmentCount: number) {
   return rows.sort((a, b) => b.spread - a.spread).slice(0, 3);
 }
 
-/** Track map colored by which car was fastest through each segment (29/08/2026: "mostraria em cada
+/** Track map colored by which car was fastest through each corner (29/08/2026: "mostraria em cada
  * trecho qual carro foi mais rápido e isso que guiaria a coloração dos setores. Cada carro receberia
  * uma cor") -- same idea as SectorConsistency's own SectorTrackMap (components/SectorConsistency.tsx),
- * just colored by car identity instead of a consistency label. */
+ * just colored by car identity instead of a consistency label. Kept compact (29/08/2026: "o mapa
+ * está ocupando espaço demais") -- lives beside the ranking bars now, not its own full-width block. */
 function SectorMap({ outline, sectors, cars }: { outline: TrackOutlinePoint[]; sectors: Sector[]; cars: CarStat[] }) {
   if (outline.length < 20) return null;
-  const project = createTrackProjector(outline, 440, 300, 18);
+  const project = createTrackProjector(outline, 300, 220, 16);
   const colorByCarId = new Map(cars.map((car) => [car.carId, car.color]));
-  const segmentCount = sectors.length;
   return (
-    <div className="sector-map-card">
-      <svg viewBox="0 0 440 300" className="sector-map" role="img" aria-label="Mapa da pista colorido pelo carro mais rápido em cada trecho">
+    <div className="sector-map-card compact">
+      <svg viewBox="0 0 300 220" className="sector-map compact" role="img" aria-label="Mapa da pista colorido pelo carro mais rápido em cada curva">
         <polyline points={outline.map(project).join(" ")} className="sector-map-base" />
         {sectors.map((sector) => {
           const points = outline.filter((point) => point.distance >= sector.startPct && point.distance <= sector.endPct);
@@ -107,38 +108,81 @@ function SectorMap({ outline, sectors, cars }: { outline: TrackOutlinePoint[]; s
       <div className="sector-map-legend">
         {cars.map((car) => <span key={car.carId} style={{ color: car.color }}>{car.carName}</span>)}
       </div>
-      <p className="comparison-note">{segmentCount} trechos de {(100 / segmentCount).toFixed(0)}% da volta cada, coloridos pelo carro mais rápido ali (volta mais rápida de cada carro).</p>
     </div>
   );
 }
 
-/** Every car's brake/throttle curve for one segment, overlaid and colored by car (29/08/2026:
- * "mostrar os gráficos de acelerador e freio também ajuda a entender a parte da consistência") --
- * one line per car per channel, not own-vs-reference like the other sub-tabs' corner charts. */
-function SectorCurveChart({ curves, cars }: { curves: SectorCurve[]; cars: CarStat[] }) {
-  const width = 320, height = 96, pad = { left: 4, right: 4, gap: 4 };
+/** One car's brake/throttle curve for one corner, in the app's standard channel colors (29/08/2026:
+ * "mantendo o padrão de verde ser o acelerador e vermelho o freio") -- used two-up, side by side, one
+ * per selected car, rather than overlaid by car color like the summary map above. */
+function CornerInputChart({ curve }: { curve: SectorCurve | undefined }) {
+  const width = 220, height = 90, pad = { left: 2, right: 2, gap: 4 };
   const rowHeight = (height - pad.gap) / 2;
-  const maxOffset = Math.max(1, ...curves.flatMap((curve) => [...curve.brake, ...curve.throttle].map((point) => point.offset)));
+  if (!curve) return <div className="corner-deep-chart-empty">sem telemetria</div>;
+  const maxOffset = Math.max(1, ...[...curve.brake, ...curve.throttle].map((point) => point.offset));
   const x = (offset: number) => pad.left + (offset / maxOffset) * (width - pad.left - pad.right);
   const yInRow = (value: number, rowTop: number) => rowTop + (1 - Math.max(0, Math.min(1, value))) * rowHeight;
   const path = (points: CurvePoint[], rowTop: number) => points.map((point, index) => `${index === 0 ? "M" : "L"} ${x(point.offset).toFixed(1)} ${yInRow(point.value, rowTop).toFixed(1)}`).join(" ");
-  const colorByCarId = new Map(cars.map((car) => [car.carId, car.color]));
   const brakeTop = 0, throttleTop = rowHeight + pad.gap;
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="sector-curve-chart" role="img" aria-label="Freio e acelerador de cada carro nesse trecho, sobrepostos">
+    <svg viewBox={`0 0 ${width} ${height}`} className="corner-deep-chart" role="img" aria-label="Freio e acelerador desse carro nessa curva">
       <text x={pad.left} y={brakeTop + 9} className="sector-curve-label">FREIO</text>
       <text x={pad.left} y={throttleTop + 9} className="sector-curve-label">ACEL</text>
-      {curves.map((curve) => {
-        const color = colorByCarId.get(curve.carId);
-        if (!color) return null;
+      <path d={path(curve.brake, brakeTop)} className="corner-mini-line brake" />
+      <path d={path(curve.throttle, throttleTop)} className="corner-mini-line throttle" />
+    </svg>
+  );
+}
+
+/** Real per-corner deep dive comparing exactly two cars at a time (29/08/2026: "esse comparativo eu
+ * posso só selecionar dois carros para comparar... deixe os dois mais rápidos como default e no
+ * drop-down list o restante"). Every detected real corner (not fixed %-of-lap bins, per "concordo, é
+ * isso que eu realmente quero, setores reais") gets its own card: side-by-side input graphs (channel
+ * colors, not per-car colors -- matches the rest of the app), consistency for both cars, and the
+ * shared real-track components/TrackMap.tsx showing each car's actual GPS line through that corner --
+ * the same real-boundary map style as "Melhor volta vs referência", now the standard everywhere. */
+function CornerDeepDive({ sectors, cars, trackId, carAId, carBId }: { sectors: Sector[]; cars: CarStat[]; trackId: number | null; carAId: number; carBId: number }) {
+  const carA = cars.find((car) => car.carId === carAId);
+  const carB = cars.find((car) => car.carId === carBId);
+  if (!carA || !carB) return null;
+  return (
+    <div className="corner-deep-grid">
+      {sectors.map((sector) => {
+        const curveA = sector.curves.find((curve) => curve.carId === carAId);
+        const curveB = sector.curves.find((curve) => curve.carId === carBId);
+        const gpsA = sector.gps.find((item) => item.carId === carAId);
+        const gpsB = sector.gps.find((item) => item.carId === carBId);
+        const timeA = sector.times.find((item) => item.carId === carAId);
+        const timeB = sector.times.find((item) => item.carId === carBId);
+        const consA = sector.consistency.find((item) => item.carId === carAId);
+        const consB = sector.consistency.find((item) => item.carId === carBId);
+        const lines: TrackMapLine[] = [];
+        if (gpsA) lines.push({ points: gpsA.points, color: carA.color });
+        if (gpsB) lines.push({ points: gpsB.points, color: carB.color, dashed: true });
         return (
-          <g key={curve.carId} style={{ stroke: color }}>
-            <path d={path(curve.brake, brakeTop)} className="sector-curve-line" />
-            <path d={path(curve.throttle, throttleTop)} className="sector-curve-line" />
-          </g>
+          <div className="corner-deep-card" key={sector.segment}>
+            <h5>{sector.name ?? `Curva ${sector.cornerNumber}`} <span>~{sector.startPct.toFixed(0)}% da volta</span></h5>
+            <div className="corner-deep-body">
+              <TrackMap trackId={trackId} lines={lines} width={220} height={150} className="corner-deep-map" />
+              <div className="corner-deep-charts">
+                <div>
+                  <span className="corner-deep-car-label" style={{ color: carA.color }}>{carA.carName}</span>
+                  <CornerInputChart curve={curveA} />
+                </div>
+                <div>
+                  <span className="corner-deep-car-label" style={{ color: carB.color }}>{carB.carName}</span>
+                  <CornerInputChart curve={curveB} />
+                </div>
+              </div>
+            </div>
+            <div className="corner-deep-meta">
+              <span style={{ color: carA.color }}>{timeA ? `${timeA.seconds.toFixed(3)}s${timeA.deltaSeconds > 0 ? ` (+${timeA.deltaSeconds.toFixed(3)}s)` : ""}` : "—"}{consA?.label ? ` • ${consA.label}` : ""}</span>
+              <span style={{ color: carB.color }}>{timeB ? `${timeB.seconds.toFixed(3)}s${timeB.deltaSeconds > 0 ? ` (+${timeB.deltaSeconds.toFixed(3)}s)` : ""}` : "—"}{consB?.label ? ` • ${consB.label}` : ""}</span>
+            </div>
+          </div>
         );
       })}
-    </svg>
+    </div>
   );
 }
 
@@ -159,11 +203,11 @@ export default function CarComparison() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [expandedSector, setExpandedSector] = useState<number | null>(null);
+  // Deep-dive car pair -- "auto" tracks the two fastest cars by default, reset whenever the
+  // comparison data changes; picking either dropdown pins that side manually.
+  const [carA, setCarA] = useState<number | "auto">("auto");
+  const [carB, setCarB] = useState<number | "auto">("auto");
 
-  // Seasons list + track list, scoped by category and (once known) season -- refetched whenever
-  // either changes. This drives both selects; the track list always reflects the currently chosen
-  // season, never the other way around.
   useEffect(() => {
     let active = true;
     setLoadingList(true);
@@ -187,7 +231,8 @@ export default function CarComparison() {
     let active = true;
     setLoadingData(true);
     setError(null);
-    setExpandedSector(null);
+    setCarA("auto");
+    setCarB("auto");
     fetch(`/api/telemetry/car-comparison?trackId=${trackId}&category=${category}${season !== "auto" ? `&season=${season}` : ""}`, { cache: "no-store" })
       .then((response) => response.json())
       .then((result) => {
@@ -211,6 +256,8 @@ export default function CarComparison() {
   const referenceLapSeconds = data?.cars[0]?.bestLapSeconds ?? 0;
   const maxDelta = Math.max(0.05, referenceLapSeconds * 0.03, ...(data?.cars.map((car) => car.deltaSeconds) ?? [0]));
   const differences = data?.cars.length ? biggestUsageDifferences(data.cars, Math.max(...data.cars.map((car) => car.trackUsageSegments?.length ?? 0))) : [];
+  const resolvedCarA = carA === "auto" ? data?.cars[0]?.carId ?? null : carA;
+  const resolvedCarB = carB === "auto" ? data?.cars[1]?.carId ?? null : carB;
 
   return (
     <div className="car-comparison">
@@ -248,46 +295,51 @@ export default function CarComparison() {
             <div className="telemetry-state">{data?.message ?? "Sem dados suficientes para essa pista."}</div>
           ) : (
             <>
-              <div className="race-debrief-chart-block">
-                <span className="section-kicker">MELHOR VOLTA</span>
-                <h4>Ranking por carro — {data.track?.name}{data.track?.variant ? ` (${data.track.variant})` : ""}</h4>
-                <p className="race-debrief-channels-note">O primeiro é a volta mais rápida entre todos os carros nessa pista; os demais mostram a diferença para ela.</p>
-                <div className="car-compare-block">
-                  {data.cars.map((car) => (
-                    <CompareBar key={car.carId} label={car.carName} value={car.deltaSeconds || maxDelta * 0.02} max={maxDelta}
-                      formatted={car.deltaSeconds === 0 ? `${car.bestLapFormatted} (referência)` : `+${car.deltaSeconds.toFixed(3)}s`} />
-                  ))}
-                </div>
-              </div>
-
-              {!!data.trackOutline && !!data.sectors?.length && (
+              <div className="car-compare-row1">
                 <div className="race-debrief-chart-block">
-                  <span className="section-kicker">MAIS RÁPIDO POR TRECHO</span>
-                  <h4>Quem manda em cada pedaço da pista</h4>
-                  <p className="race-debrief-channels-note">Cada trecho é comparado pela volta mais rápida de cada carro (tempo real, por integração de velocidade). Clique num trecho pra ver freio/acelerador de cada carro sobrepostos ali.</p>
-                  <SectorMap outline={data.trackOutline} sectors={data.sectors} cars={data.cars} />
-                  <div className="sector-list">
-                    {data.sectors.map((sector) => (
-                      <div key={sector.segment} className="sector-list-row">
-                        <button type="button" className="sector-list-toggle" onClick={() => setExpandedSector(expandedSector === sector.segment ? null : sector.segment)}>
-                          <span>{sector.startPct.toFixed(0)}%–{sector.endPct.toFixed(0)}%</span>
-                          {sector.times.map((time, index) => (
-                            <span key={time.carId} style={{ color: data!.cars.find((car) => car.carId === time.carId)?.color }}>
-                              {index === 0 ? time.carName : `${time.carName} +${time.deltaSeconds.toFixed(2)}s`}
-                            </span>
-                          ))}
-                        </button>
-                        {expandedSector === sector.segment && <SectorCurveChart curves={sector.curves} cars={data!.cars} />}
-                      </div>
+                  <span className="section-kicker">MELHOR VOLTA</span>
+                  <h4>Ranking por carro — {data.track?.name}{data.track?.variant ? ` (${data.track.variant})` : ""}</h4>
+                  <p className="race-debrief-channels-note">O primeiro é a volta mais rápida entre todos os carros nessa pista; os demais mostram a diferença para ela.</p>
+                  <div className="car-compare-block">
+                    {data.cars.map((car) => (
+                      <CompareBar key={car.carId} label={car.carName} value={car.deltaSeconds || maxDelta * 0.02} max={maxDelta}
+                        formatted={car.deltaSeconds === 0 ? `${car.bestLapFormatted} (referência)` : `+${car.deltaSeconds.toFixed(3)}s`} />
                     ))}
                   </div>
+                </div>
+                {!!data.trackOutline && !!data.sectors?.length && (
+                  <div className="race-debrief-chart-block">
+                    <span className="section-kicker">MAIS RÁPIDO POR CURVA</span>
+                    <h4>Quem manda em cada curva</h4>
+                    <SectorMap outline={data.trackOutline} sectors={data.sectors} cars={data.cars} />
+                  </div>
+                )}
+              </div>
+
+              {!!data.sectors?.length && resolvedCarA !== null && resolvedCarB !== null && (
+                <div className="race-debrief-chart-block">
+                  <span className="section-kicker">DEEP-DIVE POR CURVA</span>
+                  <h4>Curva por curva, freio/acelerador e traçado real</h4>
+                  <p className="race-debrief-channels-note">Comparando dois carros por vez. {data.cars.length > 2 ? "Troque abaixo pra ver outro par." : ""}</p>
+                  {data.cars.length > 2 && (
+                    <div className="corner-deep-picker">
+                      <select value={resolvedCarA} onChange={(event) => setCarA(Number(event.target.value))}>
+                        {data.cars.filter((car) => car.carId !== resolvedCarB).map((car) => <option key={car.carId} value={car.carId}>{car.carName}</option>)}
+                      </select>
+                      <span>vs</span>
+                      <select value={resolvedCarB} onChange={(event) => setCarB(Number(event.target.value))}>
+                        {data.cars.filter((car) => car.carId !== resolvedCarA).map((car) => <option key={car.carId} value={car.carId}>{car.carName}</option>)}
+                      </select>
+                    </div>
+                  )}
+                  <CornerDeepDive sectors={data.sectors} cars={data.cars} trackId={data.track?.id ?? null} carAId={resolvedCarA} carBId={resolvedCarB} />
                 </div>
               )}
 
               <div className="race-debrief-chart-block">
                 <span className="section-kicker">CONSISTÊNCIA</span>
                 <h4>Tempo de volta e comandos, por carro</h4>
-                <p className="race-debrief-channels-note">Tempo de volta já sem sujeira (voltas anormalmente lentas descartadas antes do cálculo do desvio padrão). Detalhe por trecho está na seção acima.</p>
+                <p className="race-debrief-channels-note">Tempo de volta já sem sujeira (voltas anormalmente lentas descartadas antes do cálculo do desvio padrão). Detalhe por curva está no deep-dive acima.</p>
                 <div className="car-compare-block">
                   {data.cars.map((car) => (
                     <div className="car-compare-row" key={car.carId}>
