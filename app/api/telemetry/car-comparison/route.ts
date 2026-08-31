@@ -44,15 +44,13 @@ function parseCsvLine(line: string, delimiter: string) {
 // Same parsing approach as app/api/telemetry/debrief/route.ts's parseLapCsv (kept local per this
 // codebase's existing convention of each telemetry route carrying its own small copy rather than a
 // shared lib -- see app/api/telemetry/sectors/route.ts's own mean/stddev/median for the same pattern).
-function parseLapCsv(csv: string, debugTag?: string): TracePoint[] {
+function parseLapCsv(csv: string): TracePoint[] {
   const lines = csv.replace(/^﻿/, "").split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) return [];
   const delimiter = (lines[0].match(/;/g)?.length ?? 0) > (lines[0].match(/,/g)?.length ?? 0) ? ";" : ",";
   const headers = parseCsvLine(lines[0], delimiter).map(normalizedHeader);
   const find = (...aliases: string[]) => headers.findIndex((header) => aliases.includes(header));
   const distanceIndex = find("lapdistpct", "lapdistancepct", "distancepct", "lapdist", "distance");
-  // TEMP DEBUG (Mount Panorama impossible-lap investigation, remove after diagnosis)
-  if (debugTag) console.log(`PANORAMA_DEBUG[${debugTag}] headers=${JSON.stringify(headers)} distanceIndex=${distanceIndex} matchedHeader=${headers[distanceIndex]} rowCount=${lines.length - 1}`);
   if (distanceIndex < 0) return [];
   const indexes: Record<ChannelKey, number> = {
     throttle: find("throttle", "throttleraw", "throttleposition", "throttleinput"),
@@ -75,7 +73,6 @@ function parseLapCsv(csv: string, debugTag?: string): TracePoint[] {
   if (!points.length) return [];
   const maxDistance = Math.max(...points.map((point) => point.distance));
   if (maxDistance > 0 && maxDistance <= 1.01) points.forEach((point) => { point.distance *= 100; });
-  if (debugTag) console.log(`PANORAMA_DEBUG[${debugTag}] pointCount=${points.length} minDistance=${points[0].distance} maxDistance=${points[points.length - 1].distance} rawMaxBeforeScale=${maxDistance} lat0=${points[0].lat} lon0=${points[0].lon} latMid=${points[Math.floor(points.length / 2)].lat} lonMid=${points[Math.floor(points.length / 2)].lon}`);
   return points;
 }
 
@@ -539,11 +536,10 @@ function traceGpsDistanceMeters(points: TracePoint[]) {
 }
 
 async function downloadTrace(lapId: string, trackId: number, telemetryPath: string | null): Promise<TracePoint[] | null> {
-  const debugTag = trackId === 79 ? lapId.slice(0, 8) : undefined; // TEMP DEBUG, remove after Mount Panorama diagnosis
   if (telemetryPath) {
     const { data: file, error } = await supabaseAdmin.storage.from("telemetry").download(telemetryPath);
     if (!error && file) {
-      const points = parseLapCsv(await file.text(), debugTag);
+      const points = parseLapCsv(await file.text());
       if (points.length > 20) return points;
     }
   }
@@ -555,7 +551,7 @@ async function downloadTrace(lapId: string, trackId: number, telemetryPath: stri
   const path = `laps/${trackId}/${lapId}.csv`;
   const { error: uploadError } = await supabaseAdmin.storage.from("telemetry").upload(path, csv, { contentType: "text/csv; charset=utf-8", upsert: true });
   if (!uploadError) await supabaseAdmin.from("laps").update({ telemetry_path: path }).eq("id", lapId);
-  const points = parseLapCsv(csv, debugTag);
+  const points = parseLapCsv(csv);
   return points.length > 20 ? points : null;
 }
 
@@ -764,7 +760,6 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
 
     const chosen = verified[0]; // candidateLaps was already time-sorted ascending, so this is the fastest VERIFIED-genuine lap
     const bestLapSeconds = Number(chosen.lap.lap_time);
-    if (trackId === 79) console.log(`PANORAMA_DEBUG[chosen] lapId=${chosen.lap.id.slice(0, 8)} recordedLapTime=${chosen.lap.lap_time} tracePointCount=${chosen.trace.length} gpsDistanceMeters=${chosen.gpsDistanceMeters.toFixed(0)} referenceLapMeters=${referenceLapMeters.toFixed(0)}`);
     const traces = verified.slice(0, TELEMETRY_SAMPLE_LAPS).map((item) => item.trace);
     const laps = byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time));
 
