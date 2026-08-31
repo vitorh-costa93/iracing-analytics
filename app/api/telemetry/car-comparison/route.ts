@@ -22,7 +22,7 @@ type LapRow = {
   sessions?: { season_id: string | null; season_name: string | null; started_at: string | null } | null;
 };
 
-type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon" | "speed";
+type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon" | "speed" | "gear";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
 
 function normalizedHeader(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -56,6 +56,7 @@ function parseLapCsv(csv: string): TracePoint[] {
     steering: find("steeringwheelangle", "steeringangle"),
     lat: find("lat", "latitude"), lon: find("lon", "longitude"),
     speed: find("speed", "speedms", "speedkph", "carspeed"),
+    gear: find("gear"),
   };
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
   const points = raw.map((cells) => {
@@ -354,7 +355,7 @@ function integrateInverseSpeed(points: TracePoint[], windowStart: number, window
  * window -- same idea as debrief.ts's laneCurve, reused here so each segment card can overlay every
  * car's actual input curve (29/08/2026: "mostrar os gráficos de acelerador e freio também ajuda a
  * entender a parte da consistência"), not just a numeric score. */
-function segmentCurve(points: TracePoint[], start: number, end: number, channel: "brake" | "throttle") {
+function segmentCurve(points: TracePoint[], start: number, end: number, channel: "brake" | "throttle" | "speed" | "steering" | "gear") {
   const curve: { offset: number; value: number }[] = [];
   for (let distance = start; distance <= end; distance += 0.5) {
     const value = interpolate(points, distance, channel);
@@ -729,6 +730,9 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       carId: car.carId,
       brake: segmentCurve(car.fastestTrace!, start, end, "brake"),
       throttle: segmentCurve(car.fastestTrace!, start, end, "throttle"),
+      speed: segmentCurve(car.fastestTrace!, start, end, "speed"),
+      steering: segmentCurve(car.fastestTrace!, start, end, "steering"),
+      gear: segmentCurve(car.fastestTrace!, start, end, "gear"),
     }));
     const gps = withTraces.map((car) => ({ carId: car.carId, points: segmentGps(car.fastestTrace!, start, end) }));
     const consistency = ranked.map((car) => ({ carId: car.carId, ...(cornerConsistencyScore(car.sampleTraces, start, end) ?? { score: null, label: null }) }));

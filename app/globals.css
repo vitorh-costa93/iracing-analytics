@@ -637,6 +637,15 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .corner-deep-card { padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
 .corner-deep-card h5 { margin: 0 0 8px; font-size: 14px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .corner-deep-card h5 span { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; white-space: nowrap; }
+/* Wraps just the h5 so the whole title (not the narrative/charts below it) opens the focused popup
+ * (29/08/2026: "ao clicar em cada curva, tenho o mesmo gráfico disponível para analisar"). */
+.corner-deep-card-open { display: block; width: 100%; padding: 0; margin: 0; background: none; border: 0; text-align: left; cursor: pointer; }
+.corner-deep-card-open:hover h5 { text-decoration: underline; text-underline-offset: 3px; }
+/* Live throttle/brake bars in the focused-chart popup's gauge column (29/08/2026, per the iRacing
+ * widget reference image). */
+.pedal-bar-track { fill: var(--border); }
+.pedal-bar-fill.throttle { fill: var(--green); }
+.pedal-bar-fill.brake { fill: var(--red); }
 .corner-deep-body { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.3fr); gap: 10px; align-items: start; }
 .corner-deep-map { background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
 .corner-deep-charts { display: grid; gap: 6px; }

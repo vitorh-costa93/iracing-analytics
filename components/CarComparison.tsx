@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createTrackProjector } from "@/lib/track-map";
-import TrackMap, { type TrackMapLine } from "@/components/TrackMap";
+import TrackMap, { type TrackMapLine, type TrackMapMarker } from "@/components/TrackMap";
 
 type Category = "gt3" | "gtp";
 const CATEGORIES: Category[] = ["gt3", "gtp"];
@@ -23,7 +23,7 @@ type CarStat = {
 };
 type CurvePoint = { offset: number; value: number };
 type SectorTime = { carId: number; carName: string; seconds: number; deltaSeconds: number };
-type SectorCurve = { carId: number; brake: CurvePoint[]; throttle: CurvePoint[] };
+type SectorCurve = { carId: number; brake: CurvePoint[]; throttle: CurvePoint[]; speed: CurvePoint[]; steering: CurvePoint[]; gear: CurvePoint[] };
 type SectorGps = { carId: number; points: { distance: number; lat: number; lon: number }[] };
 type SectorConsistencyEntry = { carId: number; score: number | null; label: string | null };
 type Sector = {
@@ -160,6 +160,210 @@ function cornerNarrative(sector: Sector, carA: CarStat, carB: CarStat): string {
   return text;
 }
 
+// --- Corner focused-chart popup (29/08/2026: "ao clicar em cada curva, tenho o mesmo gráfico
+// disponível... a diferença é que serão dois gráficos, mas mexer em um, faz a bolinha na pista se
+// movimentar para os dois carros") -- same idea as ActiveWeekTelemetry.tsx's own FocusedChart
+// (SPEED row, merged PEDALS row, gear+wheel gauges) generalized from own/reference to two arbitrary
+// cars, plus (per the iRacing widget reference image) a small throttle/brake bar pair and a live
+// speed readout next to each car's gauges.
+const GAUGE_COLUMN_WIDTH = 168;
+const GAUGE_BAR_X = 16, GAUGE_GEAR_X = 62, GAUGE_WHEEL_RADIUS = 26;
+const GAUGE_WHEEL_X = GAUGE_COLUMN_WIDTH - GAUGE_WHEEL_RADIUS - 10;
+const GAUGE_A_CENTER_Y = 58, GAUGE_B_CENTER_Y = 162;
+const FOCUSED_WIDTH = 420, FOCUSED_HEIGHT = 210;
+const SPEED_ROW_TOP = 6, SPEED_ROW_HEIGHT = 68;
+const PEDALS_ROW_TOP = 88, PEDALS_ROW_HEIGHT = 106;
+
+function formatGear(value: number | null) {
+  if (value === null || !Number.isFinite(value)) return "—";
+  const rounded = Math.round(value);
+  if (rounded === 0) return "N";
+  if (rounded < 0) return "R";
+  return String(rounded);
+}
+
+function interpolateCurve(curve: CurvePoint[] | undefined, offset: number): number | null {
+  if (!curve || !curve.length) return null;
+  let previous = curve[0];
+  for (const point of curve) {
+    if (point.offset >= offset) {
+      const span = point.offset - previous.offset;
+      const ratio = span > 0 ? (offset - previous.offset) / span : 0;
+      return previous.value + (point.value - previous.value) * ratio;
+    }
+    previous = point;
+  }
+  return previous.value;
+}
+
+function MiniSteeringWheel({ cx, cy, radius, angleRad, color }: { cx: number; cy: number; radius: number; angleRad: number | null; color: string }) {
+  const degrees = angleRad !== null ? -angleRad * 180 / Math.PI : 0;
+  const rimStroke = radius * 0.16, hubRadius = radius * 0.26;
+  return (
+    <g transform={`translate(${cx},${cy}) rotate(${degrees})`} opacity={angleRad === null ? 0.3 : 1}>
+      <circle r={radius - rimStroke / 2} fill="none" style={{ stroke: color, strokeWidth: rimStroke }} />
+      <line x1="0" y1={-hubRadius} x2="0" y2={-radius + rimStroke * 0.4} style={{ stroke: color, strokeWidth: rimStroke * 0.5 }} strokeLinecap="round" />
+      <line x1={-hubRadius * 0.5} y1={hubRadius * 0.87} x2={-(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} style={{ stroke: color, strokeWidth: rimStroke * 0.5 }} strokeLinecap="round" />
+      <line x1={hubRadius * 0.5} y1={hubRadius * 0.87} x2={(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} style={{ stroke: color, strokeWidth: rimStroke * 0.5 }} strokeLinecap="round" />
+      <circle r={hubRadius} style={{ fill: color }} />
+      <rect x={-radius * 0.09} y={-radius - 5} width={radius * 0.18} height={radius * 0.18} rx="1.5" className="steering-wheel-mark" />
+    </g>
+  );
+}
+
+function MiniGearCluster({ x, y, value, color }: { x: number; y: number; value: number | null; color: string }) {
+  const chevron = (rowY: number, pointsUp: boolean) => {
+    const tip = pointsUp ? rowY - 2 : rowY + 2, base = pointsUp ? rowY + 2 : rowY - 2;
+    return `${x - 4.5},${base} ${x},${tip} ${x + 4.5},${base}`;
+  };
+  return (
+    <g>
+      <polyline points={chevron(y - 16, true)} fill="none" style={{ stroke: color }} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <text x={x} y={y + 6} textAnchor="middle" style={{ fill: color, fontFamily: "var(--mono)", fontSize: "19px", fontWeight: 800 }}>{formatGear(value)}</text>
+      <polyline points={chevron(y + 16, false)} fill="none" style={{ stroke: color }} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </g>
+  );
+}
+
+/** Throttle/brake as live vertical bars at the hover point (29/08/2026, per the iRacing widget
+ * reference image sent), alongside the line graphs -- a bar reads "how much pedal right now" faster
+ * than tracing a line back to an axis. */
+function PedalBars({ x, y, throttle, brake }: { x: number; y: number; throttle: number | null; brake: number | null }) {
+  const barHeight = 40, barWidth = 6, gap = 4;
+  const fillHeight = (value: number | null) => Math.max(0, Math.min(1, value ?? 0)) * barHeight;
+  return (
+    <g transform={`translate(${x},${y - barHeight / 2})`}>
+      <rect x="0" y="0" width={barWidth} height={barHeight} className="pedal-bar-track" />
+      <rect x="0" y={barHeight - fillHeight(throttle)} width={barWidth} height={fillHeight(throttle)} className="pedal-bar-fill throttle" />
+      <rect x={barWidth + gap} y="0" width={barWidth} height={barHeight} className="pedal-bar-track" />
+      <rect x={barWidth + gap} y={barHeight - fillHeight(brake)} width={barWidth} height={fillHeight(brake)} className="pedal-bar-fill brake" />
+    </g>
+  );
+}
+
+function CornerFocusedChart({ curveA, curveB, colorA, colorB, hoverOffset, onHover }: {
+  curveA: SectorCurve | undefined; curveB: SectorCurve | undefined; colorA: string; colorB: string;
+  hoverOffset: number | null; onHover: (offset: number | null) => void;
+}) {
+  const totalWidth = GAUGE_COLUMN_WIDTH + FOCUSED_WIDTH;
+  const maxOffset = Math.max(1, ...[curveA, curveB].flatMap((curve) => curve ? [...curve.brake, ...curve.throttle, ...curve.speed].map((point) => point.offset) : [0]));
+  const scaleX = (offset: number) => (offset / maxOffset) * FOCUSED_WIDTH;
+  const unscaleX = (x: number) => (x / FOCUSED_WIDTH) * maxOffset;
+  function localChartX(clientX: number, rect: DOMRect) {
+    return (clientX - rect.left) / rect.width * totalWidth - GAUGE_COLUMN_WIDTH;
+  }
+  function speedLine(curve: CurvePoint[] | undefined, top: number, h: number) {
+    if (!curve || !curve.length) return "";
+    const values = curve.map((point) => point.value);
+    const min = Math.min(...values), max = Math.max(...values), span = Math.max(0.0001, max - min);
+    return curve.map((point) => `${scaleX(point.offset).toFixed(1)},${(top + h - ((point.value - min) / span) * h).toFixed(1)}`).join(" ");
+  }
+  function pedalLine(curve: CurvePoint[] | undefined, top: number, h: number) {
+    if (!curve) return "";
+    return curve.map((point) => `${scaleX(point.offset).toFixed(1)},${(top + h - point.value * h).toFixed(1)}`).join(" ");
+  }
+  const wheelOffset = hoverOffset ?? maxOffset / 2;
+  const angleA = interpolateCurve(curveA?.steering, wheelOffset), angleB = interpolateCurve(curveB?.steering, wheelOffset);
+  const gearA = interpolateCurve(curveA?.gear, wheelOffset), gearB = interpolateCurve(curveB?.gear, wheelOffset);
+  const speedA = interpolateCurve(curveA?.speed, wheelOffset), speedB = interpolateCurve(curveB?.speed, wheelOffset);
+  const throttleA = interpolateCurve(curveA?.throttle, wheelOffset), throttleB = interpolateCurve(curveB?.throttle, wheelOffset);
+  const brakeA = interpolateCurve(curveA?.brake, wheelOffset), brakeB = interpolateCurve(curveB?.brake, wheelOffset);
+  return (
+    <svg viewBox={`0 0 ${totalWidth} ${FOCUSED_HEIGHT}`} className="focused-chart" role="img" aria-label="Velocidade, freio, acelerador, marcha e volante dos dois carros nessa curva; passe o mouse para ver a posição no mapa"
+      onMouseMove={(event) => { const x = localChartX(event.clientX, event.currentTarget.getBoundingClientRect()); onHover(Math.max(0, Math.min(maxOffset, unscaleX(x)))); }}
+      onMouseLeave={() => onHover(null)}
+      onTouchStart={(event) => { const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect()); onHover(Math.max(0, Math.min(maxOffset, unscaleX(x)))); }}
+      onTouchMove={(event) => { const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect()); onHover(Math.max(0, Math.min(maxOffset, unscaleX(x)))); }}
+      onTouchEnd={() => onHover(null)}>
+      <PedalBars x={GAUGE_BAR_X} y={GAUGE_A_CENTER_Y} throttle={throttleA} brake={brakeA} />
+      <MiniGearCluster x={GAUGE_GEAR_X} y={GAUGE_A_CENTER_Y} value={gearA} color={colorA} />
+      <MiniSteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_A_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={angleA} color={colorA} />
+      <text x={GAUGE_WHEEL_X} y={GAUGE_A_CENTER_Y + GAUGE_WHEEL_RADIUS + 13} textAnchor="middle" style={{ fill: colorA, fontFamily: "var(--mono)", fontSize: "9px" }}>{speedA !== null ? `${(speedA * 3.6).toFixed(0)} km/h` : "—"}</text>
+
+      <PedalBars x={GAUGE_BAR_X} y={GAUGE_B_CENTER_Y} throttle={throttleB} brake={brakeB} />
+      <MiniGearCluster x={GAUGE_GEAR_X} y={GAUGE_B_CENTER_Y} value={gearB} color={colorB} />
+      <MiniSteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_B_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={angleB} color={colorB} />
+      <text x={GAUGE_WHEEL_X} y={GAUGE_B_CENTER_Y + GAUGE_WHEEL_RADIUS + 13} textAnchor="middle" style={{ fill: colorB, fontFamily: "var(--mono)", fontSize: "9px" }}>{speedB !== null ? `${(speedB * 3.6).toFixed(0)} km/h` : "—"}</text>
+
+      <line x1={GAUGE_COLUMN_WIDTH} x2={GAUGE_COLUMN_WIDTH} y1="0" y2={FOCUSED_HEIGHT} className="gauge-divider" />
+      <g transform={`translate(${GAUGE_COLUMN_WIDTH},0)`}>
+        <text x="4" y={SPEED_ROW_TOP + 12} className="channel-label">SPEED</text>
+        {curveA && <polyline points={speedLine(curveA.speed, SPEED_ROW_TOP, SPEED_ROW_HEIGHT)} fill="none" style={{ stroke: colorA }} strokeWidth="1.6" />}
+        {curveB && <polyline points={speedLine(curveB.speed, SPEED_ROW_TOP, SPEED_ROW_HEIGHT)} fill="none" style={{ stroke: colorB, strokeDasharray: "6 5" }} strokeWidth="1.6" />}
+        <text x="4" y={PEDALS_ROW_TOP + 12} className="channel-label">PEDALS</text>
+        {curveA && <polyline points={pedalLine(curveA.brake, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake" />}
+        {curveB && <polyline points={pedalLine(curveB.brake, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake reference-line" />}
+        {curveA && <polyline points={pedalLine(curveA.throttle, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle" />}
+        {curveB && <polyline points={pedalLine(curveB.throttle, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle reference-line" />}
+        {hoverOffset !== null && <line x1={scaleX(hoverOffset)} x2={scaleX(hoverOffset)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
+      </g>
+    </svg>
+  );
+}
+
+/** Interpolates lat/lon at a given corner offset for the hover marker (29/08/2026: "faz a bolinha
+ * na pista se movimentar para os dois carros") -- sector.gps points are keyed by absolute lap
+ * distance, not corner-relative offset, so this needs the corner's own startPct to convert. */
+function interpolateGps(points: { distance: number; lat: number; lon: number }[], absoluteDistance: number): { lat: number; lon: number } | null {
+  if (!points.length) return null;
+  let previous = points[0];
+  for (const point of points) {
+    if (point.distance >= absoluteDistance) {
+      const span = point.distance - previous.distance;
+      const ratio = span > 0 ? (absoluteDistance - previous.distance) / span : 0;
+      return { lat: previous.lat + (point.lat - previous.lat) * ratio, lon: previous.lon + (point.lon - previous.lon) * ratio };
+    }
+    previous = point;
+  }
+  return { lat: previous.lat, lon: previous.lon };
+}
+
+/** Opened by clicking a corner card's title (29/08/2026: "ao clicar em cada curva, tenho o mesmo
+ * gráfico disponível para analisar e da mesma forma [como Melhor volta vs referência]"). Hovering
+ * the chart drives one marker per car on the same real track map, moving together. */
+function CornerFocusedPopup({ sector, carA, carB, trackId, onClose }: { sector: Sector; carA: CarStat; carB: CarStat; trackId: number | null; onClose: () => void }) {
+  const [hoverOffset, setHoverOffset] = useState<number | null>(null);
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) { if (event.key === "Escape") onClose(); }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [onClose]);
+
+  const curveA = sector.curves.find((curve) => curve.carId === carA.carId);
+  const curveB = sector.curves.find((curve) => curve.carId === carB.carId);
+  const gpsA = sector.gps.find((item) => item.carId === carA.carId);
+  const gpsB = sector.gps.find((item) => item.carId === carB.carId);
+  const lines: TrackMapLine[] = [];
+  if (gpsA) lines.push({ points: gpsA.points, color: carA.color });
+  if (gpsB) lines.push({ points: gpsB.points, color: carB.color, dashed: true });
+  const absoluteDistance = sector.startPct + (hoverOffset ?? (sector.endPct - sector.startPct) / 2);
+  const markers: TrackMapMarker[] = [];
+  if (gpsA) { const point = interpolateGps(gpsA.points, absoluteDistance); if (point) markers.push({ ...point, color: carA.color }); }
+  if (gpsB) { const point = interpolateGps(gpsB.points, absoluteDistance); if (point) markers.push({ ...point, color: carB.color }); }
+
+  return (
+    <div className="insight-popup-backdrop" onClick={onClose}>
+      <div className="insight-popup" onClick={(event) => event.stopPropagation()}>
+        <div className="insight-popup-head">
+          <div>
+            <span className="section-kicker">{(sector.name ?? `CURVA ${sector.cornerNumber}`).toUpperCase()}</span>
+            <h3 style={{ color: carA.color }}>{carA.carName} <span style={{ color: "var(--muted)" }}>vs</span> <span style={{ color: carB.color }}>{carB.carName}</span></h3>
+          </div>
+          <button type="button" className="insight-popup-close" onClick={onClose}>Fechar ✕</button>
+        </div>
+        <div className="insight-popup-body">
+          <CornerFocusedChart curveA={curveA} curveB={curveB} colorA={carA.color} colorB={carB.color} hoverOffset={hoverOffset} onHover={setHoverOffset} />
+          <div className="insight-popup-map">
+            <span className="section-kicker">TRAÇADO</span>
+            <TrackMap trackId={trackId} lines={lines} width={260} height={200} className="corner-deep-map" markers={markers} />
+            <p className="track-map-legend"><span style={{ color: carA.color }}>{carA.carName}</span><span style={{ color: carB.color }}>{carB.carName}</span></p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /** Real per-corner deep dive comparing exactly two cars at a time (29/08/2026: "esse comparativo eu
  * posso só selecionar dois carros para comparar... deixe os dois mais rápidos como default e no
  * drop-down list o restante"). Every detected real corner (not fixed %-of-lap bins, per "concordo, é
@@ -167,7 +371,7 @@ function cornerNarrative(sector: Sector, carA: CarStat, carB: CarStat): string {
  * colors, not per-car colors -- matches the rest of the app), consistency for both cars, and the
  * shared real-track components/TrackMap.tsx showing each car's actual GPS line through that corner --
  * the same real-boundary map style as "Melhor volta vs referência", now the standard everywhere. */
-function CornerDeepDive({ sectors, cars, trackId, carAId, carBId }: { sectors: Sector[]; cars: CarStat[]; trackId: number | null; carAId: number; carBId: number }) {
+function CornerDeepDive({ sectors, cars, trackId, carAId, carBId, onOpenSector }: { sectors: Sector[]; cars: CarStat[]; trackId: number | null; carAId: number; carBId: number; onOpenSector: (sector: Sector) => void }) {
   const carA = cars.find((car) => car.carId === carAId);
   const carB = cars.find((car) => car.carId === carBId);
   if (!carA || !carB) return null;
@@ -187,7 +391,9 @@ function CornerDeepDive({ sectors, cars, trackId, carAId, carBId }: { sectors: S
         if (gpsB) lines.push({ points: gpsB.points, color: carB.color, dashed: true });
         return (
           <div className="corner-deep-card" key={sector.segment}>
-            <h5>{sector.name ?? `Curva ${sector.cornerNumber}`} <span>~{sector.startPct.toFixed(0)}% da volta</span></h5>
+            <button type="button" className="corner-deep-card-open" onClick={() => onOpenSector(sector)}>
+              <h5>{sector.name ?? `Curva ${sector.cornerNumber}`} <span>~{sector.startPct.toFixed(0)}% da volta</span></h5>
+            </button>
             <p className="corner-deep-narrative">{cornerNarrative(sector, carA, carB)}</p>
             <div className="corner-deep-body">
               <TrackMap trackId={trackId} lines={lines} width={220} height={150} className="corner-deep-map" />
@@ -234,6 +440,7 @@ export default function CarComparison() {
   // comparison data changes; picking either dropdown pins that side manually.
   const [carA, setCarA] = useState<number | "auto">("auto");
   const [carB, setCarB] = useState<number | "auto">("auto");
+  const [focusedSector, setFocusedSector] = useState<Sector | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -260,6 +467,7 @@ export default function CarComparison() {
     setError(null);
     setCarA("auto");
     setCarB("auto");
+    setFocusedSector(null);
     fetch(`/api/telemetry/car-comparison?trackId=${trackId}&category=${category}${season !== "auto" ? `&season=${season}` : ""}`, { cache: "no-store" })
       .then((response) => response.json())
       .then((result) => {
@@ -365,9 +573,17 @@ export default function CarComparison() {
                       </select>
                     </div>
                   )}
-                  <CornerDeepDive sectors={data.sectors} cars={data.cars} trackId={data.track?.id ?? null} carAId={resolvedCarA} carBId={resolvedCarB} />
+                  <CornerDeepDive sectors={data.sectors} cars={data.cars} trackId={data.track?.id ?? null} carAId={resolvedCarA} carBId={resolvedCarB} onOpenSector={setFocusedSector} />
                 </div>
               )}
+
+              {focusedSector && (() => {
+                const carA2 = data.cars.find((car) => car.carId === resolvedCarA);
+                const carB2 = data.cars.find((car) => car.carId === resolvedCarB);
+                return carA2 && carB2 ? (
+                  <CornerFocusedPopup sector={focusedSector} carA={carA2} carB={carB2} trackId={data.track?.id ?? null} onClose={() => setFocusedSector(null)} />
+                ) : null;
+              })()}
 
               <div className="race-debrief-chart-block">
                 <span className="section-kicker">CONSISTÊNCIA</span>
