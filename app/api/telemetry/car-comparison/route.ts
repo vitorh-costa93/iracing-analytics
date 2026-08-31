@@ -194,25 +194,36 @@ const CATEGORIES: Category[] = ["gt3", "gtp"];
 const CATEGORY_LABEL: Record<Category, string> = { gt3: "GT3", gtp: "GTP" };
 
 /** GT3 vs GTP isn't a column anywhere -- car_rating_categories only goes as coarse as
- * formula_car/sports_car/oval/etc (both GT3 and GTP race as "sports_car" there), so GTP is split out
- * the same way app/api/telemetry/debrief/route.ts already does it: by car_id membership in the
- * "GTP" car_groups group. Everything left in sports_car after that (GT3, plus incidentally LMP2 if
- * it ever shows up) is treated as "gt3" -- harmless per the comment above, since LMP2 never actually
- * produces a 2-car comparison for this driver. Non-sports_car cars (formula_car, oval, ...) map to
- * null and are dropped everywhere this is used. */
+ * formula_car/sports_car/oval/etc (GT3, GTP, AND LMP2 all race as "sports_car" there), so GTP is
+ * split out the same way app/api/telemetry/debrief/route.ts already does it: by car_id membership
+ * in the "GTP" car_groups group. LMP2 gets the same treatment (own car_groups membership, mapped to
+ * null/excluded here) rather than being left to fall into "gt3" by default -- confirmed live
+ * (29/08/2026) that without this, the Dallara P217 (LMP2) showed up mixed into the GT3 comparison
+ * table, which is exactly the wrong-classification bug, not just an unwanted extra filter tab.
+ * Everything left in sports_car after both exclusions is "gt3". Non-sports_car cars (formula_car,
+ * oval, ...) map to null too and are dropped everywhere this is used. */
 async function resolveCarCategories(carIds: number[]): Promise<Map<number, Category | null>> {
   const result = new Map<number, Category | null>();
   if (!carIds.length) return result;
+  const excludedCarIds = new Set<number>(); // GTP handled separately below; this is LMP2 and any other non-GT3 sports_car group
   const gtpCarIds = new Set<number>();
-  const { data: gtpGroup } = await supabaseAdmin.from("car_groups").select("id").eq("name", "GTP").maybeSingle();
-  if (gtpGroup) {
-    const { data: members } = await supabaseAdmin.from("car_group_members").select("car_id").eq("car_group_id", gtpGroup.id);
-    for (const row of members ?? []) gtpCarIds.add(row.car_id);
+  const { data: groups } = await supabaseAdmin.from("car_groups").select("id,name").in("name", ["GTP", "LMP2"]);
+  for (const group of groups ?? []) {
+    const { data: members } = await supabaseAdmin.from("car_group_members").select("car_id").eq("car_group_id", group.id);
+    const ids = (members ?? []).map((row) => row.car_id as number);
+    if (group.name === "GTP") ids.forEach((id) => gtpCarIds.add(id));
+    else ids.forEach((id) => excludedCarIds.add(id));
   }
   const { data: ratingRows } = await supabaseAdmin.from("car_rating_categories").select("car_id,rating_category").in("car_id", carIds);
   const ratingByCar = new Map((ratingRows ?? []).map((row) => [row.car_id as number, row.rating_category as string]));
+  // Name-based fallback in case this Supabase instance never got an "LMP2" car_groups row seeded --
+  // catches the exact car that leaked into "gt3" live (Dallara P217) plus the other current-era
+  // iRacing LMP2 chassis, without depending on that group existing.
+  const { data: carRows } = await supabaseAdmin.from("cars").select("id,name").in("id", carIds);
+  const lmp2NamePattern = /\bLMP2\b|Dallara P217|Oreca 07/i;
+  const lmp2ByName = new Set((carRows ?? []).filter((row) => lmp2NamePattern.test(row.name)).map((row) => row.id as number));
   for (const carId of carIds) {
-    result.set(carId, gtpCarIds.has(carId) ? "gtp" : ratingByCar.get(carId) === "sports_car" ? "gt3" : null);
+    result.set(carId, gtpCarIds.has(carId) ? "gtp" : excludedCarIds.has(carId) || lmp2ByName.has(carId) ? null : ratingByCar.get(carId) === "sports_car" ? "gt3" : null);
   }
   return result;
 }
