@@ -20,7 +20,7 @@ type LapRow = {
   sessions?: { season_id: string | null; season_name: string | null; started_at: string | null } | null;
 };
 
-type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon";
+type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon" | "speed";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
 
 function normalizedHeader(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -53,6 +53,7 @@ function parseLapCsv(csv: string): TracePoint[] {
     brake: find("brake", "brakeraw", "brakepressure", "brakeinput"),
     steering: find("steeringwheelangle", "steeringangle"),
     lat: find("lat", "latitude"), lon: find("lon", "longitude"),
+    speed: find("speed", "speedms", "speedkph", "carspeed"),
   };
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
   const points = raw.map((cells) => {
@@ -210,6 +211,11 @@ function trackWidthUsage(points: TracePoint[], boundary: BoundaryEdge[]) {
 
 const TRACK_USAGE_SEGMENTS = 10; // 10% of the lap each -- coarse enough to read as a strip across cars, fine enough to localize "where" they diverge
 
+// One stable color per car (by finishing order), reused across the ranking bars, the sector map,
+// and the per-segment brake/throttle overlay charts -- distinct hues, chosen to stay readable on the
+// app's dark background and distinguishable from the existing red/green channel colors.
+const CAR_COLORS = ["#4fc3d6", "#e0973b", "#a97ee0", "#f3c614", "#ff5c9d", "#8bd450"];
+
 /** Same width-usage metric as trackWidthUsage, broken into TRACK_USAGE_SEGMENTS fixed distance bins
  * instead of one whole-lap average -- lets the UI show WHERE on track cars diverge in how much
  * width they use, not just a single aggregate number (29/08/2026: "Track Usage dá pra fazer algo
@@ -235,6 +241,35 @@ function trackWidthUsageBySegment(points: TracePoint[], boundary: BoundaryEdge[]
     segments.push(samples.length ? Number((mean(samples) * 100).toFixed(1)) : null);
   }
   return segments;
+}
+
+/** Same technique app/api/telemetry/debrief/route.ts uses to rank laps by pace through one corner
+ * independent of the rest of the lap: Σ(Δ%/speed) over a distance window, scaled by
+ * lapTime/wholeLapIntegral so the result is real seconds, not an arbitrary unit. Used here to find
+ * which CAR is fastest through each of the TRACK_USAGE_SEGMENTS windows (29/08/2026: "mostraria em
+ * cada trecho qual carro foi mais rápido"), reusing the exact same segment boundaries as track usage
+ * so the two per-segment views line up 1:1. */
+function integrateInverseSpeed(points: TracePoint[], windowStart: number, windowEnd: number, step = 0.5) {
+  let integral = 0;
+  for (let distance = windowStart; distance <= windowEnd; distance += step) {
+    const wrapped = ((distance % 100) + 100) % 100;
+    const speed = interpolate(points, wrapped, "speed");
+    if (speed !== null && speed > 1) integral += step / speed;
+  }
+  return integral;
+}
+
+/** Fine-grained (0.5%-step) brake/throttle curve of one car's single fastest lap within a segment
+ * window -- same idea as debrief.ts's laneCurve, reused here so each segment card can overlay every
+ * car's actual input curve (29/08/2026: "mostrar os gráficos de acelerador e freio também ajuda a
+ * entender a parte da consistência"), not just a numeric score. */
+function segmentCurve(points: TracePoint[], start: number, end: number, channel: "brake" | "throttle") {
+  const curve: { offset: number; value: number }[] = [];
+  for (let distance = start; distance <= end; distance += 0.5) {
+    const value = interpolate(points, distance, channel);
+    if (value !== null) curve.push({ offset: Number((distance - start).toFixed(1)), value: Number(value.toFixed(3)) });
+  }
+  return curve;
 }
 
 // Only these two categories are offered as a filter (29/08/2026: "no caso GT3 e GTP... Super
@@ -541,19 +576,60 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       lapsAnalyzed: laps.length,
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
       lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments,
+      fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
     };
   }));
 
   const overallBest = Math.min(...perCar.map((car) => car.bestLapSeconds));
-  const cars = perCar
+  const ranked = perCar
     .map((car) => ({ ...car, deltaSeconds: Number((car.bestLapSeconds - overallBest).toFixed(3)) }))
     .sort((a, b) => a.bestLapSeconds - b.bestLapSeconds);
+
+  // GPS outline for the sector map: the single fastest car's fastest lap, thinned -- same idea as
+  // debrief.ts's own trackOutline, just sourced from whichever car actually set the pace here.
+  const outlineSource = ranked.find((car) => car.fastestTrace)?.fastestTrace ?? null;
+  const gpsPoints = outlineSource ? outlineSource.filter((point) => point.lat !== undefined && point.lon !== undefined) : [];
+  const outlineStride = Math.max(1, Math.ceil(gpsPoints.length / 300));
+  const trackOutline = gpsPoints.length >= 20
+    ? gpsPoints.filter((_, index) => index % outlineStride === 0).map((point) => ({ distance: point.distance, lat: point.lat as number, lon: point.lon as number }))
+    : null;
+
+  // Assigns each car a stable color (by finishing order) reused across the ranking, the sector map,
+  // and the per-segment brake/throttle overlays -- one car, one color, everywhere in this view
+  // (29/08/2026: "cada carro receberia uma cor").
+  const carColor = new Map(ranked.map((car, index) => [car.carId, CAR_COLORS[index % CAR_COLORS.length]]));
+
+  const sectors = Array.from({ length: TRACK_USAGE_SEGMENTS }, (_, segment) => {
+    const start = (segment / TRACK_USAGE_SEGMENTS) * 100, end = ((segment + 1) / TRACK_USAGE_SEGMENTS) * 100;
+    const times = ranked.map((car) => {
+      if (!car.fastestTrace) return null;
+      const fullLapIntegral = integrateInverseSpeed(car.fastestTrace, 0, 100);
+      if (fullLapIntegral <= 0) return null;
+      const lapScale = car.bestLapSeconds / fullLapIntegral;
+      const segmentSeconds = integrateInverseSpeed(car.fastestTrace, start, end) * lapScale;
+      return segmentSeconds > 0 ? { carId: car.carId, carName: car.carName, seconds: Number(segmentSeconds.toFixed(3)) } : null;
+    }).filter((item): item is { carId: number; carName: string; seconds: number } => item !== null);
+    const winner = times.length ? times.reduce((best, item) => (item.seconds < best.seconds ? item : best)) : null;
+    const curves = ranked.filter((car) => car.fastestTrace).map((car) => ({
+      carId: car.carId,
+      brake: segmentCurve(car.fastestTrace!, start, end, "brake"),
+      throttle: segmentCurve(car.fastestTrace!, start, end, "throttle"),
+    }));
+    return {
+      segment, startPct: start, endPct: end,
+      winnerCarId: winner?.carId ?? null,
+      times: times.map((item) => ({ ...item, deltaSeconds: winner ? Number((item.seconds - winner.seconds).toFixed(3)) : 0 })).sort((a, b) => a.seconds - b.seconds),
+      curves,
+    };
+  });
+
+  const cars = ranked.map(({ fastestTrace: _fastestTrace, ...car }) => ({ ...car, color: carColor.get(car.carId)! }));
 
   return {
     status: "ok",
     track: trackResult.data ? { id: trackResult.data.id, name: trackResult.data.name, variant: trackResult.data.variant } : { id: trackId, name: `Pista ${trackId}`, variant: null },
     seasons, selectedSeasonId,
-    cars,
+    cars, trackOutline, sectors,
   };
 }
 

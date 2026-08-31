@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createTrackProjector } from "@/lib/track-map";
 
 type Category = "gt3" | "gtp";
 const CATEGORIES: Category[] = ["gt3", "gtp"];
@@ -14,15 +15,19 @@ type InputConsistency = { overall: { score: number; label: string }; channels: C
 type LapTimeConsistency = { stddev: number; label: string } | null;
 type TrackUsage = { avgPct: number; maxPct: number } | null;
 type CarStat = {
-  carId: number; carName: string; lapsAnalyzed: number;
+  carId: number; carName: string; color: string; lapsAnalyzed: number;
   bestLapSeconds: number; bestLapFormatted: string; deltaSeconds: number;
   lapTimeConsistency: LapTimeConsistency; inputConsistency: InputConsistency; trackUsage: TrackUsage;
   trackUsageSegments: (number | null)[] | null;
 };
+type CurvePoint = { offset: number; value: number };
+type SectorTime = { carId: number; carName: string; seconds: number; deltaSeconds: number };
+type SectorCurve = { carId: number; brake: CurvePoint[]; throttle: CurvePoint[] };
+type Sector = { segment: number; startPct: number; endPct: number; winnerCarId: number | null; times: SectorTime[]; curves: SectorCurve[] };
+type TrackOutlinePoint = { distance: number; lat: number; lon: number };
 type ComparisonPayload = {
   status: string; track: { id: number; name: string; variant: string | null } | null;
-  seasons?: SeasonOption[]; selectedSeasonId?: string | null;
-  cars: CarStat[]; message?: string;
+  cars: CarStat[]; trackOutline?: TrackOutlinePoint[] | null; sectors?: Sector[]; message?: string;
 };
 
 const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
@@ -37,23 +42,6 @@ function CompareBar({ label, value, max, formatted }: { label: string; value: nu
       <span className="car-compare-row-label">{label}</span>
       <div className="car-compare-row-track"><div className="car-compare-row-fill" style={{ width: `${pct}%` }} /></div>
       <span className="car-compare-row-value">{formatted}</span>
-    </div>
-  );
-}
-
-/** Same visual as Meu Debrief's own "CONSISTÊNCIA POR CANAL" (race-debrief-channel-bars), reused
- * verbatim per car here (29/08/2026: "a parte de consistência ser igual a que temos em Meu
- * Debrief") instead of a bespoke bar style. */
-function ChannelBars({ channels }: { channels: ChannelConsistency[] }) {
-  const max = Math.max(...channels.map((item) => item.score), 0.01);
-  return (
-    <div className="race-debrief-channel-bars">
-      {channels.slice().sort((a, b) => a.score - b.score).map((item) => (
-        <div className="race-debrief-channel-row" key={item.channel}>
-          <span>{item.name}</span>
-          <div className="race-debrief-channel-track"><div style={{ width: `${Math.max(4, (item.score / max) * 100)}%` }} /></div>
-        </div>
-      ))}
     </div>
   );
 }
@@ -97,6 +85,63 @@ function biggestUsageDifferences(cars: CarStat[], segmentCount: number) {
   return rows.sort((a, b) => b.spread - a.spread).slice(0, 3);
 }
 
+/** Track map colored by which car was fastest through each segment (29/08/2026: "mostraria em cada
+ * trecho qual carro foi mais rápido e isso que guiaria a coloração dos setores. Cada carro receberia
+ * uma cor") -- same idea as SectorConsistency's own SectorTrackMap (components/SectorConsistency.tsx),
+ * just colored by car identity instead of a consistency label. */
+function SectorMap({ outline, sectors, cars }: { outline: TrackOutlinePoint[]; sectors: Sector[]; cars: CarStat[] }) {
+  if (outline.length < 20) return null;
+  const project = createTrackProjector(outline, 440, 300, 18);
+  const colorByCarId = new Map(cars.map((car) => [car.carId, car.color]));
+  const segmentCount = sectors.length;
+  return (
+    <div className="sector-map-card">
+      <svg viewBox="0 0 440 300" className="sector-map" role="img" aria-label="Mapa da pista colorido pelo carro mais rápido em cada trecho">
+        <polyline points={outline.map(project).join(" ")} className="sector-map-base" />
+        {sectors.map((sector) => {
+          const points = outline.filter((point) => point.distance >= sector.startPct && point.distance <= sector.endPct);
+          const color = sector.winnerCarId !== null ? colorByCarId.get(sector.winnerCarId) : undefined;
+          return points.length > 1 && color ? <polyline key={sector.segment} points={points.map(project).join(" ")} style={{ stroke: color }} className="sector-map-segment-colored" /> : null;
+        })}
+      </svg>
+      <div className="sector-map-legend">
+        {cars.map((car) => <span key={car.carId} style={{ color: car.color }}>{car.carName}</span>)}
+      </div>
+      <p className="comparison-note">{segmentCount} trechos de {(100 / segmentCount).toFixed(0)}% da volta cada, coloridos pelo carro mais rápido ali (volta mais rápida de cada carro).</p>
+    </div>
+  );
+}
+
+/** Every car's brake/throttle curve for one segment, overlaid and colored by car (29/08/2026:
+ * "mostrar os gráficos de acelerador e freio também ajuda a entender a parte da consistência") --
+ * one line per car per channel, not own-vs-reference like the other sub-tabs' corner charts. */
+function SectorCurveChart({ curves, cars }: { curves: SectorCurve[]; cars: CarStat[] }) {
+  const width = 320, height = 96, pad = { left: 4, right: 4, gap: 4 };
+  const rowHeight = (height - pad.gap) / 2;
+  const maxOffset = Math.max(1, ...curves.flatMap((curve) => [...curve.brake, ...curve.throttle].map((point) => point.offset)));
+  const x = (offset: number) => pad.left + (offset / maxOffset) * (width - pad.left - pad.right);
+  const yInRow = (value: number, rowTop: number) => rowTop + (1 - Math.max(0, Math.min(1, value))) * rowHeight;
+  const path = (points: CurvePoint[], rowTop: number) => points.map((point, index) => `${index === 0 ? "M" : "L"} ${x(point.offset).toFixed(1)} ${yInRow(point.value, rowTop).toFixed(1)}`).join(" ");
+  const colorByCarId = new Map(cars.map((car) => [car.carId, car.color]));
+  const brakeTop = 0, throttleTop = rowHeight + pad.gap;
+  return (
+    <svg viewBox={`0 0 ${width} ${height}`} className="sector-curve-chart" role="img" aria-label="Freio e acelerador de cada carro nesse trecho, sobrepostos">
+      <text x={pad.left} y={brakeTop + 9} className="sector-curve-label">FREIO</text>
+      <text x={pad.left} y={throttleTop + 9} className="sector-curve-label">ACEL</text>
+      {curves.map((curve) => {
+        const color = colorByCarId.get(curve.carId);
+        if (!color) return null;
+        return (
+          <g key={curve.carId} style={{ stroke: color }}>
+            <path d={path(curve.brake, brakeTop)} className="sector-curve-line" />
+            <path d={path(curve.throttle, throttleTop)} className="sector-curve-line" />
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 export default function CarComparison() {
   // Only GT3 and GTP are offered (29/08/2026: "Super Fórmula e LMP2 não se aplicam aqui porque não
   // tem diferença de carro") -- this driver only ever tests multiple distinct cars within these two.
@@ -114,6 +159,7 @@ export default function CarComparison() {
   const [loadingList, setLoadingList] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [expandedSector, setExpandedSector] = useState<number | null>(null);
 
   // Seasons list + track list, scoped by category and (once known) season -- refetched whenever
   // either changes. This drives both selects; the track list always reflects the currently chosen
@@ -141,6 +187,7 @@ export default function CarComparison() {
     let active = true;
     setLoadingData(true);
     setError(null);
+    setExpandedSector(null);
     fetch(`/api/telemetry/car-comparison?trackId=${trackId}&category=${category}${season !== "auto" ? `&season=${season}` : ""}`, { cache: "no-store" })
       .then((response) => response.json())
       .then((result) => {
@@ -156,7 +203,13 @@ export default function CarComparison() {
   if (loadingList && !list) return <div className="telemetry-state">Buscando temporadas e pistas onde você testou mais de um carro...</div>;
   if (error) return <div className="telemetry-state error">{error}</div>;
 
-  const maxDelta = Math.max(0.05, ...(data?.cars.map((car) => car.deltaSeconds) ?? [0]));
+  // Bar width used to be scaled to the largest delta actually present, which made a genuinely tiny
+  // gap (29/08/2026, driver-reported: "1 décimo" at Hockenheim rendering as an almost-full bar since
+  // it happened to be the only/largest delta in a 2-car set) look enormous. Floor the "full bar"
+  // reference at 3% of the reference lap time instead -- a real, sizeable gap on any track -- so a
+  // 0.1-0.2s difference reads as the sliver it actually is; a genuinely large gap still fills the bar.
+  const referenceLapSeconds = data?.cars[0]?.bestLapSeconds ?? 0;
+  const maxDelta = Math.max(0.05, referenceLapSeconds * 0.03, ...(data?.cars.map((car) => car.deltaSeconds) ?? [0]));
   const differences = data?.cars.length ? biggestUsageDifferences(data.cars, Math.max(...data.cars.map((car) => car.trackUsageSegments?.length ?? 0))) : [];
 
   return (
@@ -207,20 +260,42 @@ export default function CarComparison() {
                 </div>
               </div>
 
+              {!!data.trackOutline && !!data.sectors?.length && (
+                <div className="race-debrief-chart-block">
+                  <span className="section-kicker">MAIS RÁPIDO POR TRECHO</span>
+                  <h4>Quem manda em cada pedaço da pista</h4>
+                  <p className="race-debrief-channels-note">Cada trecho é comparado pela volta mais rápida de cada carro (tempo real, por integração de velocidade). Clique num trecho pra ver freio/acelerador de cada carro sobrepostos ali.</p>
+                  <SectorMap outline={data.trackOutline} sectors={data.sectors} cars={data.cars} />
+                  <div className="sector-list">
+                    {data.sectors.map((sector) => (
+                      <div key={sector.segment} className="sector-list-row">
+                        <button type="button" className="sector-list-toggle" onClick={() => setExpandedSector(expandedSector === sector.segment ? null : sector.segment)}>
+                          <span>{sector.startPct.toFixed(0)}%–{sector.endPct.toFixed(0)}%</span>
+                          {sector.times.map((time, index) => (
+                            <span key={time.carId} style={{ color: data!.cars.find((car) => car.carId === time.carId)?.color }}>
+                              {index === 0 ? time.carName : `${time.carName} +${time.deltaSeconds.toFixed(2)}s`}
+                            </span>
+                          ))}
+                        </button>
+                        {expandedSector === sector.segment && <SectorCurveChart curves={sector.curves} cars={data!.cars} />}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="race-debrief-chart-block">
                 <span className="section-kicker">CONSISTÊNCIA</span>
                 <h4>Tempo de volta e comandos, por carro</h4>
-                <p className="race-debrief-channels-note">Tempo de volta já sem sujeira (voltas anormalmente lentas descartadas antes do cálculo do desvio padrão). Comandos usam o mesmo formato de barras do Meu Debrief, por carro.</p>
-                <div className="car-compare-cars-grid">
+                <p className="race-debrief-channels-note">Tempo de volta já sem sujeira (voltas anormalmente lentas descartadas antes do cálculo do desvio padrão). Detalhe por trecho está na seção acima.</p>
+                <div className="car-compare-block">
                   {data.cars.map((car) => (
-                    <div className="car-compare-car-block" key={car.carId}>
-                      <h5>{car.carName}</h5>
+                    <div className="car-compare-row" key={car.carId}>
+                      <span className="car-compare-row-label" style={{ color: car.color }}>{car.carName}</span>
                       {car.lapTimeConsistency ? (
-                        <span className={`corner-chip ${CONSISTENCY_CLASS[car.lapTimeConsistency.label] ?? ""}`}>Tempo de volta: {car.lapTimeConsistency.stddev.toFixed(3)}s • {car.lapTimeConsistency.label}</span>
-                      ) : (
-                        <span className="corner-chip">Tempo de volta: poucas voltas</span>
-                      )}
-                      {car.inputConsistency ? <ChannelBars channels={car.inputConsistency.channels} /> : <p className="comparison-note">Sem telemetria suficiente para os comandos.</p>}
+                        <span className={`corner-chip ${CONSISTENCY_CLASS[car.lapTimeConsistency.label] ?? ""}`}>{car.lapTimeConsistency.stddev.toFixed(3)}s • {car.lapTimeConsistency.label}</span>
+                      ) : <span className="corner-chip">poucas voltas</span>}
+                      {car.inputConsistency && <span className={`corner-chip ${CONSISTENCY_CLASS[car.inputConsistency.overall.label] ?? ""}`}>comandos: {car.inputConsistency.overall.label}</span>}
                     </div>
                   ))}
                 </div>
@@ -233,7 +308,7 @@ export default function CarComparison() {
                 <div className="car-compare-cars-grid">
                   {data.cars.map((car) => (
                     <div className="car-compare-car-block" key={car.carId}>
-                      <h5>{car.carName}</h5>
+                      <h5 style={{ color: car.color }}>{car.carName}</h5>
                       {car.trackUsageSegments ? <TrackUsageStrip segments={car.trackUsageSegments} /> : <p className="comparison-note">Sem traçado de pista.</p>}
                       {car.trackUsage && <p className="comparison-note">{car.trackUsage.avgPct.toFixed(0)}% médio • {car.trackUsage.maxPct.toFixed(0)}% no pico</p>}
                     </div>
