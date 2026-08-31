@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { garage61Get } from "@/lib/garage61";
 
 // Temporary diagnostic route -- 29/08/2026, to find out why Indianapolis Ferrari/Mustang GT3 tests
 // don't show up in the car-comparison tracks list. Delete once the root cause is confirmed/fixed.
@@ -38,7 +39,25 @@ export async function GET() {
       results.push({ trackId: track.id, trackName: track.name, trackVariant: track.variant, cars: carSummaries });
     }
 
-    return NextResponse.json({ status: "ok", driverId: driver.id, tracksFound: tracks, results });
+    // Direct Garage61 check for the Road Course layout (track 380) -- did Garage61 itself ever
+    // report Ferrari/Mustang laps there, or did the sync just never pull them in?
+    const g61 = await garage61Get<{ items: { car?: { id: number; name?: string }; sessionType?: number; eventType?: number; startTime?: string; lapTime?: number }[]; total?: number }>(
+      "/laps", { tracks: 380, drivers: "me", group: "none", unclean: "true", lapTypes: "1,2,3,4", limit: 1000, offset: 0 }
+    );
+    const g61Cars = new Map<string, { count: number; sessionTypes: Set<number>; eventTypes: Set<number> }>();
+    for (const lap of g61.items ?? []) {
+      const name = lap.car?.name ?? `car ${lap.car?.id}`;
+      if (!g61Cars.has(name)) g61Cars.set(name, { count: 0, sessionTypes: new Set(), eventTypes: new Set() });
+      const entry = g61Cars.get(name)!;
+      entry.count += 1;
+      if (typeof lap.sessionType === "number") entry.sessionTypes.add(lap.sessionType);
+      if (typeof lap.eventType === "number") entry.eventTypes.add(lap.eventType);
+    }
+
+    return NextResponse.json({
+      status: "ok", driverId: driver.id, tracksFound: tracks, results,
+      garage61Direct: { total: g61.total, itemsReturned: g61.items?.length ?? 0, byCar: [...g61Cars.entries()].map(([name, entry]) => ({ name, count: entry.count, sessionTypes: [...entry.sessionTypes], eventTypes: [...entry.eventTypes] })) },
+    });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
