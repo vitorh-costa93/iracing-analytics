@@ -16,6 +16,8 @@ type LapRow = {
   id: string; car_id: number | null; track_id: number | null; lap_time: number | null; clean: boolean | null;
   off_track: boolean | null; pit_lane: boolean | null; pit_in: boolean | null; pit_out: boolean | null;
   incomplete: boolean | null; missing: boolean | null; telemetry_path: string | null;
+  session_id?: string | null;
+  sessions?: { season_id: string | null; season_name: string | null; started_at: string | null } | null;
 };
 
 type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon";
@@ -90,28 +92,50 @@ function consistencyRatioLabel(ratio: number) {
   return ratio < 0.4 ? "muito consistente" : ratio < 1 ? "consistente" : ratio < 2 ? "variável" : "muito inconsistente";
 }
 function formatLapTime(value: number) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
+function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2; }
+
+/** "Limpar as sujeiras" (29/08/2026): a lap can be Garage61-"clean" (no off-track flag) and still be
+ * a spin/save/reconnect that cost several seconds without leaving the racing surface -- the `clean`
+ * flag alone doesn't catch that, and one such lap can single-handedly wreck a car's consistency
+ * stddev when its own valid-lap pool is small. Same median+MAD robust z-score debrief.ts already uses
+ * to drop likely-overtake FAST outliers (findOutlierLaps there), mirrored here for the opposite
+ * (SLOW) tail -- this is about excluding a bad lap from consistency math, not about picking the best
+ * lap, which the plain minimum already handles fine on its own. */
+function trimSlowOutliers(times: number[], zThreshold = 2.5) {
+  if (times.length < 5) return times;
+  const med = median(times);
+  const mad = median(times.map((value) => Math.abs(value - med))) || 0.001;
+  const scaled = mad * 1.4826;
+  return times.filter((value) => (value - med) / scaled < zThreshold);
+}
 
 const BINS = Array.from({ length: 21 }, (_, index) => index * 5); // 0,5,...,100 -- coarser than debrief's own (this only needs a per-car summary score, not a plottable curve)
 const CHANNELS: ("throttle" | "brake" | "steering")[] = ["throttle", "brake", "steering"];
+const CHANNEL_LABEL: Record<string, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante" };
 const CHANNEL_SCALE: Record<string, number> = { throttle: 1, brake: 1, steering: 0.15 };
 
-/** One combined input-consistency score for a car: mean, over throttle/brake/steering, of each
- * channel's mean(stddev/scale) across BINS -- the same normalize-then-average approach as debrief's
- * channelStats, collapsed to a single number since this view compares CARS, not channels. */
+/** Per-channel input-consistency scores for a car (mean, over BINS, of stddev/scale -- same
+ * normalize-then-average approach as debrief's channelStats), PLUS the combined mean of those --
+ * the per-channel breakdown is what lets the UI reuse Meu Debrief's own "CONSISTÊNCIA POR CANAL" bar
+ * style here (29/08/2026: "a parte de consistência ser igual a que temos em Meu Debrief") instead of
+ * a single opaque number. */
 function inputConsistencyScore(traces: TracePoint[][]) {
   if (traces.length < 3) return null;
-  const channelScores = CHANNELS.map((channel) => {
+  const channels = CHANNELS.map((channel) => {
     const binScores = BINS.map((distance) => {
       const values = traces.map((points) => interpolate(points, distance, channel)).filter((value): value is number => value !== null);
       if (values.length < 3) return null;
       const avg = mean(values);
       return stddev(values, avg) / CHANNEL_SCALE[channel];
     }).filter((value): value is number => value !== null);
-    return binScores.length ? mean(binScores) : null;
-  }).filter((value): value is number => value !== null);
-  if (!channelScores.length) return null;
-  const score = mean(channelScores);
-  return { score: Number(score.toFixed(2)), label: consistencyRatioLabel(score) };
+    return binScores.length ? { channel: channel as string, name: CHANNEL_LABEL[channel], score: Number(mean(binScores).toFixed(2)) } : null;
+  }).filter((item): item is { channel: string; name: string; score: number } => item !== null);
+  if (!channels.length) return null;
+  const overallScore = mean(channels.map((item) => item.score));
+  return {
+    overall: { score: Number(overallScore.toFixed(2)), label: consistencyRatioLabel(overallScore) },
+    channels: channels.map((item) => ({ ...item, label: consistencyRatioLabel(item.score) })),
+  };
 }
 
 const METERS_PER_DEGREE_LAT = 110_540;
@@ -182,6 +206,35 @@ function trackWidthUsage(points: TracePoint[], boundary: BoundaryEdge[]) {
   }
   if (samples.length < 10) return null;
   return { avgPct: Number((mean(samples) * 100).toFixed(1)), maxPct: Number((Math.max(...samples) * 100).toFixed(1)) };
+}
+
+const TRACK_USAGE_SEGMENTS = 10; // 10% of the lap each -- coarse enough to read as a strip across cars, fine enough to localize "where" they diverge
+
+/** Same width-usage metric as trackWidthUsage, broken into TRACK_USAGE_SEGMENTS fixed distance bins
+ * instead of one whole-lap average -- lets the UI show WHERE on track cars diverge in how much
+ * width they use, not just a single aggregate number (29/08/2026: "Track Usage dá pra fazer algo
+ * mais quebrado em curvas ou sub-trechos para identificar as principais diferenças"). Bins are fixed
+ * %-of-lap windows rather than actual detected corners -- cheap and track-agnostic; good enough to
+ * spot "this car goes wider in the back straight's chicane" without needing per-track corner data. */
+function trackWidthUsageBySegment(points: TracePoint[], boundary: BoundaryEdge[]) {
+  const segments: (number | null)[] = [];
+  for (let segment = 0; segment < TRACK_USAGE_SEGMENTS; segment += 1) {
+    const start = (segment / TRACK_USAGE_SEGMENTS) * 100, end = ((segment + 1) / TRACK_USAGE_SEGMENTS) * 100;
+    const samples: number[] = [];
+    for (let distance = start; distance < end; distance += 1) {
+      const lat = interpolate(points, distance, "lat" as ChannelKey);
+      const lon = interpolate(points, distance, "lon" as ChannelKey);
+      if (lat === null || lon === null) continue;
+      let bestDist = Infinity, bestWidth = 0;
+      for (const edge of boundary) {
+        const dist = distanceToEdgeMeters(lat, lon, edge);
+        if (dist < bestDist) { bestDist = dist; bestWidth = edge.width; }
+      }
+      if (bestWidth > 0) samples.push(bestDist / (bestWidth / 2));
+    }
+    segments.push(samples.length ? Number((mean(samples) * 100).toFixed(1)) : null);
+  }
+  return segments;
 }
 
 // Only these two categories are offered as a filter (29/08/2026: "no caso GT3 e GTP... Super
@@ -328,26 +381,62 @@ async function listEligibleTracks(driverId: string) {
   }).sort((a, b) => a.trackName.localeCompare(b.trackName, "pt-BR"));
 }
 
-async function buildComparison(driverId: string, trackId: number, category: Category) {
+async function buildComparison(driverId: string, trackId: number, category: Category, seasonParam: string | null) {
   const { data: lapsData, error } = await supabaseAdmin
     .from("laps")
-    .select("id,car_id,track_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path")
+    .select("id,car_id,track_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path,session_id,sessions(season_id,season_name,started_at)")
     .eq("driver_id", driverId).eq("track_id", trackId);
   if (error) throw error;
 
   const byCarAll = new Map<number, LapRow[]>();
-  for (const lap of (lapsData ?? []) as LapRow[]) {
+  for (const lap of (lapsData ?? []) as unknown as LapRow[]) {
     if (!isValidLap(lap)) continue;
     const carId = lap.car_id as number;
     if (!byCarAll.has(carId)) byCarAll.set(carId, []);
     byCarAll.get(carId)!.push(lap);
   }
   const categoryByCar = await resolveCarCategories([...byCarAll.keys()]);
-  const byCar = new Map([...byCarAll].filter(([carId]) => categoryByCar.get(carId) === category));
+  const byCarCategory = new Map([...byCarAll].filter(([carId]) => categoryByCar.get(carId) === category));
+
+  // Seasons this category has laps in at this track, newest first -- BoP changes between seasons
+  // (29/08/2026: "muitas vezes eles trocam os BoP dos carros e aí algo que eu testei duas temporadas
+  // atrás, não é mais verdade no contexto atual"), so comparing across seasons by default would
+  // silently mix cars under different balance rules. Default is therefore the single most recent
+  // season with data, not "all time" -- "all" is still offered explicitly for when that's wanted.
+  const seasonInfo = new Map<string, { seasonName: string; latestStartedAt: string; lapCount: number }>();
+  for (const laps of byCarCategory.values()) {
+    for (const lap of laps) {
+      const seasonId = lap.sessions?.season_id;
+      if (!seasonId) continue;
+      const existing = seasonInfo.get(seasonId);
+      const startedAt = lap.sessions?.started_at ?? "";
+      if (existing) {
+        existing.lapCount += 1;
+        if (startedAt > existing.latestStartedAt) existing.latestStartedAt = startedAt;
+      } else {
+        seasonInfo.set(seasonId, { seasonName: lap.sessions?.season_name ?? seasonId, latestStartedAt: startedAt, lapCount: 1 });
+      }
+    }
+  }
+  const seasons = [...seasonInfo.entries()]
+    .map(([seasonId, info]) => ({ seasonId, seasonName: info.seasonName, lapCount: info.lapCount, latestStartedAt: info.latestStartedAt }))
+    .sort((a, b) => b.latestStartedAt.localeCompare(a.latestStartedAt));
+  const selectedSeasonId = seasonParam === "all" ? null : seasonParam ?? seasons[0]?.seasonId ?? null;
+
+  const byCar = new Map([...byCarCategory]
+    .map(([carId, laps]): [number, LapRow[]] => [carId, selectedSeasonId ? laps.filter((lap) => lap.sessions?.season_id === selectedSeasonId) : laps])
+    .filter(([, laps]) => laps.length > 0));
+
   const carIds = [...byCar.keys()]
     .sort((a, b) => Math.min(...byCar.get(a)!.map((l) => Number(l.lap_time))) - Math.min(...byCar.get(b)!.map((l) => Number(l.lap_time))))
     .slice(0, MAX_CARS);
-  if (carIds.length < 2) return { status: "ok", track: null, cars: [], message: `Menos de 2 carros de ${CATEGORY_LABEL[category]} com voltas válidas nessa pista.` };
+  if (carIds.length < 2) {
+    const seasonName = seasons.find((s) => s.seasonId === selectedSeasonId)?.seasonName;
+    return {
+      status: "ok", track: null, cars: [], seasons, selectedSeasonId,
+      message: `Menos de 2 carros de ${CATEGORY_LABEL[category]} com voltas válidas nessa pista${seasonName ? ` em ${seasonName}` : ""}.${selectedSeasonId ? " Tente \"todas as temporadas\"." : ""}`,
+    };
+  }
 
   const [carsResult, trackResult, boundary] = await Promise.all([
     supabaseAdmin.from("cars").select("id,name").in("id", carIds),
@@ -358,8 +447,9 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
 
   const perCar = await Promise.all(carIds.map(async (carId) => {
     const laps = byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time));
-    const timePool = laps.slice(0, TIME_POOL_LAPS).map((lap) => Number(lap.lap_time));
-    const bestLapSeconds = timePool[0];
+    const bestLapSeconds = Number(laps[0].lap_time);
+    const cleanedTimes = trimSlowOutliers(laps.map((lap) => Number(lap.lap_time))).sort((a, b) => a - b);
+    const timePool = cleanedTimes.slice(0, TIME_POOL_LAPS);
     const lapTimeConsistency = timePool.length >= 3 ? (() => {
       const avg = mean(timePool);
       const sd = stddev(timePool, avg);
@@ -372,12 +462,13 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
 
     const inputConsistency = inputConsistencyScore(traces);
     const trackUsage = boundary && traces.length ? trackWidthUsage(traces[0], boundary) : null;
+    const trackUsageSegments = boundary && traces.length ? trackWidthUsageBySegment(traces[0], boundary) : null;
 
     return {
       carId, carName: carNames.get(carId) ?? `Carro ${carId}`,
       lapsAnalyzed: laps.length,
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
-      lapTimeConsistency, inputConsistency, trackUsage,
+      lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments,
     };
   }));
 
@@ -389,6 +480,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   return {
     status: "ok",
     track: trackResult.data ? { id: trackResult.data.id, name: trackResult.data.name, variant: trackResult.data.variant } : { id: trackId, name: `Pista ${trackId}`, variant: null },
+    seasons, selectedSeasonId,
     cars,
   };
 }
@@ -408,7 +500,8 @@ export async function GET(request: Request) {
     if (!Number.isFinite(trackId)) return NextResponse.json({ status: "error", message: "trackId inválido" }, { status: 400 });
     const categoryParam = params.get("category");
     if (categoryParam !== "gt3" && categoryParam !== "gtp") return NextResponse.json({ status: "error", message: "category deve ser gt3 ou gtp" }, { status: 400 });
-    const result = await buildComparison(driver.id, trackId, categoryParam);
+    const seasonParam = params.get("season"); // null = auto (latest season); "all" = no season filter; otherwise a specific season_id
+    const result = await buildComparison(driver.id, trackId, categoryParam, seasonParam);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
