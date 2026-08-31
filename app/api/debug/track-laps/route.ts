@@ -44,16 +44,20 @@ export async function GET(request: Request) {
     const { data: carRows } = localCarIds.length ? await supabaseAdmin.from("cars").select("id,name").in("id", localCarIds) : { data: [] };
     const carNames = new Map((carRows ?? []).map((row) => [row.id, row.name]));
 
-    const g61 = await garage61Get<{ items: { car?: { id: number; name?: string }; startTime?: string }[]; total?: number }>(
+    const g61 = await garage61Get<{ items: { car?: { id: number; name?: string }; startTime?: string; sessionType?: number; eventType?: number; clean?: boolean; incomplete?: boolean }[]; total?: number }>(
       "/laps", { tracks: trackId, drivers: "me", group: "none", unclean: "true", lapTypes: "1,2,3,4", limit: 1000, offset: 0 }
     );
-    const byCarG61 = new Map<string, { count: number; earliest: string; latest: string }>();
+    const byCarG61 = new Map<string, { count: number; earliest: string; latest: string; sessionTypes: Record<string, number>; eventTypes: Record<string, number>; clean: Record<string, number>; incomplete: Record<string, number> }>();
     for (const lap of g61.items ?? []) {
       const name = lap.car?.name ?? `car ${lap.car?.id}`;
-      const entry = byCarG61.get(name) ?? { count: 0, earliest: lap.startTime ?? "", latest: lap.startTime ?? "" };
+      const entry = byCarG61.get(name) ?? { count: 0, earliest: lap.startTime ?? "", latest: lap.startTime ?? "", sessionTypes: {}, eventTypes: {}, clean: {}, incomplete: {} };
       entry.count += 1;
       if (lap.startTime && lap.startTime < entry.earliest) entry.earliest = lap.startTime;
       if (lap.startTime && lap.startTime > entry.latest) entry.latest = lap.startTime;
+      const st = String(lap.sessionType ?? "?"); entry.sessionTypes[st] = (entry.sessionTypes[st] ?? 0) + 1;
+      const et = String(lap.eventType ?? "?"); entry.eventTypes[et] = (entry.eventTypes[et] ?? 0) + 1;
+      const cl = String(lap.clean ?? "?"); entry.clean[cl] = (entry.clean[cl] ?? 0) + 1;
+      const inc = String(lap.incomplete ?? "?"); entry.incomplete[inc] = (entry.incomplete[inc] ?? 0) + 1;
       byCarG61.set(name, entry);
     }
 
