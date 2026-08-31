@@ -177,12 +177,6 @@ export default function CarComparison() {
         <>
           <div className="car-compare-picker">
             <span className="section-kicker">COMPARAR CARROS NA MESMA PISTA</span>
-            <select value={trackId ?? ""} onChange={(event) => setTrackId(Number(event.target.value))}>
-              {tracksForCategory.map((track) => {
-                const entry = track.categories.find((item) => item.category === category)!;
-                return <option key={track.trackId} value={track.trackId}>{track.trackName}{track.trackVariant ? ` (${track.trackVariant})` : ""} — {entry.carCount} carros</option>;
-              })}
-            </select>
             {!!data?.seasons?.length && (
               <>
                 <select value={activeSeasonValue} onChange={(event) => setSeason(event.target.value)}>
@@ -192,6 +186,12 @@ export default function CarComparison() {
                 <p className="comparison-note">BoP muda entre temporadas — por padrão só a mais recente com dados entra na comparação. Troque acima se quiser ver outra ou juntar todas.</p>
               </>
             )}
+            <select value={trackId ?? ""} onChange={(event) => setTrackId(Number(event.target.value))}>
+              {tracksForCategory.map((track) => {
+                const entry = track.categories.find((item) => item.category === category)!;
+                return <option key={track.trackId} value={track.trackId}>{track.trackName}{track.trackVariant ? ` (${track.trackVariant})` : ""} — {entry.carCount} carros</option>;
+              })}
+            </select>
           </div>
 
           {loadingData ? (
