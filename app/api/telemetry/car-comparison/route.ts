@@ -115,50 +115,70 @@ function inputConsistencyScore(traces: TracePoint[][]) {
 }
 
 const METERS_PER_DEGREE_LAT = 110_540;
-function metersDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
-  const dLat = (lat2 - lat1) * METERS_PER_DEGREE_LAT;
-  const dLon = (lon2 - lon1) * METERS_PER_DEGREE_LAT * Math.cos((lat1 * Math.PI) / 180);
-  return Math.sqrt(dLat * dLat + dLon * dLon);
-}
 
-type BoundaryPoint = { lat: number; lon: number; width: number };
+type BoundaryEdge = { lat1: number; lon1: number; lat2: number; lon2: number; width: number };
 let boundaryCache: Record<string, { trackId: number; segments: { width: number; pts: [number, number][] }[] }> | null = null;
 
 /** Reads the same public/track-boundaries.json the client-side map uses (see lib/track-boundaries.ts
  * for provenance/regeneration notes) directly off disk -- this runs server-side, so it skips that
- * module's fetch()-based cache and just reads the file once per warm serverless instance. */
-async function loadTrackBoundaryPoints(trackId: number): Promise<BoundaryPoint[] | null> {
+ * module's fetch()-based cache and just reads the file once per warm serverless instance. Returns
+ * EDGES (consecutive point pairs), not bare points: OSM's own sampling is uneven -- Algarve alone has
+ * points as close as 4m apart on corners but as far as 427m apart on a straight -- so measuring
+ * distance to the nearest raw VERTEX (tried first, 29/08/2026) wildly overestimates how far off-line
+ * a car is anywhere near one of those sparse long segments, producing nonsense like "427% of the
+ * track width used". Distance to the nearest point ON a segment (clamped projection, not just its
+ * endpoints) doesn't have that failure mode. */
+async function loadTrackBoundaryEdges(trackId: number): Promise<BoundaryEdge[] | null> {
   if (!boundaryCache) {
     const file = await readFile(path.join(process.cwd(), "public", "track-boundaries.json"), "utf8");
     boundaryCache = JSON.parse(file);
   }
   const boundary = boundaryCache![String(trackId)];
   if (!boundary) return null;
-  const points: BoundaryPoint[] = [];
+  const edges: BoundaryEdge[] = [];
   for (const segment of boundary.segments) {
-    for (const [lat, lon] of segment.pts) points.push({ lat, lon, width: segment.width });
+    for (let i = 1; i < segment.pts.length; i += 1) {
+      const [lat1, lon1] = segment.pts[i - 1];
+      const [lat2, lon2] = segment.pts[i];
+      edges.push({ lat1, lon1, lat2, lon2, width: segment.width });
+    }
   }
-  return points.length ? points : null;
+  return edges.length ? edges : null;
+}
+
+/** Meters from (lat,lon) to the closest point ON the edge (A->B), not just to A or B -- a simple
+ * local-planar projection (edge.lat1/lon1 as origin, longitude scaled by cos(lat) same as
+ * lib/track-map.ts) is accurate enough at track scale, clamped to the segment so it never reports a
+ * point "beyond" either end as closer than it really is. */
+function distanceToEdgeMeters(lat: number, lon: number, edge: BoundaryEdge) {
+  const cosRef = Math.cos((edge.lat1 * Math.PI) / 180);
+  const toXY = (la: number, lo: number): [number, number] => [(lo - edge.lon1) * METERS_PER_DEGREE_LAT * cosRef, (la - edge.lat1) * METERS_PER_DEGREE_LAT];
+  const [px, py] = toXY(lat, lon);
+  const [bx, by] = toXY(edge.lat2, edge.lon2);
+  const lenSq = bx * bx + by * by;
+  const t = lenSq > 0 ? Math.max(0, Math.min(1, (px * bx + py * by) / lenSq)) : 0;
+  const dx = px - bx * t, dy = py - by * t;
+  return Math.sqrt(dx * dx + dy * dy);
 }
 
 /** How much of the track's real width (per OSM's `highway=raceway` width tag) a lap's GPS trace
- * uses: for each sampled point, the distance to the nearest boundary vertex expressed as a fraction
- * of that segment's half-width. 0 = always dead center: 1 = riding the tagged edge. This is the same
+ * uses: for each sampled point, the distance to the nearest boundary edge expressed as a fraction
+ * of that edge's half-width. 0 = always dead center; 1 = riding the tagged edge. This is the same
  * real boundary geometry built for the track map (29/08/2026 OSM work), repurposed here as the only
  * genuine "how aggressively does this car use the track" signal available -- there's no Garage61
  * track-limits channel to read instead. */
-function trackWidthUsage(points: TracePoint[], boundary: BoundaryPoint[]) {
+function trackWidthUsage(points: TracePoint[], boundary: BoundaryEdge[]) {
   const samples: number[] = [];
   for (let distance = 0; distance < 100; distance += 1.5) {
     const lat = interpolate(points, distance, "lat" as ChannelKey);
     const lon = interpolate(points, distance, "lon" as ChannelKey);
     if (lat === null || lon === null) continue;
-    let best: BoundaryPoint | null = null, bestDist = Infinity;
-    for (const candidate of boundary) {
-      const dist = metersDistance(lat, lon, candidate.lat, candidate.lon);
-      if (dist < bestDist) { bestDist = dist; best = candidate; }
+    let bestDist = Infinity, bestWidth = 0;
+    for (const edge of boundary) {
+      const dist = distanceToEdgeMeters(lat, lon, edge);
+      if (dist < bestDist) { bestDist = dist; bestWidth = edge.width; }
     }
-    if (best) samples.push(bestDist / (best.width / 2));
+    if (bestWidth > 0) samples.push(bestDist / (bestWidth / 2));
   }
   if (samples.length < 10) return null;
   return { avgPct: Number((mean(samples) * 100).toFixed(1)), maxPct: Number((Math.max(...samples) * 100).toFixed(1)) };
@@ -265,7 +285,7 @@ async function buildComparison(driverId: string, trackId: number) {
   const [carsResult, trackResult, boundary] = await Promise.all([
     supabaseAdmin.from("cars").select("id,name").in("id", carIds),
     supabaseAdmin.from("tracks").select("id,name,variant").eq("id", trackId).maybeSingle(),
-    loadTrackBoundaryPoints(trackId).catch(() => null),
+    loadTrackBoundaryEdges(trackId).catch(() => null),
   ]);
   const carNames = new Map((carsResult.data ?? []).map((row) => [row.id, row.name as string]));
 
