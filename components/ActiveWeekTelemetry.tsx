@@ -5,6 +5,7 @@ import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from
 import { lookupCornerNames } from "@/lib/track-corners";
 import { createTrackProjector } from "@/lib/track-map";
 import { getTrackBoundary, type TrackBoundary } from "@/lib/track-boundaries";
+import FocusedGaugeChart, { type FocusedSide } from "@/components/FocusedGaugeChart";
 
 type Combination = {
   key: string;
@@ -684,190 +685,11 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   </div>;
 }
 
-// Modeled directly on iRacing's own in-sim telemetry widget (the driver asked to match it): throttle
-// and brake share ONE graph instead of two separate rows, both against the same 0-100% pedal-position
-// scale (not each independently normalized to its own min/max like speed or steering) -- reading "was
-// I still on the brake when I got back to throttle" is the point, and that only works if both traces
-// sit on one shared axis.
-const FOCUSED_ROWS: { field: ChannelKey; label: string; top: number; height: number }[] = [
-  { field: "speed", label: "SPEED", top: 4, height: 90 },
-];
-const PEDALS_ROW_TOP = 108, PEDALS_ROW_HEIGHT = 118;
-const FOCUSED_HEIGHT = 230;
-
-// Steering is rendered as two rotating wheels (own/reference), not a line — a line graph forces
-// you to read numbers and infer the motion; a wheel that visibly turns the same amount you turned
-// it shows the actual movement at a glance, which is what "did I match the reference's hand
-// motion here" really asks. Gear is a plain number above each wheel, not a line chart row either —
-// a shift is a discrete, instantaneous event, not a value with meaningful shape over distance, so a
-// number reads faster than a stepped line. Also matching iRacing's own widget: the gauge cluster is
-// its own column to the LEFT of the input graphs (own on top, reference below), not a row underneath.
-// Side-by-side, not stacked -- the driver's own reference screenshot (29/08/2026) shows the gear
-// number to the LEFT of the wheel, same size relative to it, not above. Own/reference stay two
-// separate widgets stacked vertically (own on top, reference below), each internally laid out this
-// same gear-left/wheel-right way.
-const GAUGE_COLUMN_WIDTH = 130;
-const GAUGE_WHEEL_RADIUS = 32;
-const GAUGE_GEAR_X = 24;
-const GAUGE_WHEEL_X = GAUGE_COLUMN_WIDTH - GAUGE_WHEEL_RADIUS - 8;
-const GAUGE_OWN_CENTER_Y = 62, GAUGE_REFERENCE_CENTER_Y = 172;
-
-/** Gear as a discrete label, not a raw number: 0 is neutral ("N"), negative is reverse ("R") -- a
- * bare "0" or "-1" reads as a data glitch to a driver, not as what those values actually mean. */
-function formatGear(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return "—";
-  const rounded = Math.round(value);
-  if (rounded === 0) return "N";
-  if (rounded < 0) return "R";
-  return String(rounded);
-}
-
-/** A close copy of iRacing's own telemetry-widget wheel icon (asked for explicitly, repeatedly,
- * 29/08/2026: "o volante quero idêntico ao do iRacing"). Corrected the same day after a solid filled
- * disk was shipped ("o volante tem que ter os vazamentos, não pode ser inteiriço") -- a real wheel
- * silhouette is a RING (rim) with three spokes to a center hub, and the three pie-shaped gaps between
- * the spokes are open, showing whatever is behind the wheel, not solid gray. Built that way here: the
- * rim is a stroked circle (fill: none), so only the ring itself paints; the wedges between spokes are
- * simply never filled, which is what makes them read as cutouts/vazamentos instead of solid fill. Hub
- * stays a small filled disk, and a short red tick sits just outside the rim at 12 o'clock. No numeric
- * angle readout underneath either -- the source widget doesn't show one, just the wheel. */
-function SteeringWheel({ cx, cy, radius, angleRad, label, className }: { cx: number; cy: number; radius: number; angleRad: number | null; label: string; className: string }) {
-  // Verified against a real corner: Red Bull Ring's Turn 1 (Niki Lauda Kurve) is a right-hander,
-  // but the raw channel's positive sign rotated the wheel left there — Garage61's own CSV export
-  // uses positive = left / negative = right, the opposite of the assumption this had before. Negated
-  // once here so every consumer (rotation, the printed angle) reads correctly without re-deriving it.
-  const degrees = angleRad !== null ? -angleRad * 180 / Math.PI : 0;
-  const rimStroke = radius * 0.16;
-  const rimRadius = radius - rimStroke / 2;
-  const hubRadius = radius * 0.26;
-  return (
-    <g>
-      <g transform={`translate(${cx},${cy}) rotate(${degrees})`} className={`steering-wheel ${className} ${angleRad === null ? "steering-wheel-empty" : ""}`}>
-        <circle r={rimRadius} className="steering-wheel-rim" style={{ strokeWidth: rimStroke }} />
-        <line x1="0" y1={-hubRadius} x2="0" y2={-radius + rimStroke * 0.4} className="steering-wheel-spoke" />
-        <line x1={-hubRadius * 0.5} y1={hubRadius * 0.87} x2={-(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} className="steering-wheel-spoke" />
-        <line x1={hubRadius * 0.5} y1={hubRadius * 0.87} x2={(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} className="steering-wheel-spoke" />
-        <circle r={hubRadius} className="steering-wheel-hub" />
-        <rect x={-radius * 0.09} y={-radius - 6} width={radius * 0.18} height={radius * 0.18} rx="1.5" className="steering-wheel-mark" />
-      </g>
-      <text x={cx} y={cy + radius + 16} textAnchor="middle" className={`steering-wheel-label ${className}`}>{label}</text>
-    </g>
-  );
-}
-
-/** Double-chevron up/down markers (a thin "∧∧" / "∨∨", stroked outline -- not a solid filled
- * triangle, matching the reference's thinner arrow style) flanking the gear number above and below,
- * not beside it -- the reference stacks them vertically around the number, not next to it. */
-function GearCluster({ x, y, value }: { x: number; y: number; value: number | null }) {
-  const chevron = (rowY: number, pointsUp: boolean) => {
-    const tip = pointsUp ? rowY - 2.2 : rowY + 2.2;
-    const base = pointsUp ? rowY + 2.2 : rowY - 2.2;
-    return `${x - 5},${base} ${x},${tip} ${x + 5},${base}`;
-  };
-  return (
-    <g>
-      <polyline points={chevron(y - 22, true)} className="gear-chevron" />
-      <polyline points={chevron(y - 16, true)} className="gear-chevron" />
-      <text x={x} y={y + 9} textAnchor="middle" className="gear-readout">{formatGear(value)}</text>
-      <polyline points={chevron(y + 16, false)} className="gear-chevron" />
-      <polyline points={chevron(y + 22, false)} className="gear-chevron" />
-    </g>
-  );
-}
-
-/** Hover here drives the position marker on the linked TrackMap (via onHover), instead of a value
- * readout — the driver asked to see WHERE on track a point is, not read exact numbers off a tooltip. */
-function FocusedChart({ own, reference, range, hoverDistance, onHover }: { own: Trace; reference: Trace | null; range: [number, number]; hoverDistance: number | null; onHover: (distance: number | null) => void }) {
-  const width = 480;
-  const totalWidth = GAUGE_COLUMN_WIDTH + width;
-  const from = Math.max(0, range[0] - 3), to = Math.min(100, range[1] + 3);
-  const ownPts = own.points.filter((point) => point.distance >= from && point.distance <= to);
-  const refPts = reference ? reference.points.filter((point) => point.distance >= from && point.distance <= to) : [];
-  const all = [...ownPts, ...refPts];
-  const scaleX = (distance: number) => (distance - from) / Math.max(0.001, to - from) * width;
-  const unscaleX = (x: number) => from + (x / width) * (to - from);
-  // Pointer position arrives in the SVG's full rendered box (gauge column + chart); convert to the
-  // chart's own local x (0..width) by first landing in viewBox units, then subtracting the column.
-  function localChartX(clientX: number, rect: DOMRect) {
-    const viewBoxX = (clientX - rect.left) / rect.width * totalWidth;
-    return viewBoxX - GAUGE_COLUMN_WIDTH;
-  }
-  function line(points: TracePoint[], field: ChannelKey, top: number, h: number) {
-    const values = all.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
-    if (!values.length) return "";
-    // Steering is signed (positive = left, negative = right, per Garage61's CSV export -- verified
-    // against a real corner) like speed, not a 0-based pedal input
-    // — forcing min=0 here clipped every left-steering sample off the bottom of the row.
-    const min = field === "speed" || field === "steering" ? Math.min(...values) : 0;
-    const max = Math.max(...values);
-    const span = Math.max(0.0001, max - min);
-    return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
-      .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - ((Number(point[field]) - min) / span) * h).toFixed(1)}`).join(" ");
-  }
-  // Throttle/brake share this one fixed 0-1 scale (not each independently normalized) -- see
-  // FOCUSED_ROWS' own comment for why, matching iRacing's own widget. Confirmed live (29/08/2026)
-  // against the raw CSV: both channels are already a 0-1 fraction (full throttle/brake = 1), not a
-  // 0-100 value -- an earlier version of this divided by 100 here, which crushed every real value to
-  // within 1% of the row's floor.
-  function pedalLine(points: TracePoint[], field: "throttle" | "brake", top: number, h: number) {
-    return points.filter((point) => point[field] !== null && Number.isFinite(point[field]))
-      .map((point) => `${scaleX(point.distance).toFixed(1)},${(top + h - Number(point[field]) * h).toFixed(1)}`).join(" ");
-  }
-  const wheelDistance = hoverDistance ?? (range[0] + range[1]) / 2;
-  const ownAngle = interpolate(ownPts, wheelDistance, "steering");
-  const refAngle = reference ? interpolate(refPts, wheelDistance, "steering") : null;
-  const ownGear = interpolate(ownPts, wheelDistance, "gear");
-  const refGear = reference ? interpolate(refPts, wheelDistance, "gear") : null;
-  // Default preserveAspectRatio (xMidYMid meet), not "none" like the old taller/narrower layout used
-  // -- this one is much wider relative to its height (the gauge column made it so), and stretching
-  // independently on each axis would squash the steering wheels' circles into ovals.
-  return (
-    <svg viewBox={`0 0 ${totalWidth} ${FOCUSED_HEIGHT}`} className="focused-chart" role="img" aria-label="Gráfico focalizado do trecho selecionado, com velocidade, acelerador, freio, marcha e volante; passe o mouse ou arraste o dedo para ver a posição no mapa ao lado"
-      onMouseMove={(event) => {
-        const x = localChartX(event.clientX, event.currentTarget.getBoundingClientRect());
-        onHover(Math.max(from, Math.min(to, unscaleX(x))));
-      }}
-      onMouseLeave={() => onHover(null)}
-      onTouchStart={(event) => {
-        const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect());
-        onHover(Math.max(from, Math.min(to, unscaleX(x))));
-      }}
-      onTouchMove={(event) => {
-        const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect());
-        onHover(Math.max(from, Math.min(to, unscaleX(x))));
-      }}
-      onTouchEnd={() => onHover(null)}>
-      {/* Gauge column: gear (left) + wheel (right), own on top / reference below — left of the input
-       * graphs, matching iRacing's own widget layout. Defaults to the middle of the focused range
-       * before any hover, so the gauges never sit blank on first render. */}
-      <GearCluster x={GAUGE_GEAR_X} y={GAUGE_OWN_CENTER_Y} value={ownGear} />
-      <SteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_OWN_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={ownAngle} label="VOCÊ" className="own" />
-      {reference && <>
-        <GearCluster x={GAUGE_GEAR_X} y={GAUGE_REFERENCE_CENTER_Y} value={refGear} />
-        <SteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_REFERENCE_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={refAngle} label="REFERÊNCIA" className="reference" />
-      </>}
-      <line x1={GAUGE_COLUMN_WIDTH} x2={GAUGE_COLUMN_WIDTH} y1="0" y2={FOCUSED_HEIGHT} className="gauge-divider" />
-      <g transform={`translate(${GAUGE_COLUMN_WIDTH},0)`}>
-        <rect x={scaleX(range[0])} y="0" width={Math.max(0, scaleX(range[1]) - scaleX(range[0]))} height={FOCUSED_HEIGHT} className="focused-zone" />
-        {FOCUSED_ROWS.map((row) => (
-          <g key={row.field}>
-            <text x="4" y={row.top + 12} className="channel-label">{row.label}</text>
-            <polyline points={line(ownPts, row.field, row.top, row.height)} className={`trace-${row.field}`} />
-            {reference && <polyline points={line(refPts, row.field, row.top, row.height)} className={`trace-${row.field} reference-line`} />}
-          </g>
-        ))}
-        <g>
-          <text x="4" y={PEDALS_ROW_TOP + 12} className="channel-label">PEDALS</text>
-          <polyline points={pedalLine(ownPts, "brake", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake" />
-          {reference && <polyline points={pedalLine(refPts, "brake", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake reference-line" />}
-          <polyline points={pedalLine(ownPts, "throttle", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle" />
-          {reference && <polyline points={pedalLine(refPts, "throttle", PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle reference-line" />}
-        </g>
-        {hoverDistance !== null && <line x1={scaleX(hoverDistance)} x2={scaleX(hoverDistance)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
-      </g>
-    </svg>
-  );
-}
+// The own/reference gauge+chart widget below (SteeringWheel/GearCluster/FocusedChart) was replaced
+// 31/08/2026 by the shared components/FocusedGaugeChart.tsx ("Eu quero, inclusive, que use o mesmo
+// objeto" -- one widget now, matching CarComparison.tsx's own popup exactly instead of two
+// independently-drifting near-copies). See that file's own top comment for the column order/coloring
+// this now follows.
 
 export default function ActiveWeekTelemetry() {
   const [data, setData] = useState<ActiveWeekData | null>(null);
@@ -1170,15 +992,47 @@ export default function ActiveWeekTelemetry() {
                   <button type="button" className="insight-popup-close" onClick={() => { setFocusedInsight(null); setSelectedRange(null); }}>Fechar ✕</button>
                 </div>
                 <p className="insight-popup-detail">{focusedInsight.detail}</p>
-                <div className="insight-popup-body">
-                  <FocusedChart own={trace} reference={referenceTrace} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} onHover={setPopupHoverDistance} />
-                  <div className="insight-popup-map">
-                    <span className="section-kicker">TRAÇADO</span>
-                    <TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom lineDistance={comparison?.lineDistance} />
-                    {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
-                    <p className="focused-hover-hint">{popupHoverDistance !== null ? `${popupHoverDistance.toFixed(1)}% da volta` : "Passe o mouse no gráfico ao lado para localizar o ponto no mapa."}</p>
-                  </div>
-                </div>
+                {(() => {
+                  // Same +-3% padding the map already used around the focused range, so the chart's
+                  // own approach/exit context matches what the map shows either side of the corner.
+                  const from = Math.max(0, focusedInsight.start - 3), to = Math.min(100, focusedInsight.end + 3);
+                  const ownPts = trace.points.filter((point) => point.distance >= from && point.distance <= to);
+                  const refPts = referenceTrace ? referenceTrace.points.filter((point) => point.distance >= from && point.distance <= to) : [];
+                  const toSeries = (points: TracePoint[], field: "throttle" | "brake") => points
+                    .filter((point) => point[field] !== null && Number.isFinite(point[field]))
+                    .map((point) => ({ x: point.distance, value: Number(point[field]) }));
+                  const wheelDistance = popupHoverDistance ?? (focusedInsight.start + focusedInsight.end) / 2;
+                  const sides: FocusedSide[] = [{
+                    key: "own", label: "VOCÊ", color: "var(--red)", dashed: false,
+                    throttle: toSeries(ownPts, "throttle"), brake: toSeries(ownPts, "brake"),
+                    angleRad: interpolate(ownPts, wheelDistance, "steering"),
+                    gear: interpolate(ownPts, wheelDistance, "gear"),
+                    speedMs: interpolate(ownPts, wheelDistance, "speed"),
+                    throttleNow: interpolate(ownPts, wheelDistance, "throttle"),
+                    brakeNow: interpolate(ownPts, wheelDistance, "brake"),
+                  }];
+                  if (referenceTrace) sides.push({
+                    key: "reference", label: "REFERÊNCIA", color: "var(--blue)", dashed: true,
+                    throttle: toSeries(refPts, "throttle"), brake: toSeries(refPts, "brake"),
+                    angleRad: interpolate(refPts, wheelDistance, "steering"),
+                    gear: interpolate(refPts, wheelDistance, "gear"),
+                    speedMs: interpolate(refPts, wheelDistance, "speed"),
+                    throttleNow: interpolate(refPts, wheelDistance, "throttle"),
+                    brakeNow: interpolate(refPts, wheelDistance, "brake"),
+                  });
+                  return (
+                    <div className="insight-popup-body">
+                      <FocusedGaugeChart sides={sides} xDomain={[from, to]} hoverX={popupHoverDistance} onHoverX={setPopupHoverDistance}
+                        ariaLabel="Freio, acelerador, marcha, velocidade e volante da sua volta e da referência nesse trecho; passe o mouse ou arraste o dedo para ver a posição no mapa abaixo" />
+                      <div className="insight-popup-map">
+                        <span className="section-kicker">TRAÇADO</span>
+                        <TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom lineDistance={comparison?.lineDistance} />
+                        {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
+                        <p className="focused-hover-hint">{popupHoverDistance !== null ? `${popupHoverDistance.toFixed(1)}% da volta` : "Passe o mouse no gráfico acima para localizar o ponto no mapa."}</p>
+                      </div>
+                    </div>
+                  );
+                })()}
                 <div className="insight-popup-metrics">{focusedInsight.metrics.map((metric) => <span key={metric}>{metric}</span>)}</div>
               </div>
             </div>

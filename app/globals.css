@@ -244,9 +244,10 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .steering-wheel-hub { fill: #8b9198; }
 .steering-wheel-mark { fill: #e5342b; }
 .steering-wheel-empty { opacity: .3; }
+/* fill comes from an inline style now (each side's own color), not a per-context .own/.reference
+ * modifier class -- components/FocusedGaugeChart.tsx is shared by both own/reference and car-vs-car
+ * comparisons, which don't share one fixed set of side identities. */
 .steering-wheel-label { font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .04em; text-anchor: middle; }
-.steering-wheel-label.own { fill: var(--red); }
-.steering-wheel-label.reference { fill: var(--blue); }
 /* Thin double-chevron outline (∧∧ / ∨∨), not a solid triangle -- matches the reference's thinner
  * arrow style, stacked above/below the gear number (not beside it). */
 .gear-chevron { fill: none; stroke: #b7bcc3; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
@@ -257,6 +258,10 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * in the browser, twice, after each of the first two attempted fixes still rendered gray not yellow.
  * class+class+element (0,2,1) actually outranks it instead of merely tying. */
 .focused-chart text.gear-readout { fill: #f3c614; font-family: var(--mono); font-size: 26px; font-weight: 800; text-anchor: middle; }
+/* Live speed readout, its own column between gear and wheel (31/08/2026, matching the reference
+ * iRacing widget's own layout) -- neutral white/light like the gear digit and wheel, not per-side
+ * colored (see this file's own comment above the steering-wheel rules for why). */
+.gauge-speed-readout { fill: var(--text); font-family: var(--mono); font-size: 13px; font-weight: 700; }
 .insights-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .insights-grid button { padding: 13px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .insights-grid button:hover, .insights-grid button.active { background: var(--brand-pale); border-color: var(--brand-dark); }
@@ -292,7 +297,6 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * dive) -- arbitrary color via inline style, unlike .track-own-line/.track-reference which are
  * fixed to the app's own/reference red/blue convention. */
 .track-compare-line { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.corner-deep-map { width: 100%; height: 170px; display: block; }
 .telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); grid-template-rows: auto auto; gap: 18px; align-items: start; margin-top: 10px; }
 .telemetry-map-sticky { grid-column: 1 / -1; grid-row: 1; position: static; padding: 14px; border: 1px solid var(--border-strong); background: #08080a; }
 .telemetry-map-sticky h3 { margin: 4px 0 10px; font-size: 16px; }
@@ -307,16 +311,18 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-close { flex: 0 0 auto; padding: 8px 12px; border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 500; cursor: pointer; border-radius: 3px; }
 .insight-popup-close:hover { background: var(--surface-raised); }
 .insight-popup-detail { margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
-.insight-popup-body { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: stretch; }
+/* Chart stacked ON TOP of the map, not side by side (31/08/2026: "ao invés de ser um gráfico ao lado
+ * do outro, o de inputs pode vir em cima do gráfico... aumentaríamos horizontalmente o espaço ocupado
+ * pelos gráficos") -- the popup box itself stays the same size, but the chart (now much wider than a
+ * half-width column, since it has the full popup width to itself) has real room for its own six
+ * columns (inputs, accel bar, brake bar, gear, speed, wheel) at a readable size, and the map below
+ * gets a fixed real-track-shape-appropriate height instead of being squeezed to match the chart's. */
+.insight-popup-body { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
 .insight-popup-map { display: grid; grid-template-rows: auto 1fr auto auto; gap: 6px; padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); }
-.insight-popup-map .track-map { height: 100%; min-height: 360px; }
+.insight-popup-map .track-map { height: 340px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
-/* Not height:100%/align-self:stretch like before -- the gauge column made this SVG's own aspect
- * ratio much wider/shorter than the map it sits next to (which still wants real vertical room for a
- * 2D track shape), and stretching it to match would just letterbox a lot of empty space around the
- * actual content instead of the content filling its box. */
-.focused-chart { width: 100%; min-height: 150px; align-self: start; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
+.focused-chart { width: 100%; min-height: 150px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
 .focused-chart text { fill: var(--soft); font-size: 10px; font-family: var(--mono); }
 .focused-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .focused-chart .trace-steering { stroke-width: 2.5; }
@@ -471,7 +477,6 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .comparison-summary, .insights-grid { grid-template-columns: 1fr; }
   .insights-layout { grid-template-columns: 1fr; }
   .telemetry-workspace { grid-template-columns: 1fr; }.telemetry-map-sticky { position: static; }.telemetry-hover-panel { position: static; }
-  .insight-popup-body { grid-template-columns: 1fr; }
   .telemetry-chart-wrap { overflow-x: auto; }
   .telemetry-chart { min-width: 760px; }
   .setup-intro, .engineer-layout { display: flex; flex-direction: column; align-items: stretch; }.app-tabs { overflow-x: auto; }.library-groups { grid-template-columns: 1fr; }
@@ -656,7 +661,6 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .pedal-bar-track { fill: var(--border); }
 .pedal-bar-fill.throttle { fill: var(--green); }
 .pedal-bar-fill.brake { fill: var(--red); }
-.corner-deep-map { background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
 .corner-deep-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-family: var(--mono); font-size: 11px; }
 .corner-deep-narrative { margin: 0 0 10px; color: var(--text); font-size: 12px; line-height: 1.5; }
 /* Engineer's-read paragraph, now its own bottom-half block beside the map (31/08/2026: "o gráfico de

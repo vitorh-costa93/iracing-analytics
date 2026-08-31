@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { createTrackProjector } from "@/lib/track-map";
 import { CarBrandIcon } from "@/lib/car-brand";
 import TrackMap, { type TrackMapLine, type TrackMapMarker } from "@/components/TrackMap";
+import FocusedGaugeChart, { type FocusedSide } from "@/components/FocusedGaugeChart";
 
 type Category = "gt3" | "gtp";
 const CATEGORIES: Category[] = ["gt3", "gtp"];
@@ -132,26 +133,12 @@ function cornerNarrative(sector: Sector, carA: CarStat, carB: CarStat): string {
 
 // --- Corner focused-chart popup (29/08/2026: "ao clicar em cada curva, tenho o mesmo gráfico
 // disponível... a diferença é que serão dois gráficos, mas mexer em um, faz a bolinha na pista se
-// movimentar para os dois carros") -- same idea as ActiveWeekTelemetry.tsx's own FocusedChart
-// (SPEED row, merged PEDALS row, gear+wheel gauges) generalized from own/reference to two arbitrary
-// cars, plus (per the iRacing widget reference image) a small throttle/brake bar pair and a live
-// speed readout next to each car's gauges.
-const GAUGE_COLUMN_WIDTH = 168;
-const GAUGE_BAR_X = 16, GAUGE_GEAR_X = 62, GAUGE_WHEEL_RADIUS = 26;
-const GAUGE_WHEEL_X = GAUGE_COLUMN_WIDTH - GAUGE_WHEEL_RADIUS - 10;
-const GAUGE_A_CENTER_Y = 58, GAUGE_B_CENTER_Y = 162;
-const FOCUSED_WIDTH = 420, FOCUSED_HEIGHT = 210;
-const SPEED_ROW_TOP = 6, SPEED_ROW_HEIGHT = 68;
-const PEDALS_ROW_TOP = 88, PEDALS_ROW_HEIGHT = 106;
-
-function formatGear(value: number | null) {
-  if (value === null || !Number.isFinite(value)) return "—";
-  const rounded = Math.round(value);
-  if (rounded === 0) return "N";
-  if (rounded < 0) return "R";
-  return String(rounded);
-}
-
+// movimentar para os dois carros") -- now built on the SAME shared components/FocusedGaugeChart.tsx
+// widget as ActiveWeekTelemetry.tsx's own popup (31/08/2026: "Eu quero, inclusive, que use o mesmo
+// objeto"), generalized from own/reference to two arbitrary cars. See that shared component's own
+// top comment for the column order (inputs -> accel bar -> brake bar -> gear -> speed -> wheel) and
+// coloring rules (wheel/gear/bars stay neutral; only the line style and the label under the wheel
+// carry each car's own color).
 function interpolateCurve(curve: CurvePoint[] | undefined, offset: number): number | null {
   if (!curve || !curve.length) return null;
   let previous = curve[0];
@@ -166,108 +153,32 @@ function interpolateCurve(curve: CurvePoint[] | undefined, offset: number): numb
   return previous.value;
 }
 
-function MiniSteeringWheel({ cx, cy, radius, angleRad, color }: { cx: number; cy: number; radius: number; angleRad: number | null; color: string }) {
-  const degrees = angleRad !== null ? -angleRad * 180 / Math.PI : 0;
-  const rimStroke = radius * 0.16, hubRadius = radius * 0.26;
-  return (
-    <g transform={`translate(${cx},${cy}) rotate(${degrees})`} opacity={angleRad === null ? 0.3 : 1}>
-      <circle r={radius - rimStroke / 2} fill="none" style={{ stroke: color, strokeWidth: rimStroke }} />
-      <line x1="0" y1={-hubRadius} x2="0" y2={-radius + rimStroke * 0.4} style={{ stroke: color, strokeWidth: rimStroke * 0.5 }} strokeLinecap="round" />
-      <line x1={-hubRadius * 0.5} y1={hubRadius * 0.87} x2={-(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} style={{ stroke: color, strokeWidth: rimStroke * 0.5 }} strokeLinecap="round" />
-      <line x1={hubRadius * 0.5} y1={hubRadius * 0.87} x2={(radius - rimStroke * 0.4) * 0.87} y2={(radius - rimStroke * 0.4) * 0.5} style={{ stroke: color, strokeWidth: rimStroke * 0.5 }} strokeLinecap="round" />
-      <circle r={hubRadius} style={{ fill: color }} />
-      <rect x={-radius * 0.09} y={-radius - 5} width={radius * 0.18} height={radius * 0.18} rx="1.5" className="steering-wheel-mark" />
-    </g>
-  );
-}
-
-function MiniGearCluster({ x, y, value, color }: { x: number; y: number; value: number | null; color: string }) {
-  const chevron = (rowY: number, pointsUp: boolean) => {
-    const tip = pointsUp ? rowY - 2 : rowY + 2, base = pointsUp ? rowY + 2 : rowY - 2;
-    return `${x - 4.5},${base} ${x},${tip} ${x + 4.5},${base}`;
-  };
-  return (
-    <g>
-      <polyline points={chevron(y - 16, true)} fill="none" style={{ stroke: color }} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-      <text x={x} y={y + 6} textAnchor="middle" style={{ fill: color, fontFamily: "var(--mono)", fontSize: "19px", fontWeight: 800 }}>{formatGear(value)}</text>
-      <polyline points={chevron(y + 16, false)} fill="none" style={{ stroke: color }} strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-    </g>
-  );
-}
-
-/** Throttle/brake as live vertical bars at the hover point (29/08/2026, per the iRacing widget
- * reference image sent), alongside the line graphs -- a bar reads "how much pedal right now" faster
- * than tracing a line back to an axis. */
-function PedalBars({ x, y, throttle, brake }: { x: number; y: number; throttle: number | null; brake: number | null }) {
-  const barHeight = 40, barWidth = 6, gap = 4;
-  const fillHeight = (value: number | null) => Math.max(0, Math.min(1, value ?? 0)) * barHeight;
-  return (
-    <g transform={`translate(${x},${y - barHeight / 2})`}>
-      <rect x="0" y="0" width={barWidth} height={barHeight} className="pedal-bar-track" />
-      <rect x="0" y={barHeight - fillHeight(throttle)} width={barWidth} height={fillHeight(throttle)} className="pedal-bar-fill throttle" />
-      <rect x={barWidth + gap} y="0" width={barWidth} height={barHeight} className="pedal-bar-track" />
-      <rect x={barWidth + gap} y={barHeight - fillHeight(brake)} width={barWidth} height={fillHeight(brake)} className="pedal-bar-fill brake" />
-    </g>
-  );
-}
-
-function CornerFocusedChart({ curveA, curveB, colorA, colorB, hoverOffset, onHover }: {
-  curveA: SectorCurve | undefined; curveB: SectorCurve | undefined; colorA: string; colorB: string;
+function CornerFocusedChart({ curveA, curveB, carAName, carBName, colorA, colorB, hoverOffset, onHover }: {
+  curveA: SectorCurve | undefined; curveB: SectorCurve | undefined; carAName: string; carBName: string; colorA: string; colorB: string;
   hoverOffset: number | null; onHover: (offset: number | null) => void;
 }) {
-  const totalWidth = GAUGE_COLUMN_WIDTH + FOCUSED_WIDTH;
   const maxOffset = Math.max(1, ...[curveA, curveB].flatMap((curve) => curve ? [...curve.brake, ...curve.throttle, ...curve.speed].map((point) => point.offset) : [0]));
-  const scaleX = (offset: number) => (offset / maxOffset) * FOCUSED_WIDTH;
-  const unscaleX = (x: number) => (x / FOCUSED_WIDTH) * maxOffset;
-  function localChartX(clientX: number, rect: DOMRect) {
-    return (clientX - rect.left) / rect.width * totalWidth - GAUGE_COLUMN_WIDTH;
-  }
-  function speedLine(curve: CurvePoint[] | undefined, top: number, h: number) {
-    if (!curve || !curve.length) return "";
-    const values = curve.map((point) => point.value);
-    const min = Math.min(...values), max = Math.max(...values), span = Math.max(0.0001, max - min);
-    return curve.map((point) => `${scaleX(point.offset).toFixed(1)},${(top + h - ((point.value - min) / span) * h).toFixed(1)}`).join(" ");
-  }
-  function pedalLine(curve: CurvePoint[] | undefined, top: number, h: number) {
-    if (!curve) return "";
-    return curve.map((point) => `${scaleX(point.offset).toFixed(1)},${(top + h - point.value * h).toFixed(1)}`).join(" ");
-  }
   const wheelOffset = hoverOffset ?? maxOffset / 2;
-  const angleA = interpolateCurve(curveA?.steering, wheelOffset), angleB = interpolateCurve(curveB?.steering, wheelOffset);
-  const gearA = interpolateCurve(curveA?.gear, wheelOffset), gearB = interpolateCurve(curveB?.gear, wheelOffset);
-  const speedA = interpolateCurve(curveA?.speed, wheelOffset), speedB = interpolateCurve(curveB?.speed, wheelOffset);
-  const throttleA = interpolateCurve(curveA?.throttle, wheelOffset), throttleB = interpolateCurve(curveB?.throttle, wheelOffset);
-  const brakeA = interpolateCurve(curveA?.brake, wheelOffset), brakeB = interpolateCurve(curveB?.brake, wheelOffset);
+  const toSeries = (curve: CurvePoint[] | undefined) => (curve ?? []).map((point) => ({ x: point.offset, value: point.value }));
+  const sides: FocusedSide[] = [
+    {
+      key: "a", label: carAName, color: colorA, dashed: false,
+      throttle: toSeries(curveA?.throttle), brake: toSeries(curveA?.brake),
+      angleRad: interpolateCurve(curveA?.steering, wheelOffset), gear: interpolateCurve(curveA?.gear, wheelOffset),
+      speedMs: interpolateCurve(curveA?.speed, wheelOffset),
+      throttleNow: interpolateCurve(curveA?.throttle, wheelOffset), brakeNow: interpolateCurve(curveA?.brake, wheelOffset),
+    },
+    {
+      key: "b", label: carBName, color: colorB, dashed: true,
+      throttle: toSeries(curveB?.throttle), brake: toSeries(curveB?.brake),
+      angleRad: interpolateCurve(curveB?.steering, wheelOffset), gear: interpolateCurve(curveB?.gear, wheelOffset),
+      speedMs: interpolateCurve(curveB?.speed, wheelOffset),
+      throttleNow: interpolateCurve(curveB?.throttle, wheelOffset), brakeNow: interpolateCurve(curveB?.brake, wheelOffset),
+    },
+  ];
   return (
-    <svg viewBox={`0 0 ${totalWidth} ${FOCUSED_HEIGHT}`} className="focused-chart" role="img" aria-label="Velocidade, freio, acelerador, marcha e volante dos dois carros nessa curva; passe o mouse para ver a posição no mapa"
-      onMouseMove={(event) => { const x = localChartX(event.clientX, event.currentTarget.getBoundingClientRect()); onHover(Math.max(0, Math.min(maxOffset, unscaleX(x)))); }}
-      onMouseLeave={() => onHover(null)}
-      onTouchStart={(event) => { const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect()); onHover(Math.max(0, Math.min(maxOffset, unscaleX(x)))); }}
-      onTouchMove={(event) => { const x = localChartX(event.touches[0].clientX, event.currentTarget.getBoundingClientRect()); onHover(Math.max(0, Math.min(maxOffset, unscaleX(x)))); }}
-      onTouchEnd={() => onHover(null)}>
-      <PedalBars x={GAUGE_BAR_X} y={GAUGE_A_CENTER_Y} throttle={throttleA} brake={brakeA} />
-      <MiniGearCluster x={GAUGE_GEAR_X} y={GAUGE_A_CENTER_Y} value={gearA} color={colorA} />
-      <MiniSteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_A_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={angleA} color={colorA} />
-      <text x={GAUGE_WHEEL_X} y={GAUGE_A_CENTER_Y + GAUGE_WHEEL_RADIUS + 13} textAnchor="middle" style={{ fill: colorA, fontFamily: "var(--mono)", fontSize: "9px" }}>{speedA !== null ? `${(speedA * 3.6).toFixed(0)} km/h` : "—"}</text>
-
-      <PedalBars x={GAUGE_BAR_X} y={GAUGE_B_CENTER_Y} throttle={throttleB} brake={brakeB} />
-      <MiniGearCluster x={GAUGE_GEAR_X} y={GAUGE_B_CENTER_Y} value={gearB} color={colorB} />
-      <MiniSteeringWheel cx={GAUGE_WHEEL_X} cy={GAUGE_B_CENTER_Y} radius={GAUGE_WHEEL_RADIUS} angleRad={angleB} color={colorB} />
-      <text x={GAUGE_WHEEL_X} y={GAUGE_B_CENTER_Y + GAUGE_WHEEL_RADIUS + 13} textAnchor="middle" style={{ fill: colorB, fontFamily: "var(--mono)", fontSize: "9px" }}>{speedB !== null ? `${(speedB * 3.6).toFixed(0)} km/h` : "—"}</text>
-
-      <line x1={GAUGE_COLUMN_WIDTH} x2={GAUGE_COLUMN_WIDTH} y1="0" y2={FOCUSED_HEIGHT} className="gauge-divider" />
-      <g transform={`translate(${GAUGE_COLUMN_WIDTH},0)`}>
-        <text x="4" y={SPEED_ROW_TOP + 12} className="channel-label">SPEED</text>
-        {curveA && <polyline points={speedLine(curveA.speed, SPEED_ROW_TOP, SPEED_ROW_HEIGHT)} fill="none" style={{ stroke: colorA }} strokeWidth="1.6" />}
-        {curveB && <polyline points={speedLine(curveB.speed, SPEED_ROW_TOP, SPEED_ROW_HEIGHT)} fill="none" style={{ stroke: colorB, strokeDasharray: "6 5" }} strokeWidth="1.6" />}
-        <text x="4" y={PEDALS_ROW_TOP + 12} className="channel-label">PEDALS</text>
-        {curveA && <polyline points={pedalLine(curveA.brake, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake" />}
-        {curveB && <polyline points={pedalLine(curveB.brake, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-brake reference-line" />}
-        {curveA && <polyline points={pedalLine(curveA.throttle, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle" />}
-        {curveB && <polyline points={pedalLine(curveB.throttle, PEDALS_ROW_TOP, PEDALS_ROW_HEIGHT)} className="trace-throttle reference-line" />}
-        {hoverOffset !== null && <line x1={scaleX(hoverOffset)} x2={scaleX(hoverOffset)} y1="0" y2={FOCUSED_HEIGHT} className="hover-line" />}
-      </g>
-    </svg>
+    <FocusedGaugeChart sides={sides} xDomain={[0, maxOffset]} hoverX={hoverOffset} onHoverX={onHover}
+      ariaLabel="Freio, acelerador, marcha, velocidade e volante dos dois carros nessa curva; passe o mouse para ver a posição no mapa" />
   );
 }
 
@@ -322,10 +233,13 @@ function CornerFocusedPopup({ sector, carA, carB, trackId, onClose }: { sector: 
           <button type="button" className="insight-popup-close" onClick={onClose}>Fechar ✕</button>
         </div>
         <div className="insight-popup-body">
-          <CornerFocusedChart curveA={curveA} curveB={curveB} colorA={carA.color} colorB={carB.color} hoverOffset={hoverOffset} onHover={setHoverOffset} />
+          <CornerFocusedChart curveA={curveA} curveB={curveB} carAName={carA.carName} carBName={carB.carName} colorA={carA.color} colorB={carB.color} hoverOffset={hoverOffset} onHover={setHoverOffset} />
           <div className="insight-popup-map">
             <span className="section-kicker">TRAÇADO</span>
-            <TrackMap trackId={trackId} lines={lines} width={260} height={200} className="corner-deep-map" markers={markers} />
+            {/* Default width/height/className (31/08/2026: "os gráficos têm que ser do mesmo tamanho
+             * dos da imagem 1") -- same .insight-popup-map .track-map sizing ActiveWeekTelemetry's
+             * own popup map already uses, instead of a smaller fixed-pixel override. */}
+            <TrackMap trackId={trackId} lines={lines} markers={markers} />
             <p className="track-map-legend"><span style={{ color: carA.color }}>{carA.carName}</span><span style={{ color: carB.color }}>{carB.carName}</span></p>
           </div>
         </div>
