@@ -188,16 +188,32 @@ async function downloadTrace(lapId: string, trackId: number, telemetryPath: stri
   return points.length > 20 ? points : null;
 }
 
+const LAPS_PAGE_SIZE = 1000; // matches Supabase's own default row cap -- a plain unranged .select()
+// here silently truncated at 1000 rows once this driver's laps table passed that count, undercounting
+// cars for whichever tracks' rows happened to land past the cutoff (confirmed live 29/08/2026: the
+// track picker said "2 carros" for Interlagos while the actual per-track query -- which IS scoped by
+// track_id and so stays under 1000 rows -- found 6). Paginating with .range() here fixes that.
+async function fetchAllDriverLaps(driverId: string) {
+  const rows: LapRow[] = [];
+  for (let offset = 0; ; offset += LAPS_PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from("laps")
+      .select("car_id,track_id,clean,lap_time,off_track,pit_lane,pit_in,pit_out,incomplete,missing")
+      .eq("driver_id", driverId)
+      .not("car_id", "is", null).not("track_id", "is", null)
+      .range(offset, offset + LAPS_PAGE_SIZE - 1);
+    if (error) throw error;
+    rows.push(...((data ?? []) as LapRow[]));
+    if (!data || data.length < LAPS_PAGE_SIZE) break;
+  }
+  return rows;
+}
+
 async function listEligibleTracks(driverId: string) {
-  const { data, error } = await supabaseAdmin
-    .from("laps")
-    .select("car_id,track_id,clean,lap_time,off_track,pit_lane,pit_in,pit_out,incomplete,missing")
-    .eq("driver_id", driverId)
-    .not("car_id", "is", null).not("track_id", "is", null);
-  if (error) throw error;
+  const rows = await fetchAllDriverLaps(driverId);
 
   const byTrack = new Map<number, Set<number>>();
-  for (const lap of (data ?? []) as LapRow[]) {
+  for (const lap of rows) {
     if (!isValidLap(lap)) continue;
     const trackId = lap.track_id as number, carId = lap.car_id as number;
     if (!byTrack.has(trackId)) byTrack.set(trackId, new Set());
