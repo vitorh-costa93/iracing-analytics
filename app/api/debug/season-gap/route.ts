@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { garage61Get } from "@/lib/garage61";
 
 // Temporary diagnostic route -- 29/08/2026, checking why Algarve GT3 only shows 2 seasons
 // (2026 S1, 2025 S4) in car-comparison when the driver expects more. Delete after use.
@@ -51,8 +52,19 @@ export async function GET(request: Request) {
     const { data: affectedCars } = affectedCarIds.length ? await supabaseAdmin.from("cars").select("id,name").in("id", affectedCarIds) : { data: [] };
     const carNames = new Map((affectedCars ?? []).map((c) => [c.id, c.name]));
 
+    const g61 = await garage61Get<{ items: { car?: { id: number; name?: string }; season?: { id?: string; name?: string }; startTime?: string }[]; total?: number }>(
+      "/laps", { tracks: trackId, drivers: "me", group: "none", unclean: "true", lapTypes: "1,2,3,4", limit: 1000, offset: 0 }
+    );
+    const g61BySeason = new Map<string, number>();
+    for (const lap of g61.items ?? []) {
+      const key = `${lap.season?.id ?? "?"}:${lap.season?.name ?? "?"}`;
+      g61BySeason.set(key, (g61BySeason.get(key) ?? 0) + 1);
+    }
+    const g61Recent = (g61.items ?? []).filter((lap) => (lap.startTime ?? "") > "2026-06-01").slice(0, 10).map((lap) => ({ car: lap.car?.name, season: lap.season?.name, startTime: lap.startTime }));
+
     return NextResponse.json({
       status: "ok", total, noSessionId, sessionIdButNoJoin, joinButNoSeason, withSeason,
+      garage61Total: g61.total, garage61BySeason: Object.fromEntries(g61BySeason), garage61RecentSample: g61Recent,
       bySeason: Object.fromEntries(bySeason),
       bySeasonCar: bySeasonCarNamed,
       noSeasonSample: noSeasonSample.map((r) => ({ id: r.id, carId: r.car_id, sessionId: r.session_id })),
