@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { createTrackProjector } from "@/lib/track-map";
+import { CarBrandIcon } from "@/lib/car-brand";
 import TrackMap, { type TrackMapLine, type TrackMapMarker } from "@/components/TrackMap";
 
 type Category = "gt3" | "gtp";
@@ -41,12 +42,16 @@ type ComparisonPayload = {
 
 /** Used only for the best-lap ranking now (29/08/2026: "gráfico de barras horizontais, só manter
  * para o ranking por carro") -- consistency and track usage below reuse other sub-tabs' own visual
- * styles instead of this. */
+ * styles instead of this. 31/08/2026: manufacturer icon + full (untruncated) car name, matching the
+ * Overview ranking list's own treatment ("gostaria... fossem usados os símbolos como está... também
+ * quero que o nome todo apareça por extenso, depois vem a barrinha com o tempo") -- name+icon on
+ * their own line since a full name like "McLaren 720S GT3 EVO" doesn't fit a fixed label column
+ * alongside a bar and a time value without truncating one of them. */
 function CompareBar({ label, value, max, formatted }: { label: string; value: number; max: number; formatted: string }) {
   const pct = max > 0 ? Math.max(2, (value / max) * 100) : 2;
   return (
     <div className="car-compare-row">
-      <span className="car-compare-row-label">{label}</span>
+      <span className="car-compare-row-name"><CarBrandIcon name={label} />{label}</span>
       <div className="car-compare-row-track"><div className="car-compare-row-fill" style={{ width: `${pct}%` }} /></div>
       <span className="car-compare-row-value">{formatted}</span>
     </div>

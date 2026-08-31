@@ -460,6 +460,9 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
    * pushed roughly half the season (and its now-tappable dots) off-screen by default, discoverable
    * only by realizing you needed to scroll sideways at all. */
   .chart-tooltip { position: sticky; left: 10px; right: auto; top: 10px; }
+  /* Bigger touch target on narrow/mobile viewports (31/08/2026, tooltip mobile fix) -- the chart's
+   * viewBox is fixed-width, so a given r is a smaller real target the narrower the screen renders it. */
+  .chart-hit { r: 22px; }
   .telemetry-heading { flex-direction: column; }
   .telemetry-selector { min-width: 100%; }
   .telemetry-meta { grid-template-columns: 1fr; }
@@ -519,12 +522,14 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .car-compare-picker select { padding: 8px 10px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); font-family: var(--mono); font-size: 13px; border-radius: 3px; max-width: 480px; }
 .car-compare-block { display: grid; gap: 8px; margin-bottom: 14px; }
 .car-compare-block:last-child { margin-bottom: 0; }
-.car-compare-row { display: grid; grid-template-columns: 130px 1fr 150px; align-items: center; gap: 10px; }
-.car-compare-row-label { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.car-compare-row-track { height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
+/* Name+icon on its own line, bar+time on the next -- a full car name ("McLaren 720S GT3 EVO") next
+ * to a bar and a time value doesn't fit one row without truncating something (31/08/2026: "quero que
+ * o nome todo apareça por extenso"). */
+.car-compare-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name name" "track value"; align-items: center; gap: 4px 10px; }
+.car-compare-row-name { grid-area: name; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
+.car-compare-row-track { grid-area: track; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
 .car-compare-row-fill { height: 100%; background: var(--blue); border-radius: 5px; }
-.car-compare-row-value { font-family: var(--mono); font-size: 11px; color: var(--text); text-align: right; white-space: nowrap; }
-@media (max-width: 640px) { .car-compare-row { grid-template-columns: 96px 1fr 110px; gap: 6px; } }
+.car-compare-row-value { grid-area: value; font-family: var(--mono); font-size: 11px; color: var(--text); text-align: right; white-space: nowrap; }
 
 .race-debrief-corner-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .race-debrief-corner-card { padding: 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
