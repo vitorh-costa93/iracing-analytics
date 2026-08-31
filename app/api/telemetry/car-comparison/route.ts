@@ -184,6 +184,39 @@ function trackWidthUsage(points: TracePoint[], boundary: BoundaryEdge[]) {
   return { avgPct: Number((mean(samples) * 100).toFixed(1)), maxPct: Number((Math.max(...samples) * 100).toFixed(1)) };
 }
 
+// Only these two categories are offered as a filter (29/08/2026: "no caso GT3 e GTP... Super
+// Fórmula e LMP2 não se aplicam aqui porque não tem diferença de carro") -- this driver only ever
+// tests multiple distinct CARS within GT3 and GTP; Super Formula/oval/etc. are single-make classes
+// for him, so a car-vs-car comparison there is meaningless even on the rare chance two car_ids show
+// up (e.g. a car swap mid-season) -- those are just left out rather than given their own tab.
+type Category = "gt3" | "gtp";
+const CATEGORIES: Category[] = ["gt3", "gtp"];
+const CATEGORY_LABEL: Record<Category, string> = { gt3: "GT3", gtp: "GTP" };
+
+/** GT3 vs GTP isn't a column anywhere -- car_rating_categories only goes as coarse as
+ * formula_car/sports_car/oval/etc (both GT3 and GTP race as "sports_car" there), so GTP is split out
+ * the same way app/api/telemetry/debrief/route.ts already does it: by car_id membership in the
+ * "GTP" car_groups group. Everything left in sports_car after that (GT3, plus incidentally LMP2 if
+ * it ever shows up) is treated as "gt3" -- harmless per the comment above, since LMP2 never actually
+ * produces a 2-car comparison for this driver. Non-sports_car cars (formula_car, oval, ...) map to
+ * null and are dropped everywhere this is used. */
+async function resolveCarCategories(carIds: number[]): Promise<Map<number, Category | null>> {
+  const result = new Map<number, Category | null>();
+  if (!carIds.length) return result;
+  const gtpCarIds = new Set<number>();
+  const { data: gtpGroup } = await supabaseAdmin.from("car_groups").select("id").eq("name", "GTP").maybeSingle();
+  if (gtpGroup) {
+    const { data: members } = await supabaseAdmin.from("car_group_members").select("car_id").eq("car_group_id", gtpGroup.id);
+    for (const row of members ?? []) gtpCarIds.add(row.car_id);
+  }
+  const { data: ratingRows } = await supabaseAdmin.from("car_rating_categories").select("car_id,rating_category").in("car_id", carIds);
+  const ratingByCar = new Map((ratingRows ?? []).map((row) => [row.car_id as number, row.rating_category as string]));
+  for (const carId of carIds) {
+    result.set(carId, gtpCarIds.has(carId) ? "gtp" : ratingByCar.get(carId) === "sports_car" ? "gt3" : null);
+  }
+  return result;
+}
+
 function isValidLap(lap: LapRow) {
   return lap.clean && Number(lap.lap_time) > 0 && !lap.off_track && !lap.pit_lane && !lap.pit_in && !lap.pit_out && !lap.incomplete && !lap.missing;
 }
@@ -239,11 +272,29 @@ async function listEligibleTracks(driverId: string) {
     if (!byTrack.has(trackId)) byTrack.set(trackId, new Set());
     byTrack.get(trackId)!.add(carId);
   }
-  const eligible = [...byTrack.entries()].filter(([, cars]) => cars.size >= 2);
-  if (!eligible.length) return [];
+  if (!byTrack.size) return [];
 
-  const trackIds = eligible.map(([trackId]) => trackId);
-  const carIds = [...new Set(eligible.flatMap(([, cars]) => [...cars]))];
+  const allCarIds = [...new Set([...byTrack.values()].flatMap((set) => [...set]))];
+  const categoryByCar = await resolveCarCategories(allCarIds);
+
+  const perTrackCategoryCars = new Map<number, Partial<Record<Category, number[]>>>();
+  for (const [trackId, cars] of byTrack) {
+    const byCategory: Partial<Record<Category, number[]>> = {};
+    for (const carId of cars) {
+      const category = categoryByCar.get(carId);
+      if (!category) continue;
+      (byCategory[category] ??= []).push(carId);
+    }
+    const eligibleCategories: Partial<Record<Category, number[]>> = {};
+    for (const category of CATEGORIES) {
+      if ((byCategory[category]?.length ?? 0) >= 2) eligibleCategories[category] = byCategory[category];
+    }
+    if (Object.keys(eligibleCategories).length) perTrackCategoryCars.set(trackId, eligibleCategories);
+  }
+  if (!perTrackCategoryCars.size) return [];
+
+  const trackIds = [...perTrackCategoryCars.keys()];
+  const carIds = [...new Set([...perTrackCategoryCars.values()].flatMap((byCategory) => Object.values(byCategory).flat()))];
   const [tracksResult, carsResult] = await Promise.all([
     supabaseAdmin.from("tracks").select("id,name,variant").in("id", trackIds),
     supabaseAdmin.from("cars").select("id,name").in("id", carIds),
@@ -251,36 +302,41 @@ async function listEligibleTracks(driverId: string) {
   const trackNames = new Map((tracksResult.data ?? []).map((row) => [row.id, row]));
   const carNames = new Map((carsResult.data ?? []).map((row) => [row.id, row.name as string]));
 
-  return eligible.map(([trackId, cars]) => {
+  return [...perTrackCategoryCars.entries()].map(([trackId, byCategory]) => {
     const track = trackNames.get(trackId);
     return {
       trackId,
       trackName: track?.name ?? `Pista ${trackId}`,
       trackVariant: track?.variant ?? null,
-      carCount: cars.size,
-      carNames: [...cars].map((id) => carNames.get(id) ?? `Carro ${id}`).sort((a, b) => a.localeCompare(b, "pt-BR")),
+      categories: CATEGORIES.filter((category) => byCategory[category]).map((category) => ({
+        category, label: CATEGORY_LABEL[category],
+        carCount: byCategory[category]!.length,
+        carNames: byCategory[category]!.map((id) => carNames.get(id) ?? `Carro ${id}`).sort((a, b) => a.localeCompare(b, "pt-BR")),
+      })),
     };
   }).sort((a, b) => a.trackName.localeCompare(b.trackName, "pt-BR"));
 }
 
-async function buildComparison(driverId: string, trackId: number) {
+async function buildComparison(driverId: string, trackId: number, category: Category) {
   const { data: lapsData, error } = await supabaseAdmin
     .from("laps")
     .select("id,car_id,track_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path")
     .eq("driver_id", driverId).eq("track_id", trackId);
   if (error) throw error;
 
-  const byCar = new Map<number, LapRow[]>();
+  const byCarAll = new Map<number, LapRow[]>();
   for (const lap of (lapsData ?? []) as LapRow[]) {
     if (!isValidLap(lap)) continue;
     const carId = lap.car_id as number;
-    if (!byCar.has(carId)) byCar.set(carId, []);
-    byCar.get(carId)!.push(lap);
+    if (!byCarAll.has(carId)) byCarAll.set(carId, []);
+    byCarAll.get(carId)!.push(lap);
   }
+  const categoryByCar = await resolveCarCategories([...byCarAll.keys()]);
+  const byCar = new Map([...byCarAll].filter(([carId]) => categoryByCar.get(carId) === category));
   const carIds = [...byCar.keys()]
     .sort((a, b) => Math.min(...byCar.get(a)!.map((l) => Number(l.lap_time))) - Math.min(...byCar.get(b)!.map((l) => Number(l.lap_time))))
     .slice(0, MAX_CARS);
-  if (carIds.length < 2) return { status: "ok", track: null, cars: [], message: "Menos de 2 carros com voltas válidas nessa pista." };
+  if (carIds.length < 2) return { status: "ok", track: null, cars: [], message: `Menos de 2 carros de ${CATEGORY_LABEL[category]} com voltas válidas nessa pista.` };
 
   const [carsResult, trackResult, boundary] = await Promise.all([
     supabaseAdmin.from("cars").select("id,name").in("id", carIds),
@@ -331,14 +387,17 @@ export async function GET(request: Request) {
     const { data: driver } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (!driver) throw new Error("Piloto não encontrado");
 
-    const trackIdParam = new URL(request.url).searchParams.get("trackId");
+    const params = new URL(request.url).searchParams;
+    const trackIdParam = params.get("trackId");
     if (!trackIdParam) {
       const tracks = await listEligibleTracks(driver.id);
       return NextResponse.json({ status: "ok", tracks });
     }
     const trackId = Number(trackIdParam);
     if (!Number.isFinite(trackId)) return NextResponse.json({ status: "error", message: "trackId inválido" }, { status: 400 });
-    const result = await buildComparison(driver.id, trackId);
+    const categoryParam = params.get("category");
+    if (categoryParam !== "gt3" && categoryParam !== "gtp") return NextResponse.json({ status: "error", message: "category deve ser gt3 ou gtp" }, { status: 400 });
+    const result = await buildComparison(driver.id, trackId, categoryParam);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
