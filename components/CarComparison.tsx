@@ -6,9 +6,9 @@ type Category = "gt3" | "gtp";
 const CATEGORIES: Category[] = ["gt3", "gtp"];
 const CATEGORY_LABEL: Record<Category, string> = { gt3: "GT3", gtp: "GTP" };
 
-type TrackCategoryOption = { category: Category; label: string; carCount: number; carNames: string[] };
-type TrackOption = { trackId: number; trackName: string; trackVariant: string | null; categories: TrackCategoryOption[] };
+type TrackOption = { trackId: number; trackName: string; trackVariant: string | null; carCount: number; carNames: string[] };
 type SeasonOption = { seasonId: string; seasonName: string; lapCount: number; latestStartedAt: string };
+type ListPayload = { status: string; seasons: SeasonOption[]; selectedSeasonId: string | null; tracks: TrackOption[] };
 type ChannelConsistency = { channel: string; name: string; score: number; label: string };
 type InputConsistency = { overall: { score: number; label: string }; channels: ChannelConsistency[] } | null;
 type LapTimeConsistency = { stddev: number; label: string } | null;
@@ -98,46 +98,43 @@ function biggestUsageDifferences(cars: CarStat[], segmentCount: number) {
 }
 
 export default function CarComparison() {
-  const [tracks, setTracks] = useState<TrackOption[] | null>(null);
   // Only GT3 and GTP are offered (29/08/2026: "Super Fórmula e LMP2 não se aplicam aqui porque não
   // tem diferença de carro") -- this driver only ever tests multiple distinct cars within these two.
   const [category, setCategory] = useState<Category>("gt3");
-  const [trackId, setTrackId] = useState<number | null>(null);
-  // "auto" lets the server pick the most recent season with data (BoP changes between seasons, see
-  // ChannelBars/season-picker comments below); "all" removes the season filter entirely; anything
-  // else is a specific season_id.
+  // Season is now the PRIMARY filter (29/08/2026: "o filtro prioritário é o primeiro... depois
+  // atualiza o filtro de pistas com o que eu preenchi primeiro" -- season used to be scoped to
+  // whichever track was selected, which was backwards). "auto" lets the server pick the most recent
+  // season with data for this category across every track (BoP changes between seasons); "all"
+  // removes the season filter entirely; anything else is a specific season_id. Changing category
+  // resets this back to "auto" since a different category has its own season coverage.
   const [season, setSeason] = useState<string>("auto");
+  const [list, setList] = useState<ListPayload | null>(null);
+  const [trackId, setTrackId] = useState<number | null>(null);
   const [data, setData] = useState<ComparisonPayload | null>(null);
-  const [loadingTracks, setLoadingTracks] = useState(true);
+  const [loadingList, setLoadingList] = useState(true);
   const [loadingData, setLoadingData] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Seasons list + track list, scoped by category and (once known) season -- refetched whenever
+  // either changes. This drives both selects; the track list always reflects the currently chosen
+  // season, never the other way around.
   useEffect(() => {
     let active = true;
-    fetch("/api/telemetry/car-comparison", { cache: "no-store" })
+    setLoadingList(true);
+    setError(null);
+    fetch(`/api/telemetry/car-comparison?category=${category}${season !== "auto" ? `&season=${season}` : ""}`, { cache: "no-store" })
       .then((response) => response.json())
-      .then((result) => {
+      .then((result: ListPayload) => {
         if (!active) return;
-        if (result.status !== "ok") throw new Error(result.message ?? "Erro ao buscar pistas");
-        setTracks(result.tracks);
+        if (result.status !== "ok") throw new Error("Erro ao buscar temporadas/pistas");
+        setList(result);
+        if (season === "auto" && result.selectedSeasonId) setSeason(result.selectedSeasonId);
+        setTrackId((current) => (current !== null && result.tracks.some((track) => track.trackId === current) ? current : result.tracks[0]?.trackId ?? null));
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
-      .finally(() => active && setLoadingTracks(false));
+      .finally(() => active && setLoadingList(false));
     return () => { active = false; };
-  }, []);
-
-  const tracksForCategory = (tracks ?? []).filter((track) => track.categories.some((entry) => entry.category === category));
-
-  // Whenever the category changes (or the track list first loads), make sure the selected track is
-  // actually valid for that category -- otherwise fall back to the first eligible one, or none.
-  // Season resets to "auto" too: a different track/category has its own season coverage.
-  useEffect(() => {
-    if (!tracks) return;
-    setSeason("auto");
-    if (trackId !== null && tracksForCategory.some((track) => track.trackId === trackId)) return;
-    setTrackId(tracksForCategory[0]?.trackId ?? null);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tracks, category]);
+  }, [category, season]);
 
   useEffect(() => {
     if (trackId === null) return;
@@ -156,41 +153,39 @@ export default function CarComparison() {
     return () => { active = false; };
   }, [trackId, category, season]);
 
-  if (loadingTracks) return <div className="telemetry-state">Buscando pistas onde você testou mais de um carro...</div>;
+  if (loadingList && !list) return <div className="telemetry-state">Buscando temporadas e pistas onde você testou mais de um carro...</div>;
   if (error) return <div className="telemetry-state error">{error}</div>;
 
   const maxDelta = Math.max(0.05, ...(data?.cars.map((car) => car.deltaSeconds) ?? [0]));
-  const activeSeasonValue = season !== "auto" ? season : data?.selectedSeasonId ?? "all";
   const differences = data?.cars.length ? biggestUsageDifferences(data.cars, Math.max(...data.cars.map((car) => car.trackUsageSegments?.length ?? 0))) : [];
 
   return (
     <div className="car-comparison">
       <div className="race-debrief-category-toggle">
         {CATEGORIES.map((item) => (
-          <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)}>{CATEGORY_LABEL[item]}</button>
+          <button key={item} className={category === item ? "active" : ""} onClick={() => { setCategory(item); setSeason("auto"); }}>{CATEGORY_LABEL[item]}</button>
         ))}
       </div>
 
-      {!tracksForCategory.length ? (
-        <div className="telemetry-state">Nenhuma pista com voltas válidas de dois ou mais carros de {CATEGORY_LABEL[category]} ainda. Isso aparece aqui assim que você tiver sessões de test drive ou practice com carros diferentes dessa categoria na mesma pista.</div>
+      {!list?.tracks.length ? (
+        <div className="telemetry-state">Nenhuma pista com voltas válidas de dois ou mais carros de {CATEGORY_LABEL[category]} ainda{season !== "all" ? " nessa temporada" : ""}. {season !== "all" && <button type="button" className="retry-button" onClick={() => setSeason("all")}>Ver todas as temporadas</button>}</div>
       ) : (
         <>
           <div className="car-compare-picker">
             <span className="section-kicker">COMPARAR CARROS NA MESMA PISTA</span>
-            {!!data?.seasons?.length && (
+            {!!list?.seasons.length && (
               <>
-                <select value={activeSeasonValue} onChange={(event) => setSeason(event.target.value)}>
+                <select value={season === "auto" ? list.selectedSeasonId ?? "all" : season} onChange={(event) => setSeason(event.target.value)}>
                   <option value="all">Todas as temporadas</option>
-                  {data.seasons.map((item) => <option key={item.seasonId} value={item.seasonId}>{item.seasonName}</option>)}
+                  {list.seasons.map((item) => <option key={item.seasonId} value={item.seasonId}>{item.seasonName}</option>)}
                 </select>
                 <p className="comparison-note">BoP muda entre temporadas — por padrão só a mais recente com dados entra na comparação. Troque acima se quiser ver outra ou juntar todas.</p>
               </>
             )}
             <select value={trackId ?? ""} onChange={(event) => setTrackId(Number(event.target.value))}>
-              {tracksForCategory.map((track) => {
-                const entry = track.categories.find((item) => item.category === category)!;
-                return <option key={track.trackId} value={track.trackId}>{track.trackName}{track.trackVariant ? ` (${track.trackVariant})` : ""} — {entry.carCount} carros</option>;
-              })}
+              {list.tracks.map((track) => (
+                <option key={track.trackId} value={track.trackId}>{track.trackName}{track.trackVariant ? ` (${track.trackVariant})` : ""} — {track.carCount} carros</option>
+              ))}
             </select>
           </div>
 

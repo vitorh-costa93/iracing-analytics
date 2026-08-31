@@ -369,50 +369,63 @@ async function fetchAllDriverLaps(driverId: string) {
   for (let offset = 0; ; offset += LAPS_PAGE_SIZE) {
     const { data, error } = await supabaseAdmin
       .from("laps")
-      .select("car_id,track_id,clean,lap_time,off_track,pit_lane,pit_in,pit_out,incomplete,missing")
+      .select("car_id,track_id,clean,lap_time,off_track,pit_lane,pit_in,pit_out,incomplete,missing,session_id,sessions(season_id,season_name,started_at)")
       .eq("driver_id", driverId)
       .not("car_id", "is", null).not("track_id", "is", null)
       .range(offset, offset + LAPS_PAGE_SIZE - 1);
     if (error) throw error;
-    rows.push(...((data ?? []) as LapRow[]));
+    rows.push(...((data ?? []) as unknown as LapRow[]));
     if (!data || data.length < LAPS_PAGE_SIZE) break;
   }
   return rows;
 }
 
-async function listEligibleTracks(driverId: string) {
+/** Season is now the PRIMARY filter (29/08/2026: "o filtro prioritário é o primeiro... eu devo ter
+ * todas as season disponíveis, depois atualiza o filtro de pistas com o que eu preenchi primeiro" --
+ * the season picker was wrongly scoped to whichever track happened to be selected, when it should be
+ * the other way around). Seasons are listed for this CATEGORY across every track the driver has ever
+ * touched, independent of track; the track list is then scoped to whichever season is selected (or
+ * every season, for "todas as temporadas"). BoP changes between seasons (see buildComparison's own
+ * comment), so the default is still the single most recent season with data for this category, not
+ * all-time -- just computed globally instead of per-track now. */
+async function listSeasonsAndTracks(driverId: string, category: Category, seasonParam: string | null) {
   const rows = await fetchAllDriverLaps(driverId);
+  const roughlyValid = rows.filter(isValidLap);
+  const allCarIds = [...new Set(roughlyValid.map((lap) => lap.car_id as number))];
+  const categoryByCar = await resolveCarCategories(allCarIds);
+  const categoryLaps = roughlyValid.filter((lap) => categoryByCar.get(lap.car_id as number) === category);
+
+  const seasonInfo = new Map<string, { seasonName: string; latestStartedAt: string; lapCount: number }>();
+  for (const lap of categoryLaps) {
+    const seasonId = lap.sessions?.season_id;
+    if (!seasonId) continue;
+    const existing = seasonInfo.get(seasonId);
+    const startedAt = lap.sessions?.started_at ?? "";
+    if (existing) {
+      existing.lapCount += 1;
+      if (startedAt > existing.latestStartedAt) existing.latestStartedAt = startedAt;
+    } else {
+      seasonInfo.set(seasonId, { seasonName: lap.sessions?.season_name ?? seasonId, latestStartedAt: startedAt, lapCount: 1 });
+    }
+  }
+  const seasons = [...seasonInfo.entries()]
+    .map(([seasonId, info]) => ({ seasonId, seasonName: info.seasonName, lapCount: info.lapCount, latestStartedAt: info.latestStartedAt }))
+    .sort((a, b) => b.latestStartedAt.localeCompare(a.latestStartedAt));
+  const selectedSeasonId = seasonParam === "all" ? null : seasonParam ?? seasons[0]?.seasonId ?? null;
+
+  const scopedLaps = selectedSeasonId ? categoryLaps.filter((lap) => lap.sessions?.season_id === selectedSeasonId) : categoryLaps;
 
   const byTrack = new Map<number, Set<number>>();
-  for (const lap of rows) {
-    if (!isValidLap(lap)) continue;
+  for (const lap of scopedLaps) {
     const trackId = lap.track_id as number, carId = lap.car_id as number;
     if (!byTrack.has(trackId)) byTrack.set(trackId, new Set());
     byTrack.get(trackId)!.add(carId);
   }
-  if (!byTrack.size) return [];
+  const eligible = [...byTrack.entries()].filter(([, cars]) => cars.size >= 2);
+  if (!eligible.length) return { seasons, selectedSeasonId, tracks: [] };
 
-  const allCarIds = [...new Set([...byTrack.values()].flatMap((set) => [...set]))];
-  const categoryByCar = await resolveCarCategories(allCarIds);
-
-  const perTrackCategoryCars = new Map<number, Partial<Record<Category, number[]>>>();
-  for (const [trackId, cars] of byTrack) {
-    const byCategory: Partial<Record<Category, number[]>> = {};
-    for (const carId of cars) {
-      const category = categoryByCar.get(carId);
-      if (!category) continue;
-      (byCategory[category] ??= []).push(carId);
-    }
-    const eligibleCategories: Partial<Record<Category, number[]>> = {};
-    for (const category of CATEGORIES) {
-      if ((byCategory[category]?.length ?? 0) >= 2) eligibleCategories[category] = byCategory[category];
-    }
-    if (Object.keys(eligibleCategories).length) perTrackCategoryCars.set(trackId, eligibleCategories);
-  }
-  if (!perTrackCategoryCars.size) return [];
-
-  const trackIds = [...perTrackCategoryCars.keys()];
-  const carIds = [...new Set([...perTrackCategoryCars.values()].flatMap((byCategory) => Object.values(byCategory).flat()))];
+  const trackIds = eligible.map(([trackId]) => trackId);
+  const carIds = [...new Set(eligible.flatMap(([, cars]) => [...cars]))];
   const [tracksResult, carsResult] = await Promise.all([
     supabaseAdmin.from("tracks").select("id,name,variant").in("id", trackIds),
     supabaseAdmin.from("cars").select("id,name").in("id", carIds),
@@ -420,19 +433,18 @@ async function listEligibleTracks(driverId: string) {
   const trackNames = new Map((tracksResult.data ?? []).map((row) => [row.id, row]));
   const carNames = new Map((carsResult.data ?? []).map((row) => [row.id, row.name as string]));
 
-  return [...perTrackCategoryCars.entries()].map(([trackId, byCategory]) => {
+  const tracks = eligible.map(([trackId, cars]) => {
     const track = trackNames.get(trackId);
     return {
       trackId,
       trackName: track?.name ?? `Pista ${trackId}`,
       trackVariant: track?.variant ?? null,
-      categories: CATEGORIES.filter((category) => byCategory[category]).map((category) => ({
-        category, label: CATEGORY_LABEL[category],
-        carCount: byCategory[category]!.length,
-        carNames: byCategory[category]!.map((id) => carNames.get(id) ?? `Carro ${id}`).sort((a, b) => a.localeCompare(b, "pt-BR")),
-      })),
+      carCount: cars.size,
+      carNames: [...cars].map((id) => carNames.get(id) ?? `Carro ${id}`).sort((a, b) => a.localeCompare(b, "pt-BR")),
     };
   }).sort((a, b) => a.trackName.localeCompare(b.trackName, "pt-BR"));
+
+  return { seasons, selectedSeasonId, tracks };
 }
 
 async function buildComparison(driverId: string, trackId: number, category: Category, seasonParam: string | null) {
@@ -551,16 +563,17 @@ export async function GET(request: Request) {
     if (!driver) throw new Error("Piloto não encontrado");
 
     const params = new URL(request.url).searchParams;
-    const trackIdParam = params.get("trackId");
-    if (!trackIdParam) {
-      const tracks = await listEligibleTracks(driver.id);
-      return NextResponse.json({ status: "ok", tracks });
-    }
-    const trackId = Number(trackIdParam);
-    if (!Number.isFinite(trackId)) return NextResponse.json({ status: "error", message: "trackId inválido" }, { status: 400 });
     const categoryParam = params.get("category");
     if (categoryParam !== "gt3" && categoryParam !== "gtp") return NextResponse.json({ status: "error", message: "category deve ser gt3 ou gtp" }, { status: 400 });
     const seasonParam = params.get("season"); // null = auto (latest season); "all" = no season filter; otherwise a specific season_id
+
+    const trackIdParam = params.get("trackId");
+    if (!trackIdParam) {
+      const result = await listSeasonsAndTracks(driver.id, categoryParam, seasonParam);
+      return NextResponse.json({ status: "ok", ...result });
+    }
+    const trackId = Number(trackIdParam);
+    if (!Number.isFinite(trackId)) return NextResponse.json({ status: "error", message: "trackId inválido" }, { status: 400 });
     const result = await buildComparison(driver.id, trackId, categoryParam, seasonParam);
     return NextResponse.json(result);
   } catch (error) {
