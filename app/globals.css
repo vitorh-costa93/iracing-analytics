@@ -526,15 +526,6 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .car-compare-row-value { font-family: var(--mono); font-size: 11px; color: var(--text); text-align: right; white-space: nowrap; }
 @media (max-width: 640px) { .car-compare-row { grid-template-columns: 96px 1fr 110px; gap: 6px; } }
 
-/* Per-car blocks for Consistência/Track Usage (29/08/2026: only the ranking keeps the horizontal-bar
- * idiom now; these two reuse other sub-tabs' own styles -- race-debrief-channel-bars for consistency,
- * a small heat strip for track usage -- laid out one card per car instead of one bar per car). */
-.car-compare-cars-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
-.car-compare-car-block { padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); }
-.car-compare-car-block h5 { margin: 0 0 8px; font-size: 13px; font-family: var(--display); }
-.track-usage-strip { display: grid; grid-template-columns: repeat(10, 1fr); gap: 2px; height: 22px; margin-bottom: 6px; }
-.track-usage-cell { border-radius: 2px; background: var(--border); }
-
 .race-debrief-corner-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .race-debrief-corner-card { padding: 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
 .race-debrief-corner-card h5 { margin: 0 0 10px; font-size: 15px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -624,9 +615,19 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .sector-curve-label { fill: var(--soft); font-family: var(--mono); font-size: 8px; }
 
 /* Row 1 (29/08/2026 layout: "Primeira linha de gráficos: melhor volta; mapa da pista"): ranking bars
- * and the compact fastest-per-corner map side by side, not stacked full-width blocks. */
-.car-compare-row1 { display: grid; grid-template-columns: minmax(280px, 1.3fr) minmax(260px, 1fr); gap: 14px; align-items: start; }
+ * and the compact fastest-per-corner map side by side, not stacked full-width blocks. align-items
+ * stretch (31/08/2026, was "start") so the left column matches the map's full height instead of
+ * leaving a gap below it -- "já que o mapa da direita ocupa mais espaço vertical, o gráfico de delta
+ * de tempo e o texto com o insight podiam dividir toda a altura". */
+.car-compare-row1 { display: grid; grid-template-columns: minmax(280px, 1.3fr) minmax(260px, 1fr); gap: 14px; align-items: stretch; }
 .car-compare-row1 .race-debrief-chart-block { margin: 0; }
+/* Left column splits into two equal halves -- ranking bars on top, engineer insight on the bottom --
+ * stretched to match the taller map column on the right instead of the insight trailing right after
+ * the bars with empty space below it. */
+.car-compare-row1-left { display: flex; flex-direction: column; gap: 14px; }
+.car-compare-row1-left > .race-debrief-chart-block { flex: 1 1 0; display: flex; flex-direction: column; }
+.car-compare-insight-block { justify-content: center; }
+.car-compare-insight-block .car-compare-narrative { flex: 1; display: flex; align-items: center; }
 
 /* Per-corner deep dive (29/08/2026: "um deep-dive em cada curva... os gráficos de inputs um do lado
  * do outro... esse minimapa focado naquela curva irá mostrar as linhas que cada carro fez"). */
@@ -637,33 +638,32 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .corner-deep-card { padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
 .corner-deep-card h5 { margin: 0 0 8px; font-size: 14px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .corner-deep-card h5 span { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; white-space: nowrap; }
-/* Wraps just the h5 so the whole title (not the narrative/charts below it) opens the focused popup
- * (29/08/2026: "ao clicar em cada curva, tenho o mesmo gráfico disponível para analisar"). */
-.corner-deep-card-open { display: block; width: 100%; padding: 0; margin: 0; background: none; border: 0; text-align: left; cursor: pointer; }
+/* The whole card is now the open-popup button (31/08/2026: "os inputs e o traçado só aparecem quando
+ * eu clico em cada curva" -- inputs/map moved out of the inline card entirely, into
+ * CornerFocusedPopup, so there's no narrative/charts split left to carve the click target down to
+ * just the title). .corner-deep-card supplies the visual card chrome (border/background/padding);
+ * this only adds the button resets/behavior on top of it -- must not redeclare border/background/
+ * padding or it'd fight that rule for the same element. */
+.corner-deep-card-open { display: block; width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
 .corner-deep-card-open:hover h5 { text-decoration: underline; text-underline-offset: 3px; }
 /* Live throttle/brake bars in the focused-chart popup's gauge column (29/08/2026, per the iRacing
  * widget reference image). */
 .pedal-bar-track { fill: var(--border); }
 .pedal-bar-fill.throttle { fill: var(--green); }
 .pedal-bar-fill.brake { fill: var(--red); }
-.corner-deep-body { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(220px, 1.3fr); gap: 10px; align-items: start; }
 .corner-deep-map { background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
-.corner-deep-charts { display: grid; gap: 6px; }
-.corner-deep-charts > div { display: grid; gap: 2px; }
-.corner-deep-car-label { font-family: var(--mono); font-size: 10px; font-weight: 700; }
-.corner-deep-chart { width: 100%; height: 90px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
-.corner-deep-chart-empty { height: 90px; display: flex; align-items: center; justify-content: center; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; color: var(--muted); font-size: 10px; }
 .corner-deep-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-family: var(--mono); font-size: 11px; }
 .corner-deep-narrative { margin: 0 0 10px; color: var(--text); font-size: 12px; line-height: 1.5; }
-/* Engineer's-read paragraph below the ranking bars (29/08/2026: "quero que ali seja de fato um
- * engenheiro me aconselhando") -- a highlighted callout, not plain body text, since it's the one
- * thing on this row meant to be read as advice rather than a number. */
-.car-compare-narrative { margin: 12px 0 0; padding: 10px 12px; background: var(--brand-pale); border: 1px solid var(--brand-dark); border-radius: 3px; color: var(--text); font-size: 12px; line-height: 1.55; }
+/* Engineer's-read paragraph, now its own bottom-half block beside the map (31/08/2026: "o gráfico de
+ * delta de tempo e o texto com o insight podiam dividir toda a altura, sendo cada um ocupando metade
+ * da altura do mapa") -- a highlighted callout, not plain body text, since it's the one thing on this
+ * row meant to be read as advice rather than a number. */
+.car-compare-narrative { margin: 0; padding: 10px 12px; background: var(--brand-pale); border: 1px solid var(--brand-dark); border-radius: 3px; color: var(--text); font-size: 12px; line-height: 1.55; }
 
 @media (max-width: 720px) {
   .sector-row { grid-template-columns: 1fr; gap: 4px; }
   .sector-times { text-align: left; }
   .sector-map-layout, .sector-detail { grid-template-columns: 1fr; }
   .sector-detail div { text-align: left; }
-  .car-compare-row1, .corner-deep-body { grid-template-columns: 1fr; }
+  .car-compare-row1 { grid-template-columns: 1fr; }
 }
