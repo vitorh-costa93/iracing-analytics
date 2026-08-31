@@ -512,7 +512,7 @@ function offsetGpsPoint(prevLat: number, prevLon: number, curLat: number, curLon
   return { lat: curLat + dyMeters / 110540, lon: curLon + dxMeters / (111320 * Math.cos(latRad)) };
 }
 
-function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDistance, trackId }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; lineDistance?: { distance: number; meters: number }[]; trackId?: number | null }) {
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDistance, trackId, focusRequest }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; lineDistance?: { distance: number; meters: number }[]; trackId?: number | null; focusRequest?: { distance: number; nonce: number } | null }) {
   // Own zoom state per map instance (sticky map, hover panel map, and popup map each zoom
   // independently) -- must be declared before the early return below, ahead of any other hook.
   // zoomCenter is in viewBox units (0-300, 0-200): where the zoom is anchored. Garage61 lets you
@@ -520,6 +520,38 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   // that point before zooming, instead of always scaling around the fixed (150,100) middle.
   const [zoomLevel, setZoomLevel] = useState(1);
   const [zoomCenter, setZoomCenter] = useState({ x: 150, y: 100 });
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  // Tracks the last focusRequest.nonce actually applied, so the render-time zoomCenter/zoomLevel
+  // adjustment below (see its own comment) fires once per click on the input chart, not every render.
+  const appliedFocusNonce = useRef<number | null>(null);
+  // Scroll-to-zoom-at-cursor (31/08/2026: "quando o mouse estiver em cima do mapa, eu possa usar o
+  // scroll para aproximar em um trecho específico") -- React's onWheel is passive by default, so
+  // preventDefault() inside it is silently ignored (and warns); a native listener with passive:false
+  // is the only way to actually stop the page from scrolling while zooming the map under the cursor.
+  // Only wired for the full/manual-zoom map (zoom prop falsy), same gate as click-to-recenter below --
+  // the hover-panel and popup maps already auto-fit their own narrow window.
+  useEffect(() => {
+    if (zoom) return;
+    const svg = svgRef.current;
+    if (!svg) return;
+    function handleWheel(event: WheelEvent) {
+      event.preventDefault();
+      const ctm = svg!.getScreenCTM();
+      if (!ctm) return;
+      const point = svg!.createSVGPoint();
+      point.x = event.clientX; point.y = event.clientY;
+      const local = point.matrixTransform(ctm.inverse());
+      setZoomCenter({ x: local.x, y: local.y });
+      const factor = event.deltaY < 0 ? 1.25 : 1 / 1.25;
+      setZoomLevel((level) => {
+        const next = Math.max(1, Math.min(6, level * factor));
+        if (next === 1) setZoomCenter({ x: 150, y: 100 });
+        return next;
+      });
+    }
+    svg.addEventListener("wheel", handleWheel, { passive: false });
+    return () => svg.removeEventListener("wheel", handleWheel);
+  }, [zoom]);
   // Fetched once per trackId (see lib/track-boundaries.ts for why this is a runtime fetch, not a
   // bundled import) and shared across all three TrackMap instances on the page via that module's own
   // cache -- only the first one triggers a network request, the rest resolve from the same promise.
@@ -584,8 +616,22 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   const trackWidthPx = Math.max(6, Math.min(40, projectGps.metersToPixels(12)));
   const hoverOwn = hoverDistance !== null && hoverDistance !== undefined ? nearestGpsPoint(gps, hoverDistance) : null;
   const hoverRef = hoverDistance !== null && hoverDistance !== undefined && refGps.length ? nearestGpsPoint(refGps, hoverDistance) : null;
+  // Click-on-input-chart-to-zoom-the-map (31/08/2026: "eu possa clicar nos gráficos de inputs em uma
+  // seção específica e o mapa dá zoom naquela região") -- adjusting state during render, guarded by
+  // the nonce ref above, is React's own supported pattern for "derive state from a prop that just
+  // changed" without an extra effect/render round-trip. project() is only available here (after the
+  // early-return above), which is why this can't live in the wheel-zoom useEffect near the top.
+  if (!zoom && focusRequest && focusRequest.nonce !== appliedFocusNonce.current) {
+    appliedFocusNonce.current = focusRequest.nonce;
+    const target = nearestGpsPoint(gps, focusRequest.distance);
+    if (target) {
+      const [x, y] = project(target).split(",").map(Number);
+      setZoomCenter({ x, y });
+      setZoomLevel(3);
+    }
+  }
   return <div className="track-map-zoom-wrap">
-    <svg className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado"
+    <svg ref={svgRef} className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado"
       onClick={!zoom ? (event) => {
         // Click-to-recenter: like Garage61, zoom anchors wherever you click, not just the map's
         // fixed center. getScreenCTM().inverse() converts the click's screen position into viewBox
@@ -617,9 +663,13 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
           </>}
         <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
         {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
-        {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r="4" className="track-marker" />}
-        {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r="5" className="track-marker-ref" />}
-        {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r="5" className="track-marker" />}
+        {/* r and strokeWidth divided by zoomLevel (31/08/2026: "a bolinha está muito grande") --
+         * these circles sit inside the same scaled <g> as everything else, so without this they
+         * visually balloon in lockstep with the zoom (a r=5 marker at zoomLevel=6 renders 6x too
+         * big on screen); dividing by zoomLevel keeps their SCREEN size constant at any zoom. */}
+        {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r={3 / zoomLevel} style={{ strokeWidth: 3 / zoomLevel }} className="track-marker" />}
+        {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r={3.5 / zoomLevel} style={{ strokeWidth: 3 / zoomLevel }} className="track-marker-ref" />}
+        {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r={3.5 / zoomLevel} style={{ strokeWidth: 3 / zoomLevel }} className="track-marker" />}
       </g>
     </svg>
     {/* Manual zoom only makes sense on the FULL-track map (zoom prop falsy). The hover-panel and
@@ -834,6 +884,9 @@ export default function ActiveWeekTelemetry() {
   const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null);
   const [focusedInsight, setFocusedInsight] = useState<Comparison["opportunities"][number] | null>(null);
   const [popupHoverDistance, setPopupHoverDistance] = useState<number | null>(null);
+  // Click-on-input-chart-to-zoom-the-sticky-map (31/08/2026): a nonce alongside the distance so
+  // clicking the exact same spot twice in a row still re-triggers TrackMap's focus effect.
+  const [chartFocus, setChartFocus] = useState<{ distance: number; nonce: number } | null>(null);
   const insightsRef = useRef<HTMLDivElement | null>(null);
   const popupRef = useRef<HTMLDivElement | null>(null);
 
@@ -1042,13 +1095,22 @@ export default function ActiveWeekTelemetry() {
                * lap, own+reference lines at their real GPS positions, manual zoom/pan instead of
                * auto-narrowing on hover — the hover-panel's own small map (below) already covers
                * the "zoom to where I'm hovering" job, so this one's job is the overview. */}
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs ou clique em um insight para localizar o ponto no mapa.</p></aside>
+              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} focusRequest={chartFocus} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs para localizar o ponto no mapa, clique para dar zoom ali, ou role o mouse sobre o mapa para aproximar/afastar.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
                 aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."
                 onMouseLeave={() => setHoveredDistance(null)} onMouseMove={(event) => {
                   const rect = event.currentTarget.getBoundingClientRect();
                   setHoveredDistance(Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100)));
+                }}
+                // Click a specific point in the input graphs to zoom the sticky map there (31/08/2026:
+                // "eu possa clicar nos gráficos de inputs em uma seção específica e o mapa dá zoom
+                // naquela região") -- same %-of-lap math as the hover handler above, just committed on
+                // click instead of tracked continuously.
+                onClick={(event) => {
+                  const rect = event.currentTarget.getBoundingClientRect();
+                  const distance = Math.max(0, Math.min(100, (event.clientX - rect.left) / rect.width * 100));
+                  setChartFocus({ distance, nonce: Date.now() });
                 }}
                 // Tap only (no touchmove/touch-action:none) here on purpose: this chart is forced
                 // wide on mobile (min-width below) specifically so its ten stacked channels stay
