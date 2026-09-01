@@ -335,7 +335,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 /* 31/08/2026: trimmed 340->260 alongside the popup-width increase above, to actually close out the
  * remaining vertical overflow that forced a scrollbar on a typical viewport (confirmed live: 906px-
  * wide popup still ~113px taller than 88vh at 914px viewport height before this cut). */
-.insight-popup-map .track-map { height: 195px; }
+.insight-popup-map .track-map, .insight-popup-map .track-map-zoom-wrap { height: 195px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
 .focused-chart { width: 100%; min-height: 150px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
@@ -462,10 +462,10 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .ranking-split { grid-template-columns: 1fr; }
   .ranking-panel { min-height: auto; }
   .rating-chart-grid, .setup-grid, .official-results-grid { grid-template-columns: 1fr; }
-  .telemetry-workspace, .corner-mini-row, .sector-map-layout { grid-template-columns: 1fr; }
+  .telemetry-workspace, .corner-mini-row, .sector-map-layout, .race-debrief-corner-card { grid-template-columns: 1fr; }
   .telemetry-map-sticky, .interactive-chart, .telemetry-hover-panel { grid-column: 1; grid-row: auto; position: static; }
   .telemetry-map-sticky .track-map-zoom-wrap, .telemetry-map-sticky .track-map { height: auto; aspect-ratio: 3 / 2; }
-  .corner-mini-map { height: 220px; }
+  .corner-card-map-col .track-map-zoom-wrap { height: 220px; flex: none; min-height: 0; }
   .setup-diff article { grid-template-columns: 1fr; gap: 10px; }
 }
 
@@ -559,30 +559,43 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .car-compare-row-value { grid-area: value; font-family: var(--mono); font-size: 11px; color: var(--text); text-align: right; white-space: nowrap; }
 
 .race-debrief-corner-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
-.race-debrief-corner-card { padding: 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
+/* 01/09/2026: "o certo é o mapa ficar do tamanho do quadrado amarelo, não do vermelho... o fim do
+ * quadrado do minimapa bate com o fim das caixas de texto dos cards de consistência" -- the map
+ * (corner-card-map-col) is now a grid sibling of the rest of the card's content (corner-card-body),
+ * not a same-height row-mate of the two small charts inside corner-mini-row. align-items:stretch on
+ * this grid makes BOTH columns match the TALLER one's height automatically -- body's natural content
+ * height (title + charts + narrative + chips), whatever that turns out to be per card -- so the map
+ * always reaches exactly as far down as the text below it, with no fixed height to keep in sync. */
+.race-debrief-corner-card { display: grid; grid-template-columns: 1fr minmax(200px, 26%); gap: 12px; align-items: stretch; padding: 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
+.corner-card-body { display: flex; flex-direction: column; min-width: 0; }
+.corner-card-map-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .race-debrief-corner-card h5 { margin: 0 0 10px; font-size: 15px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .race-debrief-corner-card h5 span { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; white-space: nowrap; }
 /* Consistency chart and best-braking chart used to be one combined SVG sharing this row with the
  * track map; split into their own columns (29/08/2026, "separe em dois gráficos a parte da
  * consistência e a parte da melhor freada... dá pra aproveitar a largura que tem ali") so each
- * fills its own share of the row's width instead of the two being crammed into one chart. */
-.corner-mini-row { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(200px, 26%); gap: 12px; align-items: stretch; margin-bottom: 8px; }
+ * fills its own share of the row's width instead of the two being crammed into one chart. The map
+ * itself moved OUT of this row (01/09/2026, see .race-debrief-corner-card above) so it's now just
+ * the two fixed-height mini-charts. */
+.corner-mini-row { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr); gap: 12px; align-items: stretch; margin-bottom: 8px; }
 .corner-mini-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .corner-mini-col-label { font-family: var(--mono); font-size: 10px; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
 .corner-mini-empty { fill: var(--muted); font-family: var(--mono); font-size: 9px; }
 .corner-mini-chart { width: 100%; height: 150px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; cursor: crosshair; touch-action: none; }
-/* flex:1 here was a no-op (31/08/2026 regression: "aumentar o minimapa criou esse espaço enorme entre
- * os inputs e o texto, ele não deve existir") -- flex properties only affect a flex ITEM, and this
- * svg's actual PARENT (.corner-mini-col) is the flex container, so flex:1 here did nothing; the map
- * was actually rendering at its own aspect-ratio-driven auto height (wider column = taller map),
- * stretching the whole grid row well past the two fixed-150px chart columns beside it and leaving
- * THEM with unfilled space below their own content once the row grew to match. Fixed height, same
- * 150px as .corner-mini-chart, is what actually keeps all three columns (and the row itself) the same
- * height -- still taller than this map's original 112px (that was the actual fix for "ocupar mais
- * espaço, permitir mais zoom"), just no longer disproportionately so. Uses the shared
- * components/TrackMap.tsx now (real OSM boundary), not its own .corner-mini-map-outline/-marker
- * classes -- those are gone, see that component's own track-outline/track-compare-line. */
-.corner-mini-map { width: 100%; height: 150px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
+/* flex:1 here used to be a no-op (31/08/2026 regression) because the map's actual PARENT
+ * (.corner-mini-col) sat INSIDE corner-mini-row, a row sized by the two fixed-150px charts beside
+ * it -- flex:1 had no taller container to grow into. Now that corner-card-map-col is its own grid
+ * column (see .race-debrief-corner-card), flex:1 finally does real work: the column is stretched to
+ * the card's full height by CSS grid, and flex:1 lets this map fill that column top-to-bottom. Uses
+ * the shared components/TrackMap.tsx now (real OSM boundary), not its own
+ * .corner-mini-map-outline/-marker classes -- those are gone, see that component's own
+ * track-outline/track-compare-line. */
+.corner-mini-map { width: 100%; height: 100%; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
+/* Shared TrackMap.tsx now wraps its <svg> in its own .track-map-zoom-wrap div (01/09/2026, added
+ * for scroll-to-zoom) -- the svg itself is no longer corner-card-map-col's direct flex child, so
+ * flex:1 has to live on the wrap div for the same "stretch to the full card height" effect that
+ * used to sit on .corner-mini-map directly (see .race-debrief-corner-card's own comment above). */
+.corner-card-map-col .track-map-zoom-wrap { flex: 1; min-height: 150px; }
 .corner-mini-axis { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 2 2; }
 .corner-mini-band { opacity: .2; }
 .corner-mini-band.brake { fill: var(--red); }

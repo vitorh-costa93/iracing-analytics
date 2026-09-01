@@ -297,33 +297,43 @@ export default function RaceDebrief() {
               <div className="race-debrief-corner-grid">
                 {data.corners.map((corner, index) => (
                   <div className="race-debrief-corner-card" key={corner.cornerNumber}>
-                    <h5>{corner.name ?? `Curva ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
-                    <div className="corner-mini-row">
-                      <div className="corner-mini-col">
-                        <span className="corner-mini-col-label">Consistência</span>
-                        <ConsistencyBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
-                      </div>
-                      <div className="corner-mini-col">
-                        <span className="corner-mini-col-label">Melhor freada</span>
-                        <BestBrakingChart idealLine={corner.idealLine} brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
-                      </div>
-                      {data.trackOutline && (
+                    <div className="corner-card-body">
+                      <h5>{corner.name ?? `Curva ${corner.cornerNumber}`} <span>~{corner.distancePct}% da volta</span></h5>
+                      <div className="corner-mini-row">
                         <div className="corner-mini-col">
-                          <span className="corner-mini-col-label">Traçado</span>
-                          <CornerTrackMap trackId={data.session?.trackId ?? null} outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />
+                          <span className="corner-mini-col-label">Consistência</span>
+                          <ConsistencyBandChart brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
                         </div>
+                        <div className="corner-mini-col">
+                          <span className="corner-mini-col-label">Melhor freada</span>
+                          <BestBrakingChart idealLine={corner.idealLine} brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
+                        </div>
+                      </div>
+                      {corner.idealLine && corner.idealLine.gainSeconds > 0.03 && (
+                        <p className="corner-mini-legend">Curva &quot;Melhor freada&quot; é sua execução mais rápida aqui — volta {corner.idealLine.lapNumber ?? "?"}</p>
                       )}
+                      {data.cornerNarratives?.[index] && <p className="corner-narrative">{data.cornerNarratives[index].replace(/^.*?\(~\d+% da volta\):\s*/, "")}</p>}
+                      <div className="corner-metric-grid">
+                        {corner.braking && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>Ponto de freada: {corner.braking.consistency}</span>}
+                        {corner.brakeShape && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.brakeShape.consistency] ?? ""}`}>Força no freio: {corner.brakeShape.consistency}</span>}
+                        {corner.apexSpeed && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.apexSpeed.consistency] ?? ""}`}>Velocidade na curva: {corner.apexSpeed.consistency}</span>}
+                        {corner.throttleShape && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.throttleShape.consistency] ?? ""}`}>Retomada do acelerador: {corner.throttleShape.consistency}</span>}
+                      </div>
                     </div>
-                    {corner.idealLine && corner.idealLine.gainSeconds > 0.03 && (
-                      <p className="corner-mini-legend">Curva &quot;Melhor freada&quot; é sua execução mais rápida aqui — volta {corner.idealLine.lapNumber ?? "?"}</p>
+                    {data.trackOutline && (
+                      /* 01/09/2026: "o certo é o mapa ficar do tamanho do quadrado amarelo, não do vermelho...
+                         o fim do quadrado do minimapa bate com o fim das caixas de texto dos cards de
+                         consistência" -- the map used to sit INSIDE corner-mini-row, capped at the same fixed
+                         150px as the two small consistency charts next to it, leaving a big gap below it once
+                         the narrative/chips text (which sits below the whole row, not inside it) made the card
+                         taller. Moving it out to be a sibling of corner-card-body lets the card's own two-column
+                         grid (see .race-debrief-corner-card in globals.css) stretch it to the FULL card height
+                         -- title through the last chip -- via align-items:stretch + flex:1 on the map itself. */
+                      <div className="corner-mini-col corner-card-map-col">
+                        <span className="corner-mini-col-label">Traçado</span>
+                        <CornerTrackMap trackId={data.session?.trackId ?? null} outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />
+                      </div>
                     )}
-                    {data.cornerNarratives?.[index] && <p className="corner-narrative">{data.cornerNarratives[index].replace(/^.*?\(~\d+% da volta\):\s*/, "")}</p>}
-                    <div className="corner-metric-grid">
-                      {corner.braking && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.braking.consistency] ?? ""}`}>Ponto de freada: {corner.braking.consistency}</span>}
-                      {corner.brakeShape && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.brakeShape.consistency] ?? ""}`}>Força no freio: {corner.brakeShape.consistency}</span>}
-                      {corner.apexSpeed && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.apexSpeed.consistency] ?? ""}`}>Velocidade na curva: {corner.apexSpeed.consistency}</span>}
-                      {corner.throttleShape && <span className={`corner-chip ${CONSISTENCY_CLASS[corner.throttleShape.consistency] ?? ""}`}>Retomada do acelerador: {corner.throttleShape.consistency}</span>}
-                    </div>
                   </div>
                 ))}
               </div>

@@ -195,15 +195,32 @@ function cornerTrackUsage(points: TracePoint[], boundary: BoundaryEdge[] | null,
  * a race engineer would flag them, not just restate the numbers already on screen. Deliberately picks
  * at most a few of these (one per axis) rather than dumping every metric as a sentence. */
 type NarrativeCar = {
-  carId: number; carName: string;
+  carId: number; carName: string; bestLapSeconds: number;
   lapTimeConsistency: { stddev: number; label: string } | null;
   inputConsistency: { overall: { score: number; label: string }; channels: { channel: string; name: string; score: number; label: string }[] } | null;
   trackUsage: { avgPct: number; maxPct: number } | null;
 };
-type NarrativeSector = { winnerCarId: number | null };
+type NarrativeSector = { name: string | null; cornerNumber: number; winnerCarId: number | null; times: { carId: number; seconds: number; deltaSeconds: number }[] };
+
+// 01/09/2026: "esse insight aqui é bobeira, eu fui extremamente mais rápido de McLaren do que com os
+// outros carros, o insight deveria ser elogiando minha performance... o contra-ponto [...] se aplicaria
+// se a diferença fosse mínima. Uma diferença tão grande como essa nem vale a pena trocar de carro" --
+// 0.6% of the fastest lap (e.g. ~0.6s in a 100s lap) is the line between "close enough that a
+// consistency/track-usage tradeoff in another car is worth mentioning" and "so far ahead that framing
+// it as a tradeoff is nonsense" -- picked because it's roughly the gap that shows up between genuinely
+// competitive cars in this driver's own data, well under the multi-second McLaren gap that triggered
+// this fix.
+const LARGE_GAP_RATIO = 0.006;
+
 function buildCarComparisonNarrative(cars: NarrativeCar[], sectors: NarrativeSector[]): string | null {
   if (cars.length < 2) return null;
   const fastest = cars[0]; // cars[] is already sorted by bestLapSeconds ascending
+  const second = cars[1];
+  const gapSeconds = second.bestLapSeconds - fastest.bestLapSeconds;
+  const gapRatio = fastest.bestLapSeconds > 0 ? gapSeconds / fastest.bestLapSeconds : 0;
+
+  if (gapRatio >= LARGE_GAP_RATIO) return buildDominantCarNarrative(fastest, second, gapSeconds, sectors);
+
   const parts: string[] = [];
 
   const withConsistency = cars.filter((car) => car.lapTimeConsistency);
@@ -252,6 +269,48 @@ function buildCarComparisonNarrative(cars: NarrativeCar[], sectors: NarrativeSec
   }
 
   if (!parts.length) return `O ${fastest.carName} vem na frente em praticamente tudo aqui — mais rápido, mais consistente e sem sinal claro de que outro carro te atende melhor nessa pista.`;
+  return parts.join(" ");
+}
+
+/** The "so far ahead it's not a tradeoff" narrative: instead of contrasting the fastest car against a
+ * more-consistent-but-slower one, explain WHERE (which corners) and WHY (which input) the gap comes
+ * from, the way a race engineer would when a driver is simply on a different level with one car. */
+function buildDominantCarNarrative(fastest: NarrativeCar, second: NarrativeCar, gapSeconds: number, sectors: NarrativeSector[]): string {
+  const parts: string[] = [
+    `Você é claramente mais rápido de ${fastest.carName} — ${gapSeconds.toFixed(2)}s por volta à frente do ${second.carName}, uma diferença grande demais para valer a pena trocar de carro aqui.`,
+  ];
+
+  // Which corners carry the most of that gap: for each sector, how much time the fastest car saves
+  // over the NEXT-best other car there specifically (not just "won the corner"), so a corner where
+  // fastest barely edges someone out doesn't outrank one where it's clearly dominant.
+  const cornerGaps = sectors.map((sector) => {
+    const fastestTime = sector.times.find((time) => time.carId === fastest.carId);
+    const others = sector.times.filter((time) => time.carId !== fastest.carId);
+    if (!fastestTime || !others.length) return null;
+    const nextBest = others.reduce((best, time) => (time.seconds < best.seconds ? time : best));
+    return { name: sector.name ?? `Curva ${sector.cornerNumber}`, gain: nextBest.seconds - fastestTime.seconds };
+  }).filter((item): item is { name: string; gain: number } => item !== null && item.gain > 0.02)
+    .sort((a, b) => b.gain - a.gain)
+    .slice(0, 3);
+  if (cornerGaps.length) {
+    const cornerText = cornerGaps.map((item) => `${item.name} (+${item.gain.toFixed(2)}s)`).join(", ");
+    parts.push(`Boa parte dessa vantagem sai de curvas específicas: ${cornerText} — vale olhar o deep-dive dessas curvas abaixo pra ver exatamente o que você faz diferente ali.`);
+  }
+
+  // Which input the fastest car is most consistent in, relative to the next-best car in that same
+  // channel -- the "why": a steadier brake/throttle/steering trace usually IS the mechanism behind a
+  // gap this size, not luck or a faster car alone.
+  if (fastest.inputConsistency) {
+    const channelEdges = fastest.inputConsistency.channels.map((channel) => {
+      const secondScore = second.inputConsistency?.channels.find((other) => other.channel === channel.channel)?.score;
+      return secondScore === undefined ? null : { name: channel.name, edge: secondScore - channel.score };
+    }).filter((item): item is { name: string; edge: number } => item !== null && item.edge > 0)
+      .sort((a, b) => b.edge - a.edge);
+    if (channelEdges.length) {
+      parts.push(`Isso combina com uma consistência bem maior no ${channelEdges[0].name.toLowerCase()} com o ${fastest.carName} do que com o ${second.carName} — provavelmente a maior parte de onde vem essa vantagem.`);
+    }
+  }
+
   return parts.join(" ");
 }
 
