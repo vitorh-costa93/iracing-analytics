@@ -557,8 +557,13 @@ export async function GET() {
     // self-corrects without needing to know in advance which one lagged. Exact deltas come straight
     // from race_results (iRStats), not the view's own before/after (whose absolute values inherit
     // whatever anchor the view picked). Bounded to the last 7 days on both queries so an old data
-    // artifact elsewhere in this driver's 1330+ race career can't leak into "current".
-    const lagWindowStart = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    // artifact elsewhere in this driver's 1330+ race career can't leak into "current". 2 days (not
+    // the originally-tried 7) after finding a genuine bad data point 7 days back skewed the result:
+    // an anchor snapshot recorded roughly an hour after a real race (with a real, exact -142 delta)
+    // came back +178 higher than that race's own delta chain says it should have -- a Garage61 sync
+    // glitch or similar, not a real "hidden extra race" the way the Aug28->30 gap was. 2 days safely
+    // covers same-day race-then-resync lag (this bug's actual shape) while staying well clear of it.
+    const lagWindowStart = new Date(Date.now() - 2 * 86_400_000).toISOString();
     const [recentRatingsResult, recentRaceDeltasResult] = await Promise.all([
       supabaseAdmin.from("ratings").select("category,rating,recorded_at")
         .eq("driver_id", driver.id).eq("rating_type", "irating").gte("recorded_at", lagWindowStart),
