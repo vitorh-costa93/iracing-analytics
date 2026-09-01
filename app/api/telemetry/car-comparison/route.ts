@@ -592,10 +592,6 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
   const allCarIds = [...new Set(roughlyValid.map((lap) => lap.car_id as number))];
   const categoryByCar = await resolveCarCategories(allCarIds);
   const categoryLaps = roughlyValid.filter((lap) => categoryByCar.get(lap.car_id as number) === category);
-  if (process.env.SPA_DEBUG || true) {
-    const spaLaps = categoryLaps.filter((lap) => lap.track_id === 444);
-    console.log(`SPA_DEBUG category=${category} totalRows=${rows.length} roughlyValid=${roughlyValid.length} categoryLaps=${categoryLaps.length} spaLapsInCategory=${spaLaps.length} spaSeasons=${JSON.stringify([...new Set(spaLaps.map((l) => l.sessions?.season_id))])}`);
-  }
 
   const seasonInfo = new Map<string, { seasonName: string; latestStartedAt: string; lapCount: number }>();
   for (const lap of categoryLaps) {
@@ -709,14 +705,28 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
 }
 
 async function buildComparison(driverId: string, trackId: number, category: Category, seasonParam: string | null) {
-  const { data: lapsData, error } = await supabaseAdmin
-    .from("laps")
-    .select("id,car_id,track_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path,session_id,sessions(season_id,season_name,started_at)")
-    .eq("driver_id", driverId).eq("track_id", trackId);
-  if (error) throw error;
+  // Same silent-truncation bug fetchAllDriverLaps's own comment already documents (a plain
+  // unranged .select() here caps at Supabase's own 1000-row default) -- this query was never given
+  // the same .range() pagination when it was written, so a track with 1000+ total laps across every
+  // category (not just this one) undercounted just like Interlagos did, just one query over from the
+  // one that got fixed. Confirmed live (31/08/2026): Spa had 322 GT3 laps across 4 seasons per the
+  // paginated query in listSeasonsAndTracks, but THIS query's single-page fetch was silently missing
+  // the newest season (34) entirely, exactly the "Menos de 2 carros... você afirma que temos poucas
+  // voltas válidas" the track picker showed despite otherwise correctly listing 3 cars for it.
+  const lapsData: LapRow[] = [];
+  for (let offset = 0; ; offset += LAPS_PAGE_SIZE) {
+    const { data, error } = await supabaseAdmin
+      .from("laps")
+      .select("id,car_id,track_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path,session_id,sessions(season_id,season_name,started_at)")
+      .eq("driver_id", driverId).eq("track_id", trackId)
+      .range(offset, offset + LAPS_PAGE_SIZE - 1);
+    if (error) throw error;
+    lapsData.push(...((data ?? []) as unknown as LapRow[]));
+    if (!data || data.length < LAPS_PAGE_SIZE) break;
+  }
 
   const byCarAll = new Map<number, LapRow[]>();
-  for (const lap of (lapsData ?? []) as unknown as LapRow[]) {
+  for (const lap of lapsData) {
     if (!isValidLap(lap)) continue;
     const carId = lap.car_id as number;
     if (!byCarAll.has(carId)) byCarAll.set(carId, []);
