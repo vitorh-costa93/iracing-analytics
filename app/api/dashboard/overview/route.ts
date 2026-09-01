@@ -546,10 +546,6 @@ export async function GET() {
       const latestResult = seasonRaces.find((row) => row.category === category && Number.isFinite(row.irating_after));
       if (latestResult) latestRatings[category] = latestResult.irating_after;
     }
-    if (process.env.IRATING_DEBUG !== "off") {
-      const top3 = seasonRaces.filter((row) => row.category === "formula_car").slice(0, 3);
-      console.log(`IRATING_DEBUG3 top3: ${JSON.stringify(top3.map((r) => ({ id: r.irstats_race_id, raced_at: r.raced_at, before: r.irating_before, after: r.irating_after })))}`);
-    }
     const categoriesMissingRating = (["formula_car", "sports_car"] as const).filter((category) => latestRatings[category] === null);
     if (categoriesMissingRating.length) {
       const fallbackResults = await Promise.all(categoriesMissingRating.map((category) =>
