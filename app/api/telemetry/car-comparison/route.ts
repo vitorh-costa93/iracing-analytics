@@ -388,18 +388,20 @@ function segmentCurve(points: TracePoint[], start: number, end: number, channel:
   return curve;
 }
 
-/** GPS points across a corner window (lat/lon, same 0.5%-step as segmentCurve) -- sent straight in
- * the sectors payload so the deep-dive corner map (29/08/2026: "o minimapa focado naquela curva irá
- * mostrar as linhas que cada carro fez") can render each car's real driven line without the frontend
- * needing a second telemetry fetch/parse; the window is already narrow (one real corner), so this
- * stays small even across every car. */
+/** GPS points across a corner window -- sent straight in the sectors payload so the deep-dive corner
+ * map (29/08/2026: "o minimapa focado naquela curva irá mostrar as linhas que cada carro fez") can
+ * render each car's real driven line without the frontend needing a second telemetry fetch/parse.
+ * Uses the RAW trace points in-window directly now (31/08/2026: "revisar as linhas de traçado, veja
+ * que não está 'redonda', mostrando realmente o traçado do carro") -- this used to resample onto a
+ * fixed 0.5%-of-LAP-distance grid, same as segmentCurve's own channel curves (fine there: throttle/
+ * brake only need to look smooth over the whole corner window). For a short real corner (a couple %
+ * of a long lap) that grid gives as few as 2-4 points across the whole turn, discarding nearly all of
+ * the GPS trace's actual ~60Hz density and rendering as a visibly straight-sided polygon instead of a
+ * curve. Raw points preserve whatever density the telemetry actually has. */
 function segmentGps(points: TracePoint[], start: number, end: number) {
-  const curve: { distance: number; lat: number; lon: number }[] = [];
-  for (let distance = start; distance <= end; distance += 0.5) {
-    const lat = interpolate(points, distance, "lat"), lon = interpolate(points, distance, "lon");
-    if (lat !== null && lon !== null) curve.push({ distance: Number(distance.toFixed(2)), lat, lon });
-  }
-  return curve;
+  return points
+    .filter((point) => point.distance >= start && point.distance <= end && point.lat !== null && point.lon !== null)
+    .map((point) => ({ distance: Number(point.distance.toFixed(2)), lat: point.lat as number, lon: point.lon as number }));
 }
 
 // Only these two categories are offered as a filter (29/08/2026: "no caso GT3 e GTP... Super
@@ -611,11 +613,42 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
 
   const scopedLaps = selectedSeasonId ? categoryLaps.filter((lap) => lap.sessions?.season_id === selectedSeasonId) : categoryLaps;
 
-  const byTrack = new Map<number, Set<number>>();
+  // Cross-car plausibility check (31/08/2026: "só mostre no drop-down list pistas para as
+  // respectivas temporadas onde possamos fazer essa análise... em Spa não é possível... você afirma
+  // que temos poucas voltas válidas") -- per-car density clustering (filterPlausibleTimes) alone
+  // isn't enough here: it only compares a car's laps against ITSELF, so a car whose entire pool is
+  // consistently broken clusters together as its own "plausible" group with nothing to catch it. A
+  // broken/partial telemetry record's recorded lap_time is reliably too SHORT, never too long (same
+  // fact filterPlausibleTimes itself relies on) -- so cross-checking each car's own best plausible
+  // time against the MEDIAN best time across every OTHER car at this track catches exactly the
+  // Ferrari-at-Spa case (a "2.65s" or "20-90s" fastest lap next to everyone else's genuine ~2:15).
+  // Still cheap (lap_time arithmetic only, no telemetry download) -- it can't catch a record whose
+  // lap_time looks fine but whose telemetry itself is corrupted (that needs the real per-lap GPS
+  // check, deliberately not done here to keep the picker fast), so an eligible track can still
+  // occasionally turn up short once actually opened.
+  const lapsByTrackAndCar = new Map<number, Map<number, LapRow[]>>();
   for (const lap of scopedLaps) {
     const trackId = lap.track_id as number, carId = lap.car_id as number;
-    if (!byTrack.has(trackId)) byTrack.set(trackId, new Set());
-    byTrack.get(trackId)!.add(carId);
+    if (!lapsByTrackAndCar.has(trackId)) lapsByTrackAndCar.set(trackId, new Map());
+    const byCar = lapsByTrackAndCar.get(trackId)!;
+    if (!byCar.has(carId)) byCar.set(carId, []);
+    byCar.get(carId)!.push(lap);
+  }
+  const byTrack = new Map<number, Set<number>>();
+  for (const [trackId, byCar] of lapsByTrackAndCar) {
+    const bestByCar = new Map<number, number>();
+    for (const [carId, laps] of byCar) {
+      const plausible = filterPlausibleTimes(laps);
+      const best = Math.min(...plausible.map((lap) => Number(lap.lap_time)));
+      if (Number.isFinite(best)) bestByCar.set(carId, best);
+    }
+    const allBestTimes = [...bestByCar.values()].sort((a, b) => a - b);
+    const median = allBestTimes.length ? allBestTimes[Math.floor(allBestTimes.length / 2)] : 0;
+    const plausibleCars = new Set<number>();
+    for (const [carId, best] of bestByCar) {
+      if (median === 0 || best >= median * 0.75) plausibleCars.add(carId);
+    }
+    byTrack.set(trackId, plausibleCars);
   }
   const eligible = [...byTrack.entries()].filter(([, cars]) => cars.size >= 2);
   if (!eligible.length) return { seasons, selectedSeasonId, tracks: [] };

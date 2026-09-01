@@ -507,6 +507,11 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
       startedAt: session.started_at, endedAt: session.ended_at,
       durationMinutes: Math.round((new Date(session.ended_at).getTime() - new Date(session.started_at).getTime()) / 60000),
       car: carName, track: `${trackRow.data?.name ?? `Pista ${session.track_id}`}${trackRow.data?.variant ? ` (${trackRow.data.variant})` : ""}`,
+      // 31/08/2026: "garanta que os mapas dessa página também leiam os mesmos mapas que temos nas
+      // outras sub-abas" -- the frontend's CornerTrackMap only ever had the driver's own synthetic
+      // trace-derived outline to draw (trackOutline below), not the real OSM boundary every other
+      // map in the app now uses; needs the numeric track id to fetch that boundary itself.
+      trackId: session.track_id,
     },
     lapsAnalyzed: validTraces.length,
     overtakeChannelAvailable,

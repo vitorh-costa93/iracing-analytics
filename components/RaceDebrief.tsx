@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type MouseEvent, type TouchEvent } from "react";
 import SectorConsistency from "@/components/SectorConsistency";
-import { createTrackProjector } from "@/lib/track-map";
+import TrackMap, { type TrackMapLine, type TrackMapMarker } from "@/components/TrackMap";
 
 type BinStat = { distance: number; mean: number; stddev: number };
 type ChannelStat = { channel: string; label: string; avgScore: number; binStats?: BinStat[] };
@@ -21,7 +21,7 @@ type CornerReport = {
   brakeBand: BandPoint[]; throttleBand: BandPoint[]; idealLine: IdealLine | null;
 };
 type CategoryDebrief = {
-  session: { startedAt: string; endedAt: string; durationMinutes: number; car: string; track: string } | null;
+  session: { startedAt: string; endedAt: string; durationMinutes: number; car: string; track: string; trackId: number | null } | null;
   message?: string;
   lapsAnalyzed?: number;
   overtakeChannelAvailable?: boolean;
@@ -157,23 +157,24 @@ function BestBrakingChart({ idealLine, brakeBand, throttleBand, onHover }: { ide
 
 /** Small track-shape map showing where on the physical circuit this corner card sits — the corner's
  * own position by default, or the point under the driver's cursor on the band chart above it, so
- * variance in the band chart can be tied back to an exact spot on track instead of just an offset %. */
-function CornerTrackMap({ outline, cornerDistance, hoverOffset }: { outline: TrackOutlinePoint[]; cornerDistance: number; hoverOffset: number | null }) {
+ * variance in the band chart can be tied back to an exact spot on track instead of just an offset %.
+ * 31/08/2026: "garanta que os mapas dessa página também leiam os mesmos mapas que temos nas outras
+ * sub-abas" -- this used to draw its OWN synthetic outline (just the driver's own GPS trace shape,
+ * via createTrackProjector directly), the same construction the real-boundary work elsewhere in the
+ * app replaced specifically because it can't show real track position. Now uses the same shared
+ * components/TrackMap.tsx (real OSM boundary) as "Melhor volta vs referência" and "Comparar carros". */
+function CornerTrackMap({ trackId, outline, cornerDistance, hoverOffset }: { trackId: number | null; outline: TrackOutlinePoint[]; cornerDistance: number; hoverOffset: number | null }) {
   const local = outline.filter((point) => Math.min(Math.abs(point.distance - cornerDistance), 100 - Math.abs(point.distance - cornerDistance)) <= 7);
-  const mapOutline = local.length >= 3 ? local : outline;
-  const project = createTrackProjector(mapOutline, 220, 140, 12);
+  const windowPoints = local.length >= 3 ? local : outline;
   const markerDistance = ((cornerDistance + (hoverOffset ?? 0)) % 100 + 100) % 100;
   let marker: TrackOutlinePoint | null = null, bestDelta = Infinity;
   for (const point of outline) {
     const delta = Math.min(Math.abs(point.distance - markerDistance), 100 - Math.abs(point.distance - markerDistance));
     if (delta < bestDelta) { bestDelta = delta; marker = point; }
   }
-  return (
-    <svg viewBox="0 0 220 140" className="corner-mini-map" role="img" aria-label="Posição dessa curva no traçado da pista">
-      <polyline points={mapOutline.map(project).join(" ")} className="corner-mini-map-outline" />
-      {marker && <circle cx={project(marker).split(",")[0]} cy={project(marker).split(",")[1]} r="4.8" className="corner-mini-map-marker" />}
-    </svg>
-  );
+  const lines: TrackMapLine[] = [{ points: windowPoints, color: "var(--red)" }];
+  const markers: TrackMapMarker[] = marker ? [{ lat: marker.lat, lon: marker.lon, color: "var(--red)" }] : [];
+  return <TrackMap trackId={trackId} lines={lines} markers={markers} className="corner-mini-map" />;
 }
 
 export default function RaceDebrief() {
@@ -306,7 +307,12 @@ export default function RaceDebrief() {
                         <span className="corner-mini-col-label">Melhor freada</span>
                         <BestBrakingChart idealLine={corner.idealLine} brakeBand={corner.brakeBand} throttleBand={corner.throttleBand} onHover={(offset) => setHoveredCorner(offset === null ? null : { cornerNumber: corner.cornerNumber, offset })} />
                       </div>
-                      {data.trackOutline && <CornerTrackMap outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />}
+                      {data.trackOutline && (
+                        <div className="corner-mini-col">
+                          <span className="corner-mini-col-label">Traçado</span>
+                          <CornerTrackMap trackId={data.session?.trackId ?? null} outline={data.trackOutline} cornerDistance={corner.distancePct} hoverOffset={hoveredCorner?.cornerNumber === corner.cornerNumber ? hoveredCorner.offset : null} />
+                        </div>
+                      )}
                     </div>
                     {corner.idealLine && corner.idealLine.gainSeconds > 0.03 && (
                       <p className="corner-mini-legend">Curva &quot;Melhor freada&quot; é sua execução mais rápida aqui — volta {corner.idealLine.lapNumber ?? "?"}</p>

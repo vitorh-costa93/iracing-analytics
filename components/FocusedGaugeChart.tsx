@@ -30,20 +30,35 @@ export type FocusedSide = {
   brakeNow: number | null;
 };
 
-const CHART_WIDTH = 480;
-const GAUGE_WIDTH = 260;
-const ROW_HEIGHT = 110;
+// 31/08/2026: widened (was 480+260) so the whole widget has real room -- stacking the chart above
+// the map instead of beside it (see .insight-popup-body) freed up the popup's full width for this,
+// removing the vertical scrollbar a narrower/taller layout used to force.
+const CHART_WIDTH = 620;
+const GAUGE_WIDTH = 300;
+const ROW_HEIGHT = 116;
 const BAR_X = 14, BAR_WIDTH = 7, BAR_HEIGHT = 46, BAR_GAP = 6;
 const GEAR_X = 78;
 const SPEED_X = 128;
 const WHEEL_RADIUS = 24;
-const WHEEL_CX = GAUGE_WIDTH - WHEEL_RADIUS - 22;
+const WHEEL_CX = GAUGE_WIDTH - WHEEL_RADIUS - 24;
 
 /** Car names ("McLaren 720S GT3 EVO") can run much longer than the own/reference "VOCÊ"/"REFERÊNCIA"
- * labels this widget was first built for -- truncate rather than let SVG text silently overflow past
- * the gauge column's edge (SVG has no text-overflow/wrapping of its own). */
-function truncateLabel(label: string, max = 15) {
-  return label.length > max ? `${label.slice(0, max - 1).trimEnd()}…` : label;
+ * labels this widget was first built for. SVG text doesn't wrap on its own, so this greedily packs
+ * words onto up to 2 lines instead of truncating the name away (31/08/2026: "deixar o nome do carro
+ * de forma completa, pode quebrar a linha") -- only the pathological case (a single word alone still
+ * too long for one line) still gets an ellipsis, since there's nowhere left to wrap it. */
+function wrapLabelLines(label: string, maxLineChars = 16): string[] {
+  const words = label.split(" ");
+  const lines: string[] = [];
+  let current = "";
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length > maxLineChars && current) { lines.push(current); current = word; }
+    else current = next;
+    if (lines.length === 1 && current.length > maxLineChars) { current = `${current.slice(0, maxLineChars - 1).trimEnd()}…`; break; }
+  }
+  if (current) lines.push(current);
+  return lines.slice(0, 2);
 }
 
 function formatGear(value: number | null) {
@@ -73,7 +88,9 @@ function GaugeWheel({ cx, cy, radius, angleRad, label, labelColor }: { cx: numbe
         <circle r={hubRadius} className="steering-wheel-hub" />
         <rect x={-radius * 0.09} y={-radius - 5} width={radius * 0.18} height={radius * 0.18} rx="1.5" className="steering-wheel-mark" />
       </g>
-      <text x={cx} y={cy + radius + 14} textAnchor="middle" className="steering-wheel-label" style={{ fill: labelColor }}>{truncateLabel(label)}</text>
+      <text x={cx} y={cy + radius + 14} textAnchor="middle" className="steering-wheel-label" style={{ fill: labelColor }}>
+        {wrapLabelLines(label).map((line, index) => <tspan key={index} x={cx} dy={index === 0 ? 0 : 11}>{line}</tspan>)}
+      </text>
     </g>
   );
 }
@@ -136,6 +153,16 @@ export default function FocusedGaugeChart({ sides, xDomain, hoverX, onHoverX, ar
        * pair of axes (fixed channel colors: green=throttle/red=brake regardless of side; the second
        * side is distinguished by a dashed stroke, same convention the rest of the app already uses). */}
       <text x="4" y={rowTop + 10} className="channel-label">INPUTS</text>
+      {/* Which line is whose (31/08/2026: "deixar claro qual é a linha tracejada e qual carro é a
+       * linha contínua") -- the INPUTS lines themselves stay fixed channel colors (green/red) with
+       * only a dashed-vs-solid stroke telling the two sides apart, so that distinction needs spelling
+       * out explicitly rather than relying on the wheel labels below to be noticed first. */}
+      {sides.map((side, index) => (
+        <g key={`legend-${side.key}`} transform={`translate(${70 + index * 240},${rowTop})`}>
+          <line x1="0" y1="6" x2="22" y2="6" style={{ stroke: side.color, strokeWidth: 2, strokeDasharray: side.dashed ? "5 3" : undefined }} />
+          <text x="28" y="10" className="focused-chart-legend-label" style={{ fill: side.color }}>{side.label} ({side.dashed ? "tracejada" : "contínua"})</text>
+        </g>
+      ))}
       {sides.map((side) => (
         <g key={side.key}>
           <polyline points={pedalLine(side.brake, rowTop, rowHeight * 2)} className={`trace-brake${side.dashed ? " reference-line" : ""}`} />

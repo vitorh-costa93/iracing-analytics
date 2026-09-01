@@ -21,24 +21,47 @@ const COUNT_TOLERANCE = 2;
 
 const ENTRIES: TrackCornerEntry[] = [
   {
+    // 31/08/2026 sweep: was 11 entries (several combining what are really 2-3 separate real turns
+    // into one, e.g. "Eau Rouge / Raidillon") against this driver's own detector finding 19 (GT3) /
+    // 17 (GTP) -- rebuilt against Formula1.com's own official numbered breakdown (19 real turns
+    // total, matching GT3 exactly), each complex split into its real sub-turns with a null for the
+    // unnamed second/third apex.
     match: (t) => /spa-francorchamps/i.test(t),
-    names: ["La Source", "Eau Rouge / Raidillon", "Les Combes", "Malmedy", "Bruxelles (Rivage)", "Pouhon", "Fagnes (Pif-Paf)", "Campus", "Curva Paul Frère", "Blanchimont", "Bus Stop"],
+    names: ["La Source", "Eau Rouge", "Raidillon", null, "Les Combes", null, "Malmedy", "Bruxelles", "Jacky Ickx Curve", "Pouhon", null, "Fagnes", null, "Campus", "Paul Frère", "Blanchimont", null, "Bus Stop", null],
   },
   {
+    // 31/08/2026 sweep: was 9 entries (one per NAMED section, several of which -- Esses, Casio
+    // Triangle -- are themselves multiple real turns) against this driver's own detector finding 17
+    // -- padded to Suzuka's real, documented 18-turn count, named corners placed at their standard
+    // turn numbers (T8 Dunlop, T9/T10 Degner 1/2, T11 Hairpin, T13 Spoon, T15 130R, T16 Casio
+    // Triangle), nulls for the Esses' individual apexes (T1-T7) and unnamed link turns.
     match: (t) => /suzuka/i.test(t),
-    names: ["Curva 1", "Esses", "Dunlop Curve", "Degner 1", "Degner 2", "Hairpin", "Spoon Curve", "130R", "Casio Triangle (chicane)"],
+    names: [null, null, null, null, null, null, null, "Dunlop Curve", "Degner 1", "Degner 2", "Hairpin", null, "Spoon Curve", null, "130R", "Casio Triangle", null, null],
   },
   {
     match: (t) => /jos[eé] carlos pace|interlagos/i.test(t),
     names: ["Senna S", "Curva do Sol", "Descida do Lago", "Ferradura", "Laranjinha", "Pinheirinho", "Bico de Pato", "Mergulho", "Junção", "Subida dos Boxes", "Arquibancadas"],
   },
   {
+    // 31/08/2026 sweep: was 12 entries (conflating Casanova/Savelli and Biondetti 1/2 into one each)
+    // against this driver's own detector consistently finding 15 -- Mugello's real, well-documented
+    // turn count -- split into the real 15 separate turns instead.
     match: (t) => /mugello/i.test(t),
-    names: ["San Donato", "Luco", "Poggio Secco", "Materassi", "Borgo San Lorenzo", "Casanova-Savelli", "Arrabbiata 1", "Arrabbiata 2", "Scarperia-Palagio", "Correntaio", "Biondetti 1-2", "Bucine"],
+    names: ["San Donato", "Luco", "Poggio Secco", "Materassi", "Borgo San Lorenzo", "Casanova", "Savelli", "Arrabbiata 1", "Arrabbiata 2", "Scarperia", "Palagio", "Correntaio", "Biondetti 1", "Biondetti 2", "Bucine"],
   },
   {
+    // 31/08/2026: was only 6 entries against this driver's own detector consistently finding 11 real
+    // corners on the GP layout (COUNT_TOLERANCE=2 made every comparison here silently fall back to
+    // plain numbering -- "é estranho elas não terem nome aqui", confirmed live via the API's own
+    // sectorNames output) -- expanded to match, but only Nordkurve (turn 1, right after start/finish)
+    // and Spitzkehre (the hairpin after the long Parabolika straight, landing near the lap's own
+    // distance midpoint the same way it does here) are confident enough to name; the tightly-packed
+    // Motodrom stadium corners (official turns 7-17) collapse into far fewer real detected apexes than
+    // their own turn count, so mapping each of THOSE to one specific official turn number/name isn't
+    // reliable -- Sachskurve is real and well documented as the corner right before the pit straight,
+    // placed on the last detected corner on that basis, the rest stay null rather than guessed.
     match: (t) => /hockenheim/i.test(t),
-    names: ["Nordkurve", "Spitzkehre", "Ostkurve", "Motodrom (entrada)", "Sachskurve", "Motodrom (saída)"],
+    names: ["Nordkurve", null, null, "Spitzkehre", null, null, null, null, null, null, "Sachskurve"],
   },
   {
     match: (t) => /monza/i.test(t),
@@ -49,48 +72,92 @@ const ENTRIES: TrackCornerEntry[] = [
     names: ["Curva 1", "Esses", "Foro Sol (Curva 12-13)", "Peraltada (Curva Mansell)"],
   },
   {
+    // 31/08/2026 sweep: was 7 entries (several -- "The Esses", "The Boot", "T9"/"T10"/"T11" -- just
+    // placeholders, not real distinguishing names) against this driver's own detector finding 13 on
+    // the Boot/full course -- rebuilt against a source's explicit turn-by-turn numbering for that
+    // exact configuration (11 real turns: T1 The 90, T2-5 the Esses [unnamed individually], T6 The
+    // Chute, T7 The Toe of the Boot, T8 The Heel of the Boot, T9 The Off Camber, T10-11 unnamed back
+    // to the front straight). "Bus Stop" dropped -- that's the short/Cup-course chicane, not part of
+    // this Boot layout.
     match: (t) => /watkins glen/i.test(t),
-    names: ["The 90 (T1)", "The Esses", "Bus Stop", "The Boot", "T9", "T10", "T11"],
+    names: ["The 90", null, null, null, null, "The Chute", "The Toe of the Boot", "The Heel of the Boot", "The Off Camber", null, null],
   },
   {
     match: (t) => /silverstone/i.test(t),
     names: ["Abbey", "Farm Curve", "Village", "The Loop", "Aintree", "Brooklands", "Luffield", "Woodcote", "Copse", "Maggotts", "Becketts", "Chapel", "Stowe", "Vale", "Club"],
   },
   {
+    // 31/08/2026 sweep: was 10 entries packed with no gaps against this driver's own detector
+    // finding 32 -- Le Mans is long and unevenly paced (a dense technical opening, then a mostly-
+    // straight ~30% of the lap down Mulsanne with no real corners at all, then a dense technical
+    // final third), so unlike every other track fixed in this sweep, this one was respaced using
+    // this driver's own actual detected corner POSITIONS (not just the count) to anchor each named
+    // corner against the real gaps in the data -- e.g. the empty 31%->43% stretch is the back half of
+    // the Mulsanne straight, landing Mulsanne Corner on the dense cluster right after it.
     match: (t) => /24 heures du mans|sarthe/i.test(t),
-    names: ["Dunlop Curve", "Dunlop Chicane", "Forest Esses", "Tertre Rouge", "Mulsanne Corner", "Indianapolis", "Arnage", "Porsche Curves", "Virage Ford (Chicanes)", "Maison Blanche"],
+    names: ["Dunlop Curve", null, "Dunlop Chicane", null, "Forest Esses", null, null, "Tertre Rouge", null, null, null, null, "Mulsanne Corner", null, null, null, "Indianapolis", "Arnage", "Porsche Curves", null, null, null, "Virage Ford", null, null, null, null, "Maison Blanche", null, null, null, null],
   },
   {
+    // 31/08/2026 sweep: was 9 entries (two of them just "Turn 1"/"Turn 3" placeholders, not real
+    // names) against this driver's own detector finding 12 -- respaced to the circuit's real,
+    // documented 14-turn count, anchored on two turn numbers a source stated explicitly (Moraine
+    // Sweep = turn 4, Carousel = turns 9-10; Hurry Downs is described as coming just before turn 8).
     match: (t) => /road america/i.test(t),
-    names: ["Turn 1", "Turn 3", "Moraine Sweep", "Hurry Downs", "Carousel", "Kink", "Kettle Bottoms", "Canada Corner", "Thunder Valley"],
+    names: [null, "Kink", null, "Moraine Sweep", null, null, "Hurry Downs", null, "Carousel", null, "Kettle Bottoms", "Canada Corner", "Thunder Valley", null],
   },
   {
     match: (t) => /indianapolis/i.test(t),
     names: ["Turn 1", "Turn 2", "Turn 3", "Turn 4", "Turn 5", "Turn 6", "Turn 7", "Turn 8", "Turn 9", "Turn 10", "Turn 11", "Turn 12", "Turn 13", "Turn 14"],
   },
   {
+    // 31/08/2026 sweep: was 8 entries (named corners only) against this driver's own detector
+    // consistently finding 17 -- padded to Imola's real, documented 19-turn count, anchored on the
+    // one turn NUMBER a source stated explicitly (Piratella = turn 9); the rest are placed by
+    // narrative order (start/finish -> Tamburello chicane -> Villeneuve -> Tosa -> Piratella -> Acque
+    // Minerali -> Variante Alta -> Rivazza (two lefts) -> Variante Bassa chicane back to start/finish),
+    // with nulls where a chicane's second apex or an unnamed link corner sits.
     match: (t) => /enzo e dino ferrari|imola/i.test(t),
-    names: ["Tamburello", "Villeneuve", "Tosa", "Piratella", "Acque Minerali", "Variante Alta", "Rivazza", "Bassa (Variante Bassa)"],
+    names: [null, "Tamburello", null, null, "Villeneuve", "Tosa", null, null, "Piratella", "Acque Minerali", null, "Variante Alta", null, null, "Rivazza 1", "Rivazza 2", null, "Variante Bassa", null],
   },
   {
+    // 31/08/2026 sweep: was 7 entries against this driver's own detector consistently finding 10 --
+    // Fuji's official layout has 16 numbered turns, but an iRacing-specific track guide groups them
+    // into exactly 10 real corner COMPLEXES (100R spans turns 4-5, the Dunlop hairpin-plus-flicks
+    // spans 9-12, etc.), matching this driver's own detected count precisely -- each complex named
+    // as one entry instead of guessing which of its sub-turns the detector isolated as its own apex.
     match: (t) => /fuji/i.test(t),
-    names: ["Turn 1 (100R)", "Coca-Cola Corner", "Advan Corner", "300R", "Dunlop Corner", "GR Supra Corner (25R)", "Panasonic Corner"],
+    names: ["TGR Corner", "75R", "Coca-Cola Corner", "100R", "Advan Hairpin", "120R", "300R", "Dunlop Corner", "Final Chicane", "Panasonic Corner"],
   },
   {
+    // 31/08/2026 sweep: was 11 entries packed with no gaps against this driver's own detector
+    // consistently finding 20 -- the real, documented corner count is 23 (confirmed: 8 turns climbing
+    // the mountain before Sulman Park, 9 more on the technical descent after it) -- respaced with
+    // nulls for the unnamed turns in each of those two stretches, same named corners/order as before.
     match: (t) => /mount panorama/i.test(t),
-    names: ["Hell Corner", "Griffins Bend", "The Esses", "Reid Park", "Sulman Park", "McPhillamy Park", "Skyline", "The Dipper", "Forrest's Elbow", "The Chase", "Murray's Corner"],
+    names: ["Hell Corner", "Griffins Bend", null, null, null, null, null, "The Esses", null, "Reid Park", "Sulman Park", "McPhillamy Park", "Skyline", null, "The Dipper", null, "Forrest's Elbow", null, null, "The Chase", null, "Murray's Corner"],
   },
   {
+    // 31/08/2026 sweep: was 10 entries packed with no gaps against this driver's own detector
+    // consistently finding 15 -- the real, documented turn count for the modern (2002+) F1 layout --
+    // respaced across all 15 slots with nulls for the unnamed link turns between them, anchored on the
+    // two turn numbers a source stated explicitly (Michael-Schumacher-S = turns 9-10, Coca-Cola-Kurve
+    // = the final corner, turn 15); same named corners as before, just no longer falsely claiming
+    // there are only 10 real turns on this lap.
     match: (t) => /n[uü]rburgring/i.test(t),
-    names: ["Yokohama-S", "Valvoline-Kurve", "Ford-Kurve", "Dunlop-Kehre", "Michael-Schumacher-S", "Kumho-Kurve", "Warsteiner-Kurve", "Advan-Bogen", "Veedol-Schikane", "Coca-Cola-Kurve"],
+    names: ["Yokohama-S", null, "Valvoline-Kurve", null, "Ford-Kurve", null, "Dunlop-Kehre", null, "Michael-Schumacher-S", null, "Kumho-Kurve", "Warsteiner-Kurve", "Veedol-Schikane", "Advan-Bogen", "Coca-Cola-Kurve"],
   },
   {
     match: (t) => /donington/i.test(t),
     names: ["Redgate", "Hollywood", "Craner Curves", "Old Hairpin", "Schwantz Curve", "McLean's", "Coppice", "Starkey's Bridge", "Melbourne Hairpin", "Goddards"],
   },
   {
+    // 31/08/2026 sweep: was 11 entries against this driver's own detector finding 15 -- respaced to
+    // the circuit's real, documented 16-turn (2007-2020 F1) layout, re-anchored on two turn numbers a
+    // source stated explicitly that CONTRADICTED this entry's old order (Repsol = turn 3, not turn 4;
+    // Campsa = turn 9, La Caixa = turn 10) -- "Renault" dropped rather than guess a now-uncertain
+    // position for it against those two confirmed anchors.
     match: (t) => /barcelona.?catalunya/i.test(t),
-    names: ["Elf (chicane)", null, "Renault", "Repsol", "Seat", null, "Wurth", "Campsa", "La Caixa", null, "New Holland (chicane)"],
+    names: ["Elf", null, "Repsol", null, "Seat", null, "Wurth", null, "Campsa", "La Caixa", null, null, null, null, "New Holland", null],
   },
   {
     match: (t) => /hungaroring/i.test(t),
@@ -105,8 +172,13 @@ const ENTRIES: TrackCornerEntry[] = [
     names: ["Tarzanbocht", "Gerlachbocht", "Hugenholtzbocht", null, null, "Scheivlak", null, "Slotemakerbocht", null, null, null, null, "Arie Luyendykbocht"],
   },
   {
+    // 31/08/2026 sweep: was 9 entries packed with no gaps against this driver's own detector
+    // consistently finding 16 -- the International layout's real, documented turn count is 17 --
+    // respaced across 17 slots with nulls for the unnamed link turns, same named corners/order as
+    // before (confirmed: Old Hall opens the lap, Cascades -> Island Bend -> Shell Oils in sequence,
+    // Deer Leap is the final corner onto the pit straight).
     match: (t) => /oulton park/i.test(t),
-    names: ["Old Hall", "Cascades", "Island Bend", "Knickerbrook", "Shell Hairpin", "Hislop's", "Druids", "Lodge Corner", "Deer Leap"],
+    names: ["Old Hall", null, "Cascades", null, "Island Bend", null, "Knickerbrook", null, "Shell Hairpin", null, "Hislop's", null, "Druids", null, "Lodge Corner", null, "Deer Leap"],
   },
   {
     match: (t) => /laguna seca/i.test(t),
