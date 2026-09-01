@@ -546,6 +546,41 @@ export async function GET() {
       const latestResult = seasonRaces.find((row) => row.category === category && Number.isFinite(row.irating_after));
       if (latestResult) latestRatings[category] = latestResult.irating_after;
     }
+
+    // Correction for Garage61 anchor lag (01/09/2026, driver-confirmed live: "iRating segue errado...
+    // deveria ser 4987 + 36 = 5023") -- v_race_results_irating's single-anchor formula can genuinely
+    // miss the most recent race(s): Garage61's own snapshot can be re-fetched well after a race
+    // without yet reflecting it (its recorded_at only proves when we asked, not which races the
+    // answer covers). Since a snapshot's rating plus the exact sum of every race's delta strictly
+    // after it gives an independent "current value" estimate per snapshot, and a lagging snapshot's
+    // own sum can never beat an already-caught-up one's, taking the MAX across every recent snapshot
+    // self-corrects without needing to know in advance which one lagged. Exact deltas come straight
+    // from race_results (iRStats), not the view's own before/after (whose absolute values inherit
+    // whatever anchor the view picked). Bounded to the last 7 days on both queries so an old data
+    // artifact elsewhere in this driver's 1330+ race career can't leak into "current".
+    const lagWindowStart = new Date(Date.now() - 7 * 86_400_000).toISOString();
+    const [recentRatingsResult, recentRaceDeltasResult] = await Promise.all([
+      supabaseAdmin.from("ratings").select("category,rating,recorded_at")
+        .eq("driver_id", driver.id).eq("rating_type", "irating").gte("recorded_at", lagWindowStart),
+      supabaseAdmin.from("race_results").select("category,raced_at,irating_delta")
+        .eq("driver_id", driver.id).gte("raced_at", lagWindowStart),
+    ]);
+    const recentRatings = (recentRatingsResult.data ?? []) as { category: string; rating: number; recorded_at: string }[];
+    const recentDeltas = (recentRaceDeltasResult.data ?? []) as { category: string; raced_at: string; irating_delta: number }[];
+    for (const category of ["formula_car", "sports_car"] as const) {
+      const anchors = recentRatings.filter((row) => row.category === category);
+      let best = latestRatings[category];
+      for (const anchor of anchors) {
+        const anchorTime = new Date(anchor.recorded_at).getTime();
+        const deltaSum = recentDeltas
+          .filter((race) => race.category === category && new Date(race.raced_at).getTime() > anchorTime)
+          .reduce((sum, race) => sum + race.irating_delta, 0);
+        const candidate = anchor.rating + deltaSum;
+        if (best === null || candidate > best) best = candidate;
+      }
+      latestRatings[category] = best;
+    }
+
     const categoriesMissingRating = (["formula_car", "sports_car"] as const).filter((category) => latestRatings[category] === null);
     if (categoriesMissingRating.length) {
       const fallbackResults = await Promise.all(categoriesMissingRating.map((category) =>
