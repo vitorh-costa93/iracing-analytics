@@ -592,6 +592,10 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
   const allCarIds = [...new Set(roughlyValid.map((lap) => lap.car_id as number))];
   const categoryByCar = await resolveCarCategories(allCarIds);
   const categoryLaps = roughlyValid.filter((lap) => categoryByCar.get(lap.car_id as number) === category);
+  if (process.env.SPA_DEBUG || true) {
+    const spaLaps = categoryLaps.filter((lap) => lap.track_id === 444);
+    console.log(`SPA_DEBUG category=${category} totalRows=${rows.length} roughlyValid=${roughlyValid.length} categoryLaps=${categoryLaps.length} spaLapsInCategory=${spaLaps.length} spaSeasons=${JSON.stringify([...new Set(spaLaps.map((l) => l.sessions?.season_id))])}`);
+  }
 
   const seasonInfo = new Map<string, { seasonName: string; latestStartedAt: string; lapCount: number }>();
   for (const lap of categoryLaps) {
