@@ -5,6 +5,7 @@ import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from
 import { lookupCornerNames } from "@/lib/track-corners";
 import { createTrackProjector } from "@/lib/track-map";
 import { getTrackBoundary, type TrackBoundary } from "@/lib/track-boundaries";
+import { useMapZoomPan } from "@/lib/useMapZoomPan";
 import FocusedGaugeChart, { type FocusedSide } from "@/components/FocusedGaugeChart";
 
 type Combination = {
@@ -544,45 +545,17 @@ function offsetGpsPoint(prevLat: number, prevLon: number, curLat: number, curLon
 }
 
 function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDistance, trackId, focusRequest }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; lineDistance?: { distance: number; meters: number }[]; trackId?: number | null; focusRequest?: { distance: number; nonce: number } | null }) {
-  // Own zoom state per map instance (sticky map, hover panel map, and popup map each zoom
-  // independently) -- must be declared before the early return below, ahead of any other hook.
-  // zoomCenter is in viewBox units (0-300, 0-200): where the zoom is anchored. Garage61 lets you
-  // zoom into any part of the track, not just the center -- clicking the map moves this anchor to
-  // that point before zooming, instead of always scaling around the fixed (150,100) middle.
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [zoomCenter, setZoomCenter] = useState({ x: 150, y: 100 });
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  // Tracks the last focusRequest.nonce actually applied, so the render-time zoomCenter/zoomLevel
-  // adjustment below (see its own comment) fires once per click on the input chart, not every render.
+  // Pan+zoom (01/09/2026: "eu quero usar o mouse para navegar... clico e movo o mouse para baixo eu
+  // vou vendo a parte de cima do mapa... é uma funcionalidade bem conhecida") -- shared hook, same
+  // one components/TrackMap.tsx uses, so every map in the app behaves identically now. Previously only
+  // this file's full/sticky map (zoom prop falsy) had scroll-zoom, and even that used click-to-recenter
+  // instead of drag-to-pan; the hover-panel and popup maps had no interactivity at all. Enabled for
+  // BOTH here now -- the popup map narrows its own bounds to the corner window already, but the driver
+  // still wants to pan/zoom further within that window to see exact positioning.
+  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform, zoomBy, focusOn } = useMapZoomPan(300, 200);
+  // Tracks the last focusRequest.nonce actually applied, so the render-time focusOn() call below (see
+  // its own comment) fires once per click on the input chart, not every render.
   const appliedFocusNonce = useRef<number | null>(null);
-  // Scroll-to-zoom-at-cursor (31/08/2026: "quando o mouse estiver em cima do mapa, eu possa usar o
-  // scroll para aproximar em um trecho específico") -- React's onWheel is passive by default, so
-  // preventDefault() inside it is silently ignored (and warns); a native listener with passive:false
-  // is the only way to actually stop the page from scrolling while zooming the map under the cursor.
-  // Only wired for the full/manual-zoom map (zoom prop falsy), same gate as click-to-recenter below --
-  // the hover-panel and popup maps already auto-fit their own narrow window.
-  useEffect(() => {
-    if (zoom) return;
-    const svg = svgRef.current;
-    if (!svg) return;
-    function handleWheel(event: WheelEvent) {
-      event.preventDefault();
-      const ctm = svg!.getScreenCTM();
-      if (!ctm) return;
-      const point = svg!.createSVGPoint();
-      point.x = event.clientX; point.y = event.clientY;
-      const local = point.matrixTransform(ctm.inverse());
-      setZoomCenter({ x: local.x, y: local.y });
-      const factor = event.deltaY < 0 ? 1.25 : 1 / 1.25;
-      setZoomLevel((level) => {
-        const next = Math.max(1, Math.min(6, level * factor));
-        if (next === 1) setZoomCenter({ x: 150, y: 100 });
-        return next;
-      });
-    }
-    svg.addEventListener("wheel", handleWheel, { passive: false });
-    return () => svg.removeEventListener("wheel", handleWheel);
-  }, [zoom]);
   // Fetched once per trackId (see lib/track-boundaries.ts for why this is a runtime fetch, not a
   // bundled import) and shared across all three TrackMap instances on the page via that module's own
   // cache -- only the first one triggers a network request, the rest resolve from the same promise.
@@ -657,29 +630,16 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
     const target = nearestGpsPoint(gps, focusRequest.distance);
     if (target) {
       const [x, y] = project(target).split(",").map(Number);
-      setZoomCenter({ x, y });
-      setZoomLevel(3);
+      focusOn(x, y, 3);
     }
   }
   return <div className="track-map-zoom-wrap">
     <svg ref={svgRef} className="track-map" viewBox="0 0 300 200" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa GPS da pista com o traçado da sua volta e da referência no trecho selecionado"
-      onClick={!zoom ? (event) => {
-        // Click-to-recenter: like Garage61, zoom anchors wherever you click, not just the map's
-        // fixed center. getScreenCTM().inverse() converts the click's screen position into viewBox
-        // units correctly regardless of how the SVG is scaled/letterboxed on the page.
-        const svg = event.currentTarget;
-        const ctm = svg.getScreenCTM();
-        if (!ctm) return;
-        const point = svg.createSVGPoint();
-        point.x = event.clientX; point.y = event.clientY;
-        const local = point.matrixTransform(ctm.inverse());
-        setZoomCenter({ x: local.x, y: local.y });
-        setZoomLevel((level) => (level === 1 ? 2 : level));
-      } : undefined}>
-      {/* Zoom, like Garage61's own map, lets you anchor anywhere on the track (click to recenter),
-       * not just the fixed middle — no new bounds are computed, it just magnifies/clips the same
-       * projected points around wherever zoomCenter currently is. */}
-      <g style={{ transform: `translate(${zoomCenter.x}px,${zoomCenter.y}px) scale(${zoomLevel}) translate(${-zoomCenter.x}px,${-zoomCenter.y}px)` }}>
+      style={{ cursor: isDragging ? "grabbing" : camera.scale > 1 ? "grab" : "default", touchAction: "none" }}
+      onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
+      {/* Pan+zoom camera (lib/useMapZoomPan.ts): drag to pan, scroll to zoom anchored at the cursor --
+       * no new bounds are computed, it just magnifies/pans the same projected points. */}
+      <g style={{ transform }}>
         {/* Real track edges (OSM) when we have them for this track — each way segment drawn separately
          * at its own real-meters width; see lib/track-boundaries.ts for why they're deliberately not
          * stitched into one ordered polyline. Falls back to the old synthetic per-lap ribbon (thick
@@ -694,22 +654,22 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
           </>}
         <polyline points={mapGps.map(project).join(" ")} className="track-own-line" />
         {mapReference.length > 1 && <polyline points={mapReference.map(project).join(" ")} className="track-reference" />}
-        {/* r and strokeWidth divided by zoomLevel (31/08/2026: "a bolinha está muito grande") --
+        {/* r and strokeWidth divided by the camera scale (31/08/2026: "a bolinha está muito grande") --
          * these circles sit inside the same scaled <g> as everything else, so without this they
-         * visually balloon in lockstep with the zoom (a r=5 marker at zoomLevel=6 renders 6x too
-         * big on screen); dividing by zoomLevel keeps their SCREEN size constant at any zoom. */}
-        {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r={3 / zoomLevel} style={{ strokeWidth: 3 / zoomLevel }} className="track-marker" />}
-        {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r={3.5 / zoomLevel} style={{ strokeWidth: 3 / zoomLevel }} className="track-marker-ref" />}
-        {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r={3.5 / zoomLevel} style={{ strokeWidth: 3 / zoomLevel }} className="track-marker" />}
+         * visually balloon in lockstep with the zoom; dividing keeps their SCREEN size constant. */}
+        {!hoverOwn && selected[0] && <circle cx={project(selected[0]).split(",")[0]} cy={project(selected[0]).split(",")[1]} r={3 / camera.scale} style={{ strokeWidth: 3 / camera.scale }} className="track-marker" />}
+        {hoverRef && <circle cx={project(hoverRef).split(",")[0]} cy={project(hoverRef).split(",")[1]} r={3.5 / camera.scale} style={{ strokeWidth: 3 / camera.scale }} className="track-marker-ref" />}
+        {hoverOwn && <circle cx={project(hoverOwn).split(",")[0]} cy={project(hoverOwn).split(",")[1]} r={3.5 / camera.scale} style={{ strokeWidth: 3 / camera.scale }} className="track-marker" />}
       </g>
     </svg>
-    {/* Manual zoom only makes sense on the FULL-track map (zoom prop falsy). The hover-panel and
-     * insight-popup maps already auto-fit to a narrow local window — adding +/- there on top of
-     * that auto-zoom was redundant and, worse, ate into their already-small footprint. */}
+    {/* Manual +/- only makes sense on the FULL-track map (zoom prop falsy). The hover-panel and
+     * insight-popup maps already auto-fit to a narrow local window — adding it there on top of that
+     * auto-zoom was redundant and, worse, ate into their already-small footprint; drag-to-pan and
+     * scroll-to-zoom still work on those, just without the on-screen buttons. */}
     {!zoom && (
       <div className="track-map-zoom-controls">
-        <button type="button" onClick={(event) => { event.stopPropagation(); setZoomLevel((level) => Math.min(6, level * 1.5)); }} aria-label="Aproximar mapa">+</button>
-        <button type="button" onClick={(event) => { event.stopPropagation(); setZoomLevel((level) => { const next = Math.max(1, level / 1.5); if (next === 1) setZoomCenter({ x: 150, y: 100 }); return next; }); }} aria-label="Afastar mapa">–</button>
+        <button type="button" onClick={(event) => { event.stopPropagation(); zoomBy(1.5); }} aria-label="Aproximar mapa">+</button>
+        <button type="button" onClick={(event) => { event.stopPropagation(); zoomBy(1 / 1.5); }} aria-label="Afastar mapa">–</button>
       </div>
     )}
   </div>;
