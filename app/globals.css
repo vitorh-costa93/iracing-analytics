@@ -264,8 +264,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 /* 31/08/2026: "a velocidade poderia ser uma fonte maior e em branco" -- bumped from 13px and pinned
  * to a literal white (var(--text) already reads near-white in this dark theme, but the ask was for
  * white specifically, not "whatever --text happens to resolve to"). */
-.gauge-speed-readout { fill: #fff; font-family: var(--mono); font-size: 19px; font-weight: 800; }
-.focused-chart-legend-label { font-family: var(--mono); font-size: 10px; font-weight: 500; }
+/* .focused-chart text.gauge-speed-readout, not a bare .gauge-speed-readout: same specificity gotcha
+ * as .gear-readout above (".focused-chart text" below is class+element, 0,1,1 -- a bare class alone
+ * is 0,1,0 and loses the tie-break to source order) -- confirmed live the same way, the plain-class
+ * version rendered gray/10px, not the white/19px this rule sets. */
+.focused-chart text.gauge-speed-readout { fill: #fff; font-family: var(--mono); font-size: 19px; font-weight: 800; }
+.focused-chart text.focused-chart-legend-label { font-family: var(--mono); font-size: 10px; font-weight: 500; }
 .insights-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
 .insights-grid button { padding: 13px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
 .insights-grid button:hover, .insights-grid button.active { background: var(--brand-pale); border-color: var(--brand-dark); }
@@ -328,7 +332,10 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * gets a fixed real-track-shape-appropriate height instead of being squeezed to match the chart's. */
 .insight-popup-body { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
 .insight-popup-map { display: grid; grid-template-rows: auto 1fr auto auto; gap: 6px; padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); }
-.insight-popup-map .track-map { height: 340px; }
+/* 31/08/2026: trimmed 340->260 alongside the popup-width increase above, to actually close out the
+ * remaining vertical overflow that forced a scrollbar on a typical viewport (confirmed live: 906px-
+ * wide popup still ~113px taller than 88vh at 914px viewport height before this cut). */
+.insight-popup-map .track-map { height: 260px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
 .focused-chart { width: 100%; min-height: 150px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
