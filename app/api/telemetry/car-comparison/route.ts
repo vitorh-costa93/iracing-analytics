@@ -399,9 +399,24 @@ function segmentCurve(points: TracePoint[], start: number, end: number, channel:
  * the GPS trace's actual ~60Hz density and rendering as a visibly straight-sided polygon instead of a
  * curve. Raw points preserve whatever density the telemetry actually has. */
 function segmentGps(points: TracePoint[], start: number, end: number) {
-  return points
-    .filter((point) => point.distance >= start && point.distance <= end && point.lat !== null && point.lon !== null)
-    .map((point) => ({ distance: Number(point.distance.toFixed(2)), lat: point.lat as number, lon: point.lon as number }));
+  const withGps = points.filter((point) => point.lat !== null && point.lon !== null);
+  // A verified-genuine lap only needs >=MIN_LAP_COVERAGE_PCT% of the lap covered, not literally
+  // 0-100% -- one that's short a fraction of a percent right at the very start or end (its telemetry
+  // simply stopped recording a hair before the finish line) has ZERO points in a corner window that
+  // falls entirely in that small gap, rendering as that car's line just silently missing from the
+  // map (31/08/2026: "não estou conseguindo ver onde os traçados estão na pista", confirmed live:
+  // Spa's final-chicane sectors landed exactly in this gap for one car -- 0 points inside 99.5-99.9%
+  // when its trace's real data stopped at ~99.4%). Symmetrically widening the window in small steps
+  // until there are enough points to draw a line at least picks up the trace's own trailing/leading
+  // points near the edge, instead of rendering nothing for that car -- capped so a genuinely empty
+  // trace doesn't reach into an unrelated corner's data.
+  let windowStart = start, windowEnd = end;
+  let inWindow = withGps.filter((point) => point.distance >= windowStart && point.distance <= windowEnd);
+  for (let expand = 0; inWindow.length < 2 && expand < 10 && withGps.length; expand += 1) {
+    windowStart -= 0.5; windowEnd += 0.5;
+    inWindow = withGps.filter((point) => point.distance >= windowStart && point.distance <= windowEnd);
+  }
+  return inWindow.map((point) => ({ distance: Number(point.distance.toFixed(2)), lat: point.lat as number, lon: point.lon as number }));
 }
 
 // Only these two categories are offered as a filter (29/08/2026: "no caso GT3 e GTP... Super

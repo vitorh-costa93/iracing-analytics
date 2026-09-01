@@ -335,7 +335,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 /* 31/08/2026: trimmed 340->260 alongside the popup-width increase above, to actually close out the
  * remaining vertical overflow that forced a scrollbar on a typical viewport (confirmed live: 906px-
  * wide popup still ~113px taller than 88vh at 914px viewport height before this cut). */
-.insight-popup-map .track-map { height: 220px; }
+.insight-popup-map .track-map { height: 195px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
 .focused-chart { width: 100%; min-height: 150px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
