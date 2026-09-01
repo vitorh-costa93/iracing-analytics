@@ -1,6 +1,15 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
+// 31/08/2026: "o iRating segue desatualizado... a tabela no fim dessa aba já contém as duas corridas
+// que fiz hoje" -- without this, the route has no dynamic-only API call to force Next.js to treat it
+// as request-time, so it's a real candidate for being cached/ISR'd and serving a stale snapshot to
+// the KPI cards while a since-regenerated fetch (or a differently-cached one, like the races list)
+// shows fresher data. Every other route in this app that must never go stale (sync/irstats,
+// sync/irstats/ingest) already declares this explicitly; this one -- which computes the driver's
+// headline iRating for right now -- should have from the start.
+export const dynamic = "force-dynamic";
+
 type SeasonSummaryRow = {
   season_id: string | number;
   season_name: string;

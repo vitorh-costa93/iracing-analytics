@@ -66,6 +66,31 @@ function normalized(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+/** Median-of-N despike for a discrete channel (31/08/2026: "há algum ruído nas minhas marchas... diz
+ * que eu estou usando a primeira marcha, mas eu tenho certeza que não usei" -- confirmed this is a
+ * real hazard of the stride-decimation a few lines down: at 900 points max for a whole lap, a single
+ * one-frame glitch in the raw ~60Hz gear channel (iRacing's own gear signal occasionally reports a
+ * spurious value for one sample during a hard multi-downshift) has a real chance of being the ONE
+ * sample that survives decimation, making a real, sustained gear look like it briefly dropped to 1st
+ * at 200+ km/h. A genuine gear stays constant for many consecutive raw samples; a real shift persists
+ * too, just starting a few samples later -- a median filter over a small window keeps both while
+ * dropping an outlier that only one sample agrees with. Runs on the full raw-resolution channel,
+ * before decimation, so it has enough neighbors to work with. */
+function despikeChannel(points: TracePoint[], field: ChannelKey, window = 5) {
+  const half = Math.floor(window / 2);
+  const original = points.map((point) => point[field]);
+  return points.map((point, index) => {
+    const windowValues: number[] = [];
+    for (let offset = -half; offset <= half; offset += 1) {
+      const value = original[index + offset];
+      if (value !== null && value !== undefined) windowValues.push(value);
+    }
+    if (windowValues.length < 3) return point;
+    const sorted = [...windowValues].sort((a, b) => a - b);
+    return { ...point, [field]: sorted[Math.floor(sorted.length / 2)] };
+  });
+}
+
 function parseTelemetryCsv(csv: string): Trace {
   const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) throw new Error("CSV de telemetria vazio ou incompleto");
@@ -103,6 +128,11 @@ function parseTelemetryCsv(csv: string): Trace {
   if (!chronological.length) throw new Error("A telemetria não contém amostras válidas");
   const maxRawDistance = Math.max(...chronological.map((point) => point.distance));
   if (maxRawDistance > 0 && maxRawDistance <= 1.01) chronological.forEach((point) => { point.distance *= 100; });
+  // Despiked in chronological (time) order, before lap-splitting/decimation -- see despikeChannel's
+  // own comment for why a single-frame gear glitch is otherwise likely to survive as the one sample
+  // shown after decimation to ~900 points.
+  const despikedGear = despikeChannel(chronological, "gear");
+  despikedGear.forEach((point, index) => { chronological[index].gear = point.gear; });
 
   // Split into individual laps wherever distance drops sharply (lap wrap, ~100% -> ~0%) -- a
   // reference file exported "for the session" rather than "for one lap" is common (this is exactly

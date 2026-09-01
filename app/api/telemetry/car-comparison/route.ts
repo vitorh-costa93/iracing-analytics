@@ -567,7 +567,7 @@ async function fetchAllDriverLaps(driverId: string) {
   for (let offset = 0; ; offset += LAPS_PAGE_SIZE) {
     const { data, error } = await supabaseAdmin
       .from("laps")
-      .select("car_id,track_id,clean,lap_time,off_track,pit_lane,pit_in,pit_out,incomplete,missing,session_id,sessions(season_id,season_name,started_at)")
+      .select("id,car_id,track_id,clean,lap_time,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path,session_id,sessions(season_id,season_name,started_at)")
       .eq("driver_id", driverId)
       .not("car_id", "is", null).not("track_id", "is", null)
       .range(offset, offset + LAPS_PAGE_SIZE - 1);
@@ -650,7 +650,35 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
     }
     byTrack.set(trackId, plausibleCars);
   }
-  const eligible = [...byTrack.entries()].filter(([, cars]) => cars.size >= 2);
+  const cheapEligible = [...byTrack.entries()].filter(([, cars]) => cars.size >= 2);
+  if (!cheapEligible.length) return { seasons, selectedSeasonId, tracks: [] };
+
+  // Real per-lap GPS verification (31/08/2026: "ainda segue com opções disponíveis que não podem ser
+  // analisadas... se eu não consigo analisar Spa Francorchamps, então ele não precisa aparecer para
+  // mim") -- the cheap cross-car check above catches an obviously-broken lap_time, but not a record
+  // whose lap_time looks plausible while its telemetry itself is corrupted (lapDistPct mis-scaled,
+  // same class of bug fixed for Mount Panorama) -- only downloading and checking the actual trace
+  // catches that. Only run for tracks that already passed the cheap filter (bounds the cost to the
+  // driver's real candidate set, not every track they've ever driven), and only try each car's
+  // fastest few laps (not buildComparison's full CANDIDATE_POOL_LAPS=10) -- enough to find one
+  // genuine lap in the common case without downloading everything twice over.
+  const VERIFY_CANDIDATE_LAPS = 3;
+  const eligible = (await Promise.all(cheapEligible.map(async ([trackId, plausibleCars]) => {
+    const byCar = lapsByTrackAndCar.get(trackId)!;
+    const verifiedByCar = await Promise.all([...plausibleCars].map(async (carId) => {
+      const candidates = byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time)).slice(0, VERIFY_CANDIDATE_LAPS);
+      const traces = await Promise.all(candidates.map((lap) => downloadTrace(lap.id, trackId, lap.telemetry_path)));
+      const fullCoverage = candidates
+        .map((lap, index) => ({ lap, trace: traces[index] }))
+        .filter((item): item is { lap: LapRow; trace: TracePoint[] } => !!item.trace && traceCoveragePct(item.trace) >= MIN_LAP_COVERAGE_PCT);
+      if (!fullCoverage.length) return null;
+      return { carId, gpsDistanceMeters: traceGpsDistanceMeters(fullCoverage[0].trace) };
+    }));
+    const verified = verifiedByCar.filter((item): item is { carId: number; gpsDistanceMeters: number } => item !== null);
+    const referenceLapMeters = Math.max(0, ...verified.map((item) => item.gpsDistanceMeters));
+    const finalCars = new Set(verified.filter((item) => referenceLapMeters === 0 || item.gpsDistanceMeters >= referenceLapMeters * 0.85).map((item) => item.carId));
+    return [trackId, finalCars] as [number, Set<number>];
+  }))).filter(([, cars]) => cars.size >= 2);
   if (!eligible.length) return { seasons, selectedSeasonId, tracks: [] };
 
   const trackIds = eligible.map(([trackId]) => trackId);

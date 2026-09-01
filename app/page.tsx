@@ -89,6 +89,17 @@ function shortSeason(name: string) {
   return name.replace(" Season ", " S");
 }
 
+// 31/08/2026: "você criou dois cards para essa semana no iRacing, não é necessário, é um card só por
+// série e por pista -- não precisa separar em fixed e open" -- the auto-derived weekly-context
+// fallback below keys each card by its raw series NAME, and Garage61/iRStats report "X - Fixed" and
+// plain "X" as two different series strings for what the driver considers one and the same context
+// (same car, same track, just a different setup-lock rule). Stripping that suffix before the dedup
+// key collapses them into one card, same as the hand-curated WEEKLY_CONTEXTS entries already do
+// implicitly (their `series` label is just written once, with no Fixed/Open distinction at all).
+function stripFixedSuffix(series: string) {
+  return series.replace(/\s*[-–—]?\s*\(?fixed\)?\s*$/i, "").trim();
+}
+
 function aggregateRows(
   rows: HistoricalRow[],
   key: "car" | "track",
@@ -227,7 +238,7 @@ export default function Home() {
   const scatter = categoryRaces.filter((race) => chartSeries === "all" || (race.series ?? "Sem série") === chartSeries).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
   const scheduleKey = `${data.season.current.id}:${data.kpis.formula.irating.week}`;
   const scheduledContexts = WEEKLY_CONTEXTS[scheduleKey];
-  const weeklyContexts = (scheduledContexts ?? data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => ({ series: race.series ?? race.car, track: race.track, matches: (row: HistoricalRow) => row.track === race.track && row.car === race.car }))).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, context) => {
+  const weeklyContexts = (scheduledContexts ?? data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => ({ series: stripFixedSuffix(race.series ?? race.car), track: race.track, matches: (row: HistoricalRow) => row.track === race.track && row.car === race.car }))).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, context) => {
     const key = `${context.series}::${context.track}`;
     if (items.some((item) => item.key === key)) return items;
     const contextRows = data.historical.filter(context.matches);
