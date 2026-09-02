@@ -14,7 +14,20 @@
  * 16 matched ways share the same `alt_name` "Mount Panorama Scenic Road", confirming they're the one
  * real circuit and not some other road. None of them carry a `width` tag the way purpose-built
  * `highway=raceway` ways usually do, so this track's ribbon uses a flat estimated 10m width instead
- * of a per-segment OSM value).
+ * of a per-segment OSM value). Le Mans (Circuit de la Sarthe, trackId 95) is the same situation in
+ * miniature (02/09/2026: "o Circuito de Le Mans está com problema... aparecendo só um fragmento" --
+ * the original `highway=raceway`-only query only ever covered the permanent ~2km Bugatti circuit
+ * portion near the pits, missing the ~11km of public road -- the Ligne droite des Hunaudières
+ * (Mulsanne Straight, D338/formerly RN138), Route d'Arnage (D140, past Indianapolis and Arnage), and
+ * the Porsche Curves connector (D139/D92) -- that make up most of the real 24 Heures lap. Regenerated
+ * by querying those exact `ref`s plus `highway=raceway` in the circuit's bounding box, then keeping
+ * only the ways whose geometry actually sits close (within ~70m, to allow for the public road's two
+ * separated carriageways vs. the closed-for-race-week single racing line) to this driver's own real
+ * GPS lap trace -- the same corridor-filter idea as the largest-connected-component step below, just
+ * using ground-truth telemetry instead of proximity between OSM ways. Confirmed the result's own
+ * lat/lon extent (~5.4km x 2.7km) now matches the real trace's extent, not the old ~2.1km x 0.5km
+ * fragment. None of these public-road ways carry a `width` tag either; reused the existing raceway
+ * segments' own 13m for consistency instead of guessing a different flat value.
  *
  * Served from public/track-boundaries.json and fetched once at runtime (see getTrackBoundary below)
  * rather than bundled into the JS chunk -- at ~440KB uncompressed this would otherwise ship to every
