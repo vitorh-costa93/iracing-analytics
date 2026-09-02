@@ -999,10 +999,12 @@ export default function ActiveWeekTelemetry() {
                     .map((point) => ({ x: point.distance, value: Number(point[field]) }));
                   const wheelDistance = popupHoverDistance ?? (focusedInsight.start + focusedInsight.end) / 2;
                   // 02/09/2026: own/reference used to be --red/--blue (colliding with red=perda and
-                  // blue=Formula-category); now --text (own, solid) / --reference (dashed purple),
-                  // matching the same pair used everywhere else (TrackMap, main telemetry chart).
+                  // blue=Formula-category); now --gauge-own (solid) / --gauge-reference (dashed
+                  // purple) -- the FIXED (not theme-following) versions of --text/--reference, since
+                  // this widget's own background (--gauge-bg) also stays fixed dark regardless of the
+                  // app's light/dark theme (see .focused-chart's own comment in globals.css).
                   const sides: FocusedSide[] = [{
-                    key: "own", label: "VOCÊ", color: "var(--text)", dashed: false,
+                    key: "own", label: "VOCÊ", color: "var(--gauge-own)", dashed: false,
                     throttle: toSeries(ownPts, "throttle"), brake: toSeries(ownPts, "brake"),
                     angleRad: interpolate(ownPts, wheelDistance, "steering"),
                     gear: interpolate(ownPts, wheelDistance, "gear"),
@@ -1011,7 +1013,7 @@ export default function ActiveWeekTelemetry() {
                     brakeNow: interpolate(ownPts, wheelDistance, "brake"),
                   }];
                   if (referenceTrace) sides.push({
-                    key: "reference", label: "REFERÊNCIA", color: "var(--reference)", dashed: true,
+                    key: "reference", label: "REFERÊNCIA", color: "var(--gauge-reference)", dashed: true,
                     throttle: toSeries(refPts, "throttle"), brake: toSeries(refPts, "brake"),
                     angleRad: interpolate(refPts, wheelDistance, "steering"),
                     gear: interpolate(refPts, wheelDistance, "gear"),

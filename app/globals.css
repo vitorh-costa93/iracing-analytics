@@ -5,14 +5,17 @@
  * driver picks the theme explicitly and it's remembered (localStorage), rather than silently following
  * the OS. Dark stays the default/bare :root (unchanged values, so nothing shifts for an existing
  * visitor with no stored preference); :root[data-theme="light"] overrides every token below with a
- * light-safe equivalent. Two tokens are DELIBERATELY the same dark asphalt in both themes --
- * --surface-deep (floating tooltips/panels) and --surface-map (track-map background) -- a light theme
- * for chrome doesn't mean track maps and popovers have to go white; a dark map/tooltip against a light
- * page is a normal, legible pattern (and it's what real timing-tool UIs already do), and it avoids
- * having to re-tune every chart/map color pairing for a second background. */
+ * light-safe equivalent. --surface-deep/--surface-map DO follow the theme like everything else here
+ * (an earlier version of this pass pinned them permanently dark for a "floating dark panel" look, but
+ * that silently broke every --text/--reference/--soft line or label drawn on top of them once light
+ * mode made THOSE go dark-on-light too -- text and its background need to move together). The one
+ * place that genuinely stays fixed-dark on purpose is the FocusedGaugeChart HUD widget itself (see
+ * --gauge-bg below), because it replicates iRacing's own in-sim gauge cluster using literal calibrated
+ * hex colors that were never theme tokens to begin with. */
 :root {
   color-scheme: dark;
   --bg: #0a0a0c;
+  --bg-top: #101011;
   --surface: #141416;
   --surface-muted: #19191b;
   --surface-raised: #1e1f22;
@@ -64,6 +67,15 @@
   --license-b: #1fa15c;
   --license-a: #2f6fd6;
   --license-pro: #eceae4;
+  /* FocusedGaugeChart HUD widget only -- fixed regardless of theme (see this file's own comment
+   * above the light-mode block for why): the widget replicates iRacing's own in-sim gauge cluster,
+   * whose rim/gear/speed colors (set as literal hex further down this file) are calibrated against a
+   * dark cockpit background specifically. --gauge-own/--gauge-reference are the fixed dark-mode
+   * values of --text/--reference, used ONLY for this widget's own/reference identity so they stay
+   * legible on --gauge-bg even when the rest of the app is in light mode. */
+  --gauge-bg: #0e131a;
+  --gauge-own: #f2f1ee;
+  --gauge-reference: #a97ee0;
   --shadow: none;
   --display: var(--font-display), "Arial Narrow", sans-serif;
   --body: var(--font-body), "Segoe UI", sans-serif;
@@ -73,11 +85,12 @@
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f3f1ec;
+  --bg-top: #fbfaf7;
   --surface: #ffffff;
   --surface-muted: #ece8e0;
   --surface-raised: #e1ddd2;
-  --surface-deep: #08080a;
-  --surface-map: #0e131a;
+  --surface-deep: #ffffff;
+  --surface-map: #e7e2d3;
   --border: #ddd8cd;
   --border-strong: #c3bcac;
   --text: #18150f;
@@ -117,7 +130,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 ::selection { background: rgba(28, 79, 156, .35); color: var(--text); }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
-.app-shell { min-height: 100vh; background: linear-gradient(180deg, #101011 0, var(--bg) 220px); padding: 0 24px 56px; }
+.app-shell { min-height: 100vh; background: linear-gradient(180deg, var(--bg-top) 0, var(--bg) 220px); padding: 0 24px 56px; }
 .app-frame { width: min(1460px, 100%); margin: 0 auto; }
 
 .app-header { min-height: 112px; display: flex; align-items: center; justify-content: space-between; gap: 28px; border-bottom: 1px solid var(--border); }
@@ -445,8 +458,16 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-map .track-map, .insight-popup-map .track-map-zoom-wrap { height: 195px; }
 .insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
 .insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
-.focused-chart { width: 100%; min-height: 150px; border: 1px solid var(--border); background: var(--surface-muted); cursor: crosshair; touch-action: none; }
-.focused-chart text { fill: var(--soft); font-size: 10px; font-family: var(--mono); }
+/* background is --gauge-bg (fixed dark, not a theme-following token) -- this gauge cluster deliberately
+ * replicates iRacing's own in-sim widget colors exactly (see the steering-wheel-rim/gear-readout/
+ * gauge-speed-readout rules below, all literal hex), calibrated against a dark cockpit background;
+ * those exact colors would lose contrast on a light theme's pale surface, so the widget keeps its
+ * authentic dark backing regardless of the app's own theme -- see --gauge-bg's own comment. */
+.focused-chart { width: 100%; min-height: 150px; border: 1px solid var(--border); background: var(--gauge-bg); cursor: crosshair; touch-action: none; }
+/* var(--soft) here would go warm-brown in light mode while the widget's own background (--gauge-bg)
+ * stays fixed dark -- pinned to a fixed dark-safe gray instead, same reasoning as --gauge-own/
+ * --gauge-reference above. */
+.focused-chart text { fill: #8b8783; font-size: 10px; font-family: var(--mono); }
 .focused-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .focused-chart .trace-steering { stroke-width: 2.5; }
 .focused-zone { fill: rgba(28,79,156,.1); }
