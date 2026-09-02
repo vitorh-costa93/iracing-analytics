@@ -289,19 +289,41 @@ function ibtToBestLapCsv(buffer: ArrayBuffer) {
   return { csv: [headers.join(","), ...rows].join("\n"), duration: bestLap.duration, samples: rows.length };
 }
 
-function polyline(points: TracePoint[], field: ChannelKey, top: number, height: number, scalePoints = points) {
+function channelScale(scalePoints: TracePoint[], field: ChannelKey) {
   const values = scalePoints.map((point) => point[field]).filter((value): value is number => value !== null && Number.isFinite(value));
-  if (!values.length) return "";
+  if (!values.length) return null;
   // Steering and yaw rate are signed (left/right), not a 0-based pedal input — same fix as the
   // popup's line() below, so full left-steering traces stop getting clipped off the row.
   const min = field === "speed" || field === "steering" || field === "yaw" || field === "yawRate" ? Math.min(...values) : 0;
   const max = Math.max(...values);
-  const span = Math.max(0.0001, max - min);
+  return { min, max, span: Math.max(0.0001, max - min) };
+}
+
+function polyline(points: TracePoint[], field: ChannelKey, top: number, height: number, scalePoints = points) {
+  const scale = channelScale(scalePoints, field);
+  if (!scale) return "";
   return points.filter((point) => point[field] !== null && Number.isFinite(point[field])).map((point) => {
     const x = Math.max(0, Math.min(100, point.distance)) * 10;
-    const y = top + height - ((Number(point[field]) - min) / span) * height;
+    const y = top + height - ((Number(point[field]) - scale.min) / scale.span) * height;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
+}
+
+// 02/09/2026 P1 fix: "nenhum canal tem eixo/escala" -- the chart had no printed value anywhere on its
+// ten stacked rows, so every reading required a hover. A compact min-max range per row (in the same
+// units the hover panel already uses) gives a value at a glance without needing to touch the chart.
+function formatChannelRange(field: ChannelKey, min: number, max: number) {
+  const fmt = (value: number) => {
+    if (field === "speed") return `${(value * 3.6).toFixed(0)}`;
+    if (field === "steering") return `${(value * 180 / Math.PI).toFixed(0)}°`;
+    if (field === "gear") return `${Math.round(value)}`;
+    if (field === "latAccel" || field === "longAccel") return value.toFixed(1);
+    if (field === "yawRate") return value.toFixed(2);
+    if (field === "rpm") return value.toFixed(0);
+    return `${(value * 100).toFixed(0)}%`;
+  };
+  const unit = field === "speed" ? " km/h" : "";
+  return `${fmt(min)}–${fmt(max)}${unit}`;
 }
 
 function interpolate(points: TracePoint[], distance: number, field: ChannelKey) {
@@ -692,6 +714,11 @@ export default function ActiveWeekTelemetry() {
   const [referenceTrace, setReferenceTrace] = useState<Trace | null>(null);
   const [uploading, setUploading] = useState(false);
   const [referenceMessage, setReferenceMessage] = useState<string | null>(null);
+  // 02/09/2026 P1 fix: ".reference-message renderiza sucesso e falha na identica slot com identica
+  // estilização" -- "Referência ativa atualizada." and a P2P-rejection/parse-failure used to be
+  // visually indistinguishable. Tracked alongside the message itself rather than sniffed from its
+  // text, so it can't drift out of sync with whichever string actually shows.
+  const [referenceMessageError, setReferenceMessageError] = useState(false);
   const [hoveredDistance, setHoveredDistance] = useState<number | null>(null);
   const [selectedRange, setSelectedRange] = useState<[number, number] | null>(null);
   const [focusedInsight, setFocusedInsight] = useState<Comparison["opportunities"][number] | null>(null);
@@ -713,19 +740,6 @@ export default function ActiveWeekTelemetry() {
     document.addEventListener("mousedown", handlePointerDown);
     return () => document.removeEventListener("mousedown", handlePointerDown);
   }, []);
-
-  // Esc closes the insight popup — the only way out was previously a mouse click on the ✕ or
-  // outside the card, which stalls a keyboard-driven flow entirely.
-  useEffect(() => {
-    setPopupHoverDistance(null);
-    if (!focusedInsight) return;
-    function handleKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") { setFocusedInsight(null); setSelectedRange(null); }
-    }
-    document.addEventListener("keydown", handleKeyDown);
-    popupRef.current?.querySelector<HTMLButtonElement>(".insight-popup-close")?.focus();
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [focusedInsight]);
 
   const [retryCount, setRetryCount] = useState(0);
   const retry = () => setRetryCount((count) => count + 1);
@@ -772,6 +786,7 @@ export default function ActiveWeekTelemetry() {
     setReference(null);
     setReferenceTrace(null);
     setReferenceMessage(null);
+    setReferenceMessageError(false);
     if (!selected) return () => { active = false; };
     fetch(`/api/telemetry/reference?carId=${selected.car.id}&trackId=${selected.track.id}`, { cache: "no-store" })
       .then(async (response) => {
@@ -784,7 +799,7 @@ export default function ActiveWeekTelemetry() {
           setReferenceTrace(parsed);
         }
       })
-      .catch((reason) => active && setReferenceMessage(reason instanceof Error ? reason.message : String(reason)));
+      .catch((reason) => { if (active) { setReferenceMessage(reason instanceof Error ? reason.message : String(reason)); setReferenceMessageError(true); } });
     return () => { active = false; };
   }, [selected]);
 
@@ -795,10 +810,35 @@ export default function ActiveWeekTelemetry() {
     return compareTraces(trace, referenceTrace, selected.bestLap.lapTime, corners);
   }, [trace, referenceTrace, selected, corners]);
 
+  // Esc closes the insight popup — the only way out was previously a mouse click on the ✕ or
+  // outside the card, which stalls a keyboard-driven flow entirely.
+  useEffect(() => {
+    setPopupHoverDistance(null);
+    if (!focusedInsight) return;
+    // 02/09/2026 persona fix: "abre o popup de uma curva, termina, quer a próxima -- não existe
+    // 'próxima'. Esc, rolar, achar o card certo, clicar" -- Left/Right cycle through the same
+    // comparison.opportunities list the card grid renders, without closing the popup.
+    function goTo(delta: number) {
+      const list = comparison?.opportunities ?? [];
+      const index = list.findIndex((item) => item.title === focusedInsight!.title);
+      const next = list[index + delta];
+      if (next) { setSelectedRange([next.start, next.end]); setFocusedInsight(next); }
+    }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") { setFocusedInsight(null); setSelectedRange(null); }
+      else if (event.key === "ArrowRight") { event.preventDefault(); goTo(1); }
+      else if (event.key === "ArrowLeft") { event.preventDefault(); goTo(-1); }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    popupRef.current?.querySelector<HTMLButtonElement>(".insight-popup-close")?.focus();
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [focusedInsight, comparison]);
+
   async function uploadReference(file: File) {
     if (!selected) return;
     setUploading(true);
     setReferenceMessage("Validando e armazenando referência...");
+    setReferenceMessageError(false);
     try {
       let uploadFile = file;
       if (file.name.toLowerCase().endsWith(".ibt")) {
@@ -824,6 +864,7 @@ export default function ActiveWeekTelemetry() {
       setReferenceMessage("Referência ativa atualizada.");
     } catch (reason) {
       setReferenceMessage(reason instanceof Error ? reason.message : String(reason));
+      setReferenceMessageError(true);
     } finally {
       setUploading(false);
     }
@@ -872,7 +913,7 @@ export default function ActiveWeekTelemetry() {
               }} />
             </label>
           </div>
-          {referenceMessage && <div className="reference-message">{referenceMessage}</div>}
+          {referenceMessage && <div className={`reference-message${referenceMessageError ? " error" : ""}`}>{referenceMessage}</div>}
           {traceLoading && <div className="telemetry-state">Pré-carregando canais do Garage61...</div>}
           {error && <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={retry}>Tentar novamente</button></div>}
           {!traceLoading && !error && !selected.bestLap && <div className="telemetry-state">Ainda não há uma volta limpa com telemetria disponível para esta combinação.</div>}
@@ -936,12 +977,23 @@ export default function ActiveWeekTelemetry() {
                   else if (event.key === "End") { event.preventDefault(); setHoveredDistance(100); }
                 }}>
                 {[0, 25, 50, 75, 100].map((value) => <g key={value}><line x1={value * 10} x2={value * 10} y1="0" y2="925" className="telemetry-grid" /><text x={value * 10} y="954" textAnchor={value === 0 ? "start" : value === 100 ? "end" : "middle"}>{value}%</text></g>)}
-                {corners.map((corner) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y="10" textAnchor="middle" className="corner-marker-label">{corner.name ? corner.name.slice(0, 12) : `C${corner.number}`}</text></g>)}
-                {([{"field":"speed","top":10,"height":140},{"field":"throttle","top":175,"height":65},{"field":"brake","top":265,"height":65},{"field":"steering","top":355,"height":65},{"field":"rpm","top":445,"height":65},{"field":"gear","top":535,"height":35},{"field":"clutch","top":595,"height":55},{"field":"latAccel","top":685,"height":55},{"field":"longAccel","top":775,"height":55},{"field":"yawRate","top":865,"height":55}] as {field:ChannelKey;top:number;height:number}[]).map((row) => <g key={row.field}>
+                {/* 02/09/2026 P1 fix: "rótulos de curva colidem" -- every label used to sit at the same
+                 * y=10, so a track with many close-together corners (Silverstone, 15+) rendered them as
+                 * one illegible smear. Staggering odd/even corners onto a second row (y=10/y=21) keeps
+                 * each name legible without dropping any -- confirmed live this clears every corner's
+                 * neighbors at Silverstone's tightest spacing. */}
+                {corners.map((corner, index) => <g key={corner.number}><line x1={corner.distance * 10} x2={corner.distance * 10} y1="0" y2="925" className="corner-marker-line" /><text x={corner.distance * 10} y={index % 2 === 0 ? 10 : 21} textAnchor="middle" className="corner-marker-label">{corner.name ? corner.name.slice(0, 12) : `C${corner.number}`}</text></g>)}
+                {([{"field":"speed","top":10,"height":140},{"field":"throttle","top":175,"height":65},{"field":"brake","top":265,"height":65},{"field":"steering","top":355,"height":65},{"field":"rpm","top":445,"height":65},{"field":"gear","top":535,"height":35},{"field":"clutch","top":595,"height":55},{"field":"latAccel","top":685,"height":55},{"field":"longAccel","top":775,"height":55},{"field":"yawRate","top":865,"height":55}] as {field:ChannelKey;top:number;height:number}[]).map((row) => {
+                  const scale = channelScale(referenceTrace ? [...trace.points, ...referenceTrace.points] : trace.points, row.field);
+                  return <g key={row.field}>
                   <text x="8" y={row.top + 12} className="channel-label">{row.field === "speed" ? "SPEED" : row.field === "throttle" ? "THROTTLE" : row.field === "brake" ? "BRAKE" : row.field === "steering" ? "STEERING" : row.field.toUpperCase()}</text>
+                  {/* 02/09/2026 P1 fix: "nenhum canal tem eixo/escala" -- min-max range per row, in the
+                   * same units the hover panel already uses, so a value is legible without hovering. */}
+                  {scale && <text x="992" y={row.top + 12} textAnchor="end" className="channel-range">{formatChannelRange(row.field, scale.min, scale.max)}</text>}
                   <polyline points={polyline(trace.points, row.field, row.top, row.height, referenceTrace ? [...trace.points, ...referenceTrace.points] : trace.points)} className={`trace-${row.field}`} />
                   {referenceTrace && <polyline points={polyline(referenceTrace.points, row.field, row.top, row.height, [...trace.points, ...referenceTrace.points])} className={`trace-${row.field} reference-line`} />}
-                </g>)}
+                </g>;
+                })}
                 {selectedRange && <rect x={selectedRange[0] * 10} y="0" width={(selectedRange[1] - selectedRange[0]) * 10} height="925" className="selected-segment" />}
                 {hoveredDistance !== null && <line x1={hoveredDistance * 10} x2={hoveredDistance * 10} y1="0" y2="925" className="hover-line" />}
               </svg>
@@ -984,6 +1036,19 @@ export default function ActiveWeekTelemetry() {
                   <div>
                     <span className="section-kicker">{focusedInsight.kind === "corner" ? (focusedInsight.cornerLabel ?? `CURVA ${focusedInsight.cornerNumber}`).toUpperCase() : "TRECHO"}</span>
                     <h3>{focusedInsight.title}</h3>
+                  </div>
+                  {/* 02/09/2026 persona fix: explicit prev/next, not just the Left/Right keyboard
+                   * shortcut above -- clamped (disabled at the ends), not wrapping, so it's always
+                   * obvious which end of the list you're at. */}
+                  <div className="insight-popup-nav">
+                    {(() => {
+                      const list = comparison?.opportunities ?? [];
+                      const index = list.findIndex((item) => item.title === focusedInsight.title);
+                      return <>
+                        <button type="button" className="insight-popup-step" disabled={index <= 0} onClick={() => { const prev = list[index - 1]; if (prev) { setSelectedRange([prev.start, prev.end]); setFocusedInsight(prev); } }} aria-label="Curva anterior">← Anterior</button>
+                        <button type="button" className="insight-popup-step" disabled={index === -1 || index >= list.length - 1} onClick={() => { const next = list[index + 1]; if (next) { setSelectedRange([next.start, next.end]); setFocusedInsight(next); } }} aria-label="Próxima curva">Próxima →</button>
+                      </>;
+                    })()}
                   </div>
                   <button type="button" className="insight-popup-close" onClick={() => { setFocusedInsight(null); setSelectedRange(null); }}>Fechar ✕</button>
                 </div>

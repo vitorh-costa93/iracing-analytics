@@ -19,6 +19,22 @@ type CompareAnalysis = { topCategories: { category: string; label: string; count
 type CompareResult = { summary: string; totalParameters: number; skippedCount: number; changes: CompareChange[]; analysis: CompareAnalysis };
 type LibraryItem = { carFolder: string; filename: string; provider: string; kind: string; condition: string; track: string; week: number | null; size: number; modifiedAt: string };
 
+// 02/09/2026 P2 fix: "o Laboratory mostra slugs crus (acuraarx06gtp) em vez do nome real do carro" --
+// carFolder is iRacing's own local setup-folder naming (lowercase, no spaces/punctuation), which is
+// perfect for matching a filesystem path but reads as raw internal data everywhere else in the app,
+// which otherwise always shows a real car name. No separate car-name table is fetched here -- the
+// season's own contexts (already loaded for the picker above) already carry every real car name this
+// driver has, so a folder slug is matched against those by normalizing both sides the same way, rather
+// than adding a new lookup just for this one display.
+function normalizeCarSlug(value: string) {
+  return value.toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+function carDisplayName(folder: string, contexts: SetupContext[]) {
+  const target = normalizeCarSlug(folder);
+  const match = contexts.find((item) => normalizeCarSlug(item.car.name) === target);
+  return match?.car.name ?? folder;
+}
+
 export default function SetupLab() {
   const [mode, setMode] = useState<"analysis" | "engineer">("analysis");
   const [contexts, setContexts] = useState<SetupContext[]>([]);
@@ -136,7 +152,7 @@ export default function SetupLab() {
 
       <article className="panel local-library">
         <div className="panel-heading"><div><span className="section-kicker">BIBLIOTECA LOCAL PRIVADA</span><h3><FolderSearch size={18} /> Setups encontrados neste PC</h3><p>{library.total} arquivos da temporada atual • {new Set(library.items.map((item) => item.carFolder)).size} carros • última importação {library.importedAt ? new Date(library.importedAt).toLocaleString("pt-BR") : "pendente"}</p></div></div>
-        <div className="library-groups">{[...new Set(library.items.map((item) => item.carFolder))].map((car) => { const items = library.items.filter((item) => item.carFolder === car); return <div key={car}><strong>{car}</strong><span>{items.length} setups • {[...new Set(items.map((item) => item.provider))].join(", ")}</span><small>{[...new Set(items.map((item) => item.track))].filter((track) => track !== "Não identificado").join(" • ") || "setup ativo do simulador"}</small></div>; })}</div>
+        <div className="library-groups">{[...new Set(library.items.map((item) => item.carFolder))].map((car) => { const items = library.items.filter((item) => item.carFolder === car); return <div key={car}><strong>{carDisplayName(car, contexts)}</strong><span>{items.length} setups • {[...new Set(items.map((item) => item.provider))].join(", ")}</span><small>{[...new Set(items.map((item) => item.track))].filter((track) => track !== "Não identificado").join(" • ") || "setup ativo do simulador"}</small></div>; })}</div>
         <p className="setup-guardrail">Arquivos comerciais ficam no bucket privado e nunca são publicados. Os setups padrão internos do iRacing ficam empacotados no simulador; a biblioteca inclui fixed exportado e o último setup carregado de cada carro ativo.</p>
       </article>
 

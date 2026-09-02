@@ -268,10 +268,19 @@ export default function RaceDebrief() {
             <div className="race-debrief-channel-bars">
               {data.channelStats?.slice().sort((a, b) => a.avgScore - b.avgScore).map((item) => {
                 const max = Math.max(...(data.channelStats ?? []).map((stat) => stat.avgScore), 0.01);
+                // 02/09/2026 P2 fix: "'Consistência por canal' é ilegível (mais longo parece melhor,
+                // mas é pior)" -- a flat cyan bar with no number and no color cue read as "longer =
+                // more of something good", when the caption right above it says the opposite (menor =
+                // melhor). Same ratio/label thresholds the rest of the app already uses (0.4/1/2 -->
+                // muito consistente/consistente/variável/muito inconsistente) now color the bar by
+                // tier and print the actual number, instead of one uniform color regardless of value.
+                const label = item.avgScore < 0.4 ? "muito consistente" : item.avgScore < 1 ? "consistente" : item.avgScore < 2 ? "variável" : "muito inconsistente";
+                const tier = CONSISTENCY_CLASS[label] ?? "";
                 return (
                   <div className="race-debrief-channel-row" key={item.channel}>
                     <span>{item.label}</span>
-                    <div className="race-debrief-channel-track"><div style={{ width: `${Math.max(4, (item.avgScore / max) * 100)}%` }} /></div>
+                    <div className="race-debrief-channel-track"><div className={tier} style={{ width: `${Math.max(4, (item.avgScore / max) * 100)}%` }} /></div>
+                    <b className={`race-debrief-channel-score ${tier}`}>{item.avgScore.toFixed(2)}</b>
                   </div>
                 );
               })}

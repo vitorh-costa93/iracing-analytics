@@ -202,13 +202,21 @@ function interpolateGps(points: { distance: number; lat: number; lon: number }[]
 /** Opened by clicking a corner card's title (29/08/2026: "ao clicar em cada curva, tenho o mesmo
  * gráfico disponível para analisar e da mesma forma [como Melhor volta vs referência]"). Hovering
  * the chart drives one marker per car on the same real track map, moving together. */
-function CornerFocusedPopup({ sector, carA, carB, trackId, onClose }: { sector: Sector; carA: CarStat; carB: CarStat; trackId: number | null; onClose: () => void }) {
+function CornerFocusedPopup({ sector, carA, carB, trackId, onClose, sectors, onNavigate }: { sector: Sector; carA: CarStat; carB: CarStat; trackId: number | null; onClose: () => void; sectors?: Sector[]; onNavigate?: (sector: Sector) => void }) {
   const [hoverOffset, setHoverOffset] = useState<number | null>(null);
+  // 02/09/2026 persona fix: "Esc, rolar, achar o card certo, clicar. Seis vezes numa aba, vinte em
+  // Comparar Carros" -- Left/Right cycle through the same deep-dive list without closing the popup.
+  const list = sectors ?? [];
+  const index = list.findIndex((item) => item.segment === sector.segment);
   useEffect(() => {
-    function handleKeyDown(event: KeyboardEvent) { if (event.key === "Escape") onClose(); }
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") onClose();
+      else if (event.key === "ArrowRight" && onNavigate && index < list.length - 1) { event.preventDefault(); onNavigate(list[index + 1]); }
+      else if (event.key === "ArrowLeft" && onNavigate && index > 0) { event.preventDefault(); onNavigate(list[index - 1]); }
+    }
     document.addEventListener("keydown", handleKeyDown);
     return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [onClose]);
+  }, [onClose, onNavigate, list, index]);
 
   const curveA = sector.curves.find((curve) => curve.carId === carA.carId);
   const curveB = sector.curves.find((curve) => curve.carId === carB.carId);
@@ -230,6 +238,12 @@ function CornerFocusedPopup({ sector, carA, carB, trackId, onClose }: { sector: 
             <span className="section-kicker">{(sector.name ?? `CURVA ${sector.cornerNumber}`).toUpperCase()}</span>
             <h3 style={{ color: carA.color }}>{carA.carName} <span style={{ color: "var(--muted)" }}>vs</span> <span style={{ color: carB.color }}>{carB.carName}</span></h3>
           </div>
+          {onNavigate && list.length > 1 && (
+            <div className="insight-popup-nav">
+              <button type="button" className="insight-popup-step" disabled={index <= 0} onClick={() => onNavigate(list[index - 1])} aria-label="Curva anterior">← Anterior</button>
+              <button type="button" className="insight-popup-step" disabled={index === -1 || index >= list.length - 1} onClick={() => onNavigate(list[index + 1])} aria-label="Próxima curva">Próxima →</button>
+            </div>
+          )}
           <button type="button" className="insight-popup-close" onClick={onClose}>Fechar ✕</button>
         </div>
         <div className="insight-popup-body">
@@ -452,7 +466,7 @@ export default function CarComparison() {
                 const carA2 = data.cars.find((car) => car.carId === resolvedCarA);
                 const carB2 = data.cars.find((car) => car.carId === resolvedCarB);
                 return carA2 && carB2 ? (
-                  <CornerFocusedPopup sector={focusedSector} carA={carA2} carB={carB2} trackId={data.track?.id ?? null} onClose={() => setFocusedSector(null)} />
+                  <CornerFocusedPopup sector={focusedSector} carA={carA2} carB={carB2} trackId={data.track?.id ?? null} onClose={() => setFocusedSector(null)} sectors={data.sectors} onNavigate={setFocusedSector} />
                 ) : null;
               })()}
             </>

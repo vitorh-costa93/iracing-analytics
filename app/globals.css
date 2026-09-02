@@ -305,6 +305,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .corner-marker-line { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 2 4; opacity: .6; }
 .corner-marker-label { fill: var(--amber); font-size: 11px; font-weight: 700; font-family: var(--mono); }
 .channel-label { fill: var(--soft) !important; font-size: 10px !important; letter-spacing: .08em; }
+.channel-range { fill: var(--soft) !important; font-size: 9px !important; font-family: var(--mono); }
 /* Same speed-channel color as the legend/telemetry-legend rule above (--text, not --blue) -- see that
  * rule's own comment. This second .trace-speed (the interactive per-corner chart's own channel set)
  * used to silently override the first one via source order since both had equal specificity. */
@@ -330,6 +331,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .reference-upload.disabled { opacity: .55; cursor: wait; }
 .reference-upload input { display: none; }
 .reference-message { margin-top: 8px; color: var(--muted); font-size: 12px; }
+.reference-message.error { color: var(--red); font-weight: 500; }
 .telemetry-legend .reference { color: var(--reference); }
 .trace-reference { stroke: var(--reference); stroke-dasharray: 6 5; }
 .comparison-section { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 18px; }
@@ -443,6 +445,10 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-head h3 { margin: 4px 0 0; font-size: 18px; }
 .insight-popup-close { flex: 0 0 auto; padding: 8px 12px; border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 500; cursor: pointer; border-radius: 3px; }
 .insight-popup-close:hover { background: var(--surface-raised); }
+.insight-popup-nav { display: flex; gap: 6px; flex: 0 0 auto; }
+.insight-popup-step { padding: 8px 12px; border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 500; cursor: pointer; border-radius: 3px; }
+.insight-popup-step:hover:not(:disabled) { background: var(--surface-raised); }
+.insight-popup-step:disabled { opacity: .4; cursor: not-allowed; }
 .insight-popup-detail { margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
 /* Chart stacked ON TOP of the map, not side by side (31/08/2026: "ao invés de ser um gráfico ao lado
  * do outro, o de inputs pode vir em cima do gráfico... aumentaríamos horizontalmente o espaço ocupado
@@ -527,7 +533,10 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .setup-context { min-width: min(460px, 100%); max-width: 100%; display: grid; gap: 6px; }.setup-context span { color: var(--muted); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }.setup-context select { width: 100%; max-width: 100%; padding: 11px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 3px; }
 .setup-subtabs { display: flex; gap: 4px; margin-top: 25px; border-bottom: 1px solid var(--border); }.setup-subtabs button { display: inline-flex; align-items: center; gap: 7px; padding: 12px 16px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font-family: var(--mono); font-size: 13px; cursor: pointer; }.setup-subtabs button.active { color: var(--text); border-bottom-color: var(--brand-red); }
 .setup-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }.setup-card { min-height: 310px; padding: 20px; }.setup-card h3 { margin: 13px 0 5px; }.setup-card > p { color: var(--muted); font-size: 13px; }.step-number { color: var(--brand); font-family: var(--mono); font-size: 13px; letter-spacing: .1em; }
-.local-library { margin-top: 18px; padding: 20px; }.local-library h3 { display: flex; align-items: center; gap: 8px; }.library-groups { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }.library-groups > div { display: grid; gap: 4px; padding: 13px; border: 1px solid var(--border); background: var(--surface-muted); }.library-groups strong { font-size: 14px; }.library-groups span, .library-groups small { color: var(--muted); font-size: 12px; line-height: 1.4; }
+/* 02/09/2026 P2 fix: same auto-fit-instead-of-fixed-3-columns fix as .week-context-grid above --
+ * "Laboratory's setup library shows 7 cards in 3 columns leaving a 2-slot hole" whenever the card
+ * count isn't a multiple of 3. */
+.local-library { margin-top: 18px; padding: 20px; }.local-library h3 { display: flex; align-items: center; gap: 8px; }.library-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 16px; }.library-groups > div { display: grid; gap: 4px; padding: 13px; border: 1px solid var(--border); background: var(--surface-muted); }.library-groups strong { font-size: 14px; }.library-groups span, .library-groups small { color: var(--muted); font-size: 12px; line-height: 1.4; }
 .setup-drop { min-height: 130px; margin-top: 22px; display: grid; place-items: center; align-content: center; gap: 9px; border: 1px dashed var(--border-strong); background: var(--brand-pale); color: var(--brand); cursor: pointer; border-radius: 3px; }.setup-drop strong { font-size: 13px; }.setup-drop input, .secondary-button input { display: none; }.setup-output ul { max-height: 130px; overflow: auto; padding-left: 18px; font-size: 12px; }.setup-output li span { color: var(--soft); }
 .setup-drop.disabled { opacity: .55; cursor: wait; }.setup-access { min-height: 130px; margin-top: 22px; padding: 18px; display: flex; align-items: center; gap: 13px; border: 1px solid var(--border); background: var(--surface-muted); }.setup-access svg { flex: 0 0 auto; }.setup-access div { display: grid; gap: 5px; }.setup-access strong { font-size: 14px; }.setup-access span { color: var(--muted); font-size: 12px; line-height: 1.45; }.setup-access.available { color: var(--green); background: var(--green-pale); border-color: var(--green); }.setup-access.blocked { color: var(--amber); background: var(--amber-pale); border-color: var(--amber-dim); }
 .setup-file-select { width: 100%; margin-top: 16px; padding: 11px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 14px; border-radius: 3px; }.setup-drop.compact { min-height: 92px; margin-top: 12px; }.decoder-consent { display: flex; align-items: flex-start; gap: 9px; margin-top: 20px; color: var(--muted); font-size: 14px; line-height: 1.5; cursor: pointer; }.decoder-consent input { margin-top: 3px; accent-color: var(--brand); }.setup-compare-button { width: 100%; margin-top: 18px; }.setup-compare-button:disabled { opacity: .5; cursor: not-allowed; }.setup-diff { margin-top: 14px; padding: 22px; }.setup-diff .panel-heading p { font-size: 14px; }.setup-diff article { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(240px, .75fr) minmax(320px, 1.35fr); align-items: start; gap: 18px; padding: 14px 0; border-top: 1px solid var(--border); }.setup-diff article > div:first-child { display: grid; gap: 4px; }.setup-diff article > div:first-child span { color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .05em; }.setup-diff article > div:first-child strong { font-size: 14px; font-weight: 600; line-height: 1.35; }.setup-values { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; }.setup-values span { display: grid; gap: 3px; min-width: 0; }.setup-values small, .setup-summary-contributors small { color: var(--soft); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }.setup-values del { color: var(--red); overflow-wrap: anywhere; }.setup-values ins { color: var(--green); text-decoration: none; font-weight: 500; overflow-wrap: anywhere; }.setup-values b { color: var(--soft); font-weight: 400; }.setup-diff article > p { margin: 0; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.45; }
@@ -590,7 +599,11 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .manual-sync-bookmarklet:active { cursor: grabbing; }
 .manual-sync-bookmarklet strong { font-size: 14px; color: var(--text); }
 .manual-sync-bookmarklet span { color: var(--muted); font-size: 12px; line-height: 1.4; }
-.week-context-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+/* 02/09/2026 P2 fix: "workspace desperdiça ~30% da largura... grids fixas de 3 colunas deixam card
+ * órfão" -- a fixed 3-column template left 2 empty slots whenever the driver had fewer than 3 active
+ * weekly contexts (the common case: often just 1). auto-fit collapses unused tracks instead of
+ * stretching empty ones, so 1-2 cards sit at a natural width instead of a mostly-empty row. */
+.week-context-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 .week-context-card { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); }
 .week-context-card > span, .week-context-card small { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .week-context-card h3 { margin: 0; font-size: 16px; }.week-context-card strong { font-family: var(--mono); font-size: 25px; }.week-context-card strong.neutral { color: var(--soft); }
@@ -687,10 +700,22 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .debrief-dot.best { fill: var(--green); r: 6; }
 .race-debrief-channels-note { margin: 4px 0 12px; color: var(--muted); font-size: 12px; }
 .race-debrief-channel-bars { display: grid; gap: 8px; }
-.race-debrief-channel-row { display: grid; grid-template-columns: 90px 1fr; align-items: center; gap: 10px; }
+.race-debrief-channel-row { display: grid; grid-template-columns: 90px 1fr 46px; align-items: center; gap: 10px; }
 .race-debrief-channel-row span { font-size: 12px; font-weight: 600; color: var(--muted); }
 .race-debrief-channel-track { height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
-.race-debrief-channel-track div { height: 100%; background: var(--blue); border-radius: 5px; }
+/* 02/09/2026: tier-colored (great/good/warn/bad, same scale as .corner-chip/.sector-map-segment
+ * elsewhere) instead of always --blue -- a flat "positive-looking" color regardless of the actual
+ * value was exactly what made this bar readable backwards (see this rule's own JSX-side comment). */
+.race-debrief-channel-track div { height: 100%; border-radius: 5px; background: var(--soft); }
+.race-debrief-channel-track div.great { background: var(--green); }
+.race-debrief-channel-track div.good { background: var(--blue); }
+.race-debrief-channel-track div.warn { background: var(--amber); }
+.race-debrief-channel-track div.bad { background: var(--red); }
+.race-debrief-channel-score { font-family: var(--mono); font-size: 12px; text-align: right; color: var(--soft); }
+.race-debrief-channel-score.great { color: var(--green); }
+.race-debrief-channel-score.good { color: var(--blue); }
+.race-debrief-channel-score.warn { color: var(--amber); }
+.race-debrief-channel-score.bad { color: var(--red); }
 
 .race-debrief-outlier-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text); line-height: 1.6; }
 
