@@ -24,10 +24,18 @@ export async function GET() {
     const carNames: Record<string, string> = {};
     if (folders.length) {
       const { data: cars } = await supabaseAdmin.from("cars").select("name");
+      const normalizedCars = (cars ?? []).map((car) => ({ name: car.name as string, slug: normalizeCarSlug(car.name as string) }));
       for (const folder of folders) {
         const target = normalizeCarSlug(folder);
-        const match = (cars ?? []).find((car) => normalizeCarSlug(car.name as string) === target);
-        if (match) carNames[folder] = match.name as string;
+        // Exact match first; falls back to "folder is a prefix of the real name" for a folder that
+        // drops a trailing variant/trim iRacing itself adds to the display name (confirmed live:
+        // local folder "mclaren720sgt3" for the real car "McLaren 720S GT3 EVO" -- no exact match,
+        // but the folder is unambiguously a prefix of it). Picks the SHORTEST such match so a very
+        // short folder slug can't accidentally prefix-match an unrelated longer car name.
+        const exact = normalizedCars.find((car) => car.slug === target);
+        const prefix = !exact ? normalizedCars.filter((car) => car.slug.startsWith(target)).sort((a, b) => a.slug.length - b.slug.length)[0] : null;
+        const match = exact ?? prefix;
+        if (match) carNames[folder] = match.name;
       }
     }
     return NextResponse.json({ status: "ok", ...manifest, carNames });
