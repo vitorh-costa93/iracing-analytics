@@ -42,6 +42,12 @@
         "value": "817",
         "createdAt": "2026-09-02T18:04:14.464Z",
         "reason": "Functional consistency-tier color coding (great/good/warn/bad), not decorative accent -- confirmed false positive in the 09/2026 audit"
+      },
+      {
+        "rule": "app/globals.css",
+        "value": "826",
+        "createdAt": "2026-09-02T18:34:44.269Z",
+        "reason": "Functional consistency-tier color coding (great/good/warn/bad), not decorative accent -- confirmed false positive in the 09/2026 audit; line shifted from 817 after later edits"
       }
     ]
   }

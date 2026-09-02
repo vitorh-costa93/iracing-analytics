@@ -16,21 +16,30 @@ import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, type T
 export type MapCamera = { scale: number; centerX: number; centerY: number };
 
 const MIN_SCALE = 1;
-const MAX_SCALE = 6;
+// 02/09/2026: "é o máximo de zoom que eu consigo dar, quero muito mais... quero ver o detalhe dos
+// traçados" -- 6x wasn't nearly enough to see own-vs-reference divergence at the sub-meter level a
+// single corner needs. Bumped to 40x (matches the fine-grained zoom real timing tools allow).
+const MAX_SCALE = 40;
 
 function defaultCamera(width: number, height: number): MapCamera {
   return { scale: 1, centerX: width / 2, centerY: height / 2 };
 }
 
-export function useMapZoomPan(width: number, height: number, enabled = true) {
+export function useMapZoomPan(width: number, height: number, enabled = true, resetKey?: string | number | null) {
   const svgRef = useRef<SVGSVGElement | null>(null);
   const [camera, setCamera] = useState<MapCamera>(() => defaultCamera(width, height));
   const dragState = useRef<{ startLocal: { x: number; y: number }; startCenter: { x: number; y: number } } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   // A different map instance (new popup, different corner) gets a fresh camera, not whatever the
-  // previous instance's user left behind.
-  useEffect(() => { setCamera(defaultCamera(width, height)); }, [width, height]);
+  // previous instance's user left behind. width/height alone isn't enough for a map instance that
+  // stays mounted across different underlying data (02/09/2026: "o Circuito de Le Mans está com
+  // problema, zoom aplicado em uma região só" -- switching tracks in ActiveWeekTelemetry's own
+  // sticky map reused the SAME component instance, so a camera zoomed/panned into one track's own
+  // coordinate space carried over unchanged onto the next track's completely different one). Callers
+  // whose map can swap content without remounting pass a resetKey (e.g. the track id) that changes
+  // when that happens, forcing this same reset the width/height case already got.
+  useEffect(() => { setCamera(defaultCamera(width, height)); }, [width, height, resetKey]);
 
   function localPoint(clientX: number, clientY: number) {
     const svg = svgRef.current;

@@ -28,7 +28,12 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
     return () => { cancelled = true; };
   }, [trackId]);
 
-  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height);
+  // resetKey=trackId: a map instance that stays mounted across a track change (e.g. Meu Debrief's
+  // per-corner maps when switching Formula/Sports tabs, which reuses the same corner-number React key
+  // for a different track's data) would otherwise keep whatever camera the previous track's map was
+  // left at, applied to a completely different coordinate space (02/09/2026, same bug confirmed live
+  // on ActiveWeekTelemetry's own sticky map at Le Mans -- see that file's own useMapZoomPan call).
+  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height, true, trackId);
 
   const gpsLines = lines.map((line) => ({ ...line, gps: line.points.filter((point) => point.lat !== null && point.lon !== null) }));
   if (!gpsLines.some((line) => line.gps.length >= 2)) return <div className="track-map-empty">Mapa GPS indisponível.</div>;

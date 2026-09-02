@@ -574,7 +574,7 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   // instead of drag-to-pan; the hover-panel and popup maps had no interactivity at all. Enabled for
   // BOTH here now -- the popup map narrows its own bounds to the corner window already, but the driver
   // still wants to pan/zoom further within that window to see exact positioning.
-  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform, zoomBy, focusOn } = useMapZoomPan(300, 200);
+  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform, zoomBy, focusOn } = useMapZoomPan(300, 200, true, trackId);
   // Tracks the last focusRequest.nonce actually applied, so the render-time focusOn() call below (see
   // its own comment) fires once per click on the input chart, not every render.
   const appliedFocusNonce = useRef<number | null>(null);
