@@ -214,13 +214,17 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .season-line.current { stroke: var(--blue); filter: drop-shadow(0 0 5px rgba(79,209,232,.4)); }
 .season-line.previous { stroke: var(--soft); stroke-width: 1.5; stroke-dasharray: 3 5; }
 .season-area { stroke: none; }.season-area.current { fill: rgba(79,209,232,.12); }.season-area.previous { fill: rgba(143,151,163,.05); }
+/* Hit target only, never the visible marker itself (02/09/2026: "o tamanho da bolinha... tá
+ * bizarramente grande" -- :hover used to fill THIS r=18 circle directly, so the visible dot was
+ * exactly as big as the finger-friendly hit target it needed to be, not a normal-looking marker
+ * size). See .chart-hit-marker below for the actual small dot, drawn separately. */
 .chart-hit { fill: transparent; stroke: transparent; cursor: crosshair; }
-.chart-hit:hover { fill: var(--blue); stroke: var(--bg); stroke-width: 3; }
+.chart-hit-marker { fill: var(--blue); stroke: var(--bg); stroke-width: 2; pointer-events: none; }
 .chart-tooltip { position: absolute; right: 18px; top: 14px; width: min(330px, calc(100% - 36px)); background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); padding: 13px 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); pointer-events: none; z-index: 5; }
 .tooltip-kicker { color: var(--blue); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
 .chart-canvas.sports .season-line.current { stroke: var(--amber); filter: drop-shadow(0 0 5px rgba(255,176,32,.4)); }
 .chart-canvas.sports .season-area.current { fill: rgba(255,176,32,.12); }
-.chart-canvas.sports .chart-hit:hover { fill: var(--amber); }
+.chart-canvas.sports .chart-hit-marker { fill: var(--amber); }
 .chart-canvas.sports .tooltip-kicker { color: var(--amber); }
 .tooltip-rating { margin-top: 5px; font-family: var(--mono); font-size: 21px; font-weight: 700; }
 .tooltip-grid { display: grid; grid-template-columns: 70px 1fr; gap: 5px 10px; margin-top: 10px; font-family: var(--mono); font-size: 12px; }

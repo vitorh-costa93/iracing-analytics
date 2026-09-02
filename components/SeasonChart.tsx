@@ -143,6 +143,21 @@ export default function SeasonChart({ current, previous, currentName, previousNa
               onClick={() => setHovered((existing) => existing?.point.week === point.week && existing.series === "current" ? null : { point, series: "current" })}
             />
           ))}
+
+          {/* 02/09/2026: "o tamanho da bolinha... tá bizarramente grande" -- .chart-hit's own r=18 IS
+           * the finger/mouse hit target (deliberately large, see this block's own comment above), but
+           * its :hover style was also what actually painted the visible dot, so the marker rendered at
+           * that same oversized 18px radius. A small, separate, non-interactive dot drawn only for
+           * whichever point is currently hovered fixes this without shrinking the (still needed) hit
+           * target. */}
+          {hovered && (
+            <circle
+              className="chart-hit-marker"
+              cx={x(hovered.point.week)}
+              cy={y(pointValue(hovered.point) as number)}
+              r="5"
+            />
+          )}
         </svg>
 
         {hovered && (
