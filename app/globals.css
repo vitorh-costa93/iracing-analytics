@@ -53,6 +53,17 @@
   --channel-rpm: var(--reference);
   --channel-clutch: #c99a4a;
   --channel-dynamics: #4fc3d6;
+  /* iRacing's own official license-class colors (02/09/2026: "conseguiríamos trazer mais coisas
+   * próprias do iRacing pra cá" -- confirmed via iRacing's own Getting Started docs: Rookie=red,
+   * D=orange, C=yellow, B=green, A=blue, Pro=black). Filled chip backgrounds with their own fixed
+   * text color, not page text-on-background -- same values work in both themes, no light/dark pair
+   * needed. */
+  --license-rookie: #d1272c;
+  --license-d: #e07b1c;
+  --license-c: #e0b52c;
+  --license-b: #1fa15c;
+  --license-a: #2f6fd6;
+  --license-pro: #eceae4;
   --shadow: none;
   --display: var(--font-display), "Arial Narrow", sans-serif;
   --body: var(--font-body), "Segoe UI", sans-serif;
@@ -132,6 +143,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .primary-button:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); }
 .quick-open-button { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 12px 14px; font-weight: 600; font-size: 13px; cursor: pointer; border-radius: 3px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
 .quick-open-button:hover { background: var(--surface-raised); border-color: var(--border-strong); }
+.theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; border-radius: 3px; }
+.theme-toggle:hover { background: var(--surface-raised); border-color: var(--border-strong); color: var(--text); }
 .primary-button:disabled, .primary-button.disabled { opacity: .5; cursor: wait; pointer-events: none; }
 
 .status-banner { margin-top: 14px; padding: 10px 13px; border: 1px solid var(--border-strong); background: var(--brand-pale); color: var(--on-brand); font-size: 14px; border-radius: 3px; }
@@ -456,6 +469,18 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .kpi-card.sports .kpi-icon { color: var(--amber); background: var(--amber-pale); }.kpi-icon svg { width: 25px; height: 18px; fill: currentColor; }
 .kpi-main { margin-top: 5px; color: var(--text); font-size: 30px; }
 .kpi-trend { margin-top: 7px; font-family: var(--mono); font-size: 12px; font-weight: 500; }.kpi-description { margin-top: 10px; color: var(--muted); font-size: 11px; }
+/* Safety Rating badge (02/09/2026: "conseguiríamos trazer mais coisas próprias do iRacing pra cá" --
+ * safetyRating.currentDisplay was already fetched/typed here but never rendered anywhere) -- same
+ * license-letter + colored-box treatment iRacing's own UI uses. Sits next to the iRating KPI value,
+ * not a separate card, since it's read alongside the number it qualifies, not as its own metric. */
+.kpi-main-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+.sr-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 3px; font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .02em; color: #fff; }
+.sr-badge-rookie { background: var(--license-rookie); }
+.sr-badge-d { background: var(--license-d); }
+.sr-badge-c { background: var(--license-c); color: #241a02; }
+.sr-badge-b { background: var(--license-b); }
+.sr-badge-a { background: var(--license-a); }
+.sr-badge-pro { background: var(--license-pro); color: #14130f; }
 
 .rating-chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }.rating-chart-grid .large-panel { min-width: 0; display: flex; flex-direction: column; }.rating-chart-grid .season-chart-wrap { display: flex; flex-direction: column; flex: 1; }.rating-chart-grid .chart-canvas { flex: 1; }.rating-chart-grid .chart-canvas svg { height: 100%; }.rating-chart-grid .scatter-wrap { flex: 1; display: flex; flex-direction: column; }.rating-chart-grid .scatter-wrap svg { flex: 1; height: 100%; }
 .official-results-panel { margin-top: 18px; padding: 20px; }
@@ -566,7 +591,19 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 @media (max-width: 720px) {
   .app-shell { padding: 0 12px 40px; }
   .app-header { padding: 18px 0; align-items: flex-start; flex-direction: column; }
-  .header-actions { width: 100%; justify-content: space-between; }
+  /* 02/09/2026: real, verified page-level horizontal overflow on mobile -- .header-actions'
+   * children (season chip, sync button, 2 bookmark links, theme toggle) never wrapped
+   * (flex-wrap defaults to nowrap), so past a point they just overflowed the 375px viewport
+   * instead of shrinking, pushing "Garage61 ↗" off the right edge with no scrollbar to reach it.
+   * Wrapping is the fix, not squeezing every child smaller -- these are already-compact buttons. */
+  .header-actions { width: 100%; flex-wrap: wrap; gap: 8px; }
+  /* Same fix for the primary nav (Overview/Analysis/Laboratory/Favoritos) -- was a single
+   * nowrap row relying on overflow-x:auto (added below 520px only) with no visual cue that more
+   * tabs existed off-screen, which is how "Favoritos" -- the one-time bookmarklet setup without
+   * which no new result/setup data ever reaches the app -- ended up invisible on a phone. Wrapping
+   * to a second line means every tab is always on screen, no horizontal scroll knowledge required. */
+  .app-tabs { flex-wrap: wrap; row-gap: 2px; }
+  .app-tabs-bookmarklet-trigger { margin-left: 0; }
   .section-title-row, .panel-heading { align-items: flex-start; flex-direction: column; }
   .kpi-grid { grid-template-columns: 1fr; }
   .large-panel { padding: 16px 10px 8px; }

@@ -5,6 +5,7 @@ import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
 import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
+import ThemeToggle from "@/components/ThemeToggle";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
 
@@ -276,6 +277,7 @@ export default function Home() {
              * extension. */}
             <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
             <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
+            <ThemeToggle />
           </div>
         </header>
         <AppTabs />
@@ -299,8 +301,8 @@ export default function Home() {
           </div>
 
           <div className="kpi-grid">
-            <KpiCard eyebrow="Formula Car • iRating" value={data.kpis.formula.irating.current} previousValue={data.kpis.formula.irating.previousSameWeek} previousLabel={`${previousLabel} W${data.kpis.formula.irating.week}`} />
-            <KpiCard eyebrow="Sports Car • iRating" value={data.kpis.sports.irating.current} previousValue={data.kpis.sports.irating.previousSameWeek} previousLabel={`${previousLabel} W${data.kpis.sports.irating.week}`} />
+            <KpiCard eyebrow="Formula Car • iRating" value={data.kpis.formula.irating.current} previousValue={data.kpis.formula.irating.previousSameWeek} previousLabel={`${previousLabel} W${data.kpis.formula.irating.week}`} safetyRatingDisplay={data.kpis.formula.safetyRating.currentDisplay} />
+            <KpiCard eyebrow="Sports Car • iRating" value={data.kpis.sports.irating.current} previousValue={data.kpis.sports.irating.previousSameWeek} previousLabel={`${previousLabel} W${data.kpis.sports.irating.week}`} safetyRatingDisplay={data.kpis.sports.safetyRating.currentDisplay} />
             <KpiCard eyebrow="Formula Car • Vitórias" value={data.kpis.formula.wins.current} previousValue={data.kpis.formula.wins.previous} previousLabel={previousLabel} mode="wins" />
             <KpiCard eyebrow="Sports Car • Vitórias" value={data.kpis.sports.wins.current} previousValue={data.kpis.sports.wins.previous} previousLabel={previousLabel} mode="wins" />
           </div>
