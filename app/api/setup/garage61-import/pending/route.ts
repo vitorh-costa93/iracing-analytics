@@ -24,11 +24,17 @@ export async function GET(request: NextRequest) {
     const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (driverError || !driver) throw new Error("Piloto não encontrado");
 
+    // 02/09/2026 fix: "quando peço para atualizar lá através do favorito, ele somente traz os setups
+    // de corrida, também pode trazer os de practice" -- was hardcoded to session_type=3 (Race) only,
+    // so a practice-only week (no race run yet) never had any event to visit at all, and a race week
+    // never picked up whatever setup was actually used/tuned during that week's practice sessions
+    // either. session_type 1 = Practice, 3 = Race (see active-week/route.ts's own use of these same
+    // two values) -- both now count as pending events to check for a capturable setup.
     const { data, error } = await supabaseAdmin
       .from("driving_sessions")
       .select("garage61_event_id,car_id,track_id,started_at")
       .eq("driver_id", driver.id)
-      .eq("session_type", 3)
+      .in("session_type", [1, 3])
       .gte("started_at", since)
       .not("garage61_event_id", "is", null)
       .order("started_at", { ascending: false });
