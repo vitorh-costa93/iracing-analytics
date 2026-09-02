@@ -36,6 +36,12 @@
         ],
         "createdAt": "2026-08-27T14:22:41.767Z",
         "reason": "functional severity indicator (great/good/warn/bad per sector row), not decorative -- consistent with the .sector-map-segment color-coding pattern used throughout this component"
+      },
+      {
+        "rule": "app/globals.css",
+        "value": "817",
+        "createdAt": "2026-09-02T18:04:14.464Z",
+        "reason": "Functional consistency-tier color coding (great/good/warn/bad), not decorative accent -- confirmed false positive in the 09/2026 audit"
       }
     ]
   }

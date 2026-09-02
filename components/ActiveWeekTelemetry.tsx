@@ -925,6 +925,26 @@ export default function ActiveWeekTelemetry() {
                 <div><span>GAP ESTIMADO</span><strong className={comparison.estimatedGap > 0 ? "negative" : "positive"}>{comparison.estimatedGap > 0 ? "+" : ""}{comparison.estimatedGap.toFixed(3)}s</strong></div>
                 <div><span>Δ VELOCIDADE MÉDIA</span><strong>{comparison.averageSpeedDifference >= 0 ? "+" : ""}{(comparison.averageSpeedDifference * 3.6).toFixed(1)} km/h</strong></div>
               </div>
+              {/* Delta Bar (02/09/2026, "conseguiríamos trazer mais coisas próprias do iRacing pra
+               * cá") -- iRacing's own in-sim widget for exactly this number: how far ahead/behind a
+               * reference you are, as a bar growing from center instead of only a signed number.
+               * Reuses the app's own diverging-bar visual language (already used for PERDAS|GANHOS
+               * rankings) rather than inventing a new pattern -- green/right = faster than reference,
+               * red/left = slower, clamped to a fixed ±2s scale (iRacing's widget is similarly
+               * calibrated to a fixed range, not autoscaled per lap). */}
+              {(() => {
+                const gap = comparison.estimatedGap;
+                const faster = gap < 0;
+                const scale = 2; // seconds representing a full half-bar
+                const width = Math.min(48, Math.abs(gap) / scale * 48);
+                return (
+                  <div className="delta-bar-row">
+                    <span className="delta-bar-label">MAIS LENTO</span>
+                    <div className="diverging-bar delta-bar"><i className="center-line" /><span className={faster ? "positive" : "negative"} style={faster ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>
+                    <span className="delta-bar-label">MAIS RÁPIDO</span>
+                  </div>
+                );
+              })()}
               {/* No standalone chart here by design: this same lateral-offset data (comparison.lineDistance)
                * is instead used to draw the actual track-usage divergence directly on the map (see
                * TrackMap below) and to drive the per-corner "line" insight above -- the number itself
