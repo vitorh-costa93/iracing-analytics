@@ -1,10 +1,23 @@
 * { box-sizing: border-box; }
 
+/* Light mode (02/09/2026: "queria ver contigo a possibilidade de um light mode... hoje o aplicativo
+ * está em Dark mode") -- manual toggle (components/ThemeToggle.tsx), not prefers-color-scheme: the
+ * driver picks the theme explicitly and it's remembered (localStorage), rather than silently following
+ * the OS. Dark stays the default/bare :root (unchanged values, so nothing shifts for an existing
+ * visitor with no stored preference); :root[data-theme="light"] overrides every token below with a
+ * light-safe equivalent. Two tokens are DELIBERATELY the same dark asphalt in both themes --
+ * --surface-deep (floating tooltips/panels) and --surface-map (track-map background) -- a light theme
+ * for chrome doesn't mean track maps and popovers have to go white; a dark map/tooltip against a light
+ * page is a normal, legible pattern (and it's what real timing-tool UIs already do), and it avoids
+ * having to re-tune every chart/map color pairing for a second background. */
 :root {
+  color-scheme: dark;
   --bg: #0a0a0c;
   --surface: #141416;
   --surface-muted: #19191b;
   --surface-raised: #1e1f22;
+  --surface-deep: #08080a;
+  --surface-map: #0e131a;
   --border: #262628;
   --border-strong: #38383b;
   --text: #f2f1ee;
@@ -28,10 +41,61 @@
   --amber-dim: #6b4a16;
   --amber-pale: #241a0c;
   --on-dark: #04141a;
+  /* Own/reference identity (02/09/2026 fix: "própria volta = vermelho, colidindo com vermelho=perda")
+   * -- was --red (own) / --blue (reference) in TrackMap + FocusedGaugeChart, which collided with
+   * red=loss and blue=Formula-category. --reference already existed as a raw hex (#a97ee0) for the
+   * telemetry chart's own reference-trace overlay; now every own/reference pairing in the app uses
+   * --text (own, solid) / --reference (dashed) consistently, and red/blue are free to mean only
+   * loss/Formula again. */
+  --reference: #a97ee0;
+  --reference-dark: #8a5cc4;
+  --channel-steering: #e0973b;
+  --channel-rpm: var(--reference);
+  --channel-clutch: #c99a4a;
+  --channel-dynamics: #4fc3d6;
   --shadow: none;
   --display: var(--font-display), "Arial Narrow", sans-serif;
   --body: var(--font-body), "Segoe UI", sans-serif;
   --mono: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f3f1ec;
+  --surface: #ffffff;
+  --surface-muted: #ece8e0;
+  --surface-raised: #e1ddd2;
+  --surface-deep: #08080a;
+  --surface-map: #0e131a;
+  --border: #ddd8cd;
+  --border-strong: #c3bcac;
+  --text: #18150f;
+  --muted: #5b5548;
+  --soft: #837b6a;
+  --brand: #1c4f9c;
+  --brand-dark: #133a75;
+  --brand-pale: #dde8f8;
+  --on-brand: #f8fafd;
+  --brand-red: #c81f16;
+  --brand-red-dark: #9c1810;
+  --blue: #0f7690;
+  --blue-dark: #0b5a6f;
+  --blue-pale: #dcf2f6;
+  --on-pale: #063542;
+  --green: #1a8f57;
+  --green-pale: #e1f5ea;
+  --red: #c93a3a;
+  --red-pale: #fae2df;
+  --amber: #a8650a;
+  --amber-dim: #e6c78f;
+  --amber-pale: #fbead2;
+  --on-dark: #04141a;
+  --reference: #7a4bc4;
+  --reference-dark: #5f3898;
+  --channel-steering: #a5691c;
+  --channel-rpm: var(--reference);
+  --channel-clutch: #93711f;
+  --channel-dynamics: #147c92;
 }
 
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
@@ -60,7 +124,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .header-csv-upload .secondary-button { padding: 12px 14px; cursor: pointer; }
 .header-csv-upload .secondary-button.disabled { opacity: .6; cursor: wait; }
 .header-csv-upload .secondary-button input { display: none; }
-.header-csv-message { position: absolute; top: calc(100% + 6px); right: 0; width: max-content; max-width: 260px; padding: 8px 10px; background: #08080a; border: 1px solid var(--border-strong); color: var(--text); font-size: 11px; line-height: 1.4; border-radius: 3px; z-index: 6; }
+.header-csv-message { position: absolute; top: calc(100% + 6px); right: 0; width: max-content; max-width: 260px; padding: 8px 10px; background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); font-size: 11px; line-height: 1.4; border-radius: 3px; z-index: 6; }
 .season-chip { display: flex; flex-direction: column; min-width: 132px; padding: 9px 12px; border: 1px solid var(--border); background: var(--surface); }
 .season-chip span { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--soft); text-transform: uppercase; }
 .season-chip strong { margin-top: 2px; font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
@@ -110,7 +174,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .season-chart-wrap { margin-top: 15px; }
 .chart-legend { display: flex; justify-content: flex-end; gap: 20px; margin: 0 8px 2px 0; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
+/* 02/09/2026: default to --blue (Formula) so a SeasonChart rendered with no category prop still looks
+ * right; .season-chart-wrap.sports overrides both this and every other "current series" color below to
+ * --amber, so the chart matches whichever KPI card it sits under instead of always reading cyan. */
 .legend-line { width: 22px; height: 3px; display: inline-block; background: var(--blue); }
+.season-chart-wrap.sports .legend-line.current { background: var(--amber); }
 .legend-line.previous { background: var(--soft); }
 .chart-canvas { position: relative; width: 100%; min-height: 264px; }
 .chart-canvas svg { width: 100%; height: auto; display: block; overflow: visible; }
@@ -122,8 +190,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .season-area { stroke: none; }.season-area.current { fill: rgba(79,209,232,.12); }.season-area.previous { fill: rgba(143,151,163,.05); }
 .chart-hit { fill: transparent; stroke: transparent; cursor: crosshair; }
 .chart-hit:hover { fill: var(--blue); stroke: var(--bg); stroke-width: 3; }
-.chart-tooltip { position: absolute; right: 18px; top: 14px; width: min(330px, calc(100% - 36px)); background: #08080a; border: 1px solid var(--border-strong); color: var(--text); padding: 13px 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); pointer-events: none; z-index: 5; }
+.chart-tooltip { position: absolute; right: 18px; top: 14px; width: min(330px, calc(100% - 36px)); background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); padding: 13px 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); pointer-events: none; z-index: 5; }
 .tooltip-kicker { color: var(--blue); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
+.chart-canvas.sports .season-line.current { stroke: var(--amber); filter: drop-shadow(0 0 5px rgba(255,176,32,.4)); }
+.chart-canvas.sports .season-area.current { fill: rgba(255,176,32,.12); }
+.chart-canvas.sports .chart-hit:hover { fill: var(--amber); }
+.chart-canvas.sports .tooltip-kicker { color: var(--amber); }
 .tooltip-rating { margin-top: 5px; font-family: var(--mono); font-size: 21px; font-weight: 700; }
 .tooltip-grid { display: grid; grid-template-columns: 70px 1fr; gap: 5px 10px; margin-top: 10px; font-family: var(--mono); font-size: 12px; }
 .tooltip-grid span { color: var(--muted); }
@@ -181,14 +253,19 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .telemetry-chart-wrap { margin-top: 18px; }
 .telemetry-legend { display: flex; justify-content: flex-end; gap: 18px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .telemetry-legend span::before { content: ""; width: 18px; height: 3px; display: inline-block; margin-right: 6px; vertical-align: middle; background: currentColor; }
-.telemetry-legend .speed { color: var(--blue); }
+.telemetry-legend .speed { color: var(--text); }
 .telemetry-legend .throttle { color: var(--green); }
 .telemetry-legend .brake { color: var(--red); }
 .telemetry-chart { width: 100%; height: auto; margin-top: 8px; overflow: visible; }
 .telemetry-chart text { fill: var(--soft); font-size: 11px; font-family: var(--mono); }
 .telemetry-grid { stroke: var(--border); stroke-width: 1; }
 .telemetry-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.trace-speed { stroke: var(--blue); }
+/* 02/09/2026: "o contrato de cor por categoria... azul também significa canal de velocidade" -- speed
+ * isn't Formula-category data, it's a channel every category has, so coloring it --blue made it read as
+ * "Formula" on screen. White matches the speed readout's own color in FocusedGaugeChart's gauge widget
+ * (see that file's own comment: "velocidade... em branco"), so this channel now has ONE color across
+ * both the trace chart and the gauge cluster instead of two different conventions. */
+.trace-speed { stroke: var(--text); }
 .trace-throttle { stroke: var(--green); }
 .trace-brake { stroke: var(--red); opacity: .9; }
 .telemetry-caption { margin: 5px 0 0; color: var(--soft); font-size: 12px; text-align: right; }
@@ -197,18 +274,21 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .link-button { text-decoration: none; }.secondary-link { color: var(--brand); font-size: 14px; text-decoration: none; }.compact-header { min-height: 88px; }.telemetry-page-frame { max-width: 1600px; }
 .channel-key { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--muted); font-family: var(--mono); font-size: 10px; }
 .channel-key span::before { content: ""; display: inline-block; width: 14px; height: 2px; margin-right: 5px; vertical-align: middle; background: currentColor; }
-.channel-key .speed { color: var(--blue); }.channel-key .throttle { color: var(--green); }.channel-key .brake { color: var(--red); }.channel-key .steering { color: #e0973b; }.channel-key .rpm { color: #a97ee0; }.channel-key .gear { color: var(--muted); }.channel-key .clutch { color: #c99a4a; }.channel-key .dynamics { color: #4fc3d6; }
+.channel-key .speed { color: var(--text); }.channel-key .throttle { color: var(--green); }.channel-key .brake { color: var(--red); }.channel-key .steering { color: var(--channel-steering); }.channel-key .rpm { color: var(--channel-rpm); }.channel-key .gear { color: var(--muted); }.channel-key .clutch { color: var(--channel-clutch); }.channel-key .dynamics { color: var(--channel-dynamics); }
 .interactive-chart { position: relative; min-width: 0; }
 .corner-marker-line { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 2 4; opacity: .6; }
 .corner-marker-label { fill: var(--amber); font-size: 11px; font-weight: 700; font-family: var(--mono); }
 .channel-label { fill: var(--soft) !important; font-size: 10px !important; letter-spacing: .08em; }
-.trace-speed { stroke: var(--blue); }.trace-throttle { stroke: var(--green); }.trace-brake { stroke: var(--red); }.trace-steering { stroke: #e0973b; }.trace-rpm { stroke: #a97ee0; }.trace-gear { stroke: var(--muted); }.trace-clutch { stroke: #c99a4a; }.trace-latAccel, .trace-longAccel, .trace-yawRate { stroke: #4fc3d6; }
+/* Same speed-channel color as the legend/telemetry-legend rule above (--text, not --blue) -- see that
+ * rule's own comment. This second .trace-speed (the interactive per-corner chart's own channel set)
+ * used to silently override the first one via source order since both had equal specificity. */
+.trace-speed { stroke: var(--text); }.trace-throttle { stroke: var(--green); }.trace-brake { stroke: var(--red); }.trace-steering { stroke: var(--channel-steering); }.trace-rpm { stroke: var(--reference); }.trace-gear { stroke: var(--muted); }.trace-clutch { stroke: var(--channel-clutch); }.trace-latAccel, .trace-longAccel, .trace-yawRate { stroke: var(--channel-dynamics); }
 .reference-line { stroke-dasharray: 6 5; opacity: .55; }
 .hover-line { stroke: var(--text); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .gauge-divider { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.telemetry-hover-panel { position: sticky; top: 16px; min-width: 0; padding: 14px; border: 1px solid var(--border-strong); background: #08080a; color: var(--text); align-self: start; }
+.telemetry-hover-panel { position: sticky; top: 16px; min-width: 0; padding: 14px; border: 1px solid var(--border-strong); background: var(--surface-deep); color: var(--text); align-self: start; }
 .telemetry-hover-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.telemetry-hover > strong { display: block; margin-bottom: 7px; font-size: 13px; font-family: var(--display); }.telemetry-hover div { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; padding: 2px 0; font-family: var(--mono); font-size: 11px; }.telemetry-hover span { color: var(--muted); text-transform: uppercase; }.telemetry-hover b { font-weight: 500; }.telemetry-hover em { color: #d0a8f0; font-style: normal; }
+.telemetry-hover > strong { display: block; margin-bottom: 7px; font-size: 13px; font-family: var(--display); }.telemetry-hover div { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; padding: 2px 0; font-family: var(--mono); font-size: 11px; }.telemetry-hover span { color: var(--muted); text-transform: uppercase; }.telemetry-hover b { font-weight: 500; }.telemetry-hover em { color: var(--reference); font-style: normal; }
 .insights-grid button ul { margin: 8px 0 0; padding-left: 15px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 .selected-segment { fill: rgba(79,209,232,.09); stroke: rgba(79,209,232,.35); stroke-width: 1; pointer-events: none; }
 .channel-report { margin-top: 16px; padding: 14px; background: var(--surface-muted); border: 1px solid var(--border); }.channel-report h3 { margin: 0 0 8px; font-size: 16px; }.channel-report p { margin: 4px 0; color: var(--muted); font-size: 13px; }
@@ -224,8 +304,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .reference-upload.disabled { opacity: .55; cursor: wait; }
 .reference-upload input { display: none; }
 .reference-message { margin-top: 8px; color: var(--muted); font-size: 12px; }
-.telemetry-legend .reference { color: #a97ee0; }
-.trace-reference { stroke: #a97ee0; stroke-dasharray: 6 5; }
+.telemetry-legend .reference { color: var(--reference); }
+.trace-reference { stroke: var(--reference); stroke-dasharray: 6 5; }
 .comparison-section { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 18px; }
 .comparison-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 .comparison-summary div { padding: 12px; display: flex; flex-direction: column; gap: 5px; background: var(--surface-muted); border: 1px solid var(--border); }
@@ -289,7 +369,14 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  that swallows the ribbon. At full-lap zoom the real GPS divergence between two similar laps is
  often under a meter, i.e. sub-pixel once projected across an entire circuit -- a 4px stroke turned
  that into one solid blob. Thinned to 1.5px (still readable, but leaves room for the ribbon and for
- real divergence to show as two separate threads once you zoom into a corner). */.track-own-line { fill: none; stroke: var(--red); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--red); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--red); stroke-width: 4; }.track-marker-ref { fill: var(--bg); stroke: var(--blue); stroke-width: 4; }.track-reference { fill: none; stroke: var(--blue); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+ real divergence to show as two separate threads once you zoom into a corner). */
+/* 02/09/2026: own/reference used to be --red (own) / --blue (reference) here -- collided with
+ * red=perda and blue=Formula-category (see the P0 fix in this file's own token block). Own is now
+ * --text (solid, neutral -- "you" is the default/primary line, no color claim needed) and reference is
+ * --reference (dashed purple), the SAME purple already used for the reference-trace overlay on the
+ * main telemetry chart (.trace-reference below) -- one own/reference color pair for the whole app now,
+ * not two different ones depending on which screen you're on. */
+.track-own-line { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--text); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--text); stroke-width: 4; }.track-marker-ref { fill: var(--bg); stroke: var(--reference); stroke-width: 4; }.track-reference { fill: none; stroke: var(--reference); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
 /* vector-effect: non-scaling-stroke keeps these lines a fixed number of real screen pixels wide --
  needed so the click-to-zoom +/- controls make lines stay thin while the real gap between them grows
  (see the comment above). But that same fixed-real-pixel width means the line-to-ribbon ratio breaks
@@ -300,17 +387,24 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 @media (max-width: 520px) {
   .track-own-line, .track-reference { stroke-width: .7; }
 }
-.track-map-legend { display: flex; gap: 14px; margin: 6px 0 0; font-family: var(--mono); font-size: 10px; color: var(--muted); }.track-map-legend span { display: inline-flex; align-items: center; gap: 5px; }.track-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; }.track-map-legend .own::before { background: var(--red); }.track-map-legend .reference::before { background: var(--blue); background-image: repeating-linear-gradient(90deg, var(--blue) 0 3px, transparent 3px 6px); }
+.track-map-legend { display: flex; gap: 14px; margin: 6px 0 0; font-family: var(--mono); font-size: 10px; color: var(--muted); }.track-map-legend span { display: inline-flex; align-items: center; gap: 5px; }.track-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; }.track-map-legend .own::before { background: var(--text); }.track-map-legend .reference::before { background: var(--reference); background-image: repeating-linear-gradient(90deg, var(--reference) 0 3px, transparent 3px 6px); }
 /* Generic per-car line for the shared components/TrackMap.tsx (car comparison's per-corner deep
  * dive) -- arbitrary color via inline style, unlike .track-own-line/.track-reference which are
  * fixed to the app's own/reference red/blue convention. */
 .track-compare-line { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(320px, 380px); grid-template-rows: auto auto; gap: 18px; align-items: start; margin-top: 10px; }
-.telemetry-map-sticky { grid-column: 1 / -1; grid-row: 1; position: static; padding: 14px; border: 1px solid var(--border-strong); background: #08080a; }
+/* 02/09/2026 P0 fix: "o mapa 'sticky' de Track Position não é sticky" -- was a 2-row grid (full-width
+ * map band in row 1, chart+hover-panel in row 2), and .telemetry-map-sticky was `position: static`
+ * despite its own name and its own caption instructing an interaction ("passe o mouse... clique para
+ * dar zoom") that required it to stay visible alongside the chart. Now a single row: chart on the
+ * left, and .telemetry-side-sticky (map + hover readout together) genuinely `position: sticky` in the
+ * right column, so both are on screen at the same scroll position as the chart, the whole time. */
+.telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); grid-template-rows: auto; gap: 18px; align-items: start; margin-top: 10px; }
+.telemetry-side-sticky { grid-column: 2; grid-row: 1; position: sticky; top: 16px; display: flex; flex-direction: column; gap: 14px; align-self: start; max-height: calc(100vh - 32px); }
+.telemetry-map-sticky { padding: 14px; border: 1px solid var(--border-strong); background: var(--surface-deep); flex: 0 0 auto; }
 .telemetry-map-sticky h3 { margin: 4px 0 10px; font-size: 16px; }
-.telemetry-map-sticky .track-map-zoom-wrap, .telemetry-map-sticky .track-map { height: 440px; }
+.telemetry-map-sticky .track-map-zoom-wrap, .telemetry-map-sticky .track-map { height: 300px; }
 .telemetry-map-sticky > p:last-child { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
-.interactive-chart { grid-column: 1; grid-row: 2; }.telemetry-hover-panel { grid-column: 2; grid-row: 2; }
+.interactive-chart { grid-column: 1; grid-row: 1; }.telemetry-hover-panel { position: static; flex: 1; min-height: 0; overflow: auto; }
 
 .insight-popup-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(3,5,7,.72); padding: 20px; }
 /* Widened 760->980 (31/08/2026: "dá para aumentar a largura desse objeto como um todo e isso iria
@@ -378,7 +472,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .results-row b { min-width: 28px; color: var(--blue); font-family: var(--mono); font-size: 18px; text-align: right; }.results-category.sports .results-row b { color: var(--amber); }
 .official-results-note { margin: 11px 0 0; color: var(--soft); font-size: 11px; }
 .rating-chart-grid .panel-heading h2 { font-size: 17px; }.rating-chart-grid .panel-heading p { font-size: 12px; }.rating-chart-grid .chart-canvas { min-height: 180px; }
-.scatter-wrap { position: relative; margin-top: 14px; }.scatter-wrap svg { width: 100%; min-height: 250px; overflow: visible; }.scatter-wrap text { fill: var(--soft); font-family: var(--mono); font-size: 10px; }.scatter-grid { stroke: var(--border); stroke-width: 1; }.scatter-zero { stroke: var(--border-strong); stroke-width: 1.5; }.scatter-positive { fill: var(--green); opacity: .85; }.scatter-negative { fill: var(--red); opacity: .85; }.scatter-hit { fill: transparent; cursor: pointer; }.scatter-tooltip { position: absolute; right: 12px; top: 8px; display: grid; gap: 3px; max-width: 280px; padding: 10px 12px; border-radius: 3px; background: #08080a; border: 1px solid var(--border-strong); color: var(--text); pointer-events: none; }.scatter-tooltip strong { font-family: var(--mono); font-size: 15px; }.scatter-tooltip span { color: var(--muted); font-size: 11px; }
+.scatter-wrap { position: relative; margin-top: 14px; }.scatter-wrap svg { width: 100%; min-height: 250px; overflow: visible; }.scatter-wrap text { fill: var(--soft); font-family: var(--mono); font-size: 10px; }.scatter-grid { stroke: var(--border); stroke-width: 1; }.scatter-zero { stroke: var(--border-strong); stroke-width: 1.5; }.scatter-positive { fill: var(--green); opacity: .85; }.scatter-negative { fill: var(--red); opacity: .85; }.scatter-hit { fill: transparent; cursor: pointer; }.scatter-tooltip { position: absolute; right: 12px; top: 8px; display: grid; gap: 3px; max-width: 280px; padding: 10px 12px; border-radius: 3px; background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); pointer-events: none; }.scatter-tooltip strong { font-family: var(--mono); font-size: 15px; }.scatter-tooltip span { color: var(--muted); font-size: 11px; }
 .season-races-panel { margin-top: 18px; padding: 20px; }.race-table-wrap { margin-top: 16px; overflow: auto; }.race-table-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }.race-table-pagination button { padding: 8px 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 3px; }.race-table-pagination button:hover:not(:disabled) { background: var(--surface-muted); border-color: var(--brand); }.race-table-pagination button:disabled { opacity: .4; cursor: not-allowed; }.race-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }.race-table th { padding: 9px 10px; background: var(--surface-muted); color: var(--soft); text-align: left; text-transform: uppercase; letter-spacing: .05em; font-weight: 500; }.race-table td { padding: 10px; border-top: 1px solid var(--border); }.race-table td:nth-child(2), .race-table td:nth-child(3), .race-table td:nth-child(4) { white-space: normal; min-width: 150px; font-family: var(--body); }
 
 .insights-grid button strong { font-size: 16px; }.insights-grid button span { font-size: 14px; }.insights-grid button p { font-size: 15px; line-height: 1.55; }.insights-grid button ul { font-size: 13px; }
@@ -463,7 +557,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .ranking-panel { min-height: auto; }
   .rating-chart-grid, .setup-grid, .official-results-grid { grid-template-columns: 1fr; }
   .telemetry-workspace, .corner-mini-row, .sector-map-layout, .race-debrief-corner-card { grid-template-columns: 1fr; }
-  .telemetry-map-sticky, .interactive-chart, .telemetry-hover-panel { grid-column: 1; grid-row: auto; position: static; }
+  .telemetry-side-sticky, .interactive-chart { grid-column: 1; grid-row: auto; position: static; max-height: none; }
   .telemetry-map-sticky .track-map-zoom-wrap, .telemetry-map-sticky .track-map { height: auto; aspect-ratio: 3 / 2; }
   .corner-card-map-col .track-map-zoom-wrap { height: 220px; flex: none; min-height: 0; }
   .setup-diff article { grid-template-columns: 1fr; gap: 10px; }
@@ -581,7 +675,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .corner-mini-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .corner-mini-col-label { font-family: var(--mono); font-size: 10px; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
 .corner-mini-empty { fill: var(--muted); font-family: var(--mono); font-size: 9px; }
-.corner-mini-chart { width: 100%; height: 150px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; cursor: crosshair; touch-action: none; }
+.corner-mini-chart { width: 100%; height: 150px; background: var(--surface-map); border: 1px solid var(--border); border-radius: 3px; cursor: crosshair; touch-action: none; }
 /* flex:1 here used to be a no-op (31/08/2026 regression) because the map's actual PARENT
  * (.corner-mini-col) sat INSIDE corner-mini-row, a row sized by the two fixed-150px charts beside
  * it -- flex:1 had no taller container to grow into. Now that corner-card-map-col is its own grid
@@ -590,7 +684,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
  * the shared components/TrackMap.tsx now (real OSM boundary), not its own
  * .corner-mini-map-outline/-marker classes -- those are gone, see that component's own
  * track-outline/track-compare-line. */
-.corner-mini-map { width: 100%; height: 100%; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
+.corner-mini-map { width: 100%; height: 100%; background: var(--surface-map); border: 1px solid var(--border); border-radius: 3px; }
 /* Shared TrackMap.tsx now wraps its <svg> in its own .track-map-zoom-wrap div (01/09/2026, added
  * for scroll-to-zoom) -- the svg itself is no longer corner-card-map-col's direct flex child, so
  * flex:1 has to live on the wrap div for the same "stretch to the full card height" effect that
@@ -628,7 +722,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .sector-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
 .sector-map-layout { display: grid; grid-template-columns: minmax(360px, .9fr) minmax(420px, 1.1fr); gap: 14px; margin-top: 16px; align-items: stretch; }
 .sector-map-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); border-radius: 3px; }
-.sector-map { width: 100%; min-height: 320px; background: #0e131a; border: 1px solid var(--border); border-radius: 3px; }
+.sector-map { width: 100%; min-height: 320px; background: var(--surface-map); border: 1px solid var(--border); border-radius: 3px; }
 .sector-map-base { fill: none; stroke: var(--border-strong); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .45; }
 .sector-map-segment { fill: none; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
 .sector-map-segment.great { stroke: var(--green); }.sector-map-segment.good { stroke: var(--blue); }.sector-map-segment.warn { stroke: var(--amber); }.sector-map-segment.bad { stroke: var(--red); }

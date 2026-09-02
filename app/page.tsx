@@ -319,7 +319,7 @@ export default function Home() {
               <button className={chartCategory === "sports" ? "active" : ""} onClick={() => { setChartCategory("sports"); setChartSeries("all"); }}>Sports Car</button>
             </div>
           </div>
-          <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} />
+          <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} category={chartCategory} />
         </article>
         <article className="panel large-panel">
           <div className="panel-heading">

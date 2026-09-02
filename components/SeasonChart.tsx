@@ -25,6 +25,12 @@ type Props = {
   currentName: string;
   previousName: string;
   metric?: "irating" | "safety";
+  // 02/09/2026: "o contrato de cor por categoria... a linha do gráfico de iRating segue ciano mesmo
+  // quando 'Sports Car' está selecionado, contradizendo o KPI card âmbar logo acima" -- this chart used
+  // to hardcode --blue for the "current" line/area/legend/tooltip regardless of which category was
+  // selected. category drives a CSS class (.season-chart.formula/.sports) so the "current" series now
+  // matches the KPI card's own color (--blue for Formula, --amber for Sports) instead of always cyan.
+  category?: "formula" | "sports";
 };
 
 function signed(value: number | null) {
@@ -36,7 +42,7 @@ function formatRating(value: number | null) {
   return value === null ? "—" : value.toLocaleString("pt-BR");
 }
 
-export default function SeasonChart({ current, previous, currentName, previousName, metric = "irating" }: Props) {
+export default function SeasonChart({ current, previous, currentName, previousName, metric = "irating", category }: Props) {
   const [hovered, setHovered] = useState<{ point: WeekPoint; series: "current" | "previous" } | null>(null);
 
   const width = 640;
@@ -74,14 +80,16 @@ export default function SeasonChart({ current, previous, currentName, previousNa
 
   const ticks = Array.from({ length: 5 }, (_, index) => max - (range / 4) * index);
 
+  const categoryClass = category ? ` ${category}` : "";
+
   return (
-    <div className="season-chart-wrap">
+    <div className={`season-chart-wrap${categoryClass}`}>
       <div className="chart-legend">
         <span><i className="legend-line current" />{currentName}</span>
         <span><i className="legend-line previous" />{previousName}</span>
       </div>
 
-      <div className="chart-canvas">
+      <div className={`chart-canvas${categoryClass}`}>
         <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Evolução semanal de ${metric === "safety" ? "Safety Rating" : "iRating"}`}>
           {ticks.map((tick) => (
             <g key={tick}>

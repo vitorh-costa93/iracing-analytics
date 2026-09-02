@@ -903,11 +903,6 @@ export default function ActiveWeekTelemetry() {
               <div className="telemetry-legend"><span className="own-lap">Sua volta — linha contínua</span>{referenceTrace && <span className="reference">Referência — tracejada</span>}</div>
               <div className="channel-key"><span className="speed">Velocidade</span><span className="throttle">Acelerador</span><span className="brake">Freio</span><span className="steering">Volante</span><span className="rpm">RPM</span><span className="gear">Marcha</span><span className="clutch">Embreagem</span><span className="dynamics">Dinâmica</span></div>
               <div className="telemetry-workspace">
-              {/* Persistent, full-track map (like Garage61's own analysis view): always the whole
-               * lap, own+reference lines at their real GPS positions, manual zoom/pan instead of
-               * auto-narrowing on hover — the hover-panel's own small map (below) already covers
-               * the "zoom to where I'm hovering" job, so this one's job is the overview. */}
-              <aside className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} focusRequest={chartFocus} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs para localizar o ponto no mapa, clique para dar zoom ali, ou role o mouse sobre o mapa para aproximar/afastar.</p></aside>
               <div className="interactive-chart">
               <svg className="telemetry-chart" viewBox="0 0 1000 960" role="img" tabIndex={0}
                 aria-label="Canais sincronizados das duas voltas por distância da pista. Use as setas esquerda/direita para percorrer a pista, Shift+seta para passos maiores."
@@ -951,7 +946,17 @@ export default function ActiveWeekTelemetry() {
                 {hoveredDistance !== null && <line x1={hoveredDistance * 10} x2={hoveredDistance * 10} y1="0" y2="925" className="hover-line" />}
               </svg>
               </div>
-              <aside className="telemetry-hover-panel">
+              {/* 02/09/2026 P0 fix: "o mapa 'sticky' de Track Position não é sticky" -- this whole
+               * block used to be .telemetry-map-sticky, `position: static` and stacked ABOVE the
+               * chart as a full-width band, so by the time you scrolled down to actually hover the
+               * chart, the map (and its own instruction text "passe o mouse nos inputs para localizar
+               * o ponto no mapa") had already scrolled off screen -- the app's advertised core
+               * interaction couldn't be seen working. Map + hover readout now live together in ONE
+               * real position:sticky column next to the chart, so both are visible at the same time,
+               * at every scroll position, the whole time you're hovering. */}
+              <aside className="telemetry-side-sticky">
+                <div className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} focusRequest={chartFocus} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs para localizar o ponto no mapa, clique para dar zoom ali, ou role o mouse sobre o mapa para aproximar/afastar.</p></div>
+                <div className="telemetry-hover-panel">
                 {hoveredDistance !== null ? (() => {
                   const own = (field: ChannelKey) => interpolate(trace.points, hoveredDistance, field);
                   const ref = (field: ChannelKey) => referenceTrace ? interpolate(referenceTrace.points, hoveredDistance, field) : null;
@@ -966,6 +971,7 @@ export default function ActiveWeekTelemetry() {
                     {visible.map((field) => <div key={field}><span>{field}</span><b>{format(field, own(field))}</b><em>{format(field, ref(field))}</em></div>)}
                   </div>;
                 })() : <p className="telemetry-hover-empty">Passe o mouse sobre os gráficos para ver os valores exatos deste ponto da pista.</p>}
+                </div>
               </aside>
               </div>
               <p className="telemetry-caption">{trace.points.length.toLocaleString("pt-BR")} amostras exibidas • volta de {new Date(selected.bestLap!.startTime).toLocaleString("pt-BR")}</p>
@@ -992,8 +998,11 @@ export default function ActiveWeekTelemetry() {
                     .filter((point) => point[field] !== null && Number.isFinite(point[field]))
                     .map((point) => ({ x: point.distance, value: Number(point[field]) }));
                   const wheelDistance = popupHoverDistance ?? (focusedInsight.start + focusedInsight.end) / 2;
+                  // 02/09/2026: own/reference used to be --red/--blue (colliding with red=perda and
+                  // blue=Formula-category); now --text (own, solid) / --reference (dashed purple),
+                  // matching the same pair used everywhere else (TrackMap, main telemetry chart).
                   const sides: FocusedSide[] = [{
-                    key: "own", label: "VOCÊ", color: "var(--red)", dashed: false,
+                    key: "own", label: "VOCÊ", color: "var(--text)", dashed: false,
                     throttle: toSeries(ownPts, "throttle"), brake: toSeries(ownPts, "brake"),
                     angleRad: interpolate(ownPts, wheelDistance, "steering"),
                     gear: interpolate(ownPts, wheelDistance, "gear"),
@@ -1002,7 +1011,7 @@ export default function ActiveWeekTelemetry() {
                     brakeNow: interpolate(ownPts, wheelDistance, "brake"),
                   }];
                   if (referenceTrace) sides.push({
-                    key: "reference", label: "REFERÊNCIA", color: "var(--blue)", dashed: true,
+                    key: "reference", label: "REFERÊNCIA", color: "var(--reference)", dashed: true,
                     throttle: toSeries(refPts, "throttle"), brake: toSeries(refPts, "brake"),
                     angleRad: interpolate(refPts, wheelDistance, "steering"),
                     gear: interpolate(refPts, wheelDistance, "gear"),
