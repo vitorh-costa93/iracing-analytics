@@ -34,7 +34,7 @@ type Comparison = {
   estimatedReferenceTime: number;
   estimatedGap: number;
   averageSpeedDifference: number;
-  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; kind: "corner" | "straight"; cornerNumber: number | null; cornerLabel: string | null; primaryType: string }[];
+  opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; binStart: number; binEnd: number; deltaSeries: { distance: number; cumulativeGain: number }[]; kind: "corner" | "straight"; cornerNumber: number | null; cornerLabel: string | null; primaryType: string }[];
   channelInsights: string[];
   lineDistance: { distance: number; meters: number }[];
 };
@@ -358,15 +358,17 @@ function detectCorners(points: TracePoint[], trackName: string, trackVariant: st
   return raw.map((corner, index) => ({ number: corner.number, distance: corner.distance, name: names?.[index] ?? null, startDistance: corner.startDistance, endDistance: corner.endDistance }));
 }
 
-function nearestCorner(corners: Corner[], start: number, end: number): Corner | null {
-  const center = (start + end) / 2;
-  let best: Corner | null = null;
-  let bestDist = Infinity;
-  for (const corner of corners) {
-    const d = Math.min(Math.abs(corner.distance - center), 100 - Math.abs(corner.distance - center));
-    if (d < bestDist) { bestDist = d; best = corner; }
-  }
-  return best && bestDist <= 8 ? best : null;
+// 03/09/2026: "segue a mesma coisa, curva 31... na verdade isso é uma sequência de curvas e uma curva
+// influencia na outra, então a nomenclatura tá errada" -- picking a single NEAREST corner to an
+// analysis bin (the old nearestCorner, kept below only as a fallback comment reference) always named
+// the loss after one corner even when the bin's real loss came from a run of several adjacent ones
+// (a chicane/esses complex on a long track easily packs 3-4 detected corners into one 5%-of-lap bin).
+// Returns every corner whose OWN real span overlaps the bin at all, in track order, so the caller can
+// tell "one corner" from "a sequence" and label/frame each case honestly.
+function cornersInRange(corners: Corner[], start: number, end: number): Corner[] {
+  return corners
+    .filter((corner) => corner.endDistance >= start && corner.startDistance <= end)
+    .sort((a, b) => a.startDistance - b.startDistance);
 }
 
 function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners: Corner[]): Comparison | null {
@@ -420,9 +422,15 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
   const opportunities = segments.map((item, rankIndex) => {
     const start = item.index * 5, end = (item.index + 1) * 5;
     const braking = brakingDeltas.find((event) => event.position >= start - 2 && event.position <= end + 2);
-    const corner = nearestCorner(corners, start, end);
-    const kind: "corner" | "straight" = corner ? "corner" : "straight";
-    const cornerLabel = corner ? corner.name ?? `Curva ${corner.number}` : null;
+    // 03/09/2026: "na verdade isso é uma sequência de curvas... a nomenclatura tá errada, seria algo
+    // como 'Curvas 31-34'" -- see cornersInRange's own comment. One matched corner keeps the old
+    // single-name behavior; several get an honest range label instead of picking just the nearest one.
+    const matchedCorners = cornersInRange(corners, start, end);
+    const corner = matchedCorners[0] ?? null;
+    const kind: "corner" | "straight" = matchedCorners.length ? "corner" : "straight";
+    const cornerLabel = matchedCorners.length === 0 ? null
+      : matchedCorners.length === 1 ? (matchedCorners[0].name ?? `Curva ${matchedCorners[0].number}`)
+      : `Curvas ${matchedCorners[0].number}–${matchedCorners[matchedCorners.length - 1].number}`;
     const place = cornerLabel ? `na ${cornerLabel}` : "neste trecho";
 
     type Finding = { type: string; weight: number; clause: string; instruction: string };
@@ -500,12 +508,27 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     // the highlighted chart/map range reused those SAME bin edges to describe "the corner" -- so a
     // real corner spanning a tight ~1% of the lap got labeled with a generic 5%-wide window whenever
     // it happened to fall in one (675m at Le Mans, easily several real corners on a long track). When
-    // a real corner was matched, show and highlight ITS OWN actual footprint (a little padding for
-    // context) instead of the arbitrary bin -- the underlying gain/finding numbers above still come
-    // from the full bin's samples (a real change here would need a corner-aligned analysis window,
-    // a bigger change), but at least the reported location is now honest about which stretch it is.
-    const displayStart = corner ? Math.max(0, corner.startDistance - 1) : start;
-    const displayEnd = corner ? Math.min(100, corner.endDistance + 1) : end;
+    // real corners were matched, show and highlight THEIR OWN combined footprint (a little padding
+    // for context) instead of the arbitrary bin -- the underlying gain/finding numbers above still
+    // come from the full bin's samples (a real change here would need a corner-aligned analysis
+    // window, a bigger change), but at least the reported location is now honest about which stretch
+    // it is, whether that's one corner or a run of several.
+    const displayStart = matchedCorners.length ? Math.max(0, Math.min(...matchedCorners.map((item) => item.startDistance)) - 1) : start;
+    const displayEnd = matchedCorners.length ? Math.min(100, Math.max(...matchedCorners.map((item) => item.endDistance)) + 1) : end;
+
+    // 03/09/2026: "o delta de tempo evoluindo conforme eu corro o mouse... o delta final deve ser o
+    // mesmo apresentado no card" -- a running cumulative own-vs-reference time delta across THIS
+    // opportunity's own analysis bin (the same [start,end) samples and `scale` normalization the
+    // `gain` above was computed from), so a hover position anywhere in the bin can look up "how much
+    // of the total loss/gain has accumulated by here" and the very last point always sums to exactly
+    // `item.gain` (verified below: deltaSeries.at(-1).cumulativeGain === gain by construction, since
+    // it's the same running sum split into steps instead of collapsed straight to a total).
+    const binRows = samples.filter((row) => Number(row.distance) >= start && Number(row.distance) < end);
+    let cumulative = 0;
+    const deltaSeries = binRows.map((row) => {
+      cumulative += (1 / Number(row.own_speed) - 1 / Number(row.ref_speed)) * scale;
+      return { distance: Number(row.distance), cumulativeGain: cumulative };
+    });
 
     return {
       title: `${cornerLabel ?? "Reta / transição"} • ${displayStart.toFixed(1)}%–${displayEnd.toFixed(1)}%${trackLength ? ` • ${(displayStart / 100 * trackLength).toFixed(0)}–${(displayEnd / 100 * trackLength).toFixed(0)} m` : ""}`,
@@ -514,6 +537,9 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
       metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ acelerador ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
       start: displayStart,
       end: displayEnd,
+      binStart: start,
+      binEnd: end,
+      deltaSeries,
       kind,
       cornerNumber: corner?.number ?? null,
       cornerLabel,
@@ -536,6 +562,27 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
   // the track map's ribbon can't (see TrackMap's own comments on why).
   const lineDistance = samples.filter((item) => item.lateral !== undefined).map((item) => ({ distance: Number(item.distance), meters: Number(item.lateral) }));
   return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights, lineDistance };
+}
+
+/** Linear-interpolates an opportunity's running cumulative time delta (see its `deltaSeries` own
+ * comment) at an arbitrary distance -- clamped to the series' own [start,end) span, since a hover
+ * position can sit in the small padding zone just outside it (0 before the sequence starts, the
+ * final/total value once past its end, matching the card's own headline number). */
+function interpolateCumulativeGain(series: { distance: number; cumulativeGain: number }[], distance: number): number {
+  if (!series.length) return 0;
+  if (distance <= series[0].distance) return 0;
+  const last = series[series.length - 1];
+  if (distance >= last.distance) return last.cumulativeGain;
+  let prev = series[0];
+  for (const point of series) {
+    if (point.distance >= distance) {
+      const span = point.distance - prev.distance;
+      const ratio = span > 0 ? (distance - prev.distance) / span : 0;
+      return prev.cumulativeGain + (point.cumulativeGain - prev.cumulativeGain) * ratio;
+    }
+    prev = point;
+  }
+  return last.cumulativeGain;
 }
 
 function nearestGpsPoint(points: TracePoint[], distance: number) {
@@ -1155,6 +1202,33 @@ export default function ActiveWeekTelemetry() {
                     <div className="insight-popup-body">
                       <FocusedGaugeChart sides={sides} xDomain={[from, to]} hoverX={popupHoverDistance} onHoverX={setPopupHoverDistance}
                         ariaLabel="Freio, acelerador, marcha, velocidade e volante da sua volta e da referência nesse trecho; passe o mouse ou arraste o dedo para ver a posição no mapa abaixo" />
+                      {/* 03/09/2026: "o delta de tempo evoluindo conforme eu corro o mouse no gráfico
+                       * de inputs vai me permitir visualizar onde que está a maior perda de tempo" --
+                       * same diverging-bar language as the full-lap Delta Bar above (iRacing's own
+                       * ahead/behind widget), but LOCAL to this corner/sequence: grows as the hover
+                       * moves across the input chart, resting at the card's own total (`focusedInsight
+                       * .gain`) when nothing is hovered -- by construction (deltaSeries is the same
+                       * running sum split into steps, see its own comment), hovering exactly at the
+                       * sequence's end always reads the same number the card headline already shows. */}
+                      {(() => {
+                        const hoverX = popupHoverDistance !== null
+                          ? Math.min(focusedInsight.binEnd, Math.max(focusedInsight.binStart, popupHoverDistance))
+                          : focusedInsight.binEnd;
+                        const runningGain = interpolateCumulativeGain(focusedInsight.deltaSeries, hoverX);
+                        const faster = runningGain < 0;
+                        const scale = Math.max(0.15, Math.abs(focusedInsight.gain) * 1.15);
+                        const width = Math.min(48, Math.abs(runningGain) / scale * 48);
+                        return (
+                          <div className="popup-delta-bar">
+                            <div className="delta-bar-row">
+                              <span className="delta-bar-label">MAIS LENTO</span>
+                              <div className="diverging-bar delta-bar"><i className="center-line" /><span className={faster ? "positive" : "negative"} style={faster ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>
+                              <span className="delta-bar-label">MAIS RÁPIDO</span>
+                            </div>
+                            <span className="popup-delta-bar-value">{runningGain >= 0 ? "+" : ""}{runningGain.toFixed(3)}s{popupHoverDistance === null ? " (total da sequência)" : " acumulado até aqui"}</span>
+                          </div>
+                        );
+                      })()}
                       <div className="insight-popup-map">
                         <span className="section-kicker">TRAÇADO</span>
                         <TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom lineDistance={comparison?.lineDistance} />

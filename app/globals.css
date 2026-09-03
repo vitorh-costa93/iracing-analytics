@@ -348,6 +348,13 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .delta-bar-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 10px; }
 .delta-bar-label { color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; white-space: nowrap; }
 .delta-bar { height: 10px; }
+/* Popup Delta Bar (03/09/2026) -- same widget, LOCAL to one corner/sequence inside the "Melhor volta
+ * vs referência" insight popup, growing as the mouse moves over the inputs chart above it (see
+ * ActiveWeekTelemetry.tsx's own comment). The value line under the bar makes the exact number legible
+ * without relying on bar-width alone at this small size. */
+.popup-delta-bar { margin-top: 4px; }
+.popup-delta-bar .delta-bar-row { margin-top: 0; }
+.popup-delta-bar-value { display: block; margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: center; }
 .insights-heading { margin-top: 20px; }
 .insights-heading h3 { margin: 4px 0 0; font-size: 16px; }
 /* Colors here match iRacing's own in-sim telemetry widget exactly (asked for explicitly, 29/08/2026:
