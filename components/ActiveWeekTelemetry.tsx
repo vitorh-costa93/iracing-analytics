@@ -617,8 +617,13 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
     }).filter((point): point is TracePoint => point !== null)
     : rawRefGps;
   // Keep the map window slightly wider than the input window: a hover must always have visible
-  // approach and exit context on the linked trajectory.
-  const mapRange = range ? [Math.max(0, range[0] - 3), Math.min(100, range[1] + 3)] as [number, number] : null;
+  // approach and exit context on the linked trajectory. 03/09/2026: was +-3 -- reasonable back when
+  // `range` was always a generic 5%-wide analysis bin (see the opportunities list in the component
+  // below), but that list now passes the MATCHED CORNER'S OWN real (often much narrower, ~1-2%)
+  // boundaries -- the same fixed +-3 on top of an already-tight corner window re-swallowed neighboring
+  // corners into view ("curva 31... continua abordando muita coisa" even after that fix). +-1 still
+  // gives a hover some breathing room without drowning a tight corner back into its neighbors.
+  const mapRange = range ? [Math.max(0, range[0] - 1), Math.min(100, range[1] + 1)] as [number, number] : null;
   const selected = mapRange ? gps.filter((point) => point.distance >= mapRange[0] && point.distance <= mapRange[1]) : [];
   const refSelected = mapRange && refGps.length ? refGps.filter((point) => point.distance >= mapRange[0] && point.distance <= mapRange[1]) : [];
 
@@ -644,6 +649,31 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   // Never stretch X and Y independently: it made real corners look physically impossible.
   const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, 18, false);
   const project = (point: TracePoint) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
+
+  // 03/09/2026: "os traçados fora da linha de corrida" -- same bug/fix as components/TrackMap.tsx
+  // (see that file's own comment): boundary.segments held the WHOLE circuit, but a zoomed corner
+  // window projects using bounds fit to just that corner -- any segment from a different part of a
+  // long, winding track (Le Mans loops close to itself in several places) that happened to land
+  // in-frame showed up as a stray line unrelated to the actual corner. Only draw segments with at
+  // least one point inside the window's own bounds (padded for slack); harmless on the full-track
+  // view (zoom prop falsy), whose own bounds already span the whole track.
+  const BOUNDARY_PAD_METERS = 120;
+  const boundsLats = boundsPoints.map((point) => Number(point.lat));
+  const boundsLons = boundsPoints.map((point) => Number(point.lon));
+  const boundsMinLat = Math.min(...boundsLats);
+  const boundsMaxLat = Math.max(...boundsLats);
+  const boundsMinLon = Math.min(...boundsLons);
+  const boundsMaxLon = Math.max(...boundsLons);
+  const boundsMeanLat = (boundsMinLat + boundsMaxLat) / 2;
+  const padLat = BOUNDARY_PAD_METERS / 111_320;
+  const padLon = BOUNDARY_PAD_METERS / (111_320 * Math.max(0.1, Math.cos((boundsMeanLat * Math.PI) / 180)));
+  const paddedMinLat = boundsMinLat - padLat;
+  const paddedMaxLat = boundsMaxLat + padLat;
+  const paddedMinLon = boundsMinLon - padLon;
+  const paddedMaxLon = boundsMaxLon + padLon;
+  const visibleSegments = boundary
+    ? boundary.segments.filter((segment) => segment.pts.some(([lat, lon]) => lat >= paddedMinLat && lat <= paddedMaxLat && lon >= paddedMinLon && lon <= paddedMaxLon))
+    : [];
   // In the hover card, render only the local section. Drawing the entire lap against local bounds
   // compressed the useful traces into an unreadable line at the edge of the map.
   const mapGps = zoom && selected.length >= 2 ? selected : gps;
@@ -680,7 +710,7 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
          * stitched into one ordered polyline. Falls back to the old synthetic per-lap ribbon (thick
          * stroke drawn around whichever GPS trace is on screen) for a track we haven't sourced yet. */}
         {boundary
-          ? boundary.segments.map((segment, index) => (
+          ? visibleSegments.map((segment, index) => (
             <polyline key={index} points={segment.pts.map(([lat, lon]) => project({ lat, lon } as unknown as TracePoint)).join(" ")} className="track-outline" style={{ strokeWidth: Math.max(2, projectGps.metersToPixels(segment.width)) }} />
           ))
           : <>
@@ -1087,9 +1117,11 @@ export default function ActiveWeekTelemetry() {
                 </div>
                 <p className="insight-popup-detail">{focusedInsight.detail}</p>
                 {(() => {
-                  // Same +-3% padding the map already used around the focused range, so the chart's
-                  // own approach/exit context matches what the map shows either side of the corner.
-                  const from = Math.max(0, focusedInsight.start - 3), to = Math.min(100, focusedInsight.end + 3);
+                  // Same +-1% padding the map now uses around the focused range (03/09/2026: was +-3,
+                  // see the map's own comment for why that re-widened an already-tight matched-corner
+                  // window back out into its neighbors) so the chart's own approach/exit context
+                  // matches what the map shows either side of the corner.
+                  const from = Math.max(0, focusedInsight.start - 1), to = Math.min(100, focusedInsight.end + 1);
                   const ownPts = trace.points.filter((point) => point.distance >= from && point.distance <= to);
                   const refPts = referenceTrace ? referenceTrace.points.filter((point) => point.distance >= from && point.distance <= to) : [];
                   const toSeries = (points: TracePoint[], field: "throttle" | "brake") => points

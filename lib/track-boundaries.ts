@@ -21,13 +21,28 @@
  * (Mulsanne Straight, D338/formerly RN138), Route d'Arnage (D140, past Indianapolis and Arnage), and
  * the Porsche Curves connector (D139/D92) -- that make up most of the real 24 Heures lap. Regenerated
  * by querying those exact `ref`s plus `highway=raceway` in the circuit's bounding box, then keeping
- * only the ways whose geometry actually sits close (within ~70m, to allow for the public road's two
- * separated carriageways vs. the closed-for-race-week single racing line) to this driver's own real
- * GPS lap trace -- the same corridor-filter idea as the largest-connected-component step below, just
- * using ground-truth telemetry instead of proximity between OSM ways. Confirmed the result's own
- * lat/lon extent (~5.4km x 2.7km) now matches the real trace's extent, not the old ~2.1km x 0.5km
- * fragment. None of these public-road ways carry a `width` tag either; reused the existing raceway
- * segments' own 13m for consistency instead of guessing a different flat value.
+ * only the ways whose geometry actually sits close to this driver's own real GPS lap trace -- the same
+ * corridor-filter idea as the largest-connected-component step below, just using ground-truth
+ * telemetry instead of proximity between OSM ways. Confirmed the result's own lat/lon extent
+ * (~5.4km x 2.7km) now matches the real trace's extent, not the old ~2.1km x 0.5km fragment.
+ *
+ * 03/09/2026 revision ("em vários pontos da análise da volta em Le Mans... os traçados fora da linha
+ * de corrida"): the corridor-filter's first version kept EVERY way within a flat 70m of the trace, a
+ * threshold wide enough to cover the public road's two separated carriageways at the widest points --
+ * but that meant BOTH carriageways got kept everywhere else too, including stretches where they sit
+ * only 20-40m apart. A per-corner map, zoomed into a window a few hundred meters wide, then had no way
+ * to tell "the real racing line" from "the other, unused carriageway 30m away", and drew both as if
+ * they were one broken/disconnected shape. Replaced the flat-threshold keep with a nearest-neighbor
+ * vote: for every point along the real GPS trace, find whichever OSM way (raceway-tagged or public
+ * road) is closest, and only keep a way that WON that vote for at least a few consecutive trace points
+ * -- i.e. was genuinely the closest option somewhere on the real line, not just within some fixed
+ * radius of it. This is also what correctly drops most `highway=raceway`-tagged ways in this bounding
+ * box (kept 38 of 86) -- the Sarthe circuit complex hosts several other raceway-tagged layouts
+ * (karting, drag strip, a shorter Bugatti GP variant) that share the same tag but were never driven on
+ * this lap, which a flat-threshold filter had no way to exclude either. Resulting extent still matches
+ * the real trace almost exactly (lat 47.9131-47.9619 vs. trace 47.9135-47.9618). None of the
+ * public-road ways carry a `width` tag; reused the existing raceway segments' own 13m for consistency
+ * instead of guessing a different flat value.
  *
  * Served from public/track-boundaries.json and fetched once at runtime (see getTrackBoundary below)
  * rather than bundled into the JS chunk -- at ~440KB uncompressed this would otherwise ship to every
