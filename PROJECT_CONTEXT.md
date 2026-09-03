@@ -264,6 +264,20 @@ Na revisão seguinte, o carregamento remoto por tag `<script>` foi substituído 
 
 Em 27/08/2026, a comparação de telemetria voltou ao modelo solicitado: uma linha base mais grossa para a pista e duas linhas finas contínuas/tracejadas para a volta do piloto e a referência. O mapa geral de oportunidades foi removido porque não fazia parte do fluxo de análise. Os recortes de hover e popup preservam a proporção geográfica (sem esticar eixos) e incluem contexto de entrada/saída; o gráfico focalizado ganhou altura para não cortar o volante. A telemetria semanal agora pagina voltas do Garage61 em vez de assumir que a primeira página contém toda a semana. Para SF23, flags explícitas de P2P são excluídas e, quando o Garage61 não envia o canal, somente um outlier de tempo claramente incompatível é excluído de forma conservadora. Referências CSV/IBT que indicam P2P ativo são recusadas; o leitor IBT escolhe a melhor volta completa sem P2P. O cache de debrief foi elevado para a versão 3 e aceita as duas formas observadas de identificador de evento do Garage61.
 
+## Atualização consolidada - 03/09/2026
+
+O período de 28/08 a 03/09 consolidou a aplicação em torno de duas fontes com responsabilidades distintas: iRStats é a fonte de resultados/season/iRating e Garage61 é a fonte de sessões, voltas, setups e telemetria sincronizada para o Supabase. A interface de Telemetria passou a ler o banco primeiro; não refazer consultas Garage61 a cada abertura do painel. iRStats continua inacessível de forma confiável a partir do Vercel/GitHub Actions por Cloudflare, portanto o importador incremental no navegador é o caminho suportado.
+
+O requisito de extensão Chrome foi removido. O caminho suportado em desktop e mobile é o bookmarklet exposto na UI, que executa no domínio de cada origem. Setups Garage61 são pesquisados em Practice e Race e o controle durável de checagem impede recontar eventos sem alterações. O cron de sync foi ajustado ao limite do plano Vercel Hobby: uma execução diária às 09:00 UTC, não horária.
+
+Os mapas passaram a usar limites reais OSM servidos por `public/track-boundaries.json` para 46 das 47 pistas corridas, com escolha do componente conectado correto, zoom ao cursor e pan por arraste. Linhas e recortes de curvas preservam escala/proporção e rejeitam voltas cujo GPS não cobre a distância real. A detecção de curvas prefere mudança de rumo no GPS; as referências de nomes são verificadas em `lib/track-corners.ts`, sem inventar nomes ausentes.
+
+O comparador de carros ganhou filtros Season -> pista -> classe/carro, separação GT3/GTP/LMP2, mapa setorizado, análise por curva e widget focalizado sincronizado. A seleção/paginação de voltas foi endurecida contra o limite padrão de 1.000 linhas, `clean` inconsistente e tempos impossíveis. O Meu Debrief usa voltas concluídas de corrida, não duração crua de sessão, e seus minimapas usam o recorte real da curva.
+
+O iRating do Overview é exclusivamente derivado de iRStats e de `v_race_results_irating`. A âncora deve ser um snapshot Garage61 confirmado estável em seu próprio `recorded_at`; a correção de atraso recente é aplicada no código e limitada a dois dias. Não usar `MAX()` nem heurísticas amplas que escondam perdas reais. Sem valor novo em uma week, carregar o último iRating conhecido.
+
+Uma referência operacional mais curta e atualizada está em `CLAUDE.md`; o inventário de dados completo está em `docs/DATA_ARCHITECTURE.md`. `PROJECT_CONTEXT.md` preserva o histórico detalhado anterior e esta seção o atualiza sem apagar evidências das decisões passadas.
+
 ## iRacing Data API e OAuth
 
 Roadmap previsto:
