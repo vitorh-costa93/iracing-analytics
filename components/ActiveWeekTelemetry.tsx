@@ -428,8 +428,16 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     const matchedCorners = cornersInRange(corners, start, end);
     const corner = matchedCorners[0] ?? null;
     const kind: "corner" | "straight" = matchedCorners.length ? "corner" : "straight";
+    // 03/09/2026: "se tá com a referência completa, curvas 20-22 deveria aparecer Indianapolis-Arnage"
+    // -- a multi-corner match used to always fall back to plain numbers ("Curvas 20–22"), even when
+    // one or more of those corners DO have a known real name (e.g. Arnage sitting right in that
+    // range) -- discarding real names we already have just because the match happened to span more
+    // than one detected corner. Prefer the distinct real name(s) among the matched corners; only
+    // fall back to plain numbering when none of them are named.
+    const namedCorners = Array.from(new Set(matchedCorners.map((item) => item.name).filter((name): name is string => Boolean(name))));
     const cornerLabel = matchedCorners.length === 0 ? null
-      : matchedCorners.length === 1 ? (matchedCorners[0].name ?? `Curva ${matchedCorners[0].number}`)
+      : namedCorners.length > 0 ? namedCorners.join("–")
+      : matchedCorners.length === 1 ? `Curva ${matchedCorners[0].number}`
       : `Curvas ${matchedCorners[0].number}–${matchedCorners[matchedCorners.length - 1].number}`;
     const place = cornerLabel ? `${matchedCorners.length > 1 ? "nas" : "na"} ${cornerLabel}` : "neste trecho";
 
