@@ -342,7 +342,7 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey) 
   return previous[field];
 }
 
-type Corner = { number: number; distance: number; name: string | null };
+type Corner = { number: number; distance: number; name: string | null; startDistance: number; endDistance: number };
 
 /** Detects every real corner (any part of the track that isn't a straight), then attaches a researched
  * name when the number of corners we detect on this lap plausibly matches the track's known corner
@@ -355,7 +355,7 @@ function detectCorners(points: TracePoint[], trackName: string, trackVariant: st
   const gpsDetected = detectCornersFromGps(points.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null })));
   const raw = gpsDetected.length >= 3 ? gpsDetected : detectCornersFromLatAccel(points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel })));
   const names = lookupCornerNames(trackName, trackVariant, raw.length);
-  return raw.map((corner, index) => ({ number: corner.number, distance: corner.distance, name: names?.[index] ?? null }));
+  return raw.map((corner, index) => ({ number: corner.number, distance: corner.distance, name: names?.[index] ?? null, startDistance: corner.startDistance, endDistance: corner.endDistance }));
 }
 
 function nearestCorner(corners: Corner[], start: number, end: number): Corner | null {
@@ -494,13 +494,26 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
       narrative = `${magnitude}${cap(primary.clause)} ${place}. ${cap(primary.instruction)}.${secondaryText}`;
     }
 
+    // 03/09/2026: "curva 31... ela contempla um monte de curva, precisa ser mais específico" -- this
+    // opportunity's `start`/`end` were always the fixed 5%-of-lap analysis bin (index*5 to
+    // (index+1)*5), used only to slice samples for the gain/finding computation above. The title and
+    // the highlighted chart/map range reused those SAME bin edges to describe "the corner" -- so a
+    // real corner spanning a tight ~1% of the lap got labeled with a generic 5%-wide window whenever
+    // it happened to fall in one (675m at Le Mans, easily several real corners on a long track). When
+    // a real corner was matched, show and highlight ITS OWN actual footprint (a little padding for
+    // context) instead of the arbitrary bin -- the underlying gain/finding numbers above still come
+    // from the full bin's samples (a real change here would need a corner-aligned analysis window,
+    // a bigger change), but at least the reported location is now honest about which stretch it is.
+    const displayStart = corner ? Math.max(0, corner.startDistance - 1) : start;
+    const displayEnd = corner ? Math.min(100, corner.endDistance + 1) : end;
+
     return {
-      title: `${cornerLabel ?? "Reta / transição"} • ${start}%–${end}%${trackLength ? ` • ${(start / 100 * trackLength).toFixed(0)}–${(end / 100 * trackLength).toFixed(0)} m` : ""}`,
+      title: `${cornerLabel ?? "Reta / transição"} • ${displayStart.toFixed(1)}%–${displayEnd.toFixed(1)}%${trackLength ? ` • ${(displayStart / 100 * trackLength).toFixed(0)}–${(displayEnd / 100 * trackLength).toFixed(0)} m` : ""}`,
       detail: `Você perde cerca de ${tenths.toFixed(1)} décimos aqui. ${narrative}`,
       gain: item.gain,
       metrics: [`Δ velocidade ${item.speedGap >= 0 ? "+" : ""}${item.speedGap.toFixed(1)} km/h`, `Δ acelerador ${(item.throttleGap * 100).toFixed(0)} p.p.`, `Δ freio ${(item.brakeGap * 100).toFixed(0)} p.p.`],
-      start,
-      end,
+      start: displayStart,
+      end: displayEnd,
       kind,
       cornerNumber: corner?.number ?? null,
       cornerLabel,
