@@ -531,59 +531,58 @@ export async function GET() {
       sports_car: null,
     };
 
-    // iRating KPIs are iRStats-only, period — never seeded from Garage61's `ratings` snapshot. That
-    // snapshot is refreshed by the hourly cron (sync/all) regardless of whether the driver ever ran
-    // the iRStats bookmarklet, so a Garage61-sourced fallback here meant the iRating card could
-    // visibly move on a day with real races but NO iRStats sync at all — a real bug the driver
-    // caught directly (raced Super Formula only, never synced iRStats, KPI still updated).
+    // 03/09/2026, driver-confirmed live: "acredito que esteja havendo... delay por parte da
+    // ferramenta do irstats, porque meu irating atual é de 3463, ou seja, 3522-59 (da sessão de
+    // ontem em Le Mans)... usar os resultados individuais de cada sessão para calcular o irating
+    // atual". This route showed 3522, missing yesterday's -59. Root cause: the previous fix here
+    // (see git history) took the MAX across every recent Garage61 `ratings` snapshot, reasoning a
+    // lagging snapshot's own delta-sum could never beat an already-caught-up one's -- true for a
+    // missed GAIN, but backwards for a missed LOSS, since max() then keeps the stale (higher, wrong)
+    // candidate. The deeper problem: a snapshot's recorded_at (when OUR cron polled Garage61) does
+    // not prove Garage61's own backend had processed a given race yet -- so no amount of comparing
+    // recorded_at to raced_at, or taking best-of-several, can reliably tell a caught-up snapshot
+    // from a lagging one recorded minutes apart.
     //
-    // But "iRStats-only" does not mean "blank when there's no race today" — same carry-forward
-    // principle as v_season_weekly_irating: iRating doesn't change when you don't race, so the
-    // headline number should be the last one actually recorded, however long ago that was. Most of
-    // the time seasonRaces (already 2 seasons deep) already contains it; the extra unbounded query
-    // below only fires for the rarer case where a category hasn't been raced in over a season.
+    // Fix, exactly as the driver described: never trust a Garage61 `ratings` snapshot from the last
+    // 24h as an anchor -- by then Garage61 has reliably caught up in practice (hourly cron, and
+    // every previously-diagnosed lag here resolved within hours, not a full day) -- then reconstruct
+    // "now" purely from individual session results: anchor.rating + the exact sum of every
+    // race_results (iRStats) irating_delta for races strictly after that anchor. No comparison, no
+    // best-of-N guessing — deterministic and correct for gains and losses alike.
+    const irRatingRows = ratings.filter((row) => row.rating_type === "irating" && row.rating !== null);
+    const anchorCutoffMs = Date.now() - 24 * 60 * 60 * 1000;
+    const anchors: Record<"formula_car" | "sports_car", { rating: number; recordedAt: string } | null> = {
+      formula_car: null,
+      sports_car: null,
+    };
     for (const category of ["formula_car", "sports_car"] as const) {
-      const latestResult = seasonRaces.find((row) => row.category === category && Number.isFinite(row.irating_after));
-      if (latestResult) latestRatings[category] = latestResult.irating_after;
+      const rows = irRatingRows.filter((row) => row.category === category); // already sorted recorded_at desc
+      const settled = rows.find((row) => new Date(row.recorded_at).getTime() <= anchorCutoffMs);
+      const chosen = settled ?? rows[0] ?? null;
+      if (chosen) anchors[category] = { rating: chosen.rating as number, recordedAt: chosen.recorded_at };
     }
 
-    // Correction for Garage61 anchor lag (01/09/2026, driver-confirmed live: "iRating segue errado...
-    // deveria ser 4987 + 36 = 5023") -- v_race_results_irating's single-anchor formula can genuinely
-    // miss the most recent race(s): Garage61's own snapshot can be re-fetched well after a race
-    // without yet reflecting it (its recorded_at only proves when we asked, not which races the
-    // answer covers). Since a snapshot's rating plus the exact sum of every race's delta strictly
-    // after it gives an independent "current value" estimate per snapshot, and a lagging snapshot's
-    // own sum can never beat an already-caught-up one's, taking the MAX across every recent snapshot
-    // self-corrects without needing to know in advance which one lagged. Exact deltas come straight
-    // from race_results (iRStats), not the view's own before/after (whose absolute values inherit
-    // whatever anchor the view picked). Bounded to the last 7 days on both queries so an old data
-    // artifact elsewhere in this driver's 1330+ race career can't leak into "current". 2 days (not
-    // the originally-tried 7) after finding a genuine bad data point 7 days back skewed the result:
-    // an anchor snapshot recorded roughly an hour after a real race (with a real, exact -142 delta)
-    // came back +178 higher than that race's own delta chain says it should have -- a Garage61 sync
-    // glitch or similar, not a real "hidden extra race" the way the Aug28->30 gap was. 2 days safely
-    // covers same-day race-then-resync lag (this bug's actual shape) while staying well clear of it.
-    const lagWindowStart = new Date(Date.now() - 2 * 86_400_000).toISOString();
-    const [recentRatingsResult, recentRaceDeltasResult] = await Promise.all([
-      supabaseAdmin.from("ratings").select("category,rating,recorded_at")
-        .eq("driver_id", driver.id).eq("rating_type", "irating").gte("recorded_at", lagWindowStart),
-      supabaseAdmin.from("race_results").select("category,raced_at,irating_delta")
-        .eq("driver_id", driver.id).gte("raced_at", lagWindowStart),
-    ]);
-    const recentRatings = (recentRatingsResult.data ?? []) as { category: string; rating: number; recorded_at: string }[];
-    const recentDeltas = (recentRaceDeltasResult.data ?? []) as { category: string; raced_at: string; irating_delta: number }[];
-    for (const category of ["formula_car", "sports_car"] as const) {
-      const anchors = recentRatings.filter((row) => row.category === category);
-      let best = latestRatings[category];
-      for (const anchor of anchors) {
-        const anchorTime = new Date(anchor.recorded_at).getTime();
-        const deltaSum = recentDeltas
-          .filter((race) => race.category === category && new Date(race.raced_at).getTime() > anchorTime)
-          .reduce((sum, race) => sum + race.irating_delta, 0);
-        const candidate = anchor.rating + deltaSum;
-        if (best === null || candidate > best) best = candidate;
+    const anchorTimes = ([anchors.formula_car, anchors.sports_car].filter(Boolean) as { rating: number; recordedAt: string }[])
+      .map((a) => new Date(a.recordedAt).getTime());
+    if (anchorTimes.length) {
+      const earliestAnchorIso = new Date(Math.min(...anchorTimes)).toISOString();
+      const { data: sinceAnchorRows, error: sinceAnchorError } = await supabaseAdmin
+        .from("race_results")
+        .select("category,raced_at,irating_delta")
+        .eq("driver_id", driver.id)
+        .gt("raced_at", earliestAnchorIso);
+      if (sinceAnchorError) throwSupabaseError("race_results (irating reconstruction since anchor)", sinceAnchorError);
+      const deltasSinceEarliestAnchor = (sinceAnchorRows ?? []) as { category: string; raced_at: string; irating_delta: number }[];
+
+      for (const category of ["formula_car", "sports_car"] as const) {
+        const anchor = anchors[category];
+        if (!anchor) continue;
+        const anchorTime = new Date(anchor.recordedAt).getTime();
+        const deltaSum = deltasSinceEarliestAnchor
+          .filter((row) => row.category === category && new Date(row.raced_at).getTime() > anchorTime)
+          .reduce((sum, row) => sum + row.irating_delta, 0);
+        latestRatings[category] = anchor.rating + deltaSum;
       }
-      latestRatings[category] = best;
     }
 
     const categoriesMissingRating = (["formula_car", "sports_car"] as const).filter((category) => latestRatings[category] === null);
