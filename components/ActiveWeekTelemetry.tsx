@@ -431,7 +431,7 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     const cornerLabel = matchedCorners.length === 0 ? null
       : matchedCorners.length === 1 ? (matchedCorners[0].name ?? `Curva ${matchedCorners[0].number}`)
       : `Curvas ${matchedCorners[0].number}–${matchedCorners[matchedCorners.length - 1].number}`;
-    const place = cornerLabel ? `na ${cornerLabel}` : "neste trecho";
+    const place = cornerLabel ? `${matchedCorners.length > 1 ? "nas" : "na"} ${cornerLabel}` : "neste trecho";
 
     type Finding = { type: string; weight: number; clause: string; instruction: string };
     const findings: Finding[] = [];
