@@ -87,15 +87,35 @@ const ENTRIES: TrackCornerEntry[] = [
     names: ["Abbey", "Farm Curve", "Village", "The Loop", "Aintree", "Brooklands", "Luffield", "Woodcote", "Copse", "Maggotts", "Becketts", "Chapel", "Stowe", "Vale", "Club"],
   },
   {
-    // 31/08/2026 sweep: was 10 entries packed with no gaps against this driver's own detector
-    // finding 32 -- Le Mans is long and unevenly paced (a dense technical opening, then a mostly-
-    // straight ~30% of the lap down Mulsanne with no real corners at all, then a dense technical
-    // final third), so unlike every other track fixed in this sweep, this one was respaced using
-    // this driver's own actual detected corner POSITIONS (not just the count) to anchor each named
-    // corner against the real gaps in the data -- e.g. the empty 31%->43% stretch is the back half of
-    // the Mulsanne straight, landing Mulsanne Corner on the dense cluster right after it.
+    // 03/09/2026 rebuild ("você tá chamando a Mulsanne de Indianapolis", driver-supplied reference
+    // map confirmed the real landmark order): the 31/08 sweep below assumed the Mulsanne Straight
+    // "has no real corners at all" -- false. Since 1990 it has two chicanes plus a slight right-hand
+    // "Kink" right before Mulsanne Corner (confirmed via web search, en.wikipedia.org/wiki/Mulsanne_
+    // Straight), so this driver's own detector correctly finds real corners scattered across it --
+    // the old mapping's flat "no corners here" assumption pushed every later name earlier than it
+    // should be, landing "Indianapolis" on what's actually Mulsanne Corner itself.
+    //
+    // Rebuilt by GROUND-TRUTH road identity instead of guessing from corner count/spacing: Le Mans'
+    // public-road sections each carry a distinct OSM `ref` (D338 Mulsanne Straight, D140 Route
+    // d'Arnage covering Indianapolis+Arnage, D139/D92 the Porsche Curves connector -- see
+    // lib/track-boundaries.ts's own top comment), and the permanent circuit portions are `highway=
+    // raceway`. Walking this driver's real GPS trace against the regenerated boundary data (see that
+    // same 03/09/2026 boundary rebuild) and logging every point where the trace crosses from one
+    // `ref`/raceway to the next gives exact real-world section boundaries, independent of how many
+    // sub-corners the detector happens to split each section into:
+    //   0.0%-16.3% raceway (start/finish, Dunlop Curve, Dunlop Chicane, Forest Esses, Tertre Rouge)
+    //   16.3%-57.3% D338   (Mulsanne Straight: two chicanes, the Kink, then Mulsanne Corner at its end)
+    //   57.3%-75.0% D140   (Route d'Arnage: Indianapolis then Arnage)
+    //   75.0%-84.4% D139   (Porsche Curves connector)
+    //   84.4%-100%  raceway (Maison Blanche, the Ford Chicanes, back to start/finish)
+    // Named corners placed at the real detected-corner cluster nearest each section's own landmark
+    // (e.g. Mulsanne Corner at the single strong braking peak right at the 57.3% D338/D140 boundary,
+    // not partway through the straight); sub-apexes of the same named complex get null, same
+    // convention as every other track here. Medium confidence on which exact sub-peak is "the Kink"
+    // vs. a chicane apex inside D338 (four candidate peaks, not independently verified one by one);
+    // high confidence on which named landmark falls in which real road section.
     match: (t) => /24 heures du mans|sarthe/i.test(t),
-    names: ["Dunlop Curve", null, "Dunlop Chicane", null, "Forest Esses", null, null, "Tertre Rouge", null, null, null, null, "Mulsanne Corner", null, null, null, "Indianapolis", "Arnage", "Porsche Curves", null, null, null, "Virage Ford", null, null, null, null, "Maison Blanche", null, null, null, null],
+    names: ["Dunlop Curve", null, "Dunlop Chicane", null, "Forest Esses", null, null, "Tertre Rouge", "L'Arche Chicane", "La Florandière Chicane", null, null, "Mulsanne Kink", null, null, null, "Mulsanne Corner", "Indianapolis", null, null, "Arnage", null, "Porsche Curves", null, "Maison Blanche", null, null, null, null, "Ford Chicane", null, null, null],
   },
   {
     // 31/08/2026 sweep: was 9 entries (two of them just "Turn 1"/"Turn 3" placeholders, not real
