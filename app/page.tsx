@@ -239,7 +239,27 @@ export default function Home() {
   const scatter = categoryRaces.filter((race) => chartSeries === "all" || (race.series ?? "Sem série") === chartSeries).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
   const scheduleKey = `${data.season.current.id}:${data.kpis.formula.irating.week}`;
   const scheduledContexts = WEEKLY_CONTEXTS[scheduleKey];
-  const weeklyContexts = (scheduledContexts ?? data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => ({ series: stripFixedSuffix(race.series ?? race.car), track: race.track, matches: (row: HistoricalRow) => row.track === race.track && row.car === race.car }))).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, context) => {
+  // 03/09/2026: "aqui tá a IMSA, mas eu tenho certeza que fiz mais corridas lá, qual é o contexto
+  // que tá sendo considerado?" -- the auto-derived fallback below used to match track + EXACT car,
+  // so "Le Mans" for this week's Ferrari 499P only counted the 5 races run in that specific car,
+  // hiding the 51 other Le Mans races run in different GTP/GT3/LMP2 cars. The hand-curated
+  // WEEKLY_CONTEXTS entries above already match by track + carClass (see "34:11") for exactly this
+  // reason -- mirror that here instead of falling back to an exact-car match, so an auto-derived
+  // card gets the same broader "same class, same track" sample the curated ones do. Only falls
+  // back to exact-car matching when the car has no known class (e.g. Formula cars aren't grouped
+  // into car_groups), where mixing by a null "class" would wrongly lump unrelated cars together.
+  const carClassByCar = new Map<string, string | null>();
+  for (const row of data.historical) {
+    if (!carClassByCar.has(row.car)) carClassByCar.set(row.car, row.carClass);
+  }
+  const weeklyContexts = (scheduledContexts ?? data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => {
+    const carClass = carClassByCar.get(race.car) ?? null;
+    return {
+      series: stripFixedSuffix(race.series ?? race.car),
+      track: race.track,
+      matches: (row: HistoricalRow) => row.track === race.track && (carClass ? row.carClass === carClass : row.car === race.car),
+    };
+  })).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, context) => {
     const key = `${context.series}::${context.track}`;
     if (items.some((item) => item.key === key)) return items;
     const contextRows = data.historical.filter(context.matches);
