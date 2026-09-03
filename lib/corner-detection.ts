@@ -166,6 +166,21 @@ function splitByProminence(segment: { distance: number; value: number }[], split
  * a gentle turn when the driver is coasting, which made Indianapolis' first reported "corner"
  * land at the exit of Turn 3.  The heading change of the physical trace is independent of pedal
  * use and starts from the lap's true start/finish distance. */
+// Rough meters-per-lap from a real GPS trace (equirectangular approximation, consistent with the
+// same lonScale used for headings below -- true great-circle precision isn't needed, only a sane
+// order-of-magnitude length to scale the merge-gap distance check).
+function estimateLapLengthMeters(valid: Array<{ lat: number; lon: number }>, lonScale: number): number {
+  const METERS_PER_DEGREE_LAT = 111_320;
+  let meters = 0;
+  for (let i = 1; i < valid.length; i++) {
+    const a = valid[i - 1], b = valid[i];
+    const dx = (b.lon - a.lon) * lonScale * METERS_PER_DEGREE_LAT;
+    const dy = (b.lat - a.lat) * METERS_PER_DEGREE_LAT;
+    meters += Math.sqrt(dx * dx + dy * dy);
+  }
+  return meters;
+}
+
 export function detectCornersFromGps(points: Array<{ distance: number; lat: number | null; lon: number | null }>): DetectedCorner[] {
   const valid = points.filter((point): point is { distance: number; lat: number; lon: number } => point.lat !== null && point.lon !== null).sort((a, b) => a.distance - b.distance);
   if (valid.length < 30) return [];
@@ -173,6 +188,7 @@ export function detectCornersFromGps(points: Array<{ distance: number; lat: numb
   const lonScale = Math.cos(meanLat * Math.PI / 180);
   const nearest = (distance: number) => valid.reduce((best, point) => Math.abs(point.distance - distance) < Math.abs(best.distance - distance) ? point : best, valid[0]);
   const angleDelta = (a: number, b: number) => Math.atan2(Math.sin(b - a), Math.cos(b - a));
+  const lapLengthMeters = estimateLapLengthMeters(valid, lonScale);
 
   // 0.15% steps (~7m on a 4.7km lap) -- much finer than the original 0.5% (~23m). The coarse grid was
   // smoothing away the brief straightening between apexes of a double-apex complex (Algarve's Samsung
@@ -210,7 +226,20 @@ export function detectCornersFromGps(points: Array<{ distance: number; lat: numb
     }
   }
 
-  const MERGE_GAP = Math.max(1, Math.round(1 / STEP)); // runs separated by <1% of lap are one corner complex
+  // 03/09/2026: "curva 31... ela contempla um monte de curva, precisa ser mais específico" -- a
+  // flat "1% of lap" merge gap was tuned/verified against Algarve (~4.6km, 1% ≈ 46m) and Red Bull
+  // Ring (~4.3km, 1% ≈ 43m), both short tracks where that's a believable real gap between corners.
+  // Le Mans is ~13.6km, where the same 1% is ~136m -- long enough to swallow genuinely separate
+  // corners connected by a short straight (the Ford Chicanes, the Porsche Curves' linking straights)
+  // into one reported "corner" spanning hundreds of meters. Capping the merge gap at a fixed real
+  // distance (in addition to the existing 1%-of-lap cap, which still applies and wins on short
+  // tracks) keeps corners genuinely more than ~80m apart on track separate regardless of track
+  // length, while leaving short-track behavior (already grid-search-verified) unchanged: on Algarve
+  // or Red Bull Ring, 1% of lap is already well under 80m, so the cap never binds there.
+  const ABSOLUTE_MERGE_GAP_METERS = 80;
+  const metersPerPct = lapLengthMeters > 0 ? lapLengthMeters / 100 : 0;
+  const mergeGapPct = metersPerPct > 0 ? Math.min(1, ABSOLUTE_MERGE_GAP_METERS / metersPerPct) : 1;
+  const MERGE_GAP = Math.max(1, Math.round(mergeGapPct / STEP)); // runs separated by less than this are one corner complex
   const merged: Array<{ startIdx: number; endIdx: number }> = [];
   for (const run of runs) {
     const last = merged[merged.length - 1];

@@ -49,13 +49,43 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
   const project = (point: { lat: number | null; lon: number | null }) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   const trackWidthPx = Math.max(6, Math.min(30, projectGps.metersToPixels(12)));
 
+  // 03/09/2026: "em vários pontos da análise da volta em Le Mans, identifiquei isso -- os traçados
+  // fora da linha de corrida" -- boundary.segments held the WHOLE circuit's OSM ways (13.6km at Le
+  // Mans), but a per-corner map projects using bounds fit to just that corner's own narrow GPS
+  // window (see boundsPoints above). Any segment from a completely different part of the track that
+  // happens to share nearby lat/lon (a long circuit like Le Mans loops back close to itself in
+  // several places -- the pit straight runs near the Porsche Curves connector, for one) still got
+  // projected into that same tiny viewBox, landing as a stray line with no relation to the actual
+  // corner shown. Filtering to only segments with at least one point inside the window's own bounds
+  // (padded generously, since a segment can still be legitimately part of this corner while starting
+  // just outside the raw GPS extent) drops those unrelated far-away segments; harmless for whole-lap
+  // maps (Melhor volta vs. referência, Comparar carros) since their own bounds already span the
+  // whole track, so nothing real gets filtered out there.
+  const BOUNDARY_PAD_METERS = 120;
+  const boundsLats = boundsPoints.map((point) => point.lat);
+  const boundsLons = boundsPoints.map((point) => point.lon);
+  const boundsMinLat = Math.min(...boundsLats);
+  const boundsMaxLat = Math.max(...boundsLats);
+  const boundsMinLon = Math.min(...boundsLons);
+  const boundsMaxLon = Math.max(...boundsLons);
+  const boundsMeanLat = (boundsMinLat + boundsMaxLat) / 2;
+  const padLat = BOUNDARY_PAD_METERS / 111_320;
+  const padLon = BOUNDARY_PAD_METERS / (111_320 * Math.max(0.1, Math.cos((boundsMeanLat * Math.PI) / 180)));
+  const paddedMinLat = boundsMinLat - padLat;
+  const paddedMaxLat = boundsMaxLat + padLat;
+  const paddedMinLon = boundsMinLon - padLon;
+  const paddedMaxLon = boundsMaxLon + padLon;
+  const visibleSegments = boundary
+    ? boundary.segments.filter((segment) => segment.pts.some(([lat, lon]) => lat >= paddedMinLat && lat <= paddedMaxLat && lon >= paddedMinLon && lon <= paddedMaxLon))
+    : [];
+
   return (
     <div className="track-map-zoom-wrap">
       <svg ref={svgRef} viewBox={`0 0 ${width} ${height}`} className={className} style={{ overflow: "hidden", cursor: isDragging ? "grabbing" : camera.scale > 1 ? "grab" : "default", touchAction: "none" }} preserveAspectRatio="xMidYMid meet" role="img" aria-label="Mapa real da pista com o traçado de cada carro"
         onMouseDown={onMouseDown} onTouchStart={onTouchStart}>
         <g style={{ transform }}>
           {boundary
-            ? boundary.segments.map((segment, index) => (
+            ? visibleSegments.map((segment, index) => (
               <polyline key={index} points={segment.pts.map(([lat, lon]) => project({ lat, lon })).join(" ")} className="track-outline" style={{ strokeWidth: Math.max(2, projectGps.metersToPixels(segment.width)) }} />
             ))
             : gpsLines.map((line, index) => line.gps.length > 1 ? <polyline key={index} points={line.gps.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} /> : null)}
