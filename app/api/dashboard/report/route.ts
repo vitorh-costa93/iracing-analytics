@@ -141,8 +141,10 @@ function buildCategorySeasonNarrative(opts: {
 
   const bestRace = pickExtreme(currentRaces, "max");
   const worstRace = pickExtreme(currentRaces, "min");
-  if (bestRace && worstRace) {
+  if (bestRace && worstRace && bestRace.racedAt !== worstRace.racedAt) {
     paragraphs.push(`Melhor corrida isolada da season: ${bestRace.car} em ${bestRace.track} (${fmt1(bestRace.delta)}, ${new Date(bestRace.racedAt).toLocaleDateString("pt-BR")}). Pior: ${worstRace.car} em ${worstRace.track} (${fmt1(worstRace.delta)}, ${new Date(worstRace.racedAt).toLocaleDateString("pt-BR")}).`);
+  } else if (bestRace) {
+    paragraphs.push(`Única corrida com Δ iRating de destaque da season: ${bestRace.car} em ${bestRace.track} (${fmt1(bestRace.delta)}).`);
   }
 
   const withSof = currentRaces.filter((r) => r.sof !== null);
@@ -187,7 +189,7 @@ function buildCategoryWeekNarrative(opts: {
 
   const bestRace = pickExtreme(weekRaces, "max");
   const worstRace = pickExtreme(weekRaces, "min");
-  if (bestRace && worstRace && bestRace !== worstRace) {
+  if (bestRace && worstRace && bestRace.racedAt !== worstRace.racedAt) {
     paragraphs.push(`Ponto alto da semana: ${bestRace.car} em ${bestRace.track} (${fmt1(bestRace.delta)}). Ponto baixo: ${worstRace.car} em ${worstRace.track} (${fmt1(worstRace.delta)}).`);
   } else if (bestRace) {
     paragraphs.push(`Única corrida da semana: ${bestRace.car} em ${bestRace.track} (${fmt1(bestRace.delta)}).`);
@@ -198,7 +200,7 @@ function buildCategoryWeekNarrative(opts: {
     const totalIncidents = withIncidents.reduce((sum, r) => sum + (r.incidents ?? 0), 0);
     paragraphs.push(totalIncidents === 0
       ? `Semana limpa: 0 incidentes em ${withIncidents.length} corrida${withIncidents.length === 1 ? "" : "s"}.`
-      : `${totalIncidents} incidente${totalIncidents === 1 ? "" : "s"} somados nas ${withIncidents.length} corrida${withIncidents.length === 1 ? "" : "s"} da semana.`);
+      : `${totalIncidents} incidente${totalIncidents === 1 ? "" : "s"} somados ${withIncidents.length === 1 ? "na" : "nas"} ${withIncidents.length} corrida${withIncidents.length === 1 ? "" : "s"} da semana.`);
   }
 
   return paragraphs;
