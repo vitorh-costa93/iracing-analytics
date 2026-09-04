@@ -87,6 +87,8 @@ type RaceResultRow = {
   laps: number | null;
   irating_after: number;
   irating_before: number;
+  sof: number | null;
+  incidents: number | null;
 };
 
 /** Parses irstats' "M:SS.mmm" lap-time text (e.g. "1:27.305") into seconds. */
@@ -456,7 +458,7 @@ export async function GET() {
     const { data: seasonRaceRows, error: racesError } = await supabaseAdmin
       .from("v_race_results_irating")
       .select(
-        "irstats_race_id, raced_at, series_name, track_name, car_name, category, season_week, grid_position, finish_position, position_change, fastest_lap_time, race_fastest_lap_time, laps, irating_after, irating_before"
+        "irstats_race_id, raced_at, series_name, track_name, car_name, category, season_week, grid_position, finish_position, position_change, fastest_lap_time, race_fastest_lap_time, laps, irating_after, irating_before, sof, incidents"
       )
       .eq("driver_id", driver.id)
       .gte("raced_at", previousSeasonStart)
@@ -494,7 +496,41 @@ export async function GET() {
       series: row.series_name,
       startPosition: row.grid_position,
       finishPosition: row.finish_position,
+      sof: row.sof,
+      incidents: row.incidents,
     }));
+
+    // =====================================================
+    // CONTEXTO DE CORRIDA (04/09/2026, varredura de BI: "confronte com aquilo que temos de
+    // informação, se pode inserir algo novo") -- iRStats já captura SoF (força do grid) e
+    // incidentes por corrida em `race_results`, mas nenhuma tela do app jamais usava essas duas
+    // colunas. Pergunta de analista real: você ganha/perde mais iRating dependendo de quão forte
+    // é o grid, e o quanto disso é limpo vs. com contato? Corta a amostra (2 seasons, já
+    // carregada) ao meio pela mediana de SoF e por incidentes=0 vs >0, por carteira. Exige pelo
+    // menos 6 corridas com o dado presente de cada lado para reportar -- abaixo disso o "insight"
+    // é só ruído de amostra pequena, não uma tendência real.
+    const avgDelta = (rows: RaceResultRow[]) => rows.length ? rows.reduce((sum, r) => sum + (r.irating_after - r.irating_before), 0) / rows.length : null;
+    function raceContextInsight(category: "formula_car" | "sports_car") {
+      const rows = seasonRaces.filter((r) => r.category === category);
+      const withSof = rows.filter((r): r is RaceResultRow & { sof: number } => r.sof !== null).sort((a, b) => a.sof - b.sof);
+      const half = Math.floor(withSof.length / 2);
+      const lowSof = withSof.slice(0, half);
+      const highSof = withSof.slice(withSof.length - half);
+      const withIncidents = rows.filter((r) => r.incidents !== null);
+      const clean = withIncidents.filter((r) => r.incidents === 0);
+      const contact = withIncidents.filter((r) => (r.incidents ?? 0) > 0);
+      return {
+        sof: half >= 6 ? {
+          lowAvgDelta: avgDelta(lowSof), lowCount: lowSof.length, lowMaxSof: lowSof[lowSof.length - 1]?.sof ?? null,
+          highAvgDelta: avgDelta(highSof), highCount: highSof.length, highMinSof: highSof[0]?.sof ?? null,
+        } : null,
+        incidents: clean.length >= 6 && contact.length >= 6 ? {
+          cleanAvgDelta: avgDelta(clean), cleanCount: clean.length,
+          contactAvgDelta: avgDelta(contact), contactCount: contact.length,
+        } : null,
+      };
+    }
+    const raceContext = { formula: raceContextInsight("formula_car"), sports: raceContextInsight("sports_car") };
 
     function seasonIdForRace(racedAt: string) {
       const t = new Date(racedAt).getTime();
@@ -908,6 +944,8 @@ export async function GET() {
         ),
 
       races,
+
+      raceContext,
 
       featureAvailability: {
         wins: true,

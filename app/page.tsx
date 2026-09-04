@@ -71,6 +71,15 @@ type DashboardData = {
   historical: HistoricalRow[];
   featureAvailability: { wins: boolean; winsReason: string };
   races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number | null; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; seasonWeek?: number | null; bestLap: string | null; startPosition: number | null; finishPosition: number | null }>;
+  raceContext: {
+    formula: RaceContextInsight;
+    sports: RaceContextInsight;
+  };
+};
+
+type RaceContextInsight = {
+  sof: { lowAvgDelta: number | null; lowCount: number; lowMaxSof: number | null; highAvgDelta: number | null; highCount: number; highMinSof: number | null } | null;
+  incidents: { cleanAvgDelta: number | null; cleanCount: number; contactAvgDelta: number | null; contactCount: number } | null;
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
@@ -358,6 +367,62 @@ export default function Home() {
           <RaceScatterPlot points={scatter} />
         </article>
         </section>
+
+        {/* 04/09/2026, varredura de BI ("confronte com aquilo que temos de informação, se pode
+         * inserir algo novo") -- iRStats já captura SoF (força do grid) e incidentes por corrida
+         * em race_results, mas nenhuma tela usava essas duas colunas. Pergunta real de analista:
+         * seu Δ iRating muda dependendo de quão forte é o grid, e de quão limpa foi a corrida?
+         * Segue o mesmo toggle Formula/Sports Car já usado pelos dois gráficos acima. Cada metade
+         * exige pelo menos 6 corridas com o dado presente (ver raceContextInsight no route.ts) --
+         * abaixo disso a API já devolve null e o card correspondente some, em vez de mostrar uma
+         * média de amostra pequena demais pra significar algo. */}
+        {(() => {
+          const insight = data.raceContext[chartCategory];
+          if (!insight.sof && !insight.incidents) return null;
+          const fmt = (value: number | null) => value === null ? "—" : `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
+          const cls = (value: number | null) => value === null ? "neutral" : value >= 0 ? "positive" : "negative";
+          return (
+            <section className="section-block">
+              <div className="section-title-row">
+                <div>
+                  <span className="section-kicker">CONTEXTO DE CORRIDA</span>
+                  <h2>Isso muda seu Δ iRating?</h2>
+                  <p>Δ iRating médio por corrida, {chartCategory === "formula" ? "Formula Car" : "Sports Car"} — {currentLabel} + {previousLabel} juntos.</p>
+                </div>
+              </div>
+              <div className="week-context-grid">
+                {insight.sof && <>
+                  <article className="week-context-card">
+                    <span>SoF (grid mais fraco)</span>
+                    <h3>Até {insight.sof.lowMaxSof?.toLocaleString("pt-BR")}</h3>
+                    <strong className={cls(insight.sof.lowAvgDelta)}>{fmt(insight.sof.lowAvgDelta)}</strong>
+                    <small>{insight.sof.lowCount} corridas</small>
+                  </article>
+                  <article className="week-context-card">
+                    <span>SoF (grid mais forte)</span>
+                    <h3>A partir de {insight.sof.highMinSof?.toLocaleString("pt-BR")}</h3>
+                    <strong className={cls(insight.sof.highAvgDelta)}>{fmt(insight.sof.highAvgDelta)}</strong>
+                    <small>{insight.sof.highCount} corridas</small>
+                  </article>
+                </>}
+                {insight.incidents && <>
+                  <article className="week-context-card">
+                    <span>Limpeza de pilotagem</span>
+                    <h3>Corridas limpas (0 incidentes)</h3>
+                    <strong className={cls(insight.incidents.cleanAvgDelta)}>{fmt(insight.incidents.cleanAvgDelta)}</strong>
+                    <small>{insight.incidents.cleanCount} corridas</small>
+                  </article>
+                  <article className="week-context-card">
+                    <span>Limpeza de pilotagem</span>
+                    <h3>Com contato (1+ incidentes)</h3>
+                    <strong className={cls(insight.incidents.contactAvgDelta)}>{fmt(insight.incidents.contactAvgDelta)}</strong>
+                    <small>{insight.incidents.contactCount} corridas</small>
+                  </article>
+                </>}
+              </div>
+            </section>
+          );
+        })()}
 
         <section className="section-block historical-section">
           <div className="section-title-row">

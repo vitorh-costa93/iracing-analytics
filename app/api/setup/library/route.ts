@@ -10,6 +10,16 @@ function normalizeCarSlug(value: string) {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
+// 04/09/2026 varredura: "bmwlmdh" (biblioteca local, pasta P1Doks/iRacing, último carregado Le Mans)
+// não batia por igualdade nem por prefixo contra nenhum carro real -- confirmado contra a tabela
+// `cars` que "BMW M Hybrid V8 (Evo)" é o único protótipo BMW no catálogo (nenhuma ambiguidade), e
+// esse piloto já correu 21 corridas com ele (GTP). O provedor do setup usa a classe do carro (LMDh)
+// em vez do nome/modelo na pasta, então nem igualdade nem prefixo normalizado alcançam -- exceção
+// pontual, não um padrão geral (outras 7 pastas desta mesma biblioteca resolveram normalmente).
+const FOLDER_ALIASES: Record<string, string> = {
+  bmwlmdh: "BMW M Hybrid V8 (Evo)",
+};
+
 export async function GET() {
   try {
     const { data: seasons, error: seasonError } = await supabaseAdmin.from("v_season_summary").select("season_id,season_name");
@@ -35,7 +45,8 @@ export async function GET() {
         const exact = normalizedCars.find((car) => car.slug === target);
         const prefix = !exact ? normalizedCars.filter((car) => car.slug.startsWith(target)).sort((a, b) => a.slug.length - b.slug.length)[0] : null;
         const match = exact ?? prefix;
-        if (match) carNames[folder] = match.name;
+        const resolved = match?.name ?? FOLDER_ALIASES[target];
+        if (resolved) carNames[folder] = resolved;
       }
     }
     return NextResponse.json({ status: "ok", ...manifest, carNames });
