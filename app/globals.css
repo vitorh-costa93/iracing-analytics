@@ -170,7 +170,10 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .season-summary strong { color: var(--text); font-weight: 500; }
 .season-summary span { color: var(--border-strong); margin: 0 5px; }
 
-.kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+/* 05/09/2026: fixo em 4 colunas até os dois KPIs de Sequência entrarem na mesma linha (6 cards) --
+ * um grid de 4 colunas com 6 itens deixa a última linha torta (4 + 2 alinhados à esquerda). Mesmo
+ * fix de auto-fit já usado em outras grades desta página (week-context-grid, library-groups). */
+.kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
 .kpi-card { min-height: 154px; background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--border-strong); padding: 18px 20px 14px; text-align: center; }
 .kpi-card:nth-child(1), .kpi-card:nth-child(2) { border-top-color: var(--blue); }
 .kpi-card.formula { border-top-color: var(--blue); }.kpi-card.sports { border-top-color: var(--amber); }

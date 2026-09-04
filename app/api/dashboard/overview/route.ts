@@ -87,8 +87,6 @@ type RaceResultRow = {
   laps: number | null;
   irating_after: number;
   irating_before: number;
-  sof: number | null;
-  incidents: number | null;
 };
 
 /** Parses irstats' "M:SS.mmm" lap-time text (e.g. "1:27.305") into seconds. */
@@ -458,7 +456,7 @@ export async function GET() {
     const { data: seasonRaceRows, error: racesError } = await supabaseAdmin
       .from("v_race_results_irating")
       .select(
-        "irstats_race_id, raced_at, series_name, track_name, car_name, category, season_week, grid_position, finish_position, position_change, fastest_lap_time, race_fastest_lap_time, laps, irating_after, irating_before, sof, incidents"
+        "irstats_race_id, raced_at, series_name, track_name, car_name, category, season_week, grid_position, finish_position, position_change, fastest_lap_time, race_fastest_lap_time, laps, irating_after, irating_before"
       )
       .eq("driver_id", driver.id)
       .gte("raced_at", previousSeasonStart)
@@ -496,41 +494,44 @@ export async function GET() {
       series: row.series_name,
       startPosition: row.grid_position,
       finishPosition: row.finish_position,
-      sof: row.sof,
-      incidents: row.incidents,
     }));
 
     // =====================================================
-    // CONTEXTO DE CORRIDA (04/09/2026, varredura de BI: "confronte com aquilo que temos de
-    // informação, se pode inserir algo novo") -- iRStats já captura SoF (força do grid) e
-    // incidentes por corrida em `race_results`, mas nenhuma tela do app jamais usava essas duas
-    // colunas. Pergunta de analista real: você ganha/perde mais iRating dependendo de quão forte
-    // é o grid, e o quanto disso é limpo vs. com contato? Corta a amostra (2 seasons, já
-    // carregada) ao meio pela mediana de SoF e por incidentes=0 vs >0, por carteira. Exige pelo
-    // menos 6 corridas com o dado presente de cada lado para reportar -- abaixo disso o "insight"
-    // é só ruído de amostra pequena, não uma tendência real.
-    const avgDelta = (rows: RaceResultRow[]) => rows.length ? rows.reduce((sum, r) => sum + (r.irating_after - r.irating_before), 0) / rows.length : null;
-    function raceContextInsight(category: "formula_car" | "sports_car") {
-      const rows = seasonRaces.filter((r) => r.category === category);
-      const withSof = rows.filter((r): r is RaceResultRow & { sof: number } => r.sof !== null).sort((a, b) => a.sof - b.sof);
-      const half = Math.floor(withSof.length / 2);
-      const lowSof = withSof.slice(0, half);
-      const highSof = withSof.slice(withSof.length - half);
-      const withIncidents = rows.filter((r) => r.incidents !== null);
-      const clean = withIncidents.filter((r) => r.incidents === 0);
-      const contact = withIncidents.filter((r) => (r.incidents ?? 0) > 0);
-      return {
-        sof: half >= 6 ? {
-          lowAvgDelta: avgDelta(lowSof), lowCount: lowSof.length, lowMaxSof: lowSof[lowSof.length - 1]?.sof ?? null,
-          highAvgDelta: avgDelta(highSof), highCount: highSof.length, highMinSof: highSof[0]?.sof ?? null,
-        } : null,
-        incidents: clean.length >= 6 && contact.length >= 6 ? {
-          cleanAvgDelta: avgDelta(clean), cleanCount: clean.length,
-          contactAvgDelta: avgDelta(contact), contactCount: contact.length,
-        } : null,
-      };
+    // SEQUÊNCIA DE CORRIDAS GANHANDO IRATING (05/09/2026: "corridas seguidas ganhando iRating...
+    // embaixo, como Secondary KPI, mostrar o meu recorde all-time") -- substitui o card de
+    // Contexto de Corrida (SoF/incidentes) da varredura anterior. Streak atual = corridas
+    // consecutivas MAIS RECENTES com irating_delta > 0, contando pra trás a partir de agora (para
+    // no primeiro delta <= 0); recorde all-time = a maior sequência já feita, em qualquer season.
+    // Precisa da carreira INTEIRA por carteira (não só seasonRaces, que só cobre 2 seasons) --
+    // iRStats cobre desde a primeira season deste piloto (1.330+ corridas na carreira toda), daí
+    // o .range alto explícito em vez de confiar no max_rows default do PostgREST.
+    const { data: careerRows, error: careerError } = await supabaseAdmin
+      .from("race_results")
+      .select("raced_at,irating_delta,category")
+      .eq("driver_id", driver.id)
+      .in("category", ["formula_car", "sports_car"])
+      .order("raced_at", { ascending: true })
+      .range(0, 4999);
+    if (careerError) throwSupabaseError("race_results (streaks)", careerError);
+    const career = (careerRows ?? []) as { raced_at: string; irating_delta: number; category: "formula_car" | "sports_car" }[];
+
+    function streakStats(rows: { irating_delta: number }[]) {
+      let current = 0;
+      let best = 0;
+      for (const row of rows) {
+        if (row.irating_delta > 0) {
+          current += 1;
+          if (current > best) best = current;
+        } else {
+          current = 0;
+        }
+      }
+      return { current, best };
     }
-    const raceContext = { formula: raceContextInsight("formula_car"), sports: raceContextInsight("sports_car") };
+    const streaks = {
+      formula_car: streakStats(career.filter((row) => row.category === "formula_car")),
+      sports_car: streakStats(career.filter((row) => row.category === "sports_car")),
+    };
 
     function seasonIdForRace(racedAt: string) {
       const t = new Date(racedAt).getTime();
@@ -945,7 +946,7 @@ export async function GET() {
 
       races,
 
-      raceContext,
+      streaks,
 
       featureAvailability: {
         wins: true,
