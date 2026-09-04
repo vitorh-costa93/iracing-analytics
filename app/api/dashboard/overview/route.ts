@@ -532,6 +532,13 @@ export async function GET() {
       formula_car: streakStats(career.filter((row) => row.category === "formula_car")),
       sports_car: streakStats(career.filter((row) => row.category === "sports_car")),
     };
+    const streaksDebug = {
+      careerTotal: career.length,
+      formulaCount: career.filter((r) => r.category === "formula_car").length,
+      formulaLast5: career.filter((r) => r.category === "formula_car").slice(-5),
+      sportsCount: career.filter((r) => r.category === "sports_car").length,
+      sportsLast5: career.filter((r) => r.category === "sports_car").slice(-5),
+    };
 
     function seasonIdForRace(racedAt: string) {
       const t = new Date(racedAt).getTime();
@@ -947,6 +954,7 @@ export async function GET() {
       races,
 
       streaks,
+      streaksDebug,
 
       featureAvailability: {
         wins: true,
