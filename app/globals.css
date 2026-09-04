@@ -457,7 +457,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * layout (see .insight-popup-body), the whole popup now fits within max-height without needing its
  * own scrollbar on a typical viewport. */
 .insight-popup { width: min(980px, 100%); max-height: 88vh; overflow: auto; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 3px; padding: 22px; box-shadow: 0 24px 70px rgba(0,0,0,.5); }
-.insight-popup-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; }
+/* 04/09/2026 varredura: no mobile (popup ~340px de largura), o título ("CURVAS 11-12") já quebrava
+ * linha, mas os botões Anterior/Próxima/Fechar são flex:0 0 auto (não encolhem) -- juntos passavam
+ * da largura disponível, cortando o botão Fechar pela metade e criando scroll horizontal dentro do
+ * próprio popup. `flex-wrap` deixa os botões caírem pra uma segunda linha quando não cabem; em
+ * telas largas o suficiente pra caber tudo numa linha (o caso de sempre), não muda nada. */
+.insight-popup-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: flex-start; gap: 10px 16px; }
 .insight-popup-head h3 { margin: 4px 0 0; font-size: 18px; }
 .insight-popup-close { flex: 0 0 auto; padding: 8px 12px; border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 500; cursor: pointer; border-radius: 3px; }
 .insight-popup-close:hover { background: var(--surface-raised); }
@@ -541,7 +546,24 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .official-results-note { margin: 11px 0 0; color: var(--soft); font-size: 11px; }
 .rating-chart-grid .panel-heading h2 { font-size: 17px; }.rating-chart-grid .panel-heading p { font-size: 12px; }.rating-chart-grid .chart-canvas { min-height: 180px; }
 .scatter-wrap { position: relative; margin-top: 14px; }.scatter-wrap svg { width: 100%; min-height: 250px; overflow: visible; }.scatter-wrap text { fill: var(--soft); font-family: var(--mono); font-size: 10px; }.scatter-grid { stroke: var(--border); stroke-width: 1; }.scatter-zero { stroke: var(--border-strong); stroke-width: 1.5; }.scatter-positive { fill: var(--green); opacity: .85; }.scatter-negative { fill: var(--red); opacity: .85; }.scatter-hit { fill: transparent; cursor: pointer; }.scatter-tooltip { position: absolute; right: 12px; top: 8px; display: grid; gap: 3px; max-width: 280px; padding: 10px 12px; border-radius: 3px; background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); pointer-events: none; }.scatter-tooltip strong { font-family: var(--mono); font-size: 15px; }.scatter-tooltip span { color: var(--muted); font-size: 11px; }
-.season-races-panel { margin-top: 18px; padding: 20px; }.race-table-wrap { margin-top: 16px; overflow: auto; }.race-table-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }.race-table-pagination button { padding: 8px 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 3px; }.race-table-pagination button:hover:not(:disabled) { background: var(--surface-muted); border-color: var(--brand); }.race-table-pagination button:disabled { opacity: .4; cursor: not-allowed; }.race-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }.race-table th { padding: 9px 10px; background: var(--surface-muted); color: var(--soft); text-align: left; text-transform: uppercase; letter-spacing: .05em; font-weight: 500; }.race-table td { padding: 10px; border-top: 1px solid var(--border); }.race-table td:nth-child(3), .race-table td:nth-child(4), .race-table td:nth-child(5) { white-space: normal; min-width: 150px; font-family: var(--body); }
+.season-races-panel { margin-top: 18px; padding: 20px; }.race-table-wrap {
+  margin-top: 16px; overflow: auto; position: relative;
+  /* 04/09/2026 varredura: a tabela já era scrollável na horizontal (overflow:auto), mas sem
+   * nenhuma pista visual disso -- no mobile a coluna Carro só ficava cortada na borda do
+   * viewport ("Super F", "Ferrari 4"), sem reticências nem sombra indicando que dá pra
+   * arrastar pra ver o resto. Sombra clássica de "scroll shadow", CSS puro: dois gradientes
+   * fixos ao viewport (sombra) + dois presos ao conteúdo (mascarando a sombra quando já não
+   * há mais o que rolar naquele lado) -- desaparece sozinha nas pontas, sem JS. */
+  background:
+    linear-gradient(to right, var(--surface) 30%, rgba(0, 0, 0, 0)),
+    linear-gradient(to left, var(--surface) 30%, rgba(0, 0, 0, 0)) 100% 0,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, .35), rgba(0, 0, 0, 0)),
+    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .35), rgba(0, 0, 0, 0)) 100% 0;
+  background-repeat: no-repeat;
+  background-color: var(--surface);
+  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
+  background-attachment: local, local, scroll, scroll;
+}.race-table-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }.race-table-pagination button { padding: 8px 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 3px; }.race-table-pagination button:hover:not(:disabled) { background: var(--surface-muted); border-color: var(--brand); }.race-table-pagination button:disabled { opacity: .4; cursor: not-allowed; }.race-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }.race-table th { padding: 9px 10px; background: var(--surface-muted); color: var(--soft); text-align: left; text-transform: uppercase; letter-spacing: .05em; font-weight: 500; }.race-table td { padding: 10px; border-top: 1px solid var(--border); }.race-table td:nth-child(3), .race-table td:nth-child(4), .race-table td:nth-child(5) { white-space: normal; min-width: 150px; font-family: var(--body); }
 .race-table th:first-child, .race-table td:first-child { padding-right: 0; width: 16px; }
 .race-category-swatch { display: inline-block; width: 6px; height: 16px; border-radius: 2px; background: var(--border-strong); }
 .race-category-swatch.formula_car { background: var(--blue); }
