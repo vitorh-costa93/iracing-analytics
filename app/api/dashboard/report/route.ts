@@ -283,25 +283,45 @@ export async function GET(request: NextRequest) {
     }
 
     if (scope === "season") {
+      // Recorde all-time precisa da carreira INTEIRA, não só da janela de 2 seasons já carregada
+      // acima -- mesma paginação em blocos de 1000 e mesmo motivo do bug real corrigido no KPI de
+      // Sequência da Overview (max_rows do PostgREST corta qualquer .range() alto sozinho). Sem
+      // isso, o "recorde all-time" deste relatório contradiria o KPI da Overview (que já busca a
+      // carreira inteira corretamente) -- confirmado ao vivo antes desta correção: relatório dizia
+      // 18/6, KPI dizia 20/8, mesmo dado, dois números diferentes na mesma tela.
+      const careerDeltas: { raced_at: string; irating_delta: number; category: Category }[] = [];
+      {
+        const pageSize = 1000;
+        for (let offset = 0; ; offset += pageSize) {
+          const { data: page, error: pageError } = await supabaseAdmin
+            .from("race_results")
+            .select("raced_at,irating_delta,category")
+            .eq("driver_id", driver.id)
+            .in("category", CATEGORIES)
+            .order("raced_at", { ascending: true })
+            .range(offset, offset + pageSize - 1);
+          if (pageError) throwSupabaseError("race_results (streaks)", pageError);
+          careerDeltas.push(...((page ?? []) as typeof careerDeltas));
+          if (!page || page.length < pageSize) break;
+        }
+      }
+      function streakStats(category: Category) {
+        let current = 0, best = 0;
+        for (const row of careerDeltas) {
+          if (row.category !== category) continue;
+          if (row.irating_delta > 0) { current += 1; if (current > best) best = current; }
+          else current = 0;
+        }
+        return { current, best };
+      }
+
       const sections = CATEGORIES.map((category) => {
         const currentRaces = currentRacesAll.filter((r) => r.category === category);
         const previousRaces = previousRacesAll.filter((r) => r.category === category);
         const currentIrating = currentRaces.length ? currentRaces[currentRaces.length - 1].irating_after : null;
         const seasonStartIrating = currentRaces.length ? currentRaces[0].irating_before : null;
         const { start: seasonStartSR, current: currentSR } = srBounds(category);
-
-        // Streak (mesma lógica de app/api/dashboard/overview/route.ts, recalculada aqui a partir
-        // da mesma janela de 2 seasons -- suficiente pro streak ATUAL; o recorde all-time
-        // reportado aqui fica restrito a essas 2 seasons por simplicidade nesta rota separada,
-        // então é rotulado como "recorde nas 2 seasons", não "all-time", pra não contradizer o
-        // KPI da Overview (que busca a carreira inteira paginada).
-        const categoryChrono = windowRaces.filter((r) => r.category === category);
-        let streakCurrent = 0, streakBest = 0, running = 0;
-        for (const row of categoryChrono) {
-          if (row.irating_after - row.irating_before > 0) { running += 1; if (running > streakBest) streakBest = running; }
-          else running = 0;
-        }
-        streakCurrent = running;
+        const { current: streakCurrent, best: streakBest } = streakStats(category);
 
         return {
           category,
