@@ -503,17 +503,29 @@ export async function GET() {
     // consecutivas MAIS RECENTES com irating_delta > 0, contando pra trás a partir de agora (para
     // no primeiro delta <= 0); recorde all-time = a maior sequência já feita, em qualquer season.
     // Precisa da carreira INTEIRA por carteira (não só seasonRaces, que só cobre 2 seasons) --
-    // iRStats cobre desde a primeira season deste piloto (1.330+ corridas na carreira toda), daí
-    // o .range alto explícito em vez de confiar no max_rows default do PostgREST.
-    const { data: careerRows, error: careerError } = await supabaseAdmin
-      .from("race_results")
-      .select("raced_at,irating_delta,category")
-      .eq("driver_id", driver.id)
-      .in("category", ["formula_car", "sports_car"])
-      .order("raced_at", { ascending: true })
-      .range(0, 4999);
-    if (careerError) throwSupabaseError("race_results (streaks)", careerError);
-    const career = (careerRows ?? []) as { raced_at: string; irating_delta: number; category: "formula_car" | "sports_car" }[];
+    // iRStats cobre desde a primeira season deste piloto (1.153 corridas formula+sports na
+    // carreira toda). Um .range(0, 4999) sozinho NÃO basta -- o PostgREST tem seu próprio
+    // max_rows=1000 no servidor, que corta a resposta em 1000 linhas silenciosamente (sem erro)
+    // *independente* do range pedido pelo cliente -- confirmado ao vivo: a "sequência atual"
+    // saía errada (13/5 em vez de 0/0) porque a página cortada parava em abril/2026, nunca
+    // alcançando as corridas de setembro. Paginado em blocos de 1000, mesmo padrão já usado no
+    // backfill de app/api/sync/irstats/route.ts pelo mesmo motivo.
+    const career: { raced_at: string; irating_delta: number; category: "formula_car" | "sports_car" }[] = [];
+    {
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data: page, error: pageError } = await supabaseAdmin
+          .from("race_results")
+          .select("raced_at,irating_delta,category")
+          .eq("driver_id", driver.id)
+          .in("category", ["formula_car", "sports_car"])
+          .order("raced_at", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (pageError) throwSupabaseError("race_results (streaks)", pageError);
+        career.push(...((page ?? []) as typeof career));
+        if (!page || page.length < pageSize) break;
+      }
+    }
 
     function streakStats(rows: { irating_delta: number }[]) {
       let current = 0;
@@ -532,14 +544,6 @@ export async function GET() {
       formula_car: streakStats(career.filter((row) => row.category === "formula_car")),
       sports_car: streakStats(career.filter((row) => row.category === "sports_car")),
     };
-    const streaksDebug = {
-      careerTotal: career.length,
-      formulaCount: career.filter((r) => r.category === "formula_car").length,
-      formulaLast5: career.filter((r) => r.category === "formula_car").slice(-5),
-      sportsCount: career.filter((r) => r.category === "sports_car").length,
-      sportsLast5: career.filter((r) => r.category === "sports_car").slice(-5),
-    };
-
     function seasonIdForRace(racedAt: string) {
       const t = new Date(racedAt).getTime();
       for (const row of seasonCalendar) {
@@ -954,7 +958,6 @@ export async function GET() {
       races,
 
       streaks,
-      streaksDebug,
 
       featureAvailability: {
         wins: true,
