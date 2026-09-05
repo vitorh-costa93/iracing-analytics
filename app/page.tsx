@@ -8,6 +8,7 @@ import AppTabs from "@/components/AppTabs";
 import ThemeToggle from "@/components/ThemeToggle";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
+import DmaicReportModal from "@/components/DmaicReportModal";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -301,6 +302,7 @@ export default function Home() {
              * extension. */}
             <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
             <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
+            <DmaicReportModal />
             <ThemeToggle />
           </div>
         </header>
