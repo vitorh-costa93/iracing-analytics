@@ -315,3 +315,10 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 5. Construir a primeira versão de Active Week Telemetry: seletor carro+pista, telemetria Garage61, upload/validação/persistência de uma referência.
 6. Implementar normalização por distância e MVP de comparação (delta, speed, brake, throttle e maiores perdas), evoluindo depois para coaching por curva.
 7. A cada decisão ou mudança de schema/arquitetura, atualizar este arquivo no mesmo diff.
+
+
+## DMAIC reports and controlled telemetry backfill (05/09/2026)
+
+- Overview exposes **Resumo da semana** and **Resumo da season**. They consume the same server-side report endpoint and present the investigation as DMAIC: define the performance question, state what data was measured, present evidence-backed findings, recommend a controlled single-variable test, and state what should be monitored next.
+- The report must not present SoF, incident, car, track or win patterns as confirmed causes without a comparison that actually tests the hypothesis. Findings may identify a hypothesis and the exact next comparison needed.
+- Raw Garage61 telemetry is stored only in Supabase Storage bucket `telemetry`, never in Vercel storage. The Supabase Free project currently has a 1 GB file-storage allowance, so the historic backfill is intentionally resumable and bounded: the authenticated Vercel cron saves at most 12 missing CSVs per run, rejects individual files above 8 MB, measures existing bucket bytes first, and stops at `TELEMETRY_BACKFILL_MAX_BYTES` (default 700 MB). This prevents a public endpoint from spending Garage61 quota or filling storage and leaves headroom for normal operation.
