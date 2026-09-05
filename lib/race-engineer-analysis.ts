@@ -162,6 +162,16 @@ export function buildEngineerSection(category: Category, rows: RaceInput[], prev
     positionDistribution: [positionGain, compare(races, "Sem mudança", (row) => row.position_change === 0), positionLoss],
     topLosses,
     topGains,
+    impactRaces: [...races].sort((a,b) => Math.abs(delta(b)) - Math.abs(delta(a))).slice(0, 8).map((row) => ({
+      date: row.raced_at, delta: round(delta(row)), finish: row.finish_position, grid: row.grid_position,
+      positionChange: row.position_change, incidents: row.incidents, sof: row.sof,
+      context: row.car_name + " • " + row.track_name,
+      lossShare: delta(row) < 0 && totalLoss ? round(Math.abs(delta(row)) / totalLoss * 100) : null,
+    })),
+    weeklyImpact: [...new Set(races.map(row => row.season_week).filter((value): value is number => value !== null))].sort((a,b) => a-b).map(weekNumber => {
+      const weekRows = races.filter(row => row.season_week === weekNumber);
+      return { week: weekNumber, races: weekRows.length, delta: round(sum(weekRows.map(delta))), incidents: round(avg(weekRows.map(row => row.incidents))), positionChange: round(avg(weekRows.map(row => row.position_change))) };
+    }),
     raceTrace: races.slice(-24).reverse().map((row) => ({ date: row.raced_at, delta: round(delta(row)), finish: row.finish_position, grid: row.grid_position, positionChange: row.position_change, incidents: row.incidents, sof: row.sof, context: `${row.car_name} • ${row.track_name}` })),
     telemetryNote: "A fonte de telemetria guarda voltas, setores e flags, mas não expõe ainda um fluxo confiável de canais de volante/freio/acelerador nesta rota. Por isso, este debrief não inventa uma nota de “confiança nos inputs”; ela aparecerá quando houver amostra de canais sincronizados para o mesmo conjunto de corridas.",
   };
