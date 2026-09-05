@@ -1,0 +1,13 @@
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { RaceInput } from "@/lib/race-engineer-analysis";
+type P={event?:string;session?:number|string;sessionType?:number;startTime?:string;tow?:boolean;towed?:boolean;lapNumber?:number};
+const key=(s:string)=>s.toLowerCase().replace(/[^a-z0-9]/g,"");
+export async function retirementEvents(driverId:string,races:RaceInput[],seasonName:string){
+ const [{data:cars,error:ce},{data:tracks,error:te},{data:laps,error:le}]=await Promise.all([supabaseAdmin.from("cars").select("id,name"),supabaseAdmin.from("tracks").select("id,name"),supabaseAdmin.from("laps").select("car_id,track_id,lap_number,off_track,incomplete,missing,discontinuity,pit_in,pit_out,garage61_payload").eq("driver_id",driverId)]);
+ if(ce)throw ce;if(te)throw te;if(le)throw le;const car=new Map((cars??[]).map(x=>[x.id,key(x.name)])),track=new Map((tracks??[]).map(x=>[x.id,key(x.name)])),groups=new Map<string,typeof laps>();
+ for(const lap of laps??[]){const p=(lap.garage61_payload??{}) as P;if(p.sessionType!==2&&p.sessionType!==3||!p.startTime)continue;const k=`${lap.car_id}:${lap.track_id}:${p.event??""}:${p.session??""}`;groups.set(k,[...(groups.get(k)??[]),lap])}
+ const events=[] as {racedAt:string;context:string;delta:number;positionChange:number|null;incidents:number|null;type:string;confidence:"confirmed"|"probable";laps:number}[];
+ for(const lapsInSession of groups.values()){const p=(lapsInSession[0].garage61_payload??{}) as P;const starts=lapsInSession.map(l=>(l.garage61_payload as P).startTime).filter((x):x is string=>!!x);const start=new Date(starts.sort()[0]).getTime(),carName=car.get(lapsInSession[0].car_id),trackName=track.get(lapsInSession[0].track_id);const race=races.filter(r=>key(r.car_name)===carName&&key(r.track_name)===trackName).sort((a,b)=>Math.abs(new Date(a.raced_at).getTime()-start)-Math.abs(new Date(b.raced_at).getTime()-start))[0];if(!race||Math.abs(new Date(race.raced_at).getTime()-start)>6*3600000)continue;
+ const confirmed=lapsInSession.some(l=>{const q=(l.garage61_payload??{}) as P;return q.tow===true||q.towed===true});const interrupted=lapsInSession.some(l=>(l.incomplete===true||l.missing===true||l.discontinuity===true)&&(l.pit_in===true||l.pit_out===true));if(!confirmed&&!interrupted)continue;events.push({racedAt:race.raced_at,context:`${race.car_name} • ${race.track_name}`,delta:race.irating_after-race.irating_before,positionChange:race.position_change,incidents:race.incidents,type:confirmed?"Tow confirmado":"Retirada provável (pit + volta interrompida)",confidence:confirmed?"confirmed":"probable",laps:lapsInSession.length})}
+ return events.sort((a,b)=>a.delta-b.delta).slice(0,8);
+}
