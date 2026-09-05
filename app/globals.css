@@ -959,3 +959,28 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .sector-detail div { text-align: left; }
   .car-compare-row1 { grid-template-columns: 1fr; }
 }
+
+
+/* DMAIC reports: the analysis is intentionally a readable dialog, not another dense dashboard card. */
+.dmaic-report-actions { display: inline-flex; align-items: center; gap: 8px; }
+.dmaic-report-actions .quick-open-button, .dmaic-report-actions .primary-button { white-space: nowrap; }
+.dmaic-modal-backdrop { position: fixed; inset: 0; z-index: 50; padding: 24px; overflow-y: auto; background: rgba(0,0,0,.68); backdrop-filter: blur(3px); }
+.dmaic-modal { width: min(920px, 100%); margin: 30px auto; padding: 22px; background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 20px 70px rgba(0,0,0,.45); }
+.dmaic-modal-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--border); }
+.dmaic-modal-head h2 { margin: 4px 0 0; font-size: 25px; }
+.dmaic-modal-head p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
+.modal-close { border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); padding: 9px 12px; cursor: pointer; font-family: var(--mono); font-size: 12px; }
+.dmaic-section { margin-top: 22px; border: 1px solid var(--border); }
+.dmaic-section > h3 { margin: 0; padding: 12px 14px; background: var(--surface-muted); font-size: 17px; }
+.dmaic-stage { padding: 12px 14px; border-top: 1px solid var(--border); }
+.dmaic-stage strong { display: block; color: var(--brand); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; }
+.dmaic-stage p { margin: 6px 0 0; color: var(--text); font-size: 14px; line-height: 1.55; }
+.dmaic-error { margin-top: 18px; padding: 12px; border: 1px solid var(--red); background: var(--red-pale); color: var(--red); }
+@media (max-width: 760px) {
+  .dmaic-report-actions { width: 100%; }
+  .dmaic-report-actions .quick-open-button, .dmaic-report-actions .primary-button { flex: 1; padding: 10px 8px; font-size: 11px; }
+  .dmaic-modal-backdrop { padding: 10px; }
+  .dmaic-modal { margin: 0 auto; padding: 15px; }
+  .dmaic-modal-head { gap: 12px; }
+  .dmaic-modal-head h2 { font-size: 21px; }
+}
