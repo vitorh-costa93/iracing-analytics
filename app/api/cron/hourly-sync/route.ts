@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { POST as syncCatalogAndStatistics } from "@/app/api/sync/all/route";
 import { POST as syncIncrementalSessions } from "@/app/api/sync/incremental/route";
 import { POST as syncRatingHistory } from "@/app/api/sync/rating-history/route";
-import { runTelemetryBackfill } from "@/app/api/sync/telemetry-backfill/route";
+import { runTelemetryBackfill } from "@/lib/telemetry-backfill";
 
 async function readStep(name: string, response: Response) {
   const result = await response.json();
