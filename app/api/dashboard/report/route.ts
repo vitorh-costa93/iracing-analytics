@@ -18,6 +18,8 @@ type RaceRow = {
   car_name: string;
   season_week: number | null;
   finish_position: number;
+  grid_position: number | null;
+  position_change: number | null;
   irating_after: number;
   irating_before: number;
   sof: number | null;
@@ -153,10 +155,13 @@ function buildCategorySeasonNarrative(opts: {
     const avgSof = avg(withSof.map((r) => r.sof as number));
     paragraphs.push(`SoF médio enfrentado nesta season: ${avgSof?.toLocaleString("pt-BR", { maximumFractionDigits: 0 })}.`);
   }
+  const withPositions = currentRaces.filter((r) => r.position_change !== null);
+  if (withPositions.length >= 4) { const gained = avg(withPositions.map((r) => r.position_change as number)); paragraphs.push(`Posições líquidas por corrida: ${fmt1(gained)}. ${gained !== null && gained < 0 ? "Você está perdendo posições em média — isso torna largada, incidentes e ritmo de corrida mais prováveis do que uma simples falta de velocidade de uma volta." : "Você ganha posições em média; se o iRating ainda cai, as perdas estão concentradas em poucos resultados ruins, não no resultado típico."}`); }
   if (withIncidents.length >= 4) {
     const clean = withIncidents.filter((r) => r.incidents === 0).length;
     const pct = Math.round((clean / withIncidents.length) * 100);
-    paragraphs.push(`Corridas limpas (0 incidentes): ${clean} de ${withIncidents.length} (${pct}%).`);
+    const total = withIncidents.reduce((sum, r) => sum + (r.incidents ?? 0), 0); const perRace = total / withIncidents.length;
+    paragraphs.push(`Disciplina de corrida: ${total} incidentes em ${withIncidents.length} corridas (${perRace.toFixed(1)}/corrida); só ${clean} foram limpas (${pct}%). ${perRace >= 4 ? "Esse volume é material e deve ser correlacionado com as corridas de maior perda antes de culpar apenas o ritmo." : "O volume não parece, sozinho, explicar o resultado; priorize contexto competitivo e execução."}`);
   }
 
   return paragraphs;
@@ -244,7 +249,7 @@ export async function GET(request: NextRequest) {
       for (let offset = 0; ; offset += pageSize) {
         const { data: page, error: pageError } = await supabaseAdmin
           .from("v_race_results_irating")
-          .select("raced_at, category, series_name, track_name, car_name, season_week, finish_position, irating_after, irating_before, sof, incidents")
+          .select("raced_at, category, series_name, track_name, car_name, season_week, finish_position, grid_position, position_change, irating_after, irating_before, sof, incidents")
           .eq("driver_id", driver.id)
           .gte("raced_at", previousSeasonStart)
           .lt("raced_at", currentSeasonEnd)
