@@ -1,0 +1,39 @@
+name: Run telemetry backfill
+
+on:
+  workflow_dispatch:
+    inputs:
+      batches:
+        description: "Number of protected backfill batches to run (1-5)"
+        required: true
+        default: "1"
+        type: choice
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+
+permissions:
+  contents: read
+
+jobs:
+  backfill:
+    name: Run protected telemetry backfill
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Trigger telemetry batches
+        env:
+          CRON_SECRET: ${{ secrets.CRON_SECRET }}
+          BATCHES: ${{ inputs.batches }}
+        run: |
+          set -euo pipefail
+          for batch in $(seq 1 "$BATCHES"); do
+            echo "Starting batch $batch of $BATCHES"
+            curl --fail-with-body --silent --show-error \
+              -H "Authorization: Bearer $CRON_SECRET" \
+              "https://iracing-analytics.vercel.app/api/cron/hourly-sync"
+            echo
+          done
