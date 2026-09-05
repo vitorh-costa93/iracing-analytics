@@ -112,13 +112,13 @@ function buildCategorySeasonNarrative(opts: {
     const iratingUp = netIrating > 0;
     const iratingDown = netIrating < 0;
     if (winsUp && iratingDown) {
-      paragraphs.push(`Isso é uma contradição que vale investigar: você teve mais vitórias que na season anterior (${wins} vs. ${previousWins}), mas o iRating caiu ${fmt1(netIrating)} no total. Isso normalmente aponta pra um SoF mais fraco nas corridas que você venceu (ganhar contra um grid mais fraco rende menos, ou até perde pontos se você já estava acima da força média do grid) — ou pra inconsistência: vitórias isoladas em corridas boas, cercadas de quedas maiores em corridas ruins. Vale olhar o SoF médio das corridas que você venceu comparado às que perdeu.`);
+      paragraphs.push(`Há uma contradição a investigar: você teve mais vitórias que na season anterior (${wins} vs. ${previousWins}), mas o iRating caiu ${fmt1(netIrating)} no total. Os números, sozinhos, não provam a causa. A primeira hipótese é diferença de SoF entre vitórias e derrotas; a segunda é que perdas isoladas superaram os ganhos. Antes de concluir, compare SoF médio, posição e delta de iRating entre vitórias e demais corridas no mesmo carro/pista quando houver amostra.`);
     } else if (winsDown && iratingUp) {
-      paragraphs.push(`Sinal positivo silencioso: você teve menos vitórias que na season anterior (${wins} vs. ${previousWins}), mas o iRating subiu ${fmt1(netIrating)} — indica que os resultados sem vitória ainda estão vindo de grids mais fortes ou com posições melhores no geral, não só picos isolados.`);
+      paragraphs.push(`Você teve menos vitórias que na season anterior (${wins} vs. ${previousWins}), mas o iRating subiu ${fmt1(netIrating)}. Isso é compatível com bons resultados fora das vitórias ou grids mais fortes, mas a causa precisa ser confirmada comparando SoF e posições por corrida.`);
     } else if (winsUp && iratingUp) {
-      paragraphs.push(`Season em alta nos dois sentidos: mais vitórias (${wins} vs. ${previousWins}) e iRating subindo (${fmt1(netIrating)}) — consistência real, não só sorte pontual.`);
+      paragraphs.push(`Vitórias (${wins} vs. ${previousWins}) e iRating (${fmt1(netIrating)}) evoluíram positivamente. É um bom resultado, mas ainda não prova consistência: use a dispersão dos deltas, incidentes e SoF para confirmar se não dependeu de poucos picos.`);
     } else if (winsDown && iratingDown) {
-      paragraphs.push(`Season mais dura que a anterior nos dois sentidos: menos vitórias (${wins} vs. ${previousWins}) e iRating caindo (${fmt1(netIrating)}). Vale olhar se mudou de série/carro/SoF, ou se é queda de ritmo mesmo.`);
+      paragraphs.push(`Vitórias e iRating pioraram versus a season anterior. Trate série, carro, pista, SoF e incidentes como hipóteses concorrentes; o próximo passo é quebrar a variação por esses contextos antes de atribuir a queda ao ritmo.`);
     }
   }
 
