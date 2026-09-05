@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { POST as syncCatalogAndStatistics } from "@/app/api/sync/all/route";
 import { POST as syncIncrementalSessions } from "@/app/api/sync/incremental/route";
 import { POST as syncRatingHistory } from "@/app/api/sync/rating-history/route";
+import { runTelemetryBackfill } from "@/app/api/sync/telemetry-backfill/route";
 
 async function readStep(name: string, response: Response) {
   const result = await response.json();
@@ -30,7 +31,8 @@ export async function GET(request: NextRequest) {
     const catalog = await readStep("catalog", await syncCatalogAndStatistics());
     const sessions = await readStep("sessions", await syncIncrementalSessions());
     const ratingHistory = await readStep("ratingHistory", await syncRatingHistory());
-    return NextResponse.json({ status: "ok", catalog, sessions, ratingHistory });
+    const telemetryBackfill = await runTelemetryBackfill();
+    return NextResponse.json({ status: "ok", catalog, sessions, ratingHistory, telemetryBackfill });
   } catch (error) {
     return NextResponse.json(
       { status: "error", message: error instanceof Error ? error.message : String(error) },
