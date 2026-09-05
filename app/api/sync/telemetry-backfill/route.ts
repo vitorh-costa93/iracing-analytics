@@ -8,7 +8,7 @@ const BATCH_SIZE = 12;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const DEFAULT_BUDGET_BYTES = 700 * 1024 * 1024;
 
-type StorageObject = { metadata?: { size?: number } | null };
+type StorageEntry = { id?: string | null; name: string; metadata?: { size?: number } | null };
 type Candidate = { id: string; track_id: number | null };
 
 function configuredBudget() {
@@ -16,14 +16,26 @@ function configuredBudget() {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : DEFAULT_BUDGET_BYTES;
 }
 
-async function storedBytes() {
+async function storedBytes(prefix = ""): Promise<number> {
   let total = 0;
   const pageSize = 1000;
+
   for (let offset = 0; ; offset += pageSize) {
-    const { data, error } = await supabaseAdmin.schema("storage").from("objects")
-      .select("metadata").eq("bucket_id", BUCKET).range(offset, offset + pageSize - 1);
+    const { data, error } = await supabaseAdmin.storage.from(BUCKET).list(prefix, {
+      limit: pageSize,
+      offset,
+      sortBy: { column: "name", order: "asc" },
+    });
     if (error) throw new Error(`Não foi possível medir o Storage: ${error.message}`);
-    for (const object of (data ?? []) as StorageObject[]) total += Number(object.metadata?.size ?? 0);
+
+    for (const entry of (data ?? []) as StorageEntry[]) {
+      if (entry.id) {
+        total += Number(entry.metadata?.size ?? 0);
+      } else {
+        const childPrefix = prefix ? `${prefix}/${entry.name}` : entry.name;
+        total += await storedBytes(childPrefix);
+      }
+    }
     if (!data || data.length < pageSize) return total;
   }
 }
