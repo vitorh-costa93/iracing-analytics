@@ -80,6 +80,8 @@ export function buildEngineerSection(category: Category, rows: RaceInput[], prev
   const positionGain = compare(races, "Ganhou posições", (row) => (row.position_change ?? 0) > 0);
   const contexts = groupContexts(races);
   const totalLoss = Math.abs(sum(races.filter((row) => delta(row) < 0).map(delta)));
+  const biggestLosses = [...races].filter((row) => delta(row) < 0).sort((a,b) => delta(a) - delta(b)).slice(0,3);
+  const concentratedLossShare = totalLoss ? Math.abs(sum(biggestLosses.map(delta))) / totalLoss * 100 : 0;
   const topLosses = contexts.filter((item) => item.delta < 0).slice(0, 3).map((item) => ({
     ...item,
     shareOfLosses: totalLoss ? round((Math.abs(item.delta) / totalLoss) * 100) : 0,
@@ -94,9 +96,9 @@ export function buildEngineerSection(category: Category, rows: RaceInput[], prev
 
   const findings: Array<{ kind: "finding" | "watch" | "data"; title: string; text: string }> = [];
   findings.push({
-    kind: net < 0 ? "finding" : "finding",
-    title: net < 0 ? "O saldo foi decidido pelas derrotas, não pelas vitórias" : "O saldo é positivo, mas precisa ser sustentado",
-    text: `${label(category)} teve ${races.length} corridas e fechou ${signed(net)} de iRating. Houve ${wins.races} vitória${wins.races === 1 ? "" : "s"} e ${podiums} pódio${podiums === 1 ? "" : "s"}, mas as ${negative.races} corrida${negative.races === 1 ? "" : "s"} negativas somaram ${signed(negative.delta)} (${signed(negative.avgDelta)} por corrida), contra ${signed(positive.delta)} nas ${positive.races} positivas. ${negative.races ? "É a assimetria entre o tamanho das perdas e dos ganhos que explica o saldo." : ""}`,
+    kind: "finding",
+    title: net < 0 ? "A queda está concentrada em corridas de alto impacto" : "O saldo positivo está distribuído entre as corridas",
+    text: net < 0 ? "As três maiores perdas responderam por " + concentratedLossShare.toFixed(1) + "% de todo o iRating perdido. O padrão que as separa aparece abaixo: posição de largada e chegada, posições perdidas, incidentes e SoF. Esse é o conjunto de corridas que merece revisão primeiro." : "O ganho veio de " + positive.races + " corridas positivas contra " + negative.races + " negativas. O mapa de impacto mostra se a evolução é repetível ou depende de poucos resultados excepcionais.",
   });
 
   if (negative.races && positive.races && avgPosNegative !== null && avgPosPositive !== null) {
