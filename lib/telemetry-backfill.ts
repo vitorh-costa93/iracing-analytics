@@ -45,7 +45,7 @@ async function used(prefix = ""): Promise<number> {
 }
 
 async function rotateExpiredTelemetry(current: string, previous: string) {
-  let from = 0, removedFiles = 0, removedBytes = 0;
+  let from = 0, removedFiles = 0;
   while (true) {
     const q = await supabaseAdmin.from("laps")
       .select("id,telemetry_path,garage61_payload")
@@ -58,23 +58,17 @@ async function rotateExpiredTelemetry(current: string, previous: string) {
     for (let i = 0; i < expired.length; i += 100) {
       const group = expired.slice(i, i + 100);
       const paths = group.map(lap => lap.telemetry_path as string);
-      const sizes = await Promise.all(paths.map(async path => {
-        const head = await supabaseAdmin.storage.from(BUCKET).list(path.split("/").slice(0, -1).join("/"), { limit: 1000 });
-        const name = path.split("/").pop();
-        return Number((head.data ?? []).find(e => e.name === name)?.metadata?.size ?? 0);
-      }));
       const rm = await supabaseAdmin.storage.from(BUCKET).remove(paths);
       if (rm.error) throw rm.error;
       const db = await supabaseAdmin.from("laps").update({ telemetry_path: null }).in("id", group.map(lap => lap.id));
       if (db.error) throw db.error;
       removedFiles += group.length;
-      removedBytes += sizes.reduce((sum, size) => sum + size, 0);
     }
     if (laps.length < PAGE) break;
     // Deletions shift later rows into this page; re-read it before advancing.
     if (expired.length === 0) from += PAGE;
   }
-  return { files: removedFiles, bytes: removedBytes };
+  return { files: removedFiles };
 }
 
 async function compact() {
