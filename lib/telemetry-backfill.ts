@@ -71,7 +71,8 @@ async function rotateExpiredTelemetry(current: string, previous: string) {
       removedBytes += sizes.reduce((sum, size) => sum + size, 0);
     }
     if (laps.length < PAGE) break;
-    from += PAGE;
+    // Deletions shift later rows into this page; re-read it before advancing.
+    if (expired.length === 0) from += PAGE;
   }
   return { files: removedFiles, bytes: removedBytes };
 }
