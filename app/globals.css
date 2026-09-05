@@ -984,3 +984,16 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
   .dmaic-modal-head { gap: 12px; }
   .dmaic-modal-head h2 { font-size: 21px; }
 }
+
+/* Race-engineer debrief */
+.engineer-modal { max-width: 980px; }
+.engineer-section { background: var(--surface); }
+.engineer-reading, .engineer-action { padding: 14px; border-top: 1px solid var(--border); background: var(--surface-muted); }
+.engineer-reading strong, .engineer-action strong { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--brand); }
+.engineer-reading p, .engineer-action p { margin: 6px 0 0; line-height: 1.55; }
+.evidence-list { display:grid; gap: 0; }
+.evidence-row { display:grid; grid-template-columns: 92px 1fr; gap:12px; padding:13px 14px; border-top:1px solid var(--border); border-left:3px solid var(--blue); }
+.evidence-row.incidents { border-left-color:var(--red); }.evidence-row.sof { border-left-color:var(--amber); }.evidence-row.pace { border-left-color:var(--green); }
+.evidence-row span { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:.06em; }.evidence-row p { margin:0; line-height:1.55; }
+.engineer-note { margin:0; padding:12px 14px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; line-height:1.5; }
+@media(max-width:760px){.evidence-row{grid-template-columns:1fr;gap:5px}}
