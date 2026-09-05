@@ -37,5 +37,5 @@ export async function retirementEvents(driverId:string,races:RaceInput[],seasonN
   if(!confirmed&&!interrupted&&!(terminal&&damagingFinish))continue;
   events.push({racedAt:race.raced_at,context:race.car_name+" • "+race.track_name,delta:race.irating_after-race.irating_before,positionChange:race.position_change,incidents:race.incidents,type:confirmed?"Tow confirmado":interrupted?"Retirada provável (pit + volta interrompida)":"Retirada provável (volta final interrompida + resultado danoso)",confidence:confirmed?"confirmed":"probable",laps:rows.length});
  }
- return events.sort((a,b)=>a.delta-b.delta).slice(0,8);
+ const unique=new Map<string,typeof events[number]>();for(const event of events){const eventKey=event.racedAt+"|"+event.context;const old=unique.get(eventKey);const priority=(x:typeof event)=>x.confidence==="confirmed"?3:x.type.includes("pit +")?2:1;if(!old||priority(event)>priority(old))unique.set(eventKey,event)}return [...unique.values()].sort((a,b)=>a.delta-b.delta).slice(0,14);
 }
