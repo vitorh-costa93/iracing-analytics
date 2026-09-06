@@ -1,6 +1,10 @@
 name: Run telemetry backfill
 
 on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/run-telemetry-backfill.yml"
   workflow_dispatch:
     inputs:
       batches:
@@ -27,7 +31,7 @@ jobs:
       - name: Trigger telemetry batches
         env:
           CRON_SECRET: ${{ secrets.CRON_SECRET }}
-          BATCHES: ${{ inputs.batches }}
+          BATCHES: ${{ inputs.batches || '5' }}
         run: |
           set -euo pipefail
           for batch in $(seq 1 "$BATCHES"); do
