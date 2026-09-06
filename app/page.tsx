@@ -147,12 +147,23 @@ export default function Home() {
   const [imsaMode, setImsaMode] = useState<RankingMode>("car");
   const [imsaClass, setImsaClass] = useState<"all" | "GTP" | "LMP2">("all");
 
-  const loadDashboard = useCallback(async () => {
+  const loadDashboard = useCallback(async (force = false) => {
+    const cacheKey = "iracing-dashboard-overview-v1";
+    if (!force) {
+      try {
+        const cached = window.localStorage.getItem(cacheKey);
+        if (cached) {
+          setData(JSON.parse(cached) as DashboardData);
+          setLoading(false);
+        }
+      } catch {}
+    }
     try {
-      const response = await fetch("/api/dashboard/overview", { cache: "no-store" });
+      const response = await fetch("/api/dashboard/overview", { cache: force ? "no-store" : "default" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "Erro ao carregar dashboard");
       setData(result);
+      try { window.localStorage.setItem(cacheKey, JSON.stringify(result)); } catch {}
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro ao carregar dashboard");
     } finally {
@@ -170,7 +181,7 @@ export default function Home() {
       const payload = event.data as { source?: string; message?: string };
       if (payload?.source !== "iracing-analytics-import") return;
       setMessage(payload.message ?? "Importação concluída.");
-      void loadDashboard();
+      void loadDashboard(true);
     }
     window.addEventListener("message", onImportComplete);
     return () => window.removeEventListener("message", onImportComplete);
@@ -200,7 +211,7 @@ export default function Home() {
       if (!ratingsResponse.ok) throw new Error(ratingsResult.message ?? "Erro na sincronização de ratings");
 
       setMessage(`Sincronização concluída: ${sessionsResult.sessionsUpserted ?? 0} sessões, ${sessionsResult.lapsUpserted ?? 0} voltas e ${sessionsResult.telemetryDownloaded ?? 0} telemetrias novas; ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para resultados/setups novos, use os favoritos abaixo.`);
-      await loadDashboard();
+      await loadDashboard(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
     } finally {
