@@ -12,7 +12,6 @@ function snapshot(rows: RaceInput[]) {
     podiumRate: round(rate(rows,row=>row.finish_position<=3)),
     positiveRate: round(rate(rows,row=>row.irating_after-row.irating_before>0)),
     averageDelta: round(avg(rows.map(row=>row.irating_after-row.irating_before))),
-    averageIncidents: round(avg(rows.map(row=>row.incidents))),
     averagePositionChange: round(avg(rows.map(row=>row.position_change))),
     averageSof: round(avg(rows.map(row=>row.sof))),
     averageLoss: round(avg(rows.filter(row=>row.irating_after-row.irating_before<0).map(row=>row.irating_after-row.irating_before))),
@@ -26,7 +25,6 @@ export function compareSeasons(currentRows:RaceInput[], previousRows:RaceInput[]
   {metric:"Taxa de pódios", now:current.podiumRate, before:previous.podiumRate, good:"higher"},
   {metric:"Corridas ganhando iRating", now:current.positiveRate, before:previous.positiveRate, good:"higher"},
   {metric:"Δ iRating médio/corrida", now:current.averageDelta, before:previous.averageDelta, good:"higher"},
-  {metric:"Incidentes por corrida", now:current.averageIncidents, before:previous.averageIncidents, good:"lower"},
   {metric:"Posições líquidas/corrida", now:current.averagePositionChange, before:previous.averagePositionChange, good:"higher"},
   {metric:"Severidade da corrida negativa", now:current.averageLoss, before:previous.averageLoss, good:"higher"},
  ].map(item=>{const change=numeric(item.now,item.before); const direction=change===null||Math.abs(change)<0.1?"stable":(item.good==="higher" ? change>0 : change<0)?"improved":"worsened"; return {...item,change,direction};});
