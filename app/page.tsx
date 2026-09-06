@@ -159,7 +159,7 @@ export default function Home() {
       } catch {}
     }
     try {
-      const response = await fetch("/api/dashboard/overview", { cache: force ? "no-store" : "default" });
+      const response = await fetch("/api/dashboard/overview" + (force ? "?refresh=1" : ""), { cache: force ? "no-store" : "default" });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "Erro ao carregar dashboard");
       setData(result);
