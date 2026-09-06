@@ -1,5 +1,5 @@
 create table if not exists public.telemetry_features (
-  lap_id uuid primary key references public.laps(id) on delete cascade,
+  lap_id text primary key references public.laps(id) on delete cascade,
   samples integer not null default 0,
   throttle_mean double precision,
   throttle_stddev double precision,
