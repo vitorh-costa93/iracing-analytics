@@ -14,167 +14,55 @@ export type RaceInput = {
   irating_before: number;
   sof: number | null;
   incidents: number | null;
+  laps?: number | null;
+  fastest_lap_time?: string | null;
 };
 
 type Group = { label: string; races: number; delta: number; avgDelta: number; avgIncidents: number | null; avgPositionChange: number | null; avgSof: number | null };
 
-const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
-const avg = (values: Array<number | null | undefined>) => {
-  const usable = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-  return usable.length ? sum(usable) / usable.length : null;
-};
-const round = (value: number | null, decimals = 1) => value === null ? null : Number(value.toFixed(decimals));
-const signed = (value: number) => `${value > 0 ? "+" : ""}${value.toFixed(1)}`;
-const delta = (race: RaceInput) => race.irating_after - race.irating_before;
-const label = (category: Category) => category === "formula_car" ? "Formula Car" : "Sports Car";
+const sum=(values:number[])=>values.reduce((total,value)=>total+value,0);
+const avg=(values:Array<number|null|undefined>)=>{const usable=values.filter((value):value is number=>typeof value==="number"&&Number.isFinite(value));return usable.length?sum(usable)/usable.length:null};
+const round=(value:number|null,decimals=1)=>value===null?null:Number(value.toFixed(decimals));
+const signed=(value:number)=>String(value>0?"+":"")+value.toFixed(1);
+const delta=(race:RaceInput)=>race.irating_after-race.irating_before;
+const quantile=(values:number[],q:number)=>{if(!values.length)return 0;const sorted=[...values].sort((a,b)=>a-b),position=(sorted.length-1)*q,base=Math.floor(position),rest=position-base;return sorted[base]+(sorted[base+1]!==undefined?rest*(sorted[base+1]-sorted[base]):0)};
 
-function compare(rows: RaceInput[], name: string, predicate: (row: RaceInput) => boolean): Group {
-  const items = rows.filter(predicate);
-  const deltas = items.map(delta);
-  return {
-    label: name,
-    races: items.length,
-    delta: sum(deltas),
-    avgDelta: items.length ? sum(deltas) / items.length : 0,
-    avgIncidents: round(avg(items.map((row) => row.incidents))),
-    avgPositionChange: round(avg(items.map((row) => row.position_change))),
-    avgSof: round(avg(items.map((row) => row.sof)), 0),
-  };
+function compare(rows:RaceInput[],name:string,predicate:(row:RaceInput)=>boolean):Group{
+ const items=rows.filter(predicate),deltas=items.map(delta);
+ return{label:name,races:items.length,delta:sum(deltas),avgDelta:items.length?sum(deltas)/items.length:0,avgIncidents:round(avg(items.map(row=>row.incidents))),avgPositionChange:round(avg(items.map(row=>row.position_change))),avgSof:round(avg(items.map(row=>row.sof)),0)};
 }
 
-function groupContexts(rows: RaceInput[]) {
-  const groups = new Map<string, RaceInput[]>();
-  for (const row of rows) {
-    const key = `${row.car_name} • ${row.track_name}`;
-    groups.set(key, [...(groups.get(key) ?? []), row]);
-  }
-  return [...groups.entries()].map(([context, items]) => ({
-    context,
-    races: items.length,
-    delta: sum(items.map(delta)),
-    avgDelta: sum(items.map(delta)) / items.length,
-    wins: items.filter((row) => row.finish_position === 1).length,
-    avgIncidents: round(avg(items.map((row) => row.incidents))),
-    avgPositionChange: round(avg(items.map((row) => row.position_change))),
-  })).sort((a, b) => a.delta - b.delta);
+function groupContexts(rows:RaceInput[]){
+ const groups=new Map<string,RaceInput[]>();
+ for(const row of rows){const context=row.car_name+" • "+row.track_name;groups.set(context,[...(groups.get(context)??[]),row])}
+ return[...groups.entries()].map(([context,items])=>({context,races:items.length,delta:sum(items.map(delta)),avgDelta:sum(items.map(delta))/items.length,wins:items.filter(row=>row.finish_position===1).length,avgIncidents:round(avg(items.map(row=>row.incidents))),avgPositionChange:round(avg(items.map(row=>row.position_change)))})).sort((a,b)=>a.delta-b.delta);
 }
 
-function confidence(rows: RaceInput[], previous: RaceInput[]) {
-  if (rows.length >= 12 && previous.length >= 8) return "alta";
-  if (rows.length >= 6) return "média";
-  return "baixa";
+function lossRuns(rows:RaceInput[]){
+ const runs:{races:RaceInput[];delta:number}[]=[];let active:RaceInput[]=[];
+ const flush=()=>{if(active.length)runs.push({races:active,delta:sum(active.map(delta))});active=[]};
+ for(const row of rows){if(delta(row)<0)active.push(row);else flush()}flush();
+ return runs.sort((a,b)=>a.delta-b.delta);
 }
 
-export function buildEngineerSection(category: Category, rows: RaceInput[], previous: RaceInput[], scope: "week" | "season", week: number | null) {
-  const races = [...rows].sort((a, b) => new Date(a.raced_at).getTime() - new Date(b.raced_at).getTime());
-  const net = sum(races.map(delta));
-  const previousNet = sum(previous.map(delta));
-  const positive = compare(races, "Ganharam iRating", (row) => delta(row) > 0);
-  const negative = compare(races, "Perderam iRating", (row) => delta(row) < 0);
-  const wins = compare(races, "Vitórias", (row) => row.finish_position === 1);
-  const nonWins = compare(races, "Demais corridas", (row) => row.finish_position !== 1);
-  const podiums = races.filter((row) => row.finish_position <= 3).length;
-  const clean = compare(races, "0 incidentes", (row) => row.incidents === 0);
-  const highIncident = compare(races, "4+ incidentes", (row) => (row.incidents ?? -1) >= 4);
-  const positionLoss = compare(races, "Perdeu posições", (row) => (row.position_change ?? 0) < 0);
-  const positionGain = compare(races, "Ganhou posições", (row) => (row.position_change ?? 0) > 0);
-  const contexts = groupContexts(races);
-  const totalLoss = Math.abs(sum(races.filter((row) => delta(row) < 0).map(delta)));
-  const biggestLosses = [...races].filter((row) => delta(row) < 0).sort((a,b) => delta(a) - delta(b)).slice(0,3);
-  const concentratedLossShare = totalLoss ? Math.abs(sum(biggestLosses.map(delta))) / totalLoss * 100 : 0;
-  const topLosses = contexts.filter((item) => item.delta < 0).slice(0, 3).map((item) => ({
-    ...item,
-    shareOfLosses: totalLoss ? round((Math.abs(item.delta) / totalLoss) * 100) : 0,
-  }));
-  const topGains = [...contexts].reverse().filter((item) => item.delta > 0).slice(0, 3);
-  const avgIncidentsNegative = negative.avgIncidents;
-  const avgIncidentsPositive = positive.avgIncidents;
-  const avgSofNegative = negative.avgSof;
-  const avgSofWins = wins.avgSof;
-  const avgPosNegative = negative.avgPositionChange;
-  const avgPosPositive = positive.avgPositionChange;
+function confidence(rows:RaceInput[],previous:RaceInput[]){if(rows.length>=12&&previous.length>=8)return"alta";if(rows.length>=6)return"média";return"baixa"}
 
-  const findings: Array<{ kind: "finding" | "watch" | "data"; title: string; text: string }> = [];
-  findings.push({
-    kind: "finding",
-    title: net < 0 ? "A queda está concentrada em corridas de alto impacto" : "O saldo positivo está distribuído entre as corridas",
-    text: net < 0 ? "As três maiores perdas responderam por " + concentratedLossShare.toFixed(1) + "% de todo o iRating perdido. O padrão que as separa aparece abaixo: posição de largada e chegada, posições perdidas, incidentes e SoF. Esse é o conjunto de corridas que merece revisão primeiro." : "O ganho veio de " + positive.races + " corridas positivas contra " + negative.races + " negativas. O mapa de impacto mostra se a evolução é repetível ou depende de poucos resultados excepcionais.",
-  });
-
-  if (negative.races && positive.races && avgPosNegative !== null && avgPosPositive !== null) {
-    const movementGap = avgPosNegative - avgPosPositive;
-    findings.push({
-      kind: movementGap < -2 ? "finding" : "watch",
-      title: movementGap < -2 ? "A perda de posições acompanha as corridas negativas" : "Posição não separa claramente bons e maus resultados",
-      text: `Nas corridas que perderam iRating, a variação média de posições foi ${signed(avgPosNegative)}; nas que ganharam, ${signed(avgPosPositive)}. ${movementGap < -2 ? "Isso aponta que a execução de corrida — largada, sobrevivência no tráfego e ritmo sustentado — pesa mais que uma volta rápida isolada." : "Essa diferença não é grande o bastante para culpar apenas largada ou ritmo de corrida."}`,
-    });
-  }
-
-  if (negative.races && positive.races && avgIncidentsNegative !== null && avgIncidentsPositive !== null) {
-    const incidentGap = avgIncidentsNegative - avgIncidentsPositive;
-    findings.push({
-      kind: incidentGap >= 1 ? "finding" : "watch",
-      title: incidentGap >= 1 ? "Incidentes estão concentrados onde o resultado desanda" : "Incidentes existem, mas não explicam sozinhos o resultado",
-      text: `As corridas negativas tiveram ${avgIncidentsNegative.toFixed(1)} incidentes em média, contra ${avgIncidentsPositive.toFixed(1)} nas positivas. ${incidentGap >= 1 ? "É uma associação forte e prioriza a revisão das corridas de maior perda. A fonte disponível traz o total; ela não autoriza chamar cada incidente de contato." : "Como a diferença é pequena, o número bruto de incidentes não sustenta, sozinho, a explicação da queda."}`,
-    });
-  }
-
-  if (wins.races >= 2 && nonWins.races >= 4 && avgSofWins !== null && avgSofNegative !== null) {
-    const sofGap = avgSofWins - avgSofNegative;
-    findings.push({
-      kind: Math.abs(sofGap) >= 250 ? "finding" : "watch",
-      title: Math.abs(sofGap) >= 250 ? "O nível dos grids altera a leitura das vitórias" : "SoF não diferencia bem vitórias e perdas nesta amostra",
-      text: `O SoF médio das vitórias foi ${Math.round(avgSofWins).toLocaleString("pt-BR")}; nas corridas negativas, ${Math.round(avgSofNegative).toLocaleString("pt-BR")}. ${sofGap <= -250 ? "As vitórias ocorreram, em média, em grids mais fracos. Elas contam como resultado, mas não compensam automaticamente uma sequência de perdas em grids mais fortes." : sofGap >= 250 ? "Você venceu, em média, grids mais fortes; a queda vem principalmente da frequência/tamanho das corridas ruins, não de vitórias fáceis." : "Com SoF parecido, o foco deve ficar na distribuição dos resultados e na execução, não na força do grid."}`,
-    });
-  }
-
-  if (highIncident.races >= 2 && clean.races >= 2) {
-    findings.push({
-      kind: highIncident.avgDelta < clean.avgDelta ? "finding" : "watch",
-      title: highIncident.avgDelta < clean.avgDelta ? "Risco alto custa mais que as corridas limpas" : "A amostra não mostra penalidade clara por incidente",
-      text: `Em corridas limpas o delta médio foi ${signed(clean.avgDelta)}; com 4+ incidentes foi ${signed(highIncident.avgDelta)}. ${highIncident.avgDelta < clean.avgDelta ? "Não prova que cada incidente causou a perda, mas confirma que reduzir esse grupo é o ataque com melhor retorno esperado." : "A relação não está clara nesta amostra; revise contexto de pista e duração antes de transformar isso em regra."}`,
-    });
-  }
-
-  if (!findings.some((finding) => finding.title.includes("O nível dos grids"))) {
-    findings.push({
-      kind: "data",
-      title: "SoF: evidência ainda insuficiente para explicar as vitórias",
-      text: "A comparação de SoF exige ao menos duas vitórias e um grupo razoável de resultados negativos. O debrief não vai atribuir a queda a “grids fracos” sem essa amostra.",
-    });
-  }
-
-  const primary = topLosses[0];
-  const action = primary
-    ? `Prioridade 1: revisar ${primary.context} (${primary.races} corridas, ${signed(primary.delta)}; ${primary.shareOfLosses}% de todas as perdas). Assista primeiro às corridas negativas desse contexto e marque em que volta começou a perda de posições. Depois compare três voltas limpas consecutivas com sua melhor volta para validar ritmo repetível antes da próxima corrida.`
-    : `Prioridade 1: proteja as corridas negativas. Compare largada, primeira volta e média de incidentes entre os resultados positivos e negativos antes de alterar setup.`;
-
-  return {
-    category,
-    label: label(category),
-    week,
-    confidence: confidence(races, previous),
-    headline: scope === "week" ? `Week ${week ?? "atual"}: ${signed(net)} de iRating em ${races.length} corridas.` : `Season até agora: ${signed(net)} de iRating em ${races.length} corridas.`,
-    comparison: previous.length ? `Período equivalente anterior: ${signed(previousNet)} em ${previous.length} corridas; diferença de ${signed(net - previousNet)}.` : "Não há amostra equivalente anterior para comparação.",
-    findings,
-    action,
-    metrics: { races: races.length, wins: wins.races, podiums, netDelta: round(net), totalIncidents: sum(races.map((row) => row.incidents ?? 0)), averageIncidents: round(avg(races.map((row) => row.incidents))), averagePositionChange: round(avg(races.map((row) => row.position_change))), averageSof: round(avg(races.map((row) => row.sof)), 0) },
-    outcomeDistribution: [positive, negative, compare(races, "Neutras", (row) => delta(row) === 0)],
-    incidentDistribution: [clean, compare(races, "1–3 incidentes", (row) => (row.incidents ?? -1) >= 1 && (row.incidents ?? -1) <= 3), highIncident],
-    positionDistribution: [positionGain, compare(races, "Sem mudança", (row) => row.position_change === 0), positionLoss],
-    topLosses,
-    topGains,
-    impactRaces: [...races].sort((a,b) => Math.abs(delta(b)) - Math.abs(delta(a))).slice(0, 8).map((row) => ({
-      date: row.raced_at, delta: round(delta(row)), finish: row.finish_position, grid: row.grid_position,
-      positionChange: row.position_change, incidents: row.incidents, sof: row.sof,
-      context: row.car_name + " • " + row.track_name,
-      lossShare: delta(row) < 0 && totalLoss ? round(Math.abs(delta(row)) / totalLoss * 100) : null,
-    })),
-    weeklyImpact: [...new Set(races.map(row => row.season_week).filter((value): value is number => value !== null))].sort((a,b) => a-b).map(weekNumber => {
-      const weekRows = races.filter(row => row.season_week === weekNumber);
-      return { week: weekNumber, races: weekRows.length, delta: round(sum(weekRows.map(delta))), incidents: round(avg(weekRows.map(row => row.incidents))), positionChange: round(avg(weekRows.map(row => row.position_change))) };
-    }),
-    raceTrace: races.slice(-24).reverse().map((row) => ({ date: row.raced_at, delta: round(delta(row)), finish: row.finish_position, grid: row.grid_position, positionChange: row.position_change, incidents: row.incidents, sof: row.sof, context: `${row.car_name} • ${row.track_name}` })),
-    telemetryNote: "A fonte de telemetria guarda voltas, setores e flags, mas não expõe ainda um fluxo confiável de canais de volante/freio/acelerador nesta rota. Por isso, este debrief não inventa uma nota de “confiança nos inputs”; ela aparecerá quando houver amostra de canais sincronizados para o mesmo conjunto de corridas.",
-  };
+export function buildEngineerSection(category:Category,rows:RaceInput[],previous:RaceInput[],scope:"week"|"season",week:number|null,sectionLabel?:string,segment?:string){
+ const races=[...rows].sort((a,b)=>new Date(a.raced_at).getTime()-new Date(b.raced_at).getTime()),baseline=[...previous].sort((a,b)=>new Date(a.raced_at).getTime()-new Date(b.raced_at).getTime());
+ const net=sum(races.map(delta)),previousNet=sum(baseline.map(delta)),positive=compare(races,"Ganharam iRating",row=>delta(row)>0),negative=compare(races,"Perderam iRating",row=>delta(row)<0),wins=compare(races,"Vitórias",row=>row.finish_position===1),podiums=races.filter(row=>row.finish_position<=3).length;
+ const contexts=groupContexts(races),totalLoss=Math.abs(sum(races.filter(row=>delta(row)<0).map(delta))),baselineLossMagnitudes=baseline.filter(row=>delta(row)<0).map(row=>Math.abs(delta(row))),currentLossMagnitudes=races.filter(row=>delta(row)<0).map(row=>Math.abs(delta(row)));
+ const severeThreshold=Math.max(50,Math.round(quantile(baselineLossMagnitudes.length?baselineLossMagnitudes:currentLossMagnitudes,.75)));
+ const severe=races.filter(row=>delta(row)<=-severeThreshold),previousSevere=baseline.filter(row=>delta(row)<=-severeThreshold),severeTotal=Math.abs(sum(severe.map(delta))),severeShare=totalLoss?severeTotal/totalLoss*100:0,severeRate=races.length?severe.length/races.length*100:0,previousSevereRate=baseline.length?previousSevere.length/baseline.length*100:0;
+ const averageGain=avg(races.filter(row=>delta(row)>0).map(delta))??0,averageSevereLoss=Math.abs(avg(severe.map(delta))??0),gainsToRecover=averageGain?averageSevereLoss/averageGain:null;
+ const worstRun=lossRuns(races)[0],previousAverageLoss=avg(baseline.filter(row=>delta(row)<0).map(delta)),currentAverageLoss=avg(races.filter(row=>delta(row)<0).map(delta)),lossSeverityChange=previousAverageLoss&&currentAverageLoss?(Math.abs(currentAverageLoss)/Math.abs(previousAverageLoss)-1)*100:null;
+ const severePosition=avg(severe.map(row=>row.position_change)),regularPosition=avg(races.filter(row=>delta(row)<0&&!severe.includes(row)).map(row=>row.position_change)),severeSof=avg(severe.map(row=>row.sof)),positiveSof=avg(races.filter(row=>delta(row)>0).map(row=>row.sof));
+ const findings:Array<{kind:"finding"|"watch"|"data";title:string;text:string}>=[];
+ findings.push({kind:"finding",title:"Perdas severas definem o risco da campanha",text:severe.length?String(severe.length)+" de "+String(races.length)+" corridas ("+severeRate.toFixed(1)+"%) perderam pelo menos "+String(severeThreshold)+" de iRating. Elas concentraram "+severeShare.toFixed(1)+"% de todo o iRating perdido. Na referência, a frequência foi "+previousSevereRate.toFixed(1)+"%."+ (lossSeverityChange!==null?" A perda negativa média ficou "+Math.abs(lossSeverityChange).toFixed(1)+"% "+(lossSeverityChange>0?"mais severa":"menos severa")+" que na referência.":""):"Não houve perdas acima do limiar de "+String(severeThreshold)+" de iRating neste recorte."});
+ if(worstRun&&worstRun.races.length>=2)findings.push({kind:"finding",title:"A sequência negativa é o ponto crítico",text:"A pior sequência reuniu "+String(worstRun.races.length)+" perdas consecutivas e consumiu "+signed(worstRun.delta)+" de iRating entre "+new Date(worstRun.races[0].raced_at).toLocaleDateString("pt-BR")+" e "+new Date(worstRun.races[worstRun.races.length-1].raced_at).toLocaleDateString("pt-BR")+". Uma perda severa exige em média "+(gainsToRecover===null?"—":gainsToRecover.toFixed(1))+" corridas positivas típicas para ser recuperada."});
+ else findings.push({kind:"watch",title:"Não houve cadeia longa de perdas",text:"As perdas ficaram isoladas. Mesmo assim, cada perda severa exigiu em média "+(gainsToRecover===null?"—":gainsToRecover.toFixed(1))+" resultados positivos típicos para recuperar o saldo."});
+ if(severe.length>=2)findings.push({kind:"finding",title:"O que diferencia as perdas grandes",text:"Nas perdas severas, a variação média foi "+signed(severePosition??0)+" posições e o SoF médio foi "+String(Math.round(severeSof??0))+". Nas demais perdas, a variação foi "+signed(regularPosition??0)+"; nas corridas positivas, o SoF médio foi "+String(Math.round(positiveSof??0))+". Isso separa tamanho da perda, execução em tráfego e força do grid sem presumir causalidade."});
+ else findings.push({kind:"data",title:"Amostra pequena de perdas severas",text:"Ainda não há perdas grandes suficientes para separar com confiança efeito de tráfego, posição e SoF."});
+ const topLosses=contexts.filter(item=>item.delta<0).slice(0,3).map(item=>({...item,shareOfLosses:totalLoss?round(Math.abs(item.delta)/totalLoss*100):0})),topGains=[...contexts].reverse().filter(item=>item.delta>0).slice(0,3);
+ const action=severe.length||worstRun?.races.length>=2?"Use um protocolo geral de contenção: depois de uma perda acima de "+String(severeThreshold)+" de iRating ou duas perdas seguidas, interrompa novas inscrições. Retorne somente após identificar se houve abandono, perda precoce de posições ou queda de ritmo e completar uma sequência de voltas dentro da sua faixa normal de consistência.":"Mantenha a preparação geral: valide uma sequência de voltas repetíveis antes da corrida e monitore o primeiro sinal de degradação de ritmo, sem condicionar o plano a uma pista específica.";
+ return{category,segment:segment??category,label:sectionLabel??(category==="formula_car"?"Formula Car":"Sports Car"),week,confidence:confidence(races,baseline),headline:scope==="week"?"Week "+String(week??"atual")+": "+signed(net)+" de iRating em "+String(races.length)+" corridas.":"Season até agora: "+signed(net)+" de iRating em "+String(races.length)+" corridas.",comparison:baseline.length?"Referência: "+signed(previousNet)+" em "+String(baseline.length)+" corridas; diferença de "+signed(net-previousNet)+".":"Não há amostra equivalente para comparação.",findings,action,severity:{threshold:severeThreshold,count:severe.length,rate:round(severeRate),referenceCount:previousSevere.length,referenceRate:round(previousSevereRate),lossTotal:round(severeTotal),shareOfLosses:round(severeShare),averageLoss:round(currentAverageLoss),referenceAverageLoss:round(previousAverageLoss),gainsToRecover:round(gainsToRecover),worstRunLength:worstRun?.races.length??0,worstRunDelta:round(worstRun?.delta??0)},metrics:{races:races.length,wins:wins.races,podiums,netDelta:round(net),totalIncidents:sum(races.map(row=>row.incidents??0)),averageIncidents:round(avg(races.map(row=>row.incidents))),averagePositionChange:round(avg(races.map(row=>row.position_change))),averageSof:round(avg(races.map(row=>row.sof)),0)},outcomeDistribution:[positive,negative,compare(races,"Neutras",row=>delta(row)===0)],incidentDistribution:[],positionDistribution:[],topLosses,topGains,impactRaces:[...races].sort((a,b)=>Math.abs(delta(b))-Math.abs(delta(a))).slice(0,8).map(row=>({date:row.raced_at,delta:round(delta(row)),finish:row.finish_position,grid:row.grid_position,positionChange:row.position_change,incidents:row.incidents,sof:row.sof,context:row.car_name+" • "+row.track_name,lossShare:delta(row)<0&&totalLoss?round(Math.abs(delta(row))/totalLoss*100):null,severe:delta(row)<=-severeThreshold})),weeklyImpact:[...new Set(races.map(row=>row.season_week).filter((value):value is number=>value!==null))].sort((a,b)=>a-b).map(weekNumber=>{const weekRows=races.filter(row=>row.season_week===weekNumber);return{week:weekNumber,races:weekRows.length,delta:round(sum(weekRows.map(delta))),positionChange:round(avg(weekRows.map(row=>row.position_change))),severeLosses:weekRows.filter(row=>delta(row)<=-severeThreshold).length}}),raceTrace:races.slice(-24).reverse().map(row=>({date:row.raced_at,delta:round(delta(row)),finish:row.finish_position,grid:row.grid_position,positionChange:row.position_change,incidents:row.incidents,sof:row.sof,context:row.car_name+" • "+row.track_name}))};
 }
