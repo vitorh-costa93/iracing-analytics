@@ -10,6 +10,9 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 // headline iRating for right now -- should have from the start.
 export const dynamic = "force-dynamic";
 
+let overviewCache: { expiresAt: number; payload: unknown } | null = null;
+const OVERVIEW_CACHE_TTL_MS = 120_000;
+
 type SeasonSummaryRow = {
   season_id: string | number;
   season_name: string;
@@ -185,7 +188,11 @@ function throwSupabaseError(
   );
 }
 
-export async function GET() {
+export async function GET(request: Request) {
+  const refresh = new URL(request.url).searchParams.has("refresh");
+  if (!refresh && overviewCache && overviewCache.expiresAt > Date.now()) {
+    return NextResponse.json(overviewCache.payload, { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } });
+  }
   try {
     // =====================================================
     // PILOTO
@@ -791,7 +798,7 @@ export async function GET() {
     // RESPONSE
     // =====================================================
 
-    return NextResponse.json({
+    const payload = {
       status: "ok",
 
       driver: {
@@ -965,7 +972,9 @@ export async function GET() {
         winsReason:
           "Wins vêm automaticamente de irstats.com, sem necessidade de captura manual.",
       },
-    });
+    };
+    overviewCache = { expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS, payload };
+    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } });
   } catch (error) {
     console.error(
       "Dashboard overview error:",
