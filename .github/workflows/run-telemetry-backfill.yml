@@ -36,7 +36,7 @@ jobs:
           set -euo pipefail
           for batch in $(seq 1 "$BATCHES"); do
             echo "Starting batch $batch of $BATCHES"
-            curl --fail-with-body --silent --show-error \
+            curl --fail-with-body --silent --show-error -X POST \
               -H "Authorization: Bearer $CRON_SECRET" \
               "https://iracing-analytics.vercel.app/api/sync/telemetry-backfill"
             echo
