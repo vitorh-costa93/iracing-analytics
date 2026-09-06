@@ -38,6 +38,6 @@ jobs:
             echo "Starting batch $batch of $BATCHES"
             curl --fail-with-body --silent --show-error \
               -H "Authorization: Bearer $CRON_SECRET" \
-              "https://iracing-analytics.vercel.app/api/cron/hourly-sync"
+              "https://iracing-analytics.vercel.app/api/sync/telemetry-backfill"
             echo
           done
