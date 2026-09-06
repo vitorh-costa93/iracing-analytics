@@ -20,7 +20,7 @@ const correlate=(pairs:{lap:number;input:number}[])=>round(correlation(pairs.map
 const isRace=(payload:Payload)=>payload.session==="Race"||payload.sessionType===2||payload.sessionType===3||payload.session_type===2||payload.session_type===3;
 const PAGE=500;
 
-export async function telemetryInputProfile(driverId:string,category:Category,races:RaceInput[],seasonName:string,week:number|null){
+export async function telemetryInputProfile(driverId:string,category:Category,races:RaceInput[],_seasonName:string,week:number|null){
  const names=new Set(races.map(r=>norm(r.car_name)));if(!names.size)return empty("Sem corridas no recorte.");
  const {data:cars,error:ce}=await supabaseAdmin.from("cars").select("id,name");if(ce)throw ce;const ids=(cars??[]).filter(c=>names.has(norm(c.name??""))).map(c=>c.id);if(!ids.length)return empty("Carros do recorte não encontrados.");
  const all:Lap[]=[];for(let from=0;;from+=PAGE){const {data,error}=await supabaseAdmin.from("laps").select("id,car_id,track_id,lap_time,clean,off_track,incomplete,discontinuity,telemetry_path,garage61_payload").eq("driver_id",driverId).in("car_id",ids).not("telemetry_path","is",null).order("id",{ascending:true}).range(from,from+PAGE-1);if(error)throw error;all.push(...((data??[])as Lap[]));if(!data||data.length<PAGE)break}
