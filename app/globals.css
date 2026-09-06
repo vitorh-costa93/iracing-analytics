@@ -997,3 +997,69 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .evidence-row span { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:.06em; }.evidence-row p { margin:0; line-height:1.55; }
 .engineer-note { margin:0; padding:12px 14px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; line-height:1.5; }
 @media(max-width:760px){.evidence-row{grid-template-columns:1fr;gap:5px}}
+
+
+/* Mobile race-engineer debrief: keep comparison grids inside the viewport. */
+@media (max-width: 760px) {
+  .dmaic-modal-backdrop {
+    padding: 0;
+    overflow-x: hidden;
+  }
+
+  .dmaic-modal,
+  .engineer-modal {
+    width: 100%;
+    max-width: 100% !important;
+    min-width: 0;
+    margin: 0;
+    padding: 14px 12px;
+    overflow-x: hidden;
+  }
+
+  .dmaic-modal-head {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
+  }
+
+  .engineer-report-section,
+  .engineer-report-section section,
+  .engineer-report-section > div {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .engineer-comparison-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .engineer-comparison-grid > :first-child {
+    grid-column: 1 / -1;
+  }
+
+  .engineer-input-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+
+  .engineer-input-grid > :first-child,
+  .engineer-input-grid > :nth-child(4) {
+    grid-column: 1 / -1;
+  }
+
+  .engineer-responsive-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .engineer-comparison-grid > *,
+  .engineer-input-grid > *,
+  .engineer-responsive-grid > * {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .engineer-comparison-grid b,
+  .engineer-input-grid b {
+    font-size: 13px;
+    line-height: 1.35;
+  }
+}
