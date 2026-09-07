@@ -2,16 +2,16 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { RaceInput } from "@/lib/race-engineer-analysis";
 
 type P={event?:string;session?:number|string;sessionType?:number;session_type?:number;startTime?:string;tow?:boolean;towed?:boolean};
-type Lap={car_id:number;track_id:number;lap_number:number|null;lap_time:number|null;incomplete:boolean|null;missing:boolean|null;discontinuity:boolean|null;garage61_payload:unknown};
+type Lap={id:string;car_id:number;track_id:number;lap_number:number|null;lap_time:number|null;incomplete:boolean|null;missing:boolean|null;discontinuity:boolean|null;garage61_payload:unknown};
 type Event={racedAt:string;context:string;delta:number;positionChange:number|null;type:string;confidence:"driver"|"confirmed"|"probable";completedLaps:number;timeOnTrackSeconds:number;progressPct:number|null};
 type Candidate={race:RaceInput;raceKey:string;contextKey:string;seconds:number;completedLaps:number;confirmed:boolean;terminal:boolean};
 const key=(s:string)=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]/g,"");
 const same=(a:string|undefined,b:string)=>!!a&&(a===b||a.includes(b)||b.includes(a)||(a.length>=8&&b.length>=8&&a.slice(0,8)===b.slice(0,8)));
 const isRace=(payload:P)=>payload.session==="Race"||payload.sessionType===2||payload.sessionType===3||payload.session_type===2||payload.session_type===3;
-async function allLaps(driverId:string){const out:Lap[]=[];for(let from=0;;from+=1000){const{data,error}=await supabaseAdmin.from("laps").select("car_id,track_id,lap_number,lap_time,incomplete,missing,discontinuity,garage61_payload").eq("driver_id",driverId).range(from,from+999);if(error)throw error;out.push(...((data??[])as Lap[]));if(!data||data.length<1000)return out}}
+const lapCache=new Map<string,{expires:number;promise:Promise<Lap[]>}>();\nfunction allLaps(driverId:string,seasonName:string){const cacheKey=driverId+"|"+seasonName,cached=lapCache.get(cacheKey);if(cached&&cached.expires>Date.now())return cached.promise;const promise=(async()=>{const out:Lap[]=[];for(let from=0;;from+=1000){const{data,error}=await supabaseAdmin.from("laps").select("id,car_id,track_id,lap_number,lap_time,incomplete,missing,discontinuity,garage61_payload").eq("driver_id",driverId).contains("garage61_payload",{season:{name:seasonName}}).order("id",{ascending:true}).range(from,from+999);if(error)throw error;out.push(...((data??[])as Lap[]));if(!data||data.length<1000)return out}})();lapCache.set(cacheKey,{expires:Date.now()+5*60_000,promise});promise.catch(()=>lapCache.delete(cacheKey));return promise}
 
-export async function retirementEvents(driverId:string,races:RaceInput[],_seasonName:string){
- const[{data:cars,error:ce},{data:tracks,error:te},laps]=await Promise.all([supabaseAdmin.from("cars").select("id,name"),supabaseAdmin.from("tracks").select("id,name"),allLaps(driverId)]);if(ce)throw ce;if(te)throw te;
+export async function retirementEvents(driverId:string,races:RaceInput[],seasonName:string){
+ const[{data:cars,error:ce},{data:tracks,error:te},laps]=await Promise.all([supabaseAdmin.from("cars").select("id,name"),supabaseAdmin.from("tracks").select("id,name"),allLaps(driverId,seasonName)]);if(ce)throw ce;if(te)throw te;
  const car=new Map((cars??[]).map(x=>[x.id,key(x.name)])),track=new Map((tracks??[]).map(x=>[x.id,key(x.name)])),groups=new Map<string,Lap[]>();
  for(const lap of laps){const p=(lap.garage61_payload??{})as P;if(!p.startTime||!isRace(p))continue;const groupKey=String(lap.car_id)+":"+String(lap.track_id)+":"+(p.event??"")+":"+(p.session??"");groups.set(groupKey,[...(groups.get(groupKey)??[]),lap])}
  const candidates:Candidate[]=[],durations=new Map<string,number[]>();
