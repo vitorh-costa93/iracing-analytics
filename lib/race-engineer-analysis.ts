@@ -58,15 +58,21 @@ function confidence(rows:RaceInput[],previous:RaceInput[]){if(rows.length>=12&&p
 // concentradas ou uma sequência negativa) sem inventar causa além do que os dados já comprovam.
 function executiveSummary(opts:{scope:"week"|"season";races:number;baselineRaces:number;net:number;previousNet:number;wins:number;previousWins:number;severeCount:number;severeShare:number;worstRun:{length:number;delta:number}|undefined}):string{
  const{scope,races,baselineRaces,net,previousNet,wins,previousWins,severeCount,severeShare,worstRun}=opts;
- const periodLabel=scope==="week"?"nesta week":"nesta season",referenceLabel=scope==="week"?"na média das outras weeks":"na season anterior";
+ const periodLabel=scope==="week"?"nesta week":"nesta season",referenceLabel=scope==="week"?"nas outras weeks desta season":"na season anterior";
  if(!baselineRaces)return"Saldo de "+signed(net)+" de iRating em "+String(races)+" corridas "+periodLabel+". Ainda não há amostra de referência equivalente para comparar."+(wins?" Foram "+String(wins)+" vitórias no período.":"");
- const netWorse=net<previousNet,netBetter=net>previousNet,winsUp=wins>previousWins,winsDown=wins<previousWins;
+ const netWorse=net<previousNet,netBetter=net>previousNet;
+ // Contagem bruta de vitórias só é comparável quando as duas janelas têm escala parecida (season até
+ // agora vs. season anterior inteira -- é o enquadramento que o próprio piloto usa, "tive mais
+ // vitórias essa temporada"). Numa week isolada contra o total somado de todas as outras semanas da
+ // season, contagem bruta compara 1 corrida com dezenas: usa taxa de vitórias (%) nesse caso.
+ const useRate=scope==="week",currentRate=races?wins/races*100:0,previousRate=baselineRaces?previousWins/baselineRaces*100:0,winsUp=useRate?currentRate>previousRate:wins>previousWins,winsDown=useRate?currentRate<previousRate:wins<previousWins;
+ const now=useRate?currentRate.toFixed(1)+"% de vitórias":String(wins)+" vitória"+(wins===1?"":"s"),before=useRate?previousRate.toFixed(1)+"%":String(previousWins)+" vitória"+(previousWins===1?"":"s");
  let opening:string;
- if(winsUp&&netWorse)opening="Você teve mais vitórias "+periodLabel+" ("+String(wins)+" contra "+String(previousWins)+" "+referenceLabel+"), mas o saldo de iRating piorou ("+signed(net)+" contra "+signed(previousNet)+"). Isso não é uma contradição: vitórias e saldo de iRating respondem a coisas diferentes.";
- else if(winsDown&&netBetter)opening="Você teve menos vitórias "+periodLabel+" ("+String(wins)+" contra "+String(previousWins)+" "+referenceLabel+"), mesmo com o saldo de iRating melhor ("+signed(net)+" contra "+signed(previousNet)+"). O ganho veio de resultados consistentes fora do pódio, não de dominar a prova.";
- else if(winsUp&&!netWorse)opening="Vitórias ("+String(wins)+" contra "+String(previousWins)+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") melhoraram juntos "+periodLabel+" — sinal de que o ritmo geral acompanhou os resultados de destaque.";
- else if(winsDown&&netWorse)opening="Vitórias ("+String(wins)+" contra "+String(previousWins)+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") pioraram juntos "+periodLabel+".";
- else opening="O saldo de iRating ficou em "+signed(net)+" "+periodLabel+" contra "+signed(previousNet)+" "+referenceLabel+", com "+String(wins)+" vitórias contra "+String(previousWins)+".";
+ if(winsUp&&netWorse)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mas o saldo de iRating piorou ("+signed(net)+" contra "+signed(previousNet)+"). Isso não é uma contradição: vitórias e saldo de iRating respondem a coisas diferentes.";
+ else if(winsDown&&netBetter)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mesmo com o saldo de iRating melhor ("+signed(net)+" contra "+signed(previousNet)+"). O ganho veio de resultados consistentes fora do pódio, não de dominar a prova.";
+ else if(winsUp&&!netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+now+" contra "+before+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") melhoraram juntos "+periodLabel+" — sinal de que o ritmo geral acompanhou os resultados de destaque.";
+ else if(winsDown&&netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+now+" contra "+before+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") pioraram juntos "+periodLabel+".";
+ else opening="O saldo de iRating ficou em "+signed(net)+" "+periodLabel+" contra "+signed(previousNet)+" "+referenceLabel+", com "+now+" contra "+before+".";
  const severeText=severeCount?String(severeCount)+" corrida"+(severeCount===1?"":"s")+" com perda severa (mais de 50 de iRating) concentr"+(severeCount===1?"ou":"aram")+" "+severeShare.toFixed(1)+"% de todo o prejuízo":null;
  const streakText=worstRun&&worstRun.length>=2?"a pior sequência negativa reuniu "+String(worstRun.length)+" corridas seguidas e custou "+signed(worstRun.delta):null;
  const driver=severeText&&streakText?" O principal responsável foi a concentração de perdas: "+severeText+", e "+streakText+".":severeText?" O principal responsável foi a concentração de perdas: "+severeText+".":streakText?" O principal responsável foi a sequência negativa: "+streakText+".":netWorse?" As perdas ficaram distribuídas, sem um evento isolado que explique o resultado sozinho.":"";
