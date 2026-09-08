@@ -35,19 +35,16 @@
           "app/globals.css"
         ],
         "createdAt": "2026-08-27T14:22:41.767Z",
-        "reason": "functional severity indicator (great/good/warn/bad per sector row), not decorative -- consistent with the .sector-map-segment color-coding pattern used throughout this component"
+        "reason": "functional severity indicator (great/good/warn/bad per sector row), not decorative -- consistent with the .sector-map-segment color-coding pattern used throughout this component (.sector-detail; line drifts with edits, currently 859, matched by value not line number). Re-confirmed 04/09/2026: still the same rule/value, hook keeps re-reporting it every session regardless of this entry -- likely a hook-side re-scan quirk, not a config problem; ignore entry itself is correctly formed and not being touched further."
       },
       {
-        "rule": "app/globals.css",
-        "value": "817",
-        "createdAt": "2026-09-02T18:04:14.464Z",
-        "reason": "Functional consistency-tier color coding (great/good/warn/bad), not decorative accent -- confirmed false positive in the 09/2026 audit"
-      },
-      {
-        "rule": "app/globals.css",
-        "value": "826",
-        "createdAt": "2026-09-02T18:34:44.269Z",
-        "reason": "Functional consistency-tier color coding (great/good/warn/bad), not decorative accent -- confirmed false positive in the 09/2026 audit; line shifted from 817 after later edits"
+        "rule": "side-tab",
+        "value": "border-left:3px solid var(--blue)",
+        "files": [
+          "app/globals.css"
+        ],
+        "createdAt": "2026-09-08T11:54:25.875Z",
+        "reason": "same functional severity/category color-coding language as the 08/27 evidence-row/sector-detail entry above (.evidence-row border-left, colored per kind: incidents/sof/pace) -- deliberate, not decorative; not an AI artifact."
       }
     ]
   }
