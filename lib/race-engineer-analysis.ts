@@ -67,11 +67,12 @@ function executiveSummary(opts:{scope:"week"|"season";races:number;baselineRaces
  // season, contagem bruta compara 1 corrida com dezenas: usa taxa de vitórias (%) nesse caso.
  const useRate=scope==="week",currentRate=races?wins/races*100:0,previousRate=baselineRaces?previousWins/baselineRaces*100:0,winsUp=useRate?currentRate>previousRate:wins>previousWins,winsDown=useRate?currentRate<previousRate:wins<previousWins;
  const now=useRate?currentRate.toFixed(1)+"% de vitórias":String(wins)+" vitória"+(wins===1?"":"s"),before=useRate?previousRate.toFixed(1)+"%":String(previousWins)+" vitória"+(previousWins===1?"":"s");
+ const nowBare=useRate?currentRate.toFixed(1)+"%":now,beforeBare=useRate?previousRate.toFixed(1)+"%":before;
  let opening:string;
  if(winsUp&&netWorse)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mas o saldo de iRating piorou ("+signed(net)+" contra "+signed(previousNet)+"). Isso não é uma contradição: vitórias e saldo de iRating respondem a coisas diferentes.";
  else if(winsDown&&netBetter)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mesmo com o saldo de iRating melhor ("+signed(net)+" contra "+signed(previousNet)+"). O ganho veio de resultados consistentes fora do pódio, não de dominar a prova.";
- else if(winsUp&&!netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+now+" contra "+before+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") melhoraram juntos "+periodLabel+" — sinal de que o ritmo geral acompanhou os resultados de destaque.";
- else if(winsDown&&netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+now+" contra "+before+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") pioraram juntos "+periodLabel+".";
+ else if(winsUp&&!netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+nowBare+" contra "+beforeBare+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") melhoraram juntos "+periodLabel+" — sinal de que o ritmo geral acompanhou os resultados de destaque.";
+ else if(winsDown&&netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+nowBare+" contra "+beforeBare+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") pioraram juntos "+periodLabel+".";
  else opening="O saldo de iRating ficou em "+signed(net)+" "+periodLabel+" contra "+signed(previousNet)+" "+referenceLabel+", com "+now+" contra "+before+".";
  const severeText=severeCount?String(severeCount)+" corrida"+(severeCount===1?"":"s")+" com perda severa (mais de 50 de iRating) concentr"+(severeCount===1?"ou":"aram")+" "+severeShare.toFixed(1)+"% de todo o prejuízo":null;
  const streakText=worstRun&&worstRun.length>=2?"a pior sequência negativa reuniu "+String(worstRun.length)+" corridas seguidas e custou "+signed(worstRun.delta):null;
