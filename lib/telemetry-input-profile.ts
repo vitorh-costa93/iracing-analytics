@@ -55,7 +55,7 @@ const isRace=(payload:Payload)=>payload.session==="Race"||payload.sessionType===
 const PAGE=500;
 const RACE_MATCH_WINDOW_MS=6*3600000;
 
-export async function telemetryInputProfile(driverId:string,category:Category,races:RaceInput[],seasonName:string,week:number|null){
+export async function telemetryInputProfile(driverId:string,category:Category,races:RaceInput[],seasonName:string,week:number|null,preferredContexts?:Set<string>){
  const names=new Set(races.map(r=>norm(r.car_name)));if(!names.size)return empty("Sem corridas no recorte.");
  const [{data:cars,error:ce},{data:tracks,error:tre}]=await Promise.all([supabaseAdmin.from("cars").select("id,name"),supabaseAdmin.from("tracks").select("id,name")]);if(ce)throw ce;if(tre)throw tre;
  const carName=new Map((cars??[]).map(c=>[c.id,c.name as string])),trackName=new Map((tracks??[]).map(t=>[t.id,t.name as string]));
@@ -69,7 +69,19 @@ export async function telemetryInputProfile(driverId:string,category:Category,ra
  // no total); ainda bem abaixo do maxDuration=300s da rota, mas triplica a amostra real usada nas
  // correlações de input sem mudar o método (mesmo carro+pista, só voltas limpas de corrida).
  const GROUP_CAP=3,LAPS_PER_GROUP=10,TOTAL_CAP=30;
- const candidates=[...groups.values()].filter(rows=>rows.length>=2).sort((a,b)=>b.length-a.length).slice(0,GROUP_CAP).flatMap(rows=>rows.slice(0,LAPS_PER_GROUP)).slice(0,TOTAL_CAP);
+ // 08/09/2026: "por que fiquei mais distante da melhor volta?" -- pra comparar curva a curva, atual
+ // e referência precisam ter voltas na MESMA pista. Escolher as 3 combinações com mais voltas em
+ // cada período de forma independente (como era antes) quase nunca dá isso: o calendário muda de
+ // pista de uma season pra outra, então "top 3 do período atual" e "top 3 da referência" podiam não
+ // ter nenhuma pista em comum (confirmado ao vivo: atual pegava Algarve, referência pegava Watkins
+ // Glen -- zero curvas comparáveis). preferredContexts (contexto carro+pista presente nos dois
+ // períodos, calculado em route.ts) entra no critério de ordenação antes do tamanho do grupo.
+ const contextKey=(carId:number,trackId:number)=>(carName.get(carId)??"")+"|"+(trackName.get(trackId)??"");
+ const candidates=[...groups.entries()].filter(([,rows])=>rows.length>=2).sort(([keyA,rowsA],[keyB,rowsB])=>{
+  const[carA,trackA]=keyA.split("|").map(Number),[carB,trackB]=keyB.split("|").map(Number);
+  const preferredA=preferredContexts?.has(contextKey(carA,trackA))?1:0,preferredB=preferredContexts?.has(contextKey(carB,trackB))?1:0;
+  return preferredB-preferredA||rowsB.length-rowsA.length;
+ }).slice(0,GROUP_CAP).flatMap(([,rows])=>rows.slice(0,LAPS_PER_GROUP)).slice(0,TOTAL_CAP);
  const cached=new Map<string,CachedFeatureRow>();
  for(let from=0;from<candidates.length;from+=500){
   const ids=candidates.slice(from,from+500).map(lap=>lap.id);
