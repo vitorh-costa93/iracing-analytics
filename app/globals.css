@@ -474,12 +474,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-step:hover:not(:disabled) { background: var(--surface-raised); }
 .insight-popup-step:disabled { opacity: .4; cursor: not-allowed; }
 .insight-popup-detail { margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
-/* 05/09/2026: relatório do "engenheiro" (Resumo da season/semana) -- duas seções (Formula/Sports),
- * cada uma com vários parágrafos de prosa gerados a partir dos dados reais (iRating, vitórias,
- * Safety Rating, contexto). Card por carteira, mesma linguagem visual de borda-topo colorida por
- * categoria que .kpi-card já usa, pra não inventar um quarto padrão de card nesta página. */
-.engineer-report-popup .insight-popup-head p.insight-popup-detail { margin-top: 6px; }
-.engineer-report-body { display: grid; gap: 14px; margin-top: 16px; }
+/* 08/09/2026: o popup "Resumo da season/semana" (05/09/2026) foi substituído pelo Debrief DMAIC
+ * (components/DmaicReportModal.tsx, botões no header) -- a rota /api/dashboard/report mudou de
+ * formato nesse meio tempo e o popup antigo ficou quebrado (fetch ok, mas sem o campo `paragraphs`
+ * que ele esperava). Removido o componente e o CSS específico dele; `.engineer-report-section`
+ * continua em uso pelo debrief novo. */
 .engineer-report-section { padding: 16px 18px; border: 1px solid var(--border); border-top: 3px solid var(--border-strong); background: var(--surface-muted); border-radius: 3px; }
 .engineer-report-section:first-child { border-top-color: var(--blue); }
 .engineer-report-section:last-child { border-top-color: var(--amber); }

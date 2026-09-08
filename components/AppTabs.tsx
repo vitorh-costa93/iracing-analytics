@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, Gauge, Wrench, Bookmark, X, ClipboardList, CalendarDays } from "lucide-react";
+import { Activity, Gauge, Wrench, Bookmark, X } from "lucide-react";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 
@@ -30,73 +30,6 @@ function BookmarkletLink({ href, children }: { href: string; children: React.Rea
   return <a ref={ref} className="manual-sync-bookmarklet" onClick={(event) => event.preventDefault()}>{children}</a>;
 }
 
-type ReportCategory = "formula_car" | "sports_car";
-type ReportSection = { category: ReportCategory; week?: number | null; paragraphs: string[] };
-type ReportResponse = { status: string; message?: string; scope: "season" | "week"; seasonName: string; previousSeasonName: string; generatedAt: string; sections: ReportSection[] };
-
-const CATEGORY_LABEL: Record<ReportCategory, string> = { formula_car: "Formula Car", sports_car: "Sports Car" };
-
-/** 05/09/2026: "se comportar como se fosse meu engenheiro... um relatório bem descritivo" -- botão +
- * popup reaproveitando exatamente o mesmo .insight-popup-backdrop/.insight-popup já usado por
- * Favoritos e pelos popups de curva (components/ActiveWeekTelemetry.tsx), pra manter a mesma
- * linguagem visual em vez de inventar um terceiro estilo de modal. Busca sempre nova ao abrir (sem
- * cache) -- o relatório precisa refletir o resultado mais recente assim que o piloto sincroniza,
- * exatamente como a Overview inteira já faz (dynamic="force-dynamic"). */
-function EngineerReportButton({ scope, label, Icon }: { scope: "season" | "week"; label: string; Icon: typeof ClipboardList }) {
-  const [open, setOpen] = useState(false);
-  const [data, setData] = useState<ReportResponse | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  function handleOpen() {
-    setOpen(true);
-    setLoading(true);
-    setError(null);
-    fetch(`/api/dashboard/report?scope=${scope}`, { cache: "no-store" })
-      .then(async (response) => {
-        const result = await response.json() as ReportResponse;
-        if (!response.ok || result.status !== "ok") throw new Error(result.message ?? "Não foi possível gerar o relatório");
-        setData(result);
-      })
-      .catch((reason) => setError(reason instanceof Error ? reason.message : "Erro ao gerar o relatório"))
-      .finally(() => setLoading(false));
-  }
-
-  return (
-    <>
-      <button type="button" className="app-tabs-action" onClick={handleOpen}>
-        <Icon size={15} aria-hidden />{label}
-      </button>
-      {open && (
-        <div className="insight-popup-backdrop" onClick={() => setOpen(false)}>
-          <div className="insight-popup engineer-report-popup" onClick={(event) => event.stopPropagation()}>
-            <div className="insight-popup-head">
-              <div>
-                <span className="section-kicker">SEU ENGENHEIRO</span>
-                <h3>{scope === "season" ? "Resumo da season" : "Resumo da semana"}</h3>
-                {data && <p className="insight-popup-detail">{data.seasonName} vs. {data.previousSeasonName}{data.scope === "week" ? "" : " — season até aqui"}.</p>}
-              </div>
-              <button type="button" className="insight-popup-close" onClick={() => setOpen(false)}>Fechar <X size={14} /></button>
-            </div>
-            {loading && <div className="telemetry-state">Cruzando iRating, vitórias, Safety Rating e contexto de corrida…</div>}
-            {error && <div className="telemetry-state error">{error}<button type="button" className="retry-button" onClick={handleOpen}>Tentar novamente</button></div>}
-            {data && !loading && !error && (
-              <div className="engineer-report-body">
-                {data.sections.map((section) => (
-                  <article className="engineer-report-section" key={section.category}>
-                    <h4>{CATEGORY_LABEL[section.category]}{section.week ? ` • Week ${section.week}` : ""}</h4>
-                    {section.paragraphs.map((paragraph, index) => <p key={index}>{paragraph}</p>)}
-                  </article>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
-
 export default function AppTabs() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
@@ -109,8 +42,6 @@ export default function AppTabs() {
           </Link>
         ))}
         <div className="app-tabs-actions">
-          <EngineerReportButton scope="season" label="Resumo da season" Icon={ClipboardList} />
-          <EngineerReportButton scope="week" label="Resumo da semana" Icon={CalendarDays} />
           <button type="button" className="app-tabs-action" onClick={() => setOpen(true)}>
             <Bookmark size={15} aria-hidden />Favoritos
           </button>
