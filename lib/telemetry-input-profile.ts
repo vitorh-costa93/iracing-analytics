@@ -1,18 +1,24 @@
 import { gunzipSync } from "node:zlib";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Category, RaceInput } from "@/lib/race-engineer-analysis";
+import { telemetryFeatures } from "@/lib/telemetry-features";
 
 type Payload={season?:{name?:string};sessionType?:number;session_type?:number;session?:string|number;startTime?:string};
 type Lap={id:string;car_id:number;track_id:number;lap_time:number|null;clean:boolean|null;off_track:boolean|null;incomplete:boolean|null;discontinuity:boolean|null;telemetry_path:string|null;garage61_payload?:Payload};
 type LapSample={lapTime:number;session:string;gap:number;throttleSmoothness:number|null;brakeSmoothness:number|null;steeringSmoothness:number|null};
+type CachedFeatureRow={lap_id:string;throttle_smoothness:number|null;brake_smoothness:number|null;steering_smoothness:number|null;parser_version:string};
 const norm=(v:string)=>v.toLowerCase().replace(/[^a-z0-9]/g,"");
 const avg=(v:number[])=>v.length?v.reduce((a,b)=>a+b,0)/v.length:null;
 const sd=(v:number[])=>{const m=avg(v);return m===null?null:Math.sqrt(avg(v.map(x=>(x-m)**2))??0)};
 const round=(v:number|null,d=2)=>v===null?null:Number(v.toFixed(d));
-const index=(headers:string[],names:string[])=>headers.findIndex(h=>names.some(n=>h.includes(n)));
-function values(lines:string[],column:number){if(column<0)return[];const step=Math.max(1,Math.ceil(lines.length/15000)),out:number[]=[];for(let i=1;i<lines.length;i+=step){const value=Number(lines[i].split(",")[column]);if(Number.isFinite(value))out.push(value)}return out}
-const smoothness=(v:number[])=>v.length<2?null:avg(v.slice(1).map((x,i)=>Math.abs(x-v[i])));
 const sum=(v:number[])=>v.reduce((a,b)=>a+b,0);
+// 08/09/2026: "ative isso como cache, performance é bem importante" -- lib/telemetry-features.ts e a
+// tabela telemetry_features já existiam (migração 20260905201500) mas nada os usava: cada abertura
+// do Debrief baixava e reprocessava o CSV gzip de cada volta do zero. Como cada volta tem seu próprio
+// arquivo imutável (lib/telemetry-backfill.ts grava um .csv.gz por lap.id, nunca reescreve), o par
+// lap_id/parser_version é um cache perfeito -- calcula uma vez, nunca precisa invalidar. Bump esta
+// constante junto com qualquer mudança material em telemetryFeatures() pra não servir linhas velhas.
+const PARSER_VERSION="v1";
 function correlation(a:number[],b:number[]){if(a.length<5||a.length!==b.length)return null;const am=avg(a)!,bm=avg(b)!,num=sum(a.map((x,i)=>(x-am)*(b[i]-bm))),den=Math.sqrt(sum(a.map(x=>(x-am)**2))*sum(b.map(x=>(x-bm)**2)));return den?num/den:null}
 const metric=(samples:LapSample[],key:"throttleSmoothness"|"brakeSmoothness"|"steeringSmoothness")=>samples.filter(s=>s[key]!==null).map(s=>({lap:s.gap,input:s[key] as number}));
 const repeatability=(pairs:{lap:number;input:number}[])=>{const inputs=pairs.map(x=>x.input),mean=avg(inputs);return mean&&mean!==0?round((sd(inputs)!/Math.abs(mean))*100,1):null};
@@ -34,7 +40,28 @@ export async function telemetryInputProfile(driverId:string,category:Category,ra
  // correlações de input sem mudar o método (mesmo carro+pista, só voltas limpas de corrida).
  const GROUP_CAP=3,LAPS_PER_GROUP=10,TOTAL_CAP=30;
  const candidates=[...groups.values()].filter(rows=>rows.length>=2).sort((a,b)=>b.length-a.length).slice(0,GROUP_CAP).flatMap(rows=>rows.slice(0,LAPS_PER_GROUP)).slice(0,TOTAL_CAP);
- const decode=async(lap:Lap):Promise<Omit<LapSample,"gap">|null>=>{if(!lap.telemetry_path)return null;const d=await supabaseAdmin.storage.from("telemetry").download(lap.telemetry_path);if(d.error||!d.data)return null;let raw=Buffer.from(await d.data.arrayBuffer());try{if(lap.telemetry_path.endsWith(".gz"))raw=gunzipSync(raw)}catch{return null}const lines=raw.toString("utf8").split(/\r?\n/);if(lines.length<3)return null;const headers=lines[0].split(",").map(norm),throttle=values(lines,index(headers,["throttle"])),brake=values(lines,index(headers,["brake"])),steering=values(lines,index(headers,["steeringwheelangle","steering"])),ts=Math.max(...throttle.map(Math.abs),0)>1.5?100:1,bs=Math.max(...brake.map(Math.abs),0)>1.5?100:1;return{lapTime:lap.lap_time!,session:String(lap.car_id)+"|"+String(lap.track_id),throttleSmoothness:smoothness(throttle.map(x=>x/ts)),brakeSmoothness:smoothness(brake.map(x=>x/bs)),steeringSmoothness:smoothness(steering)}};
+ const cached=new Map<string,CachedFeatureRow>();
+ for(let from=0;from<candidates.length;from+=500){
+  const ids=candidates.slice(from,from+500).map(lap=>lap.id);
+  const{data,error}=await supabaseAdmin.from("telemetry_features").select("lap_id,throttle_smoothness,brake_smoothness,steering_smoothness,parser_version").in("lap_id",ids);
+  if(error)throw error;
+  for(const row of(data??[])as CachedFeatureRow[])if(row.parser_version===PARSER_VERSION)cached.set(row.lap_id,row);
+ }
+ const decode=async(lap:Lap):Promise<Omit<LapSample,"gap">|null>=>{
+  const hit=cached.get(lap.id);
+  if(hit)return{lapTime:lap.lap_time!,session:String(lap.car_id)+"|"+String(lap.track_id),throttleSmoothness:hit.throttle_smoothness,brakeSmoothness:hit.brake_smoothness,steeringSmoothness:hit.steering_smoothness};
+  if(!lap.telemetry_path)return null;
+  const d=await supabaseAdmin.storage.from("telemetry").download(lap.telemetry_path);if(d.error||!d.data)return null;
+  let raw=Buffer.from(await d.data.arrayBuffer());try{if(lap.telemetry_path.endsWith(".gz"))raw=gunzipSync(raw)}catch{return null}
+  const csv=raw.toString("utf8");if(csv.split(/\r?\n/).length<3)return null;
+  const features=telemetryFeatures(csv);
+  // Write-through: grava o resultado assim que calculado (aguardado, não fire-and-forget -- numa
+  // função serverless o processo pode ser encerrado antes de uma promise solta terminar) pra nunca
+  // mais precisar baixar/descompactar/parsear este lap_id de novo.
+  const upsert=await supabaseAdmin.from("telemetry_features").upsert({lap_id:lap.id,samples:features.samples,throttle_mean:features.throttle_mean,throttle_stddev:features.throttle_stddev,brake_mean:features.brake_mean,brake_stddev:features.brake_stddev,steering_mean:features.steering_mean,steering_stddev:features.steering_stddev,throttle_smoothness:features.throttle_smoothness,brake_smoothness:features.brake_smoothness,steering_smoothness:features.steering_smoothness,speed_mean:features.speed_mean,available_columns:features.available_columns,parser_version:PARSER_VERSION},{onConflict:"lap_id"});
+  if(upsert.error)console.error("telemetry_features upsert failed for lap "+lap.id+": "+upsert.error.message);
+  return{lapTime:lap.lap_time!,session:String(lap.car_id)+"|"+String(lap.track_id),throttleSmoothness:features.throttle_smoothness,brakeSmoothness:features.brake_smoothness,steeringSmoothness:features.steering_smoothness};
+ };
  const rawSamples:Array<Omit<LapSample,"gap">>=[];for(let offset=0;offset<candidates.length;offset+=12){const batch=await Promise.all(candidates.slice(offset,offset+12).map(decode));rawSamples.push(...batch.filter((sample):sample is Omit<LapSample,"gap">=>sample!==null))}
  const counts=new Map<string,number>();for(const sample of rawSamples)counts.set(sample.session,(counts.get(sample.session)??0)+1);const comparableRaw=rawSamples.filter(sample=>(counts.get(sample.session)??0)>=2);if(!comparableRaw.length)return empty(eligible.length===0?"Nenhum CSV limpo de corrida foi encontrado para as "+String(races.length)+" corridas deste recorte. O backfill precisa carregar a telemetria dessas corridas.":"Foram encontradas "+String(eligible.length)+" voltas limpas de corrida, mas ainda não há duas do mesmo carro e pista para calcular consistência.");
  const bestBySession=new Map<string,number>();for(const sample of comparableRaw)bestBySession.set(sample.session,Math.min(bestBySession.get(sample.session)??Infinity,sample.lapTime));
