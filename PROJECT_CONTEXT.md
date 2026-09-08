@@ -322,3 +322,14 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 - Overview exposes **Resumo da semana** and **Resumo da season**. They consume the same server-side report endpoint and present the investigation as DMAIC: define the performance question, state what data was measured, present evidence-backed findings, recommend a controlled single-variable test, and state what should be monitored next.
 - The report must not present SoF, incident, car, track or win patterns as confirmed causes without a comparison that actually tests the hypothesis. Findings may identify a hypothesis and the exact next comparison needed.
 - Raw Garage61 telemetry is stored only in Supabase Storage bucket `telemetry`, never in Vercel storage. The Supabase Free project currently has a 1 GB file-storage allowance, so the historic backfill is intentionally resumable and bounded: the authenticated Vercel cron saves at most 12 missing CSVs per run, rejects individual files above 8 MB, measures existing bucket bytes first, and stops at `TELEMETRY_BACKFILL_MAX_BYTES` (default 700 MB). This prevents a public endpoint from spending Garage61 quota or filling storage and leaves headroom for normal operation.
+
+## Confirmed race events, cost guard-rails, allLaps scoping (08/09/2026)
+
+- `confirmed_race_events` (migração `20260908130000`) substitui um hardcode em `lib/race-retirement-events.ts` que marcava uma corrida específica (por data literal no código) como "tow confirmado pelo piloto". Pra registrar um novo evento confirmado pelo piloto (tow, contato, falha mecânica), inserir uma linha em vez de editar código:
+  ```sql
+  insert into public.confirmed_race_events (driver_id, raced_at, car_name, track_name, type, note)
+  values ('<driver_id>', '<timestamptz da corrida>', '<car_name exato de v_race_results_irating>', '<track_name exato>', 'tow', 'nota opcional');
+  ```
+  O casamento com a corrida usa carro + pista + janela de 30 min, igual ao hardcode original. `type` aceita `tow`/`contact`/`mechanical`; outro valor cai num rótulo genérico.
+- Guard-rails de custo (Supabase/Vercel free tier) são permanentes -- ver CLAUDE.md "Non-negotiable rules" #7. Não remover/afrouxar sem pedido explícito do piloto.
+- `lib/race-retirement-events.ts`'s `allLaps()` agora filtra por `car_id` do segmento (mesmo padrão de `telemetry-input-profile.ts`) em vez de buscar todas as voltas da season inteira -- reduz volume sem mudar resultado.

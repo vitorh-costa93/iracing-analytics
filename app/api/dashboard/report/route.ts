@@ -13,8 +13,9 @@ const SEGMENTS=[
  {id:"gt3",label:"Sports Car · GT3",category:"sports_car" as Category,match:(row:RaceInput)=>row.series_name.toLowerCase().includes("gt3")},
  {id:"imsa",label:"Sports Car · IMSA",category:"sports_car" as Category,match:(row:RaceInput)=>row.series_name.toLowerCase().includes("imsa")},
 ];
-// Relatório caro (varre a temporada inteira + telemetria) chamado a cada troca de aba do
-// DmaicReportModal sem nenhum debounce no cliente -- sem cache aqui, rajadas de cliques
+// PERMANENT GUARD-RAIL (CLAUDE.md "Non-negotiable rules" #7) -- não remover nem aumentar o TTL sem
+// pedido explícito. Relatório caro (varre a temporada inteira + telemetria) chamado a cada troca de
+// aba do DmaicReportModal sem nenhum debounce no cliente -- sem cache aqui, rajadas de cliques
 // disparavam a mesma consulta ao Supabase repetidas vezes por minuto, e como os dados de base
 // mudam pouco, a maior parte batia no cache interno do Supabase e estourou a cota gratuita de
 // "Cached Egress" da organização (~8,3GB/5GB no ciclo de 09/08-09/09/2026). Cache em memória por

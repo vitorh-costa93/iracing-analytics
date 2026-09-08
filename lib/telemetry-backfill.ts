@@ -2,6 +2,11 @@ import { gzipSync } from "node:zlib";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
 const BUCKET = "telemetry";
+// PERMANENT GUARD-RAIL (see CLAUDE.md "Non-negotiable rules" #7): the Supabase project is on the
+// free tier and stays there. Do not raise BUDGET past what the plan's Storage allowance leaves
+// headroom for, and do not remove MAX_FILE_BYTES/BATCH without an explicit request -- this project
+// already caused one real quota incident (Cached Egress, 08/09/2026) from an unrelated route that
+// had no cache at all; do not let this one become the next.
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const BUDGET = 900 * 1024 * 1024;
 const BATCH = 24;

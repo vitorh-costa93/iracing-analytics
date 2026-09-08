@@ -38,8 +38,19 @@ export async function retirementEvents(driverId:string,races:RaceInput[],seasonN
   if(!item.confirmed&&!(item.terminal&&damage&&progress<80))continue;
   detected.push({racedAt:item.race.raced_at,context:item.race.car_name+" • "+item.race.track_name,contextKey:item.contextKey,delta:item.race.irating_after-item.race.irating_before,positionChange:item.race.position_change,type:item.confirmed?"Tow confirmado":"Abandono provável: corrida interrompida antes de 80% do tempo de referência",confidence:item.confirmed?"confirmed":"probable",completedLaps:item.completedLaps,timeOnTrackSeconds:item.seconds});
  }
- const driverRace=races.find(r=>Math.abs(new Date(r.raced_at).getTime()-new Date("2026-09-04T18:30:00.000Z").getTime())<=30*60000&&key(r.car_name).includes("sf23")&&key(r.track_name).includes("silverstone"));
- if(driverRace){const raceKey=driverRace.raced_at+"|"+driverRace.car_name+"|"+driverRace.track_name,item=bestByRace.get(raceKey),contextKey=key(driverRace.car_name)+"|"+key(driverRace.track_name);detected.push({racedAt:driverRace.raced_at,context:driverRace.car_name+" • "+driverRace.track_name,contextKey,delta:driverRace.irating_after-driverRace.irating_before,positionChange:driverRace.position_change,type:"Tow / abandono confirmado pelo piloto",confidence:"driver",completedLaps:item?.completedLaps??driverRace.laps??0,timeOnTrackSeconds:item?.seconds??0})}
+ // 08/09/2026: "usei pra orientar e entender o que é tow, e aí replicar isso para outros registros"
+ // -- era uma corrida específica com a data literal escrita no código (nunca expirava, indistinguível
+ // de uma detecção real). Agora lê de confirmed_race_events (migração 20260908130000): qualquer linha
+ // que o piloto registrar ali vira um evento "confidence: driver" pelo mesmo casamento carro+pista+
+ // janela de tempo que o hardcode usava -- generaliza sem precisar editar código de novo.
+ const{data:confirmedRows,error:cre}=await supabaseAdmin.from("confirmed_race_events").select("raced_at,car_name,track_name,type").eq("driver_id",driverId);if(cre)throw cre;
+ const CONFIRMED_LABEL:Record<string,string>={tow:"Tow / abandono confirmado pelo piloto",contact:"Contato confirmado pelo piloto",mechanical:"Falha mecânica confirmada pelo piloto"};
+ for(const confirmedRow of confirmedRows??[]){
+  const driverRace=races.find(r=>Math.abs(new Date(r.raced_at).getTime()-new Date(confirmedRow.raced_at).getTime())<=30*60000&&same(key(confirmedRow.car_name),key(r.car_name))&&same(key(confirmedRow.track_name),key(r.track_name)));
+  if(!driverRace)continue;
+  const raceKey=driverRace.raced_at+"|"+driverRace.car_name+"|"+driverRace.track_name,item=bestByRace.get(raceKey),contextKey=key(driverRace.car_name)+"|"+key(driverRace.track_name);
+  detected.push({racedAt:driverRace.raced_at,context:driverRace.car_name+" • "+driverRace.track_name,contextKey,delta:driverRace.irating_after-driverRace.irating_before,positionChange:driverRace.position_change,type:CONFIRMED_LABEL[confirmedRow.type]??("Evento confirmado pelo piloto ("+confirmedRow.type+")"),confidence:"driver",completedLaps:item?.completedLaps??driverRace.laps??0,timeOnTrackSeconds:item?.seconds??0});
+ }
  const unique=new Map<string,typeof detected[number]>();for(const event of detected){const eventKey=event.racedAt+"|"+event.context,old=unique.get(eventKey),priority=(x:typeof event)=>x.confidence==="driver"?4:x.confidence==="confirmed"?3:1;if(!old||priority(event)>priority(old))unique.set(eventKey,event)}
  const events=[...unique.values()].map(event=>{const reference=Math.max(...(durations.get(event.contextKey)??[]),0);const{contextKey,...rest}=event;return{...rest,progressPct:reference>0?Number(Math.min(100,event.timeOnTrackSeconds/reference*100).toFixed(1)):null}}).sort((a,b)=>a.confidence!==b.confidence?(a.confidence==="driver"?-1:b.confidence==="driver"?1:a.confidence==="confirmed"?-1:1):a.delta-b.delta);
  const eventKeys=new Set(events.map(event=>event.racedAt+"|"+event.context));

@@ -19,6 +19,7 @@ Read this file first for continuity, then read `AGENTS.md` and `PROJECT_CONTEXT.
 4. Recurring syncs are incremental and idempotent. Do not turn normal syncs into backfills or delete/reimport existing data without explicit permission.
 5. Do not expose secrets, tokens, OAuth credentials, cookies, Storage paths containing private content, or setup files. Garage61 and iRacing credentials stay server-side.
 6. GitHub, Supabase, and Vercel operations are performed through their CLIs. The user has authorized routine production publication after validation.
+7. Keep Supabase and Vercel on their free tiers permanently. Never remove, loosen, or bypass a cost/quota guard-rail (telemetry Storage byte budget, backfill batch size, report/overview response cache TTLs, Vercel Hobby's once-daily cron limit, per-file size caps) without the user's explicit request. These exist because the project already hit a real quota incident once (Supabase "Cached Egress", 08/09/2026, ~8.3GB/5GB — fixed in `app/api/dashboard/report/route.ts`'s in-memory cache). When adding a new recurring job, a new heavy query, or a new Storage write path, add a guard-rail of the same kind before shipping it, not after a quota alert.
 
 ## Product areas and main files
 
