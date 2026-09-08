@@ -9,10 +9,20 @@ const key=(s:string)=>s.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/
 const same=(a:string|undefined,b:string)=>!!a&&(a===b||a.includes(b)||b.includes(a)||(a.length>=8&&b.length>=8&&a.slice(0,8)===b.slice(0,8)));
 const isRace=(payload:P)=>payload.session==="Race"||payload.sessionType===2||payload.sessionType===3||payload.session_type===2||payload.session_type===3;
 const lapCache=new Map<string,{expires:number;promise:Promise<Lap[]>}>();
-function allLaps(driverId:string,seasonName:string){const cacheKey=driverId+"|"+seasonName,cached=lapCache.get(cacheKey);if(cached&&cached.expires>Date.now())return cached.promise;const promise=(async()=>{const out:Lap[]=[];for(let from=0;;from+=1000){const{data,error}=await supabaseAdmin.from("laps").select("id,car_id,track_id,lap_number,lap_time,incomplete,missing,discontinuity,garage61_payload").eq("driver_id",driverId).contains("garage61_payload",{season:{name:seasonName}}).order("id",{ascending:true}).range(from,from+999);if(error)throw error;out.push(...((data??[])as Lap[]));if(!data||data.length<1000)return out}})();lapCache.set(cacheKey,{expires:Date.now()+5*60_000,promise});promise.catch(()=>lapCache.delete(cacheKey));return promise}
+// 08/09/2026: "performance é bem importante" -- allLaps() buscava TODAS as voltas do piloto na
+// season (2.800-3.900 linhas por season neste projeto), sem filtrar por carro, mesmo quando o
+// segmento pedido (Super Formula, por exemplo) só precisa de ~metade disso. O cache em memória de 5
+// min (lapCache) só ajuda dentro da mesma instância serverless -- um cold start do Vercel paga o
+// preço cheio de novo. Filtrar por car_id (mesmo padrão já usado em telemetry-input-profile.ts) corta
+// o volume sem mudar nenhum resultado: os carros fora do segmento nunca combinavam com nenhuma race
+// de qualquer forma, só eram buscados e descartados depois.
+function allLaps(driverId:string,seasonName:string,carIds:number[]){const cacheKey=driverId+"|"+seasonName+"|"+[...carIds].sort((a,b)=>a-b).join(","),cached=lapCache.get(cacheKey);if(cached&&cached.expires>Date.now())return cached.promise;const promise=(async()=>{const out:Lap[]=[];for(let from=0;;from+=1000){let query=supabaseAdmin.from("laps").select("id,car_id,track_id,lap_number,lap_time,incomplete,missing,discontinuity,garage61_payload").eq("driver_id",driverId).contains("garage61_payload",{season:{name:seasonName}});if(carIds.length)query=query.in("car_id",carIds);const{data,error}=await query.order("id",{ascending:true}).range(from,from+999);if(error)throw error;out.push(...((data??[])as Lap[]));if(!data||data.length<1000)return out}})();lapCache.set(cacheKey,{expires:Date.now()+5*60_000,promise});promise.catch(()=>lapCache.delete(cacheKey));return promise}
 
 export async function retirementEvents(driverId:string,races:RaceInput[],seasonName:string){
- const[{data:cars,error:ce},{data:tracks,error:te},laps]=await Promise.all([supabaseAdmin.from("cars").select("id,name"),supabaseAdmin.from("tracks").select("id,name"),allLaps(driverId,seasonName)]);if(ce)throw ce;if(te)throw te;
+ const norm=(v:string)=>v.toLowerCase().replace(/[^a-z0-9]/g,""),carNames=new Set(races.map(r=>norm(r.car_name)));
+ const{data:cars,error:ce}=await supabaseAdmin.from("cars").select("id,name");if(ce)throw ce;
+ const carIds=(cars??[]).filter(c=>carNames.has(norm(c.name??""))).map(c=>c.id);
+ const[{data:tracks,error:te},laps]=await Promise.all([supabaseAdmin.from("tracks").select("id,name"),allLaps(driverId,seasonName,carIds)]);if(te)throw te;
  const car=new Map((cars??[]).map(x=>[x.id,key(x.name)])),track=new Map((tracks??[]).map(x=>[x.id,key(x.name)])),groups=new Map<string,Lap[]>();
  for(const lap of laps){const p=(lap.garage61_payload??{})as P;if(!p.startTime||!isRace(p))continue;const groupKey=String(lap.car_id)+":"+String(lap.track_id)+":"+(p.event??"")+":"+(p.session??"");groups.set(groupKey,[...(groups.get(groupKey)??[]),lap])}
  const candidates:Candidate[]=[],durations=new Map<string,number[]>();
