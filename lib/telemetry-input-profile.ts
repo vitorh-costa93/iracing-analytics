@@ -22,7 +22,7 @@ const sum=(v:number[])=>v.reduce((a,b)=>a+b,0);
 // constante junto com qualquer mudança material em telemetryFeatures()/cornerBrakePoints() pra não
 // servir linhas velhas -- v2 (08/09/2026) adiciona corner_brakes, então toda linha v1 é reprocessada
 // uma única vez (são só ~150 linhas hoje, custo baixo e pago uma vez só).
-const PARSER_VERSION="v2";
+const PARSER_VERSION="v2-debug";
 // Curvas detectadas em voltas diferentes do mesmo carro+pista podem cair em índices ligeiramente
 // diferentes (ruído de GPS). Em vez de confiar no número da curva por volta, agrupa por proximidade
 // real do pico (peakDistance, em % da volta) somando as curvas de todas as voltas da mesma combinação

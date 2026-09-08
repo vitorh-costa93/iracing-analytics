@@ -26,20 +26,21 @@ const MIN_ROWS = 50;
 
 export function cornerBrakePoints(csv: string): CornerBrakePoint[] | null {
   const lines = csv.replace(/^﻿/, "").split(/\r?\n/).filter(Boolean);
-  if (lines.length < MIN_ROWS) return null;
+  if (lines.length < MIN_ROWS) { console.error("[corner-brakes] DEBUG too few lines", lines.length); return null; }
   const split = (line: string) => line.split(",").map((v) => v.trim().replace(/^"|"$/g, ""));
   const head = split(lines[0]).map(norm);
   const di = pick(head, ["lapdistpct", "lapdist"]), lai = pick(head, ["lat"]), loi = pick(head, ["lon"]), bi = pick(head, ["brake"]);
-  if (di < 0 || lai < 0 || loi < 0 || bi < 0) return null;
+  if (di < 0 || lai < 0 || loi < 0 || bi < 0) { console.error("[corner-brakes] DEBUG missing column", { di, lai, loi, bi, head }); return null; }
 
   const rows: Row[] = lines.slice(1).map((line) => {
     const cols = split(line);
     return { distance: num(cols[di] ?? "") ?? NaN, lat: num(cols[lai] ?? ""), lon: num(cols[loi] ?? ""), brake: num(cols[bi] ?? "") };
   }).filter((row) => Number.isFinite(row.distance));
-  if (rows.length < MIN_ROWS) return null;
+  if (rows.length < MIN_ROWS) { console.error("[corner-brakes] DEBUG too few valid rows", rows.length, "sample", rows.slice(0,3)); return null; }
 
   const corners = detectCornersFromGps(rows.map((row) => ({ distance: row.distance, lat: row.lat, lon: row.lon })));
-  if (!corners.length) return null;
+  if (!corners.length) { console.error("[corner-brakes] DEBUG no corners detected", "rows", rows.length, "sample lat/lon", rows.slice(0,3).map(r=>[r.lat,r.lon])); return null; }
+  console.error("[corner-brakes] DEBUG ok", corners.length, "corners");
 
   const maxBrake = Math.max(0, ...rows.map((row) => row.brake ?? 0));
   const sorted = [...rows].sort((a, b) => a.distance - b.distance);
