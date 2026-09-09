@@ -7,6 +7,7 @@ import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
 import { compareCornerBraking } from "@/lib/corner-braking-comparison";
 import { paceVsResultInsight } from "@/lib/pace-vs-result-insight";
 import { buildRecommendation } from "@/lib/recommendation";
+import { paceConsistencyNote } from "@/lib/pace-consistency-note";
 
 export const dynamic="force-dynamic";
 export const maxDuration=300;
@@ -64,6 +65,11 @@ export async function GET(request:NextRequest){
    const rawNet=selected.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0),rawPreviousNet=baseline.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0);
    const net=scope==="week"?(selected.length?rawNet/selected.length:0):rawNet,previousNet=scope==="week"?(baseline.length?rawPreviousNet/baseline.length:0):rawPreviousNet;
    const gapDeltaSeconds=inputs.averageGapToBestSeconds!==null&&inputReference.averageGapToBestSeconds!==null?inputs.averageGapToBestSeconds-inputReference.averageGapToBestSeconds:null,stdDeltaSeconds=inputs.lapStdDevSeconds!==null&&inputReference.lapStdDevSeconds!==null?inputs.lapStdDevSeconds-inputReference.lapStdDevSeconds:null;
+   // "qual a diferença entre essas duas análises, não tá clara" -- distância até a melhor volta
+   // (ritmo absoluto) e desvio-padrão entre voltas (repetibilidade) medem coisas diferentes e podem
+   // divergir, como aconteceu aqui. Frase própria reconciliando as duas em vez de deixar duas
+   // métricas soltas pro piloto interpretar sozinho.
+   const paceConsistency=paceConsistencyNote(gapDeltaSeconds,stdDeltaSeconds);
    const paceVsResult=paceVsResultInsight({netWorse:net<previousNet,netBetter:net>previousNet,netPhrase:netClause(net,previousNet,scope==="week"?" por corrida":""),gapDeltaSeconds,stdDeltaSeconds,incidentsNow:base.incidentSummary.current.average,incidentsBefore:base.incidentSummary.reference.average});
    // 09/09/2026: "eu ganhei iRating em GT3 e a consistência foi boa, então melhorei, deveria ter
    // sido elogiado" -- a recomendação antiga só olhava perda severa/sequência pra decidir entre
@@ -87,7 +93,7 @@ export async function GET(request:NextRequest){
     if(stdDeltaSeconds!==null)extra.push({metric:"Consistência (desvio-padrão)",now:-inputs.lapStdDevSeconds!,before:-inputReference.lapStdDevSeconds!,change:-stdDeltaSeconds,direction:stdDeltaSeconds<-MATERIAL_SECONDS?"improved":stdDeltaSeconds>MATERIAL_SECONDS?"worsened":"stable",good:"higher"});
     seasonComparison={...seasonComparison,improved:[...seasonComparison.improved,...extra.filter(item=>item.direction==="improved")],worsened:[...seasonComparison.worsened,...extra.filter(item=>item.direction==="worsened")],stable:[...seasonComparison.stable,...extra.filter(item=>item.direction==="stable")]};
    }
-   return{...base,action,paceVsResult,comparison:scope==="week"?"Referência: média das outras weeks desta mesma season = "+(weekAverage===null?"—":String(weekAverage>0?"+":"")+weekAverage.toFixed(1)+" de iRating por corrida")+" em "+String(baseline.length)+" corridas.":base.comparison,retirements:survival.events,retirementReference:survivalReference.events,retirementComparison:{currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Number((survival.events.length/selected.length*100).toFixed(1)):null,referenceRate:baseline.length?Number((survivalReference.events.length/baseline.length*100).toFixed(1)):null},severeCompletion,telemetryInputs:inputs,telemetryInputReference:inputReference,cornerBraking,seasonComparison};
+   return{...base,action,paceVsResult,paceConsistency,comparison:scope==="week"?"Referência: média das outras weeks desta mesma season = "+(weekAverage===null?"—":String(weekAverage>0?"+":"")+weekAverage.toFixed(1)+" de iRating por corrida")+" em "+String(baseline.length)+" corridas.":base.comparison,retirements:survival.events,retirementReference:survivalReference.events,retirementComparison:{currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Number((survival.events.length/selected.length*100).toFixed(1)):null,referenceRate:baseline.length?Number((survivalReference.events.length/baseline.length*100).toFixed(1)):null},severeCompletion,telemetryInputs:inputs,telemetryInputReference:inputReference,cornerBraking,seasonComparison};
   }));
   const payload={status:"ok",scope,seasonName:current.season_name,previousSeasonName:previous.season_name,generatedAt:new Date().toISOString(),methodology:"Season compara a anterior; week compara com as demais weeks da season. O diagnóstico prioriza perdas severas, sequências, retiradas, tempo em pista e relação entre consistência dos inputs e tempo de volta.",sections};
   reportCache.set(cacheKey,{expiresAt:Date.now()+REPORT_CACHE_TTL_MS,payload});

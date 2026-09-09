@@ -14,7 +14,7 @@ type Severity={threshold:number;count:number;rate:number|null;referenceCount:num
 type CompletionStats={sample:number;averagePct:number|null;medianPct:number|null;earlyCount:number;earlyRate:number|null;abandonedCount:number;abandonedRate:number|null};
 type Streak={length:number;delta:number;start:string;end:string};
 type IncidentStats={races:number;total:number;average:number|null;highCount:number;highRate:number|null};
-type Section={category:"formula_car"|"sports_car";segment:string;label:string;week:number|null;confidence:string;summary:string;paceVsResult:string|null;headline:string;comparison:string;findings:Finding[];action:string;severity:Severity;incidentSummary:{current:IncidentStats;reference:IncidentStats};severeCompletion:{current:CompletionStats;reference:CompletionStats};streakComparison:{current:{gain:Streak;loss:Streak};reference:{gain:Streak;loss:Streak}};topLosses:Context[];topGains:Context[];impactRaces:ImpactRace[];weeklyImpact:WeekImpact[];retirements:Retirement[];retirementComparison:{currentCount:number;referenceCount:number;currentRate:number|null;referenceRate:number|null};telemetryInputs:InputProfile;telemetryInputReference:InputProfile;cornerBraking:CornerDelta[];seasonComparison:{improved:Change[];worsened:Change[];stable:Change[]}|null};
+type Section={category:"formula_car"|"sports_car";segment:string;label:string;week:number|null;confidence:string;summary:string;paceVsResult:string|null;paceConsistency:string|null;headline:string;comparison:string;findings:Finding[];action:string;severity:Severity;incidentSummary:{current:IncidentStats;reference:IncidentStats};severeCompletion:{current:CompletionStats;reference:CompletionStats};streakComparison:{current:{gain:Streak;loss:Streak};reference:{gain:Streak;loss:Streak}};topLosses:Context[];topGains:Context[];impactRaces:ImpactRace[];weeklyImpact:WeekImpact[];retirements:Retirement[];retirementComparison:{currentCount:number;referenceCount:number;currentRate:number|null;referenceRate:number|null};telemetryInputs:InputProfile;telemetryInputReference:InputProfile;cornerBraking:CornerDelta[];seasonComparison:{improved:Change[];worsened:Change[];stable:Change[]}|null};
 type Report={seasonName:string;previousSeasonName:string;sections:Section[];methodology:string};
 
 const n=(v:number|null,decimals=1)=>v===null?"—":String(v>0?"+":"")+v.toFixed(decimals);
@@ -97,30 +97,64 @@ function correlationMeaning(label:string,value:number|null){
  return "Relação "+strength+": quando o "+label.toLowerCase()+" variou mais, a volta ficou mais rápida (pode ser um input mais agressivo, não necessariamente melhor execução).";
 }
 
-// Duas perguntas diferentes, cada uma com sua seção: "meu ritmo ficou mais consistente?" (compara
-// contra a sua própria melhor volta em cada combinação carro+pista) e "um input específico explica
-// essa variação?" (correlação input × gap). Misturar as duas sob um título só era a maior fonte de
-// confusão -- agora cada bloco tem sua própria pergunta e sua própria amostra declarada.
-function PaceInputs({value,reference,referenceLabel}:{value:InputProfile;reference:InputProfile;referenceLabel:string}){
+// 09/09/2026: "qual a diferença entre essas duas análises, não tá clara" -- distância até a melhor
+// volta (ritmo absoluto: o quão perto você chega do seu próprio teto) e desvio-padrão entre voltas
+// (repetibilidade: o quão parecidas as voltas são entre si) medem coisas DIFERENTES e podem divergir
+// -- dá pra ficar mais consistente numa marcha mais lenta, ou mais rápido de forma menos repetível.
+// Cada card agora tem uma linha de definição, e paceConsistency (vindo de route.ts) reconcilia as
+// duas quando divergem em vez de deixar duas métricas soltas.
+//
+// "precisa trocar a análise dos inputs para algo mais efetivo" -- a correlação input×gap com n=10-30
+// é sinal fraco (o aviso de amostra pequena já dizia isso) e virava a informação PRINCIPAL exibida,
+// quando na real é a mais frágil das duas coisas que já calculávamos. repetibilidade% (CV entre
+// voltas) é mais robusta a amostra pequena -- vira a tabela principal; correlação vira secundária e
+// só aparece com amostra >=15, claramente rotulada como sinal exploratório.
+function repeatabilityRead(label:string,current:number|null,prior:number|null):string{
+ if(current===null)return "Amostra insuficiente para o "+label.toLowerCase()+".";
+ if(prior===null)return "Sem referência comparável ainda.";
+ const delta=current-prior;
+ if(Math.abs(delta)<2)return "Repetibilidade do "+label.toLowerCase()+" ficou parecida com a referência.";
+ return delta<0?"O "+label.toLowerCase()+" ficou mais repetível de volta a volta (variou "+Math.abs(delta).toFixed(1)+" pontos percentuais menos).":"O "+label.toLowerCase()+" ficou menos repetível de volta a volta (variou "+Math.abs(delta).toFixed(1)+" pontos percentuais mais).";
+}
+
+function PaceInputs({value,reference,referenceLabel,paceConsistency}:{value:InputProfile;reference:InputProfile;referenceLabel:string;paceConsistency:string|null}){
  if(!value.laps)return <section style={{marginTop:12,padding:14,border:"1px solid var(--border)",background:"var(--surface)"}}><strong>Ritmo e inputs (Garage61)</strong><p style={{margin:"5px 0 0",color:"var(--muted)",fontSize:13}}>{value.note}</p></section>;
  const deltaStd=value.lapStdDevSeconds!==null&&reference.lapStdDevSeconds!==null?value.lapStdDevSeconds-reference.lapStdDevSeconds:null,deltaGap=value.averageGapToBestSeconds!==null&&reference.averageGapToBestSeconds!==null?value.averageGapToBestSeconds-reference.averageGapToBestSeconds:null;
+ const repeatability=[["Acelerador",value.throttleRepeatabilityPct,reference.throttleRepeatabilityPct],["Freio",value.brakeRepeatabilityPct,reference.brakeRepeatabilityPct],["Volante",value.steeringRepeatabilityPct,reference.steeringRepeatabilityPct]] as const;
  const correlations=[["Acelerador",value.throttleLapCorrelation,reference.throttleLapCorrelation],["Freio",value.brakeLapCorrelation,reference.brakeLapCorrelation],["Volante",value.steeringLapCorrelation,reference.steeringLapCorrelation]] as const;
- const smallSample=value.laps<15;
+ const enoughForCorrelation=value.laps>=15;
  return <section style={{marginTop:12,padding:14,border:"1px solid var(--brand)",background:"var(--brand-pale)"}}>
   <strong>Consistência de ritmo</strong>
-  <p style={{margin:"5px 0 10px",fontSize:13,color:"var(--muted)"}}><b>Pergunta:</b> seu ritmo ficou mais perto da sua própria melhor volta, e mais repetível de volta a volta? Usa {value.laps} voltas de corrida atuais ({value.coverage}) e {reference.laps} da referência — só voltas limpas do mesmo carro e pista.</p>
+  <p style={{margin:"5px 0 10px",fontSize:13,color:"var(--muted)"}}>Usa {value.laps} voltas de corrida atuais ({value.coverage}) e {reference.laps} da referência — só voltas limpas do mesmo carro e pista.</p>
   <div className="engineer-responsive-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,250px),1fr))",gap:8}}>
-   <div style={{padding:10,background:"var(--surface)"}}><small style={{display:"block",color:"var(--soft)"}}>Distância média até sua melhor volta na mesma combinação</small><strong>Atual: {seconds(value.averageGapToBestSeconds)}</strong><small style={{display:"block",color:"var(--soft)"}}>{referenceLabel}: {seconds(reference.averageGapToBestSeconds)}</small><small style={{display:"block",color:deltaGap===null?"var(--soft)":deltaGap<=0?"var(--green)":"var(--red)"}}>{deltaGap===null?"sem referência comparável":(deltaGap<=0?"ficou mais perto da melhor volta em ":"ficou mais distante da melhor volta em ")+Math.abs(deltaGap).toFixed(3)+" s"}</small></div>
-   <div style={{padding:10,background:"var(--surface)"}}><small style={{display:"block",color:"var(--soft)"}}>Variação do ritmo entre voltas (desvio-padrão)</small><strong>Atual: {seconds(value.lapStdDevSeconds)}</strong><small style={{display:"block",color:"var(--soft)"}}>{referenceLabel}: {seconds(reference.lapStdDevSeconds)}</small><small style={{display:"block",color:deltaStd===null?"var(--soft)":deltaStd<=0?"var(--green)":"var(--red)"}}>{deltaStd===null?"sem referência comparável":(deltaStd<=0?"execução mais previsível em ":"execução menos previsível em ")+Math.abs(deltaStd).toFixed(3)+" s"}</small></div>
+   <div style={{padding:10,background:"var(--surface)"}}>
+    <small style={{display:"block",color:"var(--soft)"}}>Distância até a melhor volta <b>(ritmo absoluto)</b></small>
+    <small style={{display:"block",color:"var(--muted)",margin:"2px 0 6px"}}>O quão perto, em média, você chegou do seu próprio teto nessa combinação.</small>
+    <strong>Atual: {seconds(value.averageGapToBestSeconds)}</strong><small style={{display:"block",color:"var(--soft)"}}>{referenceLabel}: {seconds(reference.averageGapToBestSeconds)}</small><small style={{display:"block",color:deltaGap===null?"var(--soft)":deltaGap<=0?"var(--green)":"var(--red)"}}>{deltaGap===null?"sem referência comparável":(deltaGap<=0?"ficou mais perto da melhor volta em ":"ficou mais distante da melhor volta em ")+Math.abs(deltaGap).toFixed(3)+" s"}</small>
+   </div>
+   <div style={{padding:10,background:"var(--surface)"}}>
+    <small style={{display:"block",color:"var(--soft)"}}>Variação entre voltas <b>(repetibilidade)</b></small>
+    <small style={{display:"block",color:"var(--muted)",margin:"2px 0 6px"}}>O quão parecidas as voltas são entre si — rápidas ou lentas, tanto faz.</small>
+    <strong>Atual: {seconds(value.lapStdDevSeconds)}</strong><small style={{display:"block",color:"var(--soft)"}}>{referenceLabel}: {seconds(reference.lapStdDevSeconds)}</small><small style={{display:"block",color:deltaStd===null?"var(--soft)":deltaStd<=0?"var(--green)":"var(--red)"}}>{deltaStd===null?"sem referência comparável":(deltaStd<=0?"execução mais previsível em ":"execução menos previsível em ")+Math.abs(deltaStd).toFixed(3)+" s"}</small>
+   </div>
   </div>
+  {paceConsistency&&<p style={{margin:"10px 0 0",padding:10,background:"var(--surface)",fontSize:13}}><strong>Leitura:</strong> {paceConsistency}</p>}
   <hr style={{border:"none",borderTop:"1px solid var(--border)",margin:"16px 0"}} />
-  <strong>Relação com os inputs</strong>
-  <p style={{margin:"5px 0 10px",fontSize:13,color:"var(--muted)"}}><b>Pergunta:</b> quando o acelerador, o freio ou o volante variaram mais de uma volta pra outra, isso acompanhou voltas mais lentas ou mais rápidas? Coeficiente de −1 a +1; perto de 0 = sem relação. Compara sempre dentro do mesmo carro e pista.</p>
-  {smallSample&&<p style={{margin:"0 0 10px",padding:"8px 10px",background:"var(--surface)",fontSize:12,color:"var(--muted)"}}>Amostra pequena ({value.laps} voltas) — trate os coeficientes abaixo como sinal fraco, não como conclusão.</p>}
+  <strong>Repetibilidade dos inputs</strong>
+  <p style={{margin:"5px 0 10px",fontSize:13,color:"var(--muted)"}}>O quanto o acelerador, o freio e o volante variaram de uma volta pra outra na mesma combinação — independe do tamanho da amostra, então é a leitura mais confiável que temos sobre como você pilotou.</p>
   <div style={{display:"grid",gap:8}}>
    <div className="engineer-input-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,.6fr) repeat(2,minmax(0,.5fr)) minmax(0,1.4fr)",gap:8,padding:10,background:"var(--surface-muted)"}}><b>Input</b><b>Atual</b><b>{referenceLabel}</b><b>Leitura</b></div>
-   {correlations.map(([label,current,prior])=><div key={label} className="engineer-input-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,.6fr) repeat(2,minmax(0,.5fr)) minmax(0,1.4fr)",gap:8,padding:10,background:"var(--surface)"}}><b>{label}</b><b>{current===null?"—":current.toFixed(2)}</b><b>{prior===null?"—":prior.toFixed(2)}</b><small style={{color:"var(--muted)"}}>{correlationMeaning(label,current)}</small></div>)}
+   {repeatability.map(([label,current,prior])=><div key={label} className="engineer-input-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,.6fr) repeat(2,minmax(0,.5fr)) minmax(0,1.4fr)",gap:8,padding:10,background:"var(--surface)"}}><b>{label}</b><b>{current===null?"—":current.toFixed(1)+"%"}</b><b>{prior===null?"—":prior.toFixed(1)+"%"}</b><small style={{color:"var(--muted)"}}>{repeatabilityRead(label,current,prior)}</small></div>)}
   </div>
+  {enoughForCorrelation?<>
+   <hr style={{border:"none",borderTop:"1px solid var(--border)",margin:"16px 0"}} />
+   <strong>Correlação com o ritmo <small style={{color:"var(--soft)",fontWeight:400}}>(sinal exploratório)</small></strong>
+   <p style={{margin:"5px 0 10px",fontSize:13,color:"var(--muted)"}}>Quando um input variou mais numa volta específica, essa volta ficou mais lenta ou mais rápida? Coeficiente de −1 a +1; perto de 0 = sem relação. Ainda é amostra pequena pros padrões de estatística formal — trate como pista, não como prova.</p>
+   <div style={{display:"grid",gap:8}}>
+    <div className="engineer-input-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,.6fr) repeat(2,minmax(0,.5fr)) minmax(0,1.4fr)",gap:8,padding:10,background:"var(--surface-muted)"}}><b>Input</b><b>Atual</b><b>{referenceLabel}</b><b>Leitura</b></div>
+    {correlations.map(([label,current,prior])=><div key={label} className="engineer-input-grid" style={{display:"grid",gridTemplateColumns:"minmax(0,.6fr) repeat(2,minmax(0,.5fr)) minmax(0,1.4fr)",gap:8,padding:10,background:"var(--surface)"}}><b>{label}</b><b>{current===null?"—":current.toFixed(2)}</b><b>{prior===null?"—":prior.toFixed(2)}</b><small style={{color:"var(--muted)"}}>{correlationMeaning(label,current)}</small></div>)}
+   </div>
+  </>:<p style={{margin:"16px 0 0",padding:10,background:"var(--surface)",fontSize:12,color:"var(--muted)"}}>Correlação com o ritmo por input exige mais voltas pra ser confiável (temos {value.laps}, precisamos de 15+) — mostrando só repetibilidade por enquanto.</p>}
  </section>
 }
 
@@ -177,7 +211,8 @@ export default function DmaicReportModal(){
 // forma) -- v3 aqui invalida qualquer entrada v2 sem precisar limpar localStorage manualmente.
 // 09/09/2026: novo contrato do Section (paceVsResult, incidentSummary) -- v4 pela mesma regra do
 // commit anterior (CLAUDE.md: payload cacheado versionado, bump em mudança de forma).
-const cacheKey="iracing-debrief-v4-"+scope+"-"+activeTab;setError(null);setSlow(false);try{const cached=window.localStorage.getItem(cacheKey);setReport(cached?JSON.parse(cached) as Report:null)}catch{setReport(null)}const slowTimer=window.setTimeout(()=>!dead&&setSlow(true),6000);fetch("/api/dashboard/report?scope="+scope+"&segment="+activeTab,{cache:retry?"no-store":"default"}).then(async response=>{const raw=await response.text();let data:unknown;try{data=JSON.parse(raw)}catch{throw new Error("O servidor não conseguiu concluir a análise desta vez.")}if(!response.ok){const message=data&&typeof data==="object"&&"message" in data&&typeof data.message==="string"?data.message:"Não foi possível montar o debrief.";throw new Error(message)}return data as Report}).then(data=>{if(dead)return;setReport(data);setSlow(false);try{window.localStorage.setItem(cacheKey,JSON.stringify(data))}catch{}}).catch(()=>{if(dead)return;setError(report?"A atualização falhou; exibindo a última análise disponível.":"A análise demorou mais que o esperado e não foi concluída.");setSlow(false)}).finally(()=>window.clearTimeout(slowTimer));return()=>{dead=true;window.clearTimeout(slowTimer)}},[scope,retry,activeTab]);
+// 09/09/2026: novo campo paceConsistency no Section -- v5 pela mesma regra dos bumps anteriores.
+const cacheKey="iracing-debrief-v5-"+scope+"-"+activeTab;setError(null);setSlow(false);try{const cached=window.localStorage.getItem(cacheKey);setReport(cached?JSON.parse(cached) as Report:null)}catch{setReport(null)}const slowTimer=window.setTimeout(()=>!dead&&setSlow(true),6000);fetch("/api/dashboard/report?scope="+scope+"&segment="+activeTab,{cache:retry?"no-store":"default"}).then(async response=>{const raw=await response.text();let data:unknown;try{data=JSON.parse(raw)}catch{throw new Error("O servidor não conseguiu concluir a análise desta vez.")}if(!response.ok){const message=data&&typeof data==="object"&&"message" in data&&typeof data.message==="string"?data.message:"Não foi possível montar o debrief.";throw new Error(message)}return data as Report}).then(data=>{if(dead)return;setReport(data);setSlow(false);try{window.localStorage.setItem(cacheKey,JSON.stringify(data))}catch{}}).catch(()=>{if(dead)return;setError(report?"A atualização falhou; exibindo a última análise disponível.":"A análise demorou mais que o esperado e não foi concluída.");setSlow(false)}).finally(()=>window.clearTimeout(slowTimer));return()=>{dead=true;window.clearTimeout(slowTimer)}},[scope,retry,activeTab]);
  if(!scope)return <div className="dmaic-report-actions"><button type="button" className="quick-open-button" onClick={()=>{setWeekTab("formula");setScope("week")}}>Debrief da semana</button><button type="button" className="primary-button" onClick={()=>{setSeasonTab("formula");setScope("season")}}>Debrief da season</button></div>;
  const title=scope==="week"?"Debrief da semana":"Debrief da season",visibleSections=report?.sections;
  return <div className="dmaic-modal-backdrop" role="presentation" onMouseDown={()=>setScope(null)}><section className="dmaic-modal engineer-modal" role="dialog" aria-modal="true" aria-label={title} onMouseDown={event=>event.stopPropagation()} style={{width:"min(1120px,100%)",maxWidth:"100%",minWidth:0}}><header className="dmaic-modal-head"><div><span className="section-kicker">RACE ENGINEER</span><h2>{title}</h2><p>{report?(scope==="season"?report.seasonName+" vs. "+report.previousSeasonName:report.seasonName+" · referência: demais weeks"):"Cruzando resultados e telemetria..."}</p></div><button type="button" className="modal-close" onClick={()=>setScope(null)}>Fechar</button></header>{error&&<div className="dmaic-error" role="alert"><span>{error}</span><button type="button" className="modal-close" onClick={()=>setRetry(value=>value+1)}>Tentar novamente</button></div>}{!report&&!error&&<div className="state-box">{slow?"Ainda estamos cruzando as telemetrias das duas seasons. A primeira análise pode levar alguns segundos.":"Analisando severidade, abandonos, tempo em pista e consistência..."}</div>}<div role="tablist" aria-label={"Categoria do debrief "+(scope==="week"?"semanal":"da season")} style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:18}}>{(["formula","gt3","imsa"] as const).map(segment=>{const section=report?.sections.find(item=>item.segment===segment);return <button key={segment} type="button" role="tab" aria-selected={activeTab===segment} className={activeTab===segment?"primary-button":"quick-open-button"} onClick={()=>scope==="week"?setWeekTab(segment):setSeasonTab(segment)}>{segment==="formula"?"Super Formula":segment==="gt3"?"GT3":"IMSA"}{scope==="week"&&activeTab===segment&&section?.week?" · W"+section.week:""}</button>})}</div>{visibleSections?.map(section=><article key={section.segment} className="engineer-report-section" style={{marginTop:18,paddingTop:18,borderTop:"1px solid var(--border)"}}>
@@ -207,7 +242,7 @@ const cacheKey="iracing-debrief-v4-"+scope+"-"+activeTab;setError(null);setSlow(
    <h4 style={{margin:"18px 0 8px"}}>Leitura do engenheiro</h4>
    <div style={{display:"grid",gap:8}}>{section.findings.map((finding,index)=><div key={index} style={{padding:13,border:"1px solid var(--border)",borderLeft:"3px solid "+(finding.kind==="finding"?"var(--brand)":finding.kind==="watch"?"var(--amber)":"var(--soft)")}}><strong style={{display:"block"}}>{finding.title}</strong><p style={{margin:"5px 0 0",color:"var(--muted)",lineHeight:1.5}}>{finding.text}</p></div>)}</div>
    {!section.week&&<Retirements items={section.retirements} comparison={section.retirementComparison} referenceLabel="Season anterior"/>}
-   <PaceInputs value={section.telemetryInputs} reference={section.telemetryInputReference} referenceLabel={section.week?"Média das demais weeks":"Season anterior"}/>
+   <PaceInputs value={section.telemetryInputs} reference={section.telemetryInputReference} referenceLabel={section.week?"Média das demais weeks":"Season anterior"} paceConsistency={section.paceConsistency}/>
    <CornerBraking items={section.cornerBraking}/>
    <div className="engineer-responsive-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,320px),1fr))",gap:10,marginTop:12}}><ImpactRaces items={section.impactRaces}/><WeekTrend items={section.weeklyImpact}/></div>
    <div className="engineer-responsive-grid" style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(min(100%,280px),1fr))",gap:10,marginTop:10}}><Contexts title="Contextos que concentraram perdas" items={section.topLosses} loss/><Contexts title="Contextos que sustentaram ganhos" items={section.topGains}/></div>
