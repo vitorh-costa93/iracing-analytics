@@ -5,6 +5,7 @@ import { compareSeasons } from "@/lib/season-comparison";
 import { retirementEvents } from "@/lib/race-retirement-events";
 import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
 import { compareCornerBraking } from "@/lib/corner-braking-comparison";
+import { paceVsResultInsight } from "@/lib/pace-vs-result-insight";
 
 export const dynamic="force-dynamic";
 export const maxDuration=300;
@@ -51,7 +52,14 @@ export async function GET(request:NextRequest){
    // (lib/telemetry-corner-brakes.ts), curva a curva atual x referência (lib/corner-braking-
    // comparison.ts). Só as curvas com diferença real de posição de frenagem entram aqui.
    const cornerBraking=compareCornerBraking(inputs.cornerBraking,inputReference.cornerBraking);
-   return{...base,comparison:scope==="week"?"Referência: média das outras weeks desta mesma season = "+(weekAverage===null?"—":String(weekAverage>0?"+":"")+weekAverage.toFixed(1)+" de iRating por corrida")+" em "+String(baseline.length)+" corridas.":base.comparison,retirements:survival.events,retirementReference:survivalReference.events,retirementComparison:{currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Number((survival.events.length/selected.length*100).toFixed(1)):null,referenceRate:baseline.length?Number((survivalReference.events.length/baseline.length*100).toFixed(1)):null},severeCompletion,telemetryInputs:inputs,telemetryInputReference:inputReference,cornerBraking,seasonComparison:scope==="season"?compareSeasons(now,before):null};
+   // 09/09/2026: "apesar de ter piorado meu iRating, eu fui mais rápido... só que cometi erros de
+   // tomada de decisão" -- cruza resultado (aqui) com ritmo/consistência (telemetryInputProfile) e
+   // incidentes por corrida (base.incidentSummary), os três hoje vivendo em painéis separados. Só
+   // dispara quando ritmo e resultado discordam de verdade.
+   const net=selected.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0),previousNet=baseline.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0);
+   const gapDeltaSeconds=inputs.averageGapToBestSeconds!==null&&inputReference.averageGapToBestSeconds!==null?inputs.averageGapToBestSeconds-inputReference.averageGapToBestSeconds:null,stdDeltaSeconds=inputs.lapStdDevSeconds!==null&&inputReference.lapStdDevSeconds!==null?inputs.lapStdDevSeconds-inputReference.lapStdDevSeconds:null;
+   const paceVsResult=paceVsResultInsight({netWorse:net<previousNet,netBetter:net>previousNet,gapDeltaSeconds,stdDeltaSeconds,incidentsNow:base.incidentSummary.current.average,incidentsBefore:base.incidentSummary.reference.average});
+   return{...base,paceVsResult,comparison:scope==="week"?"Referência: média das outras weeks desta mesma season = "+(weekAverage===null?"—":String(weekAverage>0?"+":"")+weekAverage.toFixed(1)+" de iRating por corrida")+" em "+String(baseline.length)+" corridas.":base.comparison,retirements:survival.events,retirementReference:survivalReference.events,retirementComparison:{currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Number((survival.events.length/selected.length*100).toFixed(1)):null,referenceRate:baseline.length?Number((survivalReference.events.length/baseline.length*100).toFixed(1)):null},severeCompletion,telemetryInputs:inputs,telemetryInputReference:inputReference,cornerBraking,seasonComparison:scope==="season"?compareSeasons(now,before):null};
   }));
   const payload={status:"ok",scope,seasonName:current.season_name,previousSeasonName:previous.season_name,generatedAt:new Date().toISOString(),methodology:"Season compara a anterior; week compara com as demais weeks da season. O diagnóstico prioriza perdas severas, sequências, retiradas, tempo em pista e relação entre consistência dos inputs e tempo de volta.",sections};
   reportCache.set(cacheKey,{expiresAt:Date.now()+REPORT_CACHE_TTL_MS,payload});
