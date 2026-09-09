@@ -54,6 +54,25 @@ const correlate=(pairs:{lap:number;input:number}[])=>round(correlation(pairs.map
 const isRace=(payload:Payload)=>payload.session==="Race"||payload.sessionType===2||payload.sessionType===3||payload.session_type===2||payload.session_type===3;
 const PAGE=500;
 const RACE_MATCH_WINDOW_MS=6*3600000;
+// 09/09/2026: "não pode esquecer do overtake/P2P em Super Formula, essas voltas vão ser outliers" --
+// mesmo critério já usado em app/api/telemetry/debrief/route.ts's findOutlierLaps (mediana + MAD,
+// zThreshold 2.5), porque é o mesmo problema de fundo: o CSV do Garage61 não tem canal de P2P/
+// overtake (conferido nos headers reais), então uma volta impulsionada só aparece como
+// "anormalmente rápida" -- sem isso, ela vira a "melhor volta" de referência e faz TODAS as outras
+// voltas parecerem mais distantes do que realmente estão, ou entra como ponto de frenagem/consistência
+// fora da curva real do carro. Sem essa rejeição, o cap de amostra novo (até 30 voltas) só aumentava
+// a chance de uma volta de P2P entrar no cálculo sem ninguém notar.
+function median(values:number[]){const sorted=[...values].sort((a,b)=>a-b),mid=Math.floor(sorted.length/2);return sorted.length%2?sorted[mid]:(sorted[mid-1]+sorted[mid])/2}
+function rejectFastOutliers<T extends{session:string;lapTime:number}>(items:T[],zThreshold=2.5):T[]{
+ const bySession=new Map<string,T[]>();for(const item of items)bySession.set(item.session,[...(bySession.get(item.session)??[]),item]);
+ const kept:T[]=[];
+ for(const group of bySession.values()){
+  if(group.length<5){kept.push(...group);continue}
+  const times=group.map(g=>g.lapTime),med=median(times),mad=median(times.map(v=>Math.abs(v-med)))||0.001,scaled=mad*1.4826;
+  kept.push(...group.filter(g=>(g.lapTime-med)/scaled>=-zThreshold));
+ }
+ return kept;
+}
 
 export async function telemetryInputProfile(driverId:string,category:Category,races:RaceInput[],seasonName:string,week:number|null,preferredContexts?:Set<string>){
  const names=new Set(races.map(r=>norm(r.car_name)));if(!names.size)return empty("Sem corridas no recorte.");
@@ -105,7 +124,8 @@ export async function telemetryInputProfile(driverId:string,category:Category,ra
   return{lapTime:lap.lap_time!,session:String(lap.car_id)+"|"+String(lap.track_id),throttleSmoothness:features.throttle_smoothness,brakeSmoothness:features.brake_smoothness,steeringSmoothness:features.steering_smoothness,cornerBrakes:corners};
  };
  const rawSamples:Array<Omit<LapSample,"gap">>=[];for(let offset=0;offset<candidates.length;offset+=12){const batch=await Promise.all(candidates.slice(offset,offset+12).map(decode));rawSamples.push(...batch.filter((sample):sample is Omit<LapSample,"gap">=>sample!==null))}
- const counts=new Map<string,number>();for(const sample of rawSamples)counts.set(sample.session,(counts.get(sample.session)??0)+1);const comparableRaw=rawSamples.filter(sample=>(counts.get(sample.session)??0)>=2);if(!comparableRaw.length)return empty(eligible.length===0?"Nenhum CSV limpo de corrida foi encontrado para as "+String(races.length)+" corridas deste recorte. O backfill precisa carregar a telemetria dessas corridas.":"Foram encontradas "+String(eligible.length)+" voltas limpas de corrida, mas ainda não há duas do mesmo carro e pista para calcular consistência.");
+ const withoutFastOutliers=rejectFastOutliers(rawSamples);
+ const counts=new Map<string,number>();for(const sample of withoutFastOutliers)counts.set(sample.session,(counts.get(sample.session)??0)+1);const comparableRaw=withoutFastOutliers.filter(sample=>(counts.get(sample.session)??0)>=2);if(!comparableRaw.length)return empty(eligible.length===0?"Nenhum CSV limpo de corrida foi encontrado para as "+String(races.length)+" corridas deste recorte. O backfill precisa carregar a telemetria dessas corridas.":"Foram encontradas "+String(eligible.length)+" voltas limpas de corrida, mas ainda não há duas do mesmo carro e pista para calcular consistência.");
  const bestBySession=new Map<string,number>();for(const sample of comparableRaw)bestBySession.set(sample.session,Math.min(bestBySession.get(sample.session)??Infinity,sample.lapTime));
  const samples:LapSample[]=comparableRaw.map(sample=>({...sample,gap:sample.lapTime-(bestBySession.get(sample.session)??sample.lapTime)})),gaps=samples.map(s=>s.gap),lapStd=sd(gaps),gapMean=avg(gaps),contexts=bestBySession.size,onlyOne=contexts===1,lapTimes=samples.map(s=>s.lapTime),throttle=metric(samples,"throttleSmoothness"),brake=metric(samples,"brakeSmoothness"),steering=metric(samples,"steeringSmoothness");
  const bySession=new Map<string,LapSample[]>();for(const sample of samples)bySession.set(sample.session,[...(bySession.get(sample.session)??[]),sample]);
