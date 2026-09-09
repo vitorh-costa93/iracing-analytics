@@ -21,8 +21,67 @@ type LapRow = {
   off_track: boolean | null; pit_lane: boolean | null; pit_in: boolean | null; pit_out: boolean | null;
   incomplete: boolean | null; missing: boolean | null; telemetry_path: string | null;
   session_id?: string | null;
-  sessions?: { season_id: string | null; season_name: string | null; started_at: string | null } | null;
+  sessions?: {
+    season_id: string | null; season_name: string | null; started_at: string | null;
+    track_temp: number | null; track_wetness: number | null; track_usage: number | null;
+    air_pressure: number | null; relative_humidity: number | null; fog_level: number | null;
+    wind_direction: number | null; wind_velocity: number | null;
+  } | null;
 };
+
+/** "só quero garantir que as condições foram as mesmas" (09/09/2026) -- Garage61 reports weather per
+ * SESSION, not per lap (confirmed live: sessions.track_temp/track_wetness/etc, synced already by
+ * app/api/sync/laps/route.ts; nothing finer-grained exists in this schema), so a car's own fastest
+ * lap's session is what represents the conditions it was tested under here. Raw values come back in
+ * SI-ish units that don't read naturally (air_pressure in Pa, relative_humidity as a 0-1 fraction,
+ * wind_direction in radians) -- converted here to the units a driver actually reads (hPa, %, km/h,
+ * degrees), same idea as formatLapTime already converting raw seconds into mm:ss for display. */
+type LapConditions = {
+  trackTempC: number | null; trackWetness: number | null; trackUsagePct: number | null;
+  airPressureHpa: number | null; relativeHumidityPct: number | null; fogLevelPct: number | null;
+  windDirectionDeg: number | null; windSpeedKmh: number | null;
+};
+function extractConditions(session: LapRow["sessions"]): LapConditions | null {
+  if (!session) return null;
+  const round = (value: number | null, decimals = 1) => (value === null ? null : Number(value.toFixed(decimals)));
+  return {
+    trackTempC: round(session.track_temp),
+    trackWetness: session.track_wetness,
+    trackUsagePct: session.track_usage,
+    airPressureHpa: round(session.air_pressure !== null ? session.air_pressure / 100 : null),
+    relativeHumidityPct: round(session.relative_humidity !== null ? session.relative_humidity * 100 : null, 0),
+    fogLevelPct: round(session.fog_level !== null ? session.fog_level * 100 : null, 0),
+    windDirectionDeg: round(session.wind_direction !== null ? (session.wind_direction * 180) / Math.PI : null, 0),
+    windSpeedKmh: round(session.wind_velocity !== null ? session.wind_velocity * 3.6 : null),
+  };
+}
+
+// "garantir que as condições foram as mesmas" is exactly a cross-car divergence check, same
+// philosophy as buildCarComparisonNarrative's own cross-signal comparisons -- only worth flagging
+// when the spread across cars' fastest-lap conditions is bigger than normal within-session drift
+// (Silverstone sample data above drifted ~0.15°C and ~2% humidity across 15 minutes of the SAME
+// session; a real condition change -- track drying/cooling between test runs -- is much larger).
+const CONDITIONS_TEMP_DELTA_C = 1.5;
+const CONDITIONS_HUMIDITY_DELTA_PCT = 8;
+function conditionsDivergence(cars: { carName: string; conditions: LapConditions | null }[]): string | null {
+  const withConditions = cars.filter((car) => car.conditions);
+  if (withConditions.length < 2) return null;
+  const wetnessValues = new Set(withConditions.map((car) => (car.conditions!.trackWetness ?? 0) > 0));
+  if (wetnessValues.size > 1) {
+    return "As voltas mais rápidas dos carros não foram feitas nas mesmas condições: pelo menos um carro rodou com pista molhada e outro com pista seca -- a comparação de ritmo entre eles não é válida.";
+  }
+  const temps = withConditions.map((car) => car.conditions!.trackTempC).filter((value): value is number => value !== null);
+  const humidities = withConditions.map((car) => car.conditions!.relativeHumidityPct).filter((value): value is number => value !== null);
+  const tempSpread = temps.length >= 2 ? Math.max(...temps) - Math.min(...temps) : 0;
+  const humiditySpread = humidities.length >= 2 ? Math.max(...humidities) - Math.min(...humidities) : 0;
+  if (tempSpread > CONDITIONS_TEMP_DELTA_C || humiditySpread > CONDITIONS_HUMIDITY_DELTA_PCT) {
+    const parts: string[] = [];
+    if (tempSpread > CONDITIONS_TEMP_DELTA_C) parts.push(`temperatura da pista variou ${tempSpread.toFixed(1)}°C entre os carros`);
+    if (humiditySpread > CONDITIONS_HUMIDITY_DELTA_PCT) parts.push(`umidade relativa variou ${humiditySpread.toFixed(0)}% entre os carros`);
+    return `Condições não foram idênticas entre os testes: ${parts.join(" e ")} -- parte da diferença de ritmo pode vir daí, não só do carro.`;
+  }
+  return null;
+}
 
 type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon" | "speed" | "gear";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
@@ -791,7 +850,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   for (let offset = 0; ; offset += LAPS_PAGE_SIZE) {
     const { data, error } = await supabaseAdmin
       .from("laps")
-      .select("id,car_id,track_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path,session_id,sessions(season_id,season_name,started_at)")
+      .select("id,car_id,track_id,lap_time,clean,off_track,pit_lane,pit_in,pit_out,incomplete,missing,telemetry_path,session_id,sessions(season_id,season_name,started_at,track_temp,track_wetness,track_usage,air_pressure,relative_humidity,fog_level,wind_direction,wind_velocity)")
       .eq("driver_id", driverId).eq("track_id", trackId)
       .range(offset, offset + LAPS_PAGE_SIZE - 1);
     if (error) throw error;
@@ -925,12 +984,13 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     const inputConsistency = inputConsistencyScore(traces);
     const trackUsage = boundary && traces.length ? trackWidthUsage(traces[0], boundary) : null;
     const trackUsageSegments = boundary && traces.length ? trackWidthUsageBySegment(traces[0], boundary) : null;
+    const conditions = extractConditions(chosen.lap.sessions);
 
     return {
       carId, carName: carNames.get(carId) ?? `Carro ${carId}`,
       lapsAnalyzed: timePool.length,
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
-      lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments,
+      lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments, conditions,
       fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
       sampleTraces: traces, // same -- kept for per-corner consistency below, stripped before response
     };
@@ -1031,6 +1091,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     seasons, selectedSeasonId,
     cars, trackOutline, sectors, mapSegments,
     narrative: buildCarComparisonNarrative(cars, sectors),
+    conditionsNote: conditionsDivergence(cars),
   };
 }
 

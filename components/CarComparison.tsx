@@ -17,11 +17,16 @@ type ChannelConsistency = { channel: string; name: string; score: number; label:
 type InputConsistency = { overall: { score: number; label: string }; channels: ChannelConsistency[] } | null;
 type LapTimeConsistency = { stddev: number; label: string } | null;
 type TrackUsage = { avgPct: number; maxPct: number } | null;
+type LapConditions = {
+  trackTempC: number | null; trackWetness: number | null; trackUsagePct: number | null;
+  airPressureHpa: number | null; relativeHumidityPct: number | null; fogLevelPct: number | null;
+  windDirectionDeg: number | null; windSpeedKmh: number | null;
+} | null;
 type CarStat = {
   carId: number; carName: string; color: string; lapsAnalyzed: number;
   bestLapSeconds: number; bestLapFormatted: string; deltaSeconds: number;
   lapTimeConsistency: LapTimeConsistency; inputConsistency: InputConsistency; trackUsage: TrackUsage;
-  trackUsageSegments: (number | null)[] | null;
+  trackUsageSegments: (number | null)[] | null; conditions: LapConditions;
 };
 type CurvePoint = { offset: number; value: number };
 type SectorTime = { carId: number; carName: string; seconds: number; deltaSeconds: number };
@@ -39,6 +44,7 @@ type TrackOutlinePoint = { distance: number; lat: number; lon: number };
 type ComparisonPayload = {
   status: string; track: { id: number; name: string; variant: string | null } | null;
   cars: CarStat[]; trackOutline?: TrackOutlinePoint[] | null; sectors?: Sector[]; mapSegments?: MapSegment[]; narrative?: string | null; message?: string;
+  conditionsNote?: string | null;
 };
 
 /** Used only for the best-lap ranking now (29/08/2026: "gráfico de barras horizontais, só manter
@@ -296,6 +302,39 @@ function CornerDeepDive({ sectors, cars, carAId, carBId, onOpenSector }: { secto
   );
 }
 
+/** "só quero garantir que as condições foram as mesmas" (09/09/2026) -- Garage61 weather is per
+ * session (see route.ts's own extractConditions comment), taken here from each car's fastest lap.
+ * Renders as one compact line per car so the driver can eyeball a mismatch at a glance, plus the
+ * server's own conditionsNote when the spread between cars is large enough to actually matter for
+ * the pace comparison above (not every few-tenths-of-a-degree drift within one session). */
+function formatConditions(conditions: LapConditions): string {
+  if (!conditions) return "Condições da sessão não disponíveis para essa volta.";
+  const parts: string[] = [];
+  if (conditions.trackTempC !== null) parts.push(`pista ${conditions.trackTempC.toFixed(1)}°C`);
+  parts.push(conditions.trackWetness !== null && conditions.trackWetness > 0 ? `molhada (nível ${conditions.trackWetness})` : "seca");
+  if (conditions.relativeHumidityPct !== null) parts.push(`umidade ${conditions.relativeHumidityPct.toFixed(0)}%`);
+  if (conditions.windSpeedKmh !== null) parts.push(`vento ${conditions.windSpeedKmh.toFixed(0)}km/h`);
+  return parts.join(" • ");
+}
+
+function ConditionsPanel({ cars, note }: { cars: CarStat[]; note?: string | null }) {
+  return (
+    <div className="race-debrief-chart-block">
+      <span className="section-kicker">CONDIÇÕES DA PISTA</span>
+      <h4>Sob que condições cada carro foi testado</h4>
+      <div className="car-compare-conditions">
+        {cars.map((car) => (
+          <div key={car.carId} className="car-compare-conditions-row">
+            <span className="car-compare-row-name" style={{ color: car.color }}><CarBrandIcon name={car.carName} />{car.carName}</span>
+            <span>{formatConditions(car.conditions)}</span>
+          </div>
+        ))}
+      </div>
+      {note && <p className="comparison-note comparison-note-warning">{note}</p>}
+    </div>
+  );
+}
+
 export default function CarComparison() {
   // Only GT3 and GTP are offered (29/08/2026: "Super Fórmula e LMP2 não se aplicam aqui porque não
   // tem diferença de carro") -- this driver only ever tests multiple distinct cars within these two.
@@ -441,6 +480,8 @@ export default function CarComparison() {
                   </div>
                 )}
               </div>
+
+              <ConditionsPanel cars={data.cars} note={data.conditionsNote} />
 
               {!!data.sectors?.length && resolvedCarA !== null && resolvedCarB !== null && (
                 <div className="race-debrief-chart-block">
