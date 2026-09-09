@@ -6,6 +6,7 @@ import { retirementEvents } from "@/lib/race-retirement-events";
 import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
 import { compareCornerBraking } from "@/lib/corner-braking-comparison";
 import { paceVsResultInsight } from "@/lib/pace-vs-result-insight";
+import { buildRecommendation } from "@/lib/recommendation";
 
 export const dynamic="force-dynamic";
 export const maxDuration=300;
@@ -64,7 +65,29 @@ export async function GET(request:NextRequest){
    const net=scope==="week"?(selected.length?rawNet/selected.length:0):rawNet,previousNet=scope==="week"?(baseline.length?rawPreviousNet/baseline.length:0):rawPreviousNet;
    const gapDeltaSeconds=inputs.averageGapToBestSeconds!==null&&inputReference.averageGapToBestSeconds!==null?inputs.averageGapToBestSeconds-inputReference.averageGapToBestSeconds:null,stdDeltaSeconds=inputs.lapStdDevSeconds!==null&&inputReference.lapStdDevSeconds!==null?inputs.lapStdDevSeconds-inputReference.lapStdDevSeconds:null;
    const paceVsResult=paceVsResultInsight({netWorse:net<previousNet,netBetter:net>previousNet,netPhrase:netClause(net,previousNet,scope==="week"?" por corrida":""),gapDeltaSeconds,stdDeltaSeconds,incidentsNow:base.incidentSummary.current.average,incidentsBefore:base.incidentSummary.reference.average});
-   return{...base,paceVsResult,comparison:scope==="week"?"Referência: média das outras weeks desta mesma season = "+(weekAverage===null?"—":String(weekAverage>0?"+":"")+weekAverage.toFixed(1)+" de iRating por corrida")+" em "+String(baseline.length)+" corridas.":base.comparison,retirements:survival.events,retirementReference:survivalReference.events,retirementComparison:{currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Number((survival.events.length/selected.length*100).toFixed(1)):null,referenceRate:baseline.length?Number((survivalReference.events.length/baseline.length*100).toFixed(1)):null},severeCompletion,telemetryInputs:inputs,telemetryInputReference:inputReference,cornerBraking,seasonComparison:scope==="season"?compareSeasons(now,before):null};
+   // 09/09/2026: "eu ganhei iRating em GT3 e a consistência foi boa, então melhorei, deveria ter
+   // sido elogiado" -- a recomendação antiga só olhava perda severa/sequência pra decidir entre
+   // "contenção" ou "mantenha a preparação", ignorando se a season/week no geral foi boa. Uma perda
+   // isolada numa temporada claramente positiva (GT3: +247 contra -24, ritmo e consistência
+   // melhores) disparava a mesma recomendação de "pare de se inscrever" que uma temporada de
+   // perdas -- errado. buildRecommendation() cruza resultado com ritmo/consistência primeiro.
+   const MATERIAL_SECONDS=0.02;
+   const paceImproved=gapDeltaSeconds!==null&&gapDeltaSeconds<-MATERIAL_SECONDS,consistencyImproved=stdDeltaSeconds!==null&&stdDeltaSeconds<-MATERIAL_SECONDS;
+   const incidentsDelta=base.incidentSummary.current.average!==null&&base.incidentSummary.reference.average!==null?base.incidentSummary.current.average-base.incidentSummary.reference.average:null,incidentsWorse=incidentsDelta!==null&&incidentsDelta>=1;
+   const action=buildRecommendation({netBetter:net>previousNet,netWorse:net<previousNet,paceImproved,consistencyImproved,severeCount:base.severity.count,severeThreshold:base.severity.threshold,worstRunLength:base.severity.worstRunLength,incidentsWorse});
+   // 09/09/2026: "a consistência melhorou... deveria ter sido apontado aqui no debrief da season
+   // como Super Formula" -- a tabela "Temporada atual versus temporada anterior" só comparava
+   // métricas de resultado (vitória, pódio, Δ iRating...), nunca ritmo/consistência, porque vêm de
+   // fontes de dado diferentes (race_results vs. telemetria). Só existe pra season (baseline de
+   // week é "as outras weeks", não comparável na mesma tabela).
+   let seasonComparison=scope==="season"?compareSeasons(now,before):null;
+   if(seasonComparison&&(gapDeltaSeconds!==null||stdDeltaSeconds!==null)){
+    const extra:Array<{metric:string;now:number|null;before:number|null;change:number|null;direction:"improved"|"worsened"|"stable";good:"higher"}>=[];
+    if(gapDeltaSeconds!==null)extra.push({metric:"Distância até a melhor volta",now:-inputs.averageGapToBestSeconds!,before:-inputReference.averageGapToBestSeconds!,change:-gapDeltaSeconds,direction:gapDeltaSeconds<-MATERIAL_SECONDS?"improved":gapDeltaSeconds>MATERIAL_SECONDS?"worsened":"stable",good:"higher"});
+    if(stdDeltaSeconds!==null)extra.push({metric:"Consistência (desvio-padrão)",now:-inputs.lapStdDevSeconds!,before:-inputReference.lapStdDevSeconds!,change:-stdDeltaSeconds,direction:stdDeltaSeconds<-MATERIAL_SECONDS?"improved":stdDeltaSeconds>MATERIAL_SECONDS?"worsened":"stable",good:"higher"});
+    seasonComparison={...seasonComparison,improved:[...seasonComparison.improved,...extra.filter(item=>item.direction==="improved")],worsened:[...seasonComparison.worsened,...extra.filter(item=>item.direction==="worsened")],stable:[...seasonComparison.stable,...extra.filter(item=>item.direction==="stable")]};
+   }
+   return{...base,action,paceVsResult,comparison:scope==="week"?"Referência: média das outras weeks desta mesma season = "+(weekAverage===null?"—":String(weekAverage>0?"+":"")+weekAverage.toFixed(1)+" de iRating por corrida")+" em "+String(baseline.length)+" corridas.":base.comparison,retirements:survival.events,retirementReference:survivalReference.events,retirementComparison:{currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Number((survival.events.length/selected.length*100).toFixed(1)):null,referenceRate:baseline.length?Number((survivalReference.events.length/baseline.length*100).toFixed(1)):null},severeCompletion,telemetryInputs:inputs,telemetryInputReference:inputReference,cornerBraking,seasonComparison};
   }));
   const payload={status:"ok",scope,seasonName:current.season_name,previousSeasonName:previous.season_name,generatedAt:new Date().toISOString(),methodology:"Season compara a anterior; week compara com as demais weeks da season. O diagnóstico prioriza perdas severas, sequências, retiradas, tempo em pista e relação entre consistência dos inputs e tempo de volta.",sections};
   reportCache.set(cacheKey,{expiresAt:Date.now()+REPORT_CACHE_TTL_MS,payload});

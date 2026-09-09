@@ -25,7 +25,10 @@ const color=(value:number|null)=>value===null?"var(--soft)":value<0?"var(--red)"
 
 function SeasonChanges({value}:{value:Section["seasonComparison"]}){
  if(!value)return null;
- const render=(title:string,items:Change[],tone:string)=><div><strong style={{color:tone}}>{title}</strong>{items.length?items.map(item=>{const percent=item.metric.includes("Taxa")||item.metric.includes("Corridas ganhando"),format=(v:number|null)=>percent?pct(v):n(v);return <p key={item.metric} style={{margin:"5px 0",fontSize:13}}>{item.metric}: {format(item.before)} → {format(item.now)} <span style={{color:"var(--soft)"}}>({format(item.change)})</span></p>}):<small style={{color:"var(--muted)"}}>Nenhuma mudança material.</small>}</div>;
+ // 09/09/2026: "a consistência melhorou... deveria ter sido apontado aqui" -- ritmo/consistência
+ // entram nesta tabela vindos de route.ts codificados como segundos negativos (pra reusar o mesmo
+ // critério "maior é melhor" das métricas de resultado); aqui só desfaz isso pra exibir em segundos.
+ const render=(title:string,items:Change[],tone:string)=><div><strong style={{color:tone}}>{title}</strong>{items.length?items.map(item=>{const percent=item.metric.includes("Taxa")||item.metric.includes("Corridas ganhando"),isSeconds=item.metric.includes("Distância")||item.metric.includes("Consistência"),format=(v:number|null)=>percent?pct(v):isSeconds&&v!==null?Math.abs(v).toFixed(3)+"s":n(v),formatChange=(v:number|null)=>isSeconds&&v!==null?Math.abs(v).toFixed(3)+"s":format(v);return <p key={item.metric} style={{margin:"5px 0",fontSize:13}}>{item.metric}: {format(item.before)} → {format(item.now)} <span style={{color:"var(--soft)"}}>({formatChange(item.change)})</span></p>}):<small style={{color:"var(--muted)"}}>Nenhuma mudança material.</small>}</div>;
  return <section style={{marginTop:12,padding:14,border:"1px solid var(--border)",background:"var(--surface)"}}><strong>Temporada atual versus temporada anterior</strong><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(260px,1fr))",gap:14,marginTop:10}}>{render("Melhorou",value.improved,"var(--green)")}{render("Piorou",value.worsened,"var(--red)")}</div></section>
 }
 
