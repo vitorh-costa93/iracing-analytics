@@ -8,7 +8,8 @@ const BUCKET = "telemetry";
 // already caused one real quota incident (Cached Egress, 08/09/2026) from an unrelated route that
 // had no cache at all; do not let this one become the next.
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
-const BUDGET = 900 * 1024 * 1024;
+export const TELEMETRY_STORAGE_BUDGET_BYTES = 900 * 1024 * 1024;
+const BUDGET = TELEMETRY_STORAGE_BUDGET_BYTES;
 const BATCH = 24;
 const COMPACTION_BATCH = 10;
 const PAGE = 500;

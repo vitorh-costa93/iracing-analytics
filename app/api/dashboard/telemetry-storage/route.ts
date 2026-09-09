@@ -1,6 +1,13 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { TELEMETRY_STORAGE_BUDGET_BYTES } from "@/lib/telemetry-backfill";
 export const dynamic="force-dynamic";
 type Entry={id?:string|null;name:string;metadata?:{size?:number}|null};
 async function measure(prefix=""):Promise<{bytes:number;files:number}>{let bytes=0,files=0;for(let offset=0;;offset+=1000){const {data,error}=await supabaseAdmin.storage.from("telemetry").list(prefix,{limit:1000,offset,sortBy:{column:"name",order:"asc"}});if(error)throw error;for(const entry of (data??[]) as Entry[]){if(entry.id){bytes+=Number(entry.metadata?.size??0);files++}else{const sub=await measure(prefix?`${prefix}/${entry.name}`:entry.name);bytes+=sub.bytes;files+=sub.files}}if(!data||data.length<1000)return {bytes,files}}}
-export async function GET(){try{const status=await measure();return NextResponse.json({...status,megabytes:Number((status.bytes/1024/1024).toFixed(2)),budgetMegabytes:850,remainingMegabytes:Number((850-status.bytes/1024/1024).toFixed(2))})}catch(error){return NextResponse.json({status:"error",message:error instanceof Error?error.message:String(error)},{status:500})}}
+// 09/09/2026: "limpeza de sujeiras... garantir que ficaremos dentro dos limites gratuitos" -- este
+// endpoint tinha seu próprio "850" hardcoded, diferente do BUDGET real (900MB) que
+// lib/telemetry-backfill.ts de fato usa pra decidir quando parar de baixar CSVs. O painel mostrava um
+// teto errado (mais conservador que o real, mas ainda uma fonte de verdade duplicada e divergente) --
+// agora importa a mesma constante, não redeclara o número.
+const BUDGET_MEGABYTES=TELEMETRY_STORAGE_BUDGET_BYTES/1024/1024;
+export async function GET(){try{const status=await measure();return NextResponse.json({...status,megabytes:Number((status.bytes/1024/1024).toFixed(2)),budgetMegabytes:BUDGET_MEGABYTES,remainingMegabytes:Number((BUDGET_MEGABYTES-status.bytes/1024/1024).toFixed(2))})}catch(error){return NextResponse.json({status:"error",message:error instanceof Error?error.message:String(error)},{status:500})}}
