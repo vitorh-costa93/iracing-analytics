@@ -12,12 +12,16 @@ const MATERIAL_SECONDS = 0.02;
 export function paceVsResultInsight(opts: {
   netWorse: boolean;
   netBetter: boolean;
+  // 09/09/2026: "se o saldo da semana for negativo, não foi bom" -- a frase de "melhorou/piorou"
+  // vem pronta de netClause() (lib/race-engineer-analysis.ts) em vez de ser montada aqui, pra nunca
+  // chamar uma perda menor de "saldo melhor" -- o mesmo erro de tom que a Leitura Rápida tinha.
+  netPhrase: string;
   gapDeltaSeconds: number | null;
   stdDeltaSeconds: number | null;
   incidentsNow: number | null;
   incidentsBefore: number | null;
 }): string | null {
-  const { netWorse, netBetter, gapDeltaSeconds, stdDeltaSeconds, incidentsNow, incidentsBefore } = opts;
+  const { netWorse, netBetter, netPhrase, gapDeltaSeconds, stdDeltaSeconds, incidentsNow, incidentsBefore } = opts;
   const paceImproved = gapDeltaSeconds !== null && gapDeltaSeconds < -MATERIAL_SECONDS;
   const paceWorsened = gapDeltaSeconds !== null && gapDeltaSeconds > MATERIAL_SECONDS;
   const consistencyImproved = stdDeltaSeconds !== null && stdDeltaSeconds < -MATERIAL_SECONDS;
@@ -38,10 +42,10 @@ export function paceVsResultInsight(opts: {
     const incidentNote = incidentDelta !== null && incidentDelta >= 1
       ? " Os incidentes por corrida também subiram (" + incidentsNow!.toFixed(1) + " contra " + incidentsBefore!.toFixed(1) + ") -- é o que mais aponta pra decisão de corrida, não pro carro."
       : " O carro e o setup não parecem ser o problema; vale revisar decisões em corrida (largadas, ultrapassagens, gestão de risco em tráfego).";
-    return "Seu ritmo " + improvedParts + " em relação à referência, mas o saldo de iRating piorou mesmo assim." + incidentNote;
+    return "Seu ritmo " + improvedParts + " em relação à referência, mas " + netPhrase + " mesmo assim." + incidentNote;
   }
   if (netBetter && worsenedText) {
-    return "Seu ritmo " + worsenedText + " em relação à referência, mas o saldo de iRating melhorou mesmo assim -- o resultado veio apesar do carro, não por causa dele.";
+    return "Seu ritmo " + worsenedText + " em relação à referência, mesmo assim " + netPhrase + " -- o resultado veio apesar do carro, não por causa dele.";
   }
   return null;
 }

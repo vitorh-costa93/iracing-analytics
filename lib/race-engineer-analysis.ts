@@ -56,24 +56,43 @@ function confidence(rows:RaceInput[],previous:RaceInput[]){if(rows.length>=12&&p
 // existiam e são mais precisas, mas exigem que o piloto some os números sozinho; este resumo abre a
 // seção com 2-3 frases que já fazem essa leitura, apontando o principal responsável (perdas severas
 // concentradas ou uma sequência negativa) sem inventar causa além do que os dados já comprovam.
+// 09/09/2026: "entendi que o iRating melhorou, mas na real não -- se o saldo da semana for
+// negativo, não foi bom" -- dois erros reais nessa frase, não um. (1) pra week, o saldo de UMA
+// semana estava sendo comparado contra a SOMA de todas as ~11 outras semanas da season -- a mesma
+// armadilha de escala já corrigida pra vitórias (ver useRate abaixo), só que esquecida aqui; o
+// correto é média por corrida dos dois lados. (2) mesmo com o número certo, "saldo melhor" pra um
+// valor ainda negativo é enganoso -- perda menor não é bom, é só menos ruim. netClause() nomeia isso
+// certo: só fala "melhorou" quando o valor realmente virou positivo ou já era; quando os dois lados
+// são negativos, fala em "perda menor/maior", nunca em "saldo melhor".
+export function netClause(current:number,previous:number,unit:string):string{
+ if(Math.abs(current-previous)<0.05)return"o saldo de iRating"+unit+" ficou estável ("+signed(current)+" contra "+signed(previous)+")";
+ const improved=current>previous,bothNonPositive=current<=0&&previous<=0;
+ if(improved)return bothNonPositive?"a perda de iRating"+unit+" foi menor ("+signed(current)+" contra "+signed(previous)+")":"o saldo de iRating"+unit+" melhorou ("+signed(current)+" contra "+signed(previous)+")";
+ return current<0&&previous>=0?"o saldo de iRating"+unit+" virou perda ("+signed(current)+" contra "+signed(previous)+")":bothNonPositive?"a perda de iRating"+unit+" foi maior ("+signed(current)+" contra "+signed(previous)+")":"o saldo de iRating"+unit+" piorou ("+signed(current)+" contra "+signed(previous)+")";
+}
+
 function executiveSummary(opts:{scope:"week"|"season";races:number;baselineRaces:number;net:number;previousNet:number;wins:number;previousWins:number;severeCount:number;severeShare:number;worstRun:{length:number;delta:number}|undefined;incidentsNow:number|null;incidentsBefore:number|null}):string{
- const{scope,races,baselineRaces,net,previousNet,wins,previousWins,severeCount,severeShare,worstRun,incidentsNow,incidentsBefore}=opts;
- const periodLabel=scope==="week"?"nesta week":"nesta season",referenceLabel=scope==="week"?"nas outras weeks desta season":"na season anterior";
- if(!baselineRaces)return"Saldo de "+signed(net)+" de iRating em "+String(races)+" corridas "+periodLabel+". Ainda não há amostra de referência equivalente para comparar."+(wins?" Foram "+String(wins)+" vitórias no período.":"");
+ const{scope,races,baselineRaces,wins,previousWins,severeCount,severeShare,worstRun,incidentsNow,incidentsBefore}=opts;
+ const periodLabel=scope==="week"?"nesta week":"nesta season",referenceLabel=scope==="week"?"na média das outras weeks desta season":"na season anterior";
+ // Contagem bruta (vitórias E saldo de iRating) só é comparável quando as duas janelas têm escala
+ // parecida (season até agora vs. season anterior inteira -- o enquadramento que o próprio piloto
+ // usa, "tive mais vitórias essa temporada"). Numa week isolada contra o total somado de todas as
+ // outras semanas da season, contagem bruta compara 1 corrida com dezenas: usa taxa de vitórias (%)
+ // e saldo médio POR CORRIDA nesse caso, dos dois lados.
+ const useRate=scope==="week";
+ const net=useRate?(races?opts.net/races:0):opts.net,previousNet=useRate?(baselineRaces?opts.previousNet/baselineRaces:0):opts.previousNet,unit=useRate?" por corrida":"";
+ if(!baselineRaces)return"Saldo de "+signed(opts.net)+" de iRating em "+String(races)+" corridas "+periodLabel+". Ainda não há amostra de referência equivalente para comparar."+(wins?" Foram "+String(wins)+" vitórias no período.":"");
  const netWorse=net<previousNet,netBetter=net>previousNet;
- // Contagem bruta de vitórias só é comparável quando as duas janelas têm escala parecida (season até
- // agora vs. season anterior inteira -- é o enquadramento que o próprio piloto usa, "tive mais
- // vitórias essa temporada"). Numa week isolada contra o total somado de todas as outras semanas da
- // season, contagem bruta compara 1 corrida com dezenas: usa taxa de vitórias (%) nesse caso.
- const useRate=scope==="week",currentRate=races?wins/races*100:0,previousRate=baselineRaces?previousWins/baselineRaces*100:0,winsUp=useRate?currentRate>previousRate:wins>previousWins,winsDown=useRate?currentRate<previousRate:wins<previousWins;
+ const currentRate=races?wins/races*100:0,previousRate=baselineRaces?previousWins/baselineRaces*100:0,winsUp=useRate?currentRate>previousRate:wins>previousWins,winsDown=useRate?currentRate<previousRate:wins<previousWins;
  const now=useRate?currentRate.toFixed(1)+"% de vitórias":String(wins)+" vitória"+(wins===1?"":"s"),before=useRate?previousRate.toFixed(1)+"%":String(previousWins)+" vitória"+(previousWins===1?"":"s");
  const nowBare=useRate?currentRate.toFixed(1)+"%":now,beforeBare=useRate?previousRate.toFixed(1)+"%":before;
+ const net_=netClause(net,previousNet,unit);
  let opening:string;
- if(winsUp&&netWorse)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mas o saldo de iRating piorou ("+signed(net)+" contra "+signed(previousNet)+").";
- else if(winsDown&&netBetter)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mesmo com o saldo de iRating melhor ("+signed(net)+" contra "+signed(previousNet)+"). O ganho veio de resultados consistentes, não de vitórias.";
- else if(winsUp&&!netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+nowBare+" contra "+beforeBare+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") melhoraram juntos "+periodLabel+".";
- else if(winsDown&&netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+nowBare+" contra "+beforeBare+") e saldo de iRating ("+signed(net)+" contra "+signed(previousNet)+") pioraram juntos "+periodLabel+".";
- else opening="O saldo de iRating ficou em "+signed(net)+" "+periodLabel+" contra "+signed(previousNet)+" "+referenceLabel+", com "+now+" contra "+before+".";
+ if(winsUp&&netWorse)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mas "+net_+".";
+ else if(winsDown&&netBetter)opening="Você teve "+now+" "+periodLabel+" (contra "+before+" "+referenceLabel+"), mesmo com "+net_+". O ganho veio de resultados consistentes, não de vitórias.";
+ else if(winsUp&&!netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+nowBare+" contra "+beforeBare+") melhorou "+periodLabel+", e "+net_+".";
+ else if(winsDown&&netWorse)opening=(useRate?"Taxa de vitórias":"Vitórias")+" ("+nowBare+" contra "+beforeBare+") caiu "+periodLabel+", e "+net_+".";
+ else opening="Com "+now+" contra "+before+" "+referenceLabel+", "+net_+" "+periodLabel+".";
  const severeText=severeCount?String(severeCount)+" corrida"+(severeCount===1?"":"s")+" com perda severa (mais de 50 de iRating) concentr"+(severeCount===1?"ou":"aram")+" "+severeShare.toFixed(1)+"% de todo o prejuízo":null;
  const streakText=worstRun&&worstRun.length>=2?"a pior sequência negativa reuniu "+String(worstRun.length)+" corridas seguidas e custou "+signed(worstRun.delta):null;
  const driver=severeText&&streakText?" O principal responsável foi a concentração de perdas: "+severeText+", e "+streakText+".":severeText?" O principal responsável foi a concentração de perdas: "+severeText+".":streakText?" O principal responsável foi a sequência negativa: "+streakText+".":netWorse?" As perdas ficaram distribuídas, sem um evento isolado que explique o resultado sozinho.":"";

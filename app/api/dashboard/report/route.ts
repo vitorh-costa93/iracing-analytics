@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { buildEngineerSection, Category, RaceInput } from "@/lib/race-engineer-analysis";
+import { buildEngineerSection, netClause, Category, RaceInput } from "@/lib/race-engineer-analysis";
 import { compareSeasons } from "@/lib/season-comparison";
 import { retirementEvents } from "@/lib/race-retirement-events";
 import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
@@ -56,9 +56,14 @@ export async function GET(request:NextRequest){
    // tomada de decisão" -- cruza resultado (aqui) com ritmo/consistência (telemetryInputProfile) e
    // incidentes por corrida (base.incidentSummary), os três hoje vivendo em painéis separados. Só
    // dispara quando ritmo e resultado discordam de verdade.
-   const net=selected.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0),previousNet=baseline.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0);
+   // "se o saldo da semana for negativo, não foi bom... o correto é pegar a média do delta de
+   // iRating por semana" -- mesma correção de escala aplicada em executiveSummary: numa week, o
+   // saldo de UMA semana não é comparável à soma de todas as outras; usa média por corrida dos dois
+   // lados. netClause() nomeia o resultado sem chamar uma perda menor de "saldo melhor".
+   const rawNet=selected.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0),rawPreviousNet=baseline.reduce((sum,row)=>sum+(row.irating_after-row.irating_before),0);
+   const net=scope==="week"?(selected.length?rawNet/selected.length:0):rawNet,previousNet=scope==="week"?(baseline.length?rawPreviousNet/baseline.length:0):rawPreviousNet;
    const gapDeltaSeconds=inputs.averageGapToBestSeconds!==null&&inputReference.averageGapToBestSeconds!==null?inputs.averageGapToBestSeconds-inputReference.averageGapToBestSeconds:null,stdDeltaSeconds=inputs.lapStdDevSeconds!==null&&inputReference.lapStdDevSeconds!==null?inputs.lapStdDevSeconds-inputReference.lapStdDevSeconds:null;
-   const paceVsResult=paceVsResultInsight({netWorse:net<previousNet,netBetter:net>previousNet,gapDeltaSeconds,stdDeltaSeconds,incidentsNow:base.incidentSummary.current.average,incidentsBefore:base.incidentSummary.reference.average});
+   const paceVsResult=paceVsResultInsight({netWorse:net<previousNet,netBetter:net>previousNet,netPhrase:netClause(net,previousNet,scope==="week"?" por corrida":""),gapDeltaSeconds,stdDeltaSeconds,incidentsNow:base.incidentSummary.current.average,incidentsBefore:base.incidentSummary.reference.average});
    return{...base,paceVsResult,comparison:scope==="week"?"Referência: média das outras weeks desta mesma season = "+(weekAverage===null?"—":String(weekAverage>0?"+":"")+weekAverage.toFixed(1)+" de iRating por corrida")+" em "+String(baseline.length)+" corridas.":base.comparison,retirements:survival.events,retirementReference:survivalReference.events,retirementComparison:{currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Number((survival.events.length/selected.length*100).toFixed(1)):null,referenceRate:baseline.length?Number((survivalReference.events.length/baseline.length*100).toFixed(1)):null},severeCompletion,telemetryInputs:inputs,telemetryInputReference:inputReference,cornerBraking,seasonComparison:scope==="season"?compareSeasons(now,before):null};
   }));
   const payload={status:"ok",scope,seasonName:current.season_name,previousSeasonName:previous.season_name,generatedAt:new Date().toISOString(),methodology:"Season compara a anterior; week compara com as demais weeks da season. O diagnóstico prioriza perdas severas, sequências, retiradas, tempo em pista e relação entre consistência dos inputs e tempo de volta.",sections};
