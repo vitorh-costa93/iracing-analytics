@@ -59,6 +59,8 @@ The browser cannot execute Analytics-origin JavaScript inside Garage61 or iRStat
 - Garage61 setup import searches practice as well as race events. It skips only events already checked/imported according to the durable check/event identity; re-runs must not count unchanged setups as new.
 - Telemetry reads are Supabase-first in the UI. Garage61 should be reached by the recurring sync / explicit synchronization path, not by a fresh per-page UI refetch.
 - Vercel Hobby allows the scheduled sync once daily (09:00 UTC); do not claim hourly Vercel Cron is active.
+- Telemetry and Setup Lab expose source freshness through `/api/sync/status`. It reports the last successful Garage61 sync and latest iRStats/setup imports; a recent Garage61 error is informational and never replaces the last valid data.
+- Garage61 requests retry exactly once after a bounded `Retry-After` cooldown on HTTP 429. Incremental runs also close abandoned `laps_incremental` rows after 15 minutes so operations do not remain permanently marked as running.
 
 ## Telemetry and map rules
 

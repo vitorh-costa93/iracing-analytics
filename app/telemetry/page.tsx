@@ -1,6 +1,7 @@
 import TelemetryTabs from "@/components/TelemetryTabs";
 import AppTabs from "@/components/AppTabs";
 import ThemeToggle from "@/components/ThemeToggle";
+import DataFreshness from "@/components/DataFreshness";
 
 export const metadata = { title: "Telemetry Lab • Racing Analytics" };
 
@@ -13,6 +14,7 @@ export default function TelemetryPage() {
           <ThemeToggle />
         </header>
         <AppTabs />
+        <DataFreshness surface="telemetry" />
         <TelemetryTabs />
       </div>
     </main>

@@ -12,7 +12,8 @@ function getToken() {
 
 export async function garage61Get<T>(
   path: string,
-  params?: Record<string, string | number | undefined>
+  params?: Record<string, string | number | undefined>,
+  attempt = 0
 ): Promise<T> {
   const url = new URL(`${BASE_URL}${path}`);
 
@@ -44,6 +45,17 @@ export async function garage61Get<T>(
   }
 
   if (!response.ok) {
+    // A single bounded retry respects Garage61's own cooldown without turning an incremental sync
+    // into an unbounded job. The recent sync log contained repeated 429s; failing immediately
+    // makes an otherwise healthy daily run look stale to the product surface.
+    if (response.status === 429 && attempt === 0) {
+      const parsed = typeof data === "object" && data ? data as { details?: { retryAfterSeconds?: unknown } } : null;
+      const headerDelay = Number(response.headers.get("retry-after"));
+      const bodyDelay = Number(parsed?.details?.retryAfterSeconds);
+      const delaySeconds = Math.min(60, Math.max(1, Number.isFinite(headerDelay) ? headerDelay : Number.isFinite(bodyDelay) ? bodyDelay : 15));
+      await new Promise((resolve) => setTimeout(resolve, delaySeconds * 1000));
+      return garage61Get<T>(path, params, attempt + 1);
+    }
     throw new Error(
       `Garage61 API ${response.status}: ${JSON.stringify(data)}`
     );

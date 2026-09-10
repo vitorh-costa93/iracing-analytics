@@ -82,6 +82,30 @@
   --mono: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
+.data-freshness {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  margin: 14px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.data-freshness > div,
+.data-freshness span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.data-freshness strong { color: var(--text); }
+.data-freshness small { width: 100%; color: #b86f22; }
+.data-freshness.has-error { border-color: color-mix(in srgb, #b86f22 50%, var(--line)); }
+
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f3f1ec;

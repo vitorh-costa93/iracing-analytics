@@ -319,6 +319,11 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 
 ## DMAIC reports and controlled telemetry backfill (05/09/2026)
 
+## Transparência operacional e rate limit (10/09/2026)
+
+- Telemetry Lab e Setup Lab passam a expor estado de fonte em leitura: último sync útil do Garage61, última importação iRStats para resultados e última importação Garage61 para setups. Quando a tentativa mais recente do Garage61 falha, a interface avisa que os dados exibidos continuam sendo o último sync válido; não inventa sucesso.
+- `garage61Get` respeita uma única espera de retry diante de HTTP 429, limitada a 60 segundos. O sync permanece incremental e limitado; não transforma rate limit em loops ou backfill. Antes de iniciar um novo `laps_incremental`, execuções `running` há mais de 15 minutos são registradas como erro recuperável, pois a rota tem teto de cinco minutos e uma linha presa indicaria timeout/interrupção.
+
 - Overview exposes **Resumo da semana** and **Resumo da season**. They consume the same server-side report endpoint and present the investigation as DMAIC: define the performance question, state what data was measured, present evidence-backed findings, recommend a controlled single-variable test, and state what should be monitored next.
 - The report must not present SoF, incident, car, track or win patterns as confirmed causes without a comparison that actually tests the hypothesis. Findings may identify a hypothesis and the exact next comparison needed.
 - Raw Garage61 telemetry is stored only in Supabase Storage bucket `telemetry`, never in Vercel storage. The Supabase Free project currently has a 1 GB file-storage allowance, so the historic backfill is intentionally resumable and bounded: the authenticated Vercel cron saves at most 12 missing CSVs per run, rejects individual files above 8 MB, measures existing bucket bytes first, and stops at `TELEMETRY_BACKFILL_MAX_BYTES` (default 700 MB). This prevents a public endpoint from spending Garage61 quota or filling storage and leaves headroom for normal operation.

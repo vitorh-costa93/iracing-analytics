@@ -61,6 +61,15 @@ type SessionRow = {
 
 async function runIncrementalSessionSync() {
   const startedAt = new Date().toISOString();
+  // Serverless termination can skip the catch block below, leaving a permanent "running" entry.
+  // This route has a five-minute ceiling, so anything still running after fifteen minutes is stale,
+  // not a concurrent healthy execution. Keep the row for diagnosis rather than deleting it.
+  await supabaseAdmin
+    .from("sync_runs")
+    .update({ status: "error", finished_at: startedAt, error_message: "Execução encerrada sem status final (timeout ou interrupção)." })
+    .eq("sync_type", "laps_incremental")
+    .eq("status", "running")
+    .lt("started_at", new Date(Date.now() - 15 * 60_000).toISOString());
   const { data: syncRun } = await supabaseAdmin
     .from("sync_runs")
     .insert({ sync_type: "laps_incremental", status: "running", started_at: startedAt })
