@@ -19,8 +19,8 @@ type LapTimeConsistency = { stddev: number; label: string } | null;
 type TrackUsage = { avgPct: number; maxPct: number } | null;
 type LapConditions = {
   trackTempC: number | null; trackWetness: number | null; trackUsagePct: number | null;
-  airPressureHpa: number | null; relativeHumidityPct: number | null; fogLevelPct: number | null;
-  windDirectionDeg: number | null; windSpeedKmh: number | null;
+  airTempC: number | null; relativeHumidityPct: number | null; windSpeedKmh: number | null;
+  precipitationPct: number | null; cloudsLabel: string | null;
 } | null;
 type CarStat = {
   carId: number; carName: string; color: string; lapsAnalyzed: number;
@@ -308,11 +308,14 @@ function CornerDeepDive({ sectors, cars, carAId, carBId, onOpenSector }: { secto
  * server's own conditionsNote when the spread between cars is large enough to actually matter for
  * the pace comparison above (not every few-tenths-of-a-degree drift within one session). */
 function formatConditions(conditions: LapConditions): string {
-  if (!conditions) return "Condições da sessão não disponíveis para essa volta.";
+  if (!conditions) return "Condições não disponíveis para essa volta.";
   const parts: string[] = [];
   if (conditions.trackTempC !== null) parts.push(`pista ${conditions.trackTempC.toFixed(1)}°C`);
+  if (conditions.airTempC !== null) parts.push(`ar ${conditions.airTempC.toFixed(1)}°C`);
   parts.push(conditions.trackWetness !== null && conditions.trackWetness > 0 ? `molhada (nível ${conditions.trackWetness})` : "seca");
+  if (conditions.trackUsagePct !== null) parts.push(`borracha na pista ${conditions.trackUsagePct.toFixed(0)}%`);
   if (conditions.relativeHumidityPct !== null) parts.push(`umidade ${conditions.relativeHumidityPct.toFixed(0)}%`);
+  if (conditions.cloudsLabel) parts.push(conditions.cloudsLabel);
   if (conditions.windSpeedKmh !== null) parts.push(`vento ${conditions.windSpeedKmh.toFixed(0)}km/h`);
   return parts.join(" • ");
 }
