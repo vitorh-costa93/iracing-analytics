@@ -82,6 +82,12 @@ export type TrackBoundary = { trackId: number; segments: TrackBoundarySegment[] 
 
 let cache: Promise<Record<string, TrackBoundary>> | null = null;
 
+// Garage61 exposes the historic Le Mans layout under a separate track id. It is the same physical
+// Circuit de la Sarthe envelope used by the 24 Heures variant, but previously missed the OSM map
+// library and fell back to a partial GPS trace. Keep the alias here rather than duplicating 1,494
+// source points in the public asset.
+const BOUNDARY_ALIASES: Record<number, number> = { 195: 95 };
+
 function loadAll(): Promise<Record<string, TrackBoundary>> {
   if (!cache) {
     cache = fetch("/track-boundaries.json")
@@ -93,5 +99,5 @@ function loadAll(): Promise<Record<string, TrackBoundary>> {
 
 export function getTrackBoundary(trackId: number | null | undefined): Promise<TrackBoundary | null> {
   if (trackId === null || trackId === undefined) return Promise.resolve(null);
-  return loadAll().then((boundaries) => boundaries[String(trackId)] ?? null);
+  return loadAll().then((boundaries) => boundaries[String(trackId)] ?? boundaries[String(BOUNDARY_ALIASES[trackId])] ?? null);
 }

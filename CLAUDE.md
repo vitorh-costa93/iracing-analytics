@@ -62,6 +62,7 @@ The browser cannot execute Analytics-origin JavaScript inside Garage61 or iRStat
 - Telemetry and Setup Lab expose source freshness through `/api/sync/status`. It reports the last successful Garage61 sync and latest iRStats/setup imports; a recent Garage61 error is informational and never replaces the last valid data.
 - Garage61 requests retry exactly once after a bounded `Retry-After` cooldown on HTTP 429. Incremental runs also close abandoned `laps_incremental` rows after 15 minutes so operations do not remain permanently marked as running.
 - Overview links active-week contexts to Telemetry Lab; representative-lap eligibility is explicit in the UI. Race Debrief is intentionally progressive: summary/actions first, detailed evidence in disclosures, with a robust-sample label only at 10+ analyzed laps.
+- Le Mans Historic (`track_id=195`) intentionally aliases the validated complete Sarthe geometry (`track_id=95`). Map renderers split GPS discontinuities instead of drawing a false diagonal across the circuit.
 
 ## Telemetry and map rules
 

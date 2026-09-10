@@ -19,6 +19,25 @@ export type TrackMapPoint = { distance: number; lat: number | null; lon: number 
 export type TrackMapLine = { points: TrackMapPoint[]; color: string; dashed?: boolean };
 export type TrackMapMarker = { lat: number; lon: number; color: string };
 
+function metersBetween(a: TrackMapPoint, b: TrackMapPoint) {
+  const latitude = ((Number(a.lat) + Number(b.lat)) / 2) * Math.PI / 180;
+  const northSouth = (Number(b.lat) - Number(a.lat)) * 110_540;
+  const eastWest = (Number(b.lon) - Number(a.lon)) * 111_320 * Math.cos(latitude);
+  return Math.hypot(northSouth, eastWest);
+}
+
+// GPS exports occasionally contain a discontinuity (for example when the recorder reacquires a
+// signal). Connecting both valid sides with one SVG polyline fabricates a diagonal across the map.
+// Keep each continuous part visible, but never draw a route that was not driven.
+function splitGpsSegments(points: TrackMapPoint[]) {
+  return points.reduce<TrackMapPoint[][]>((segments, point) => {
+    const current = segments[segments.length - 1];
+    if (!current || metersBetween(current[current.length - 1], point) > 350) segments.push([point]);
+    else current.push(point);
+    return segments;
+  }, []).filter((segment) => segment.length >= 2);
+}
+
 export default function TrackMap({ trackId, lines, width = 300, height = 200, className = "track-map", markers = [] }: { trackId: number | null; lines: TrackMapLine[]; width?: number; height?: number; className?: string; markers?: TrackMapMarker[] }) {
   const [boundary, setBoundary] = useState<TrackBoundary | null>(null);
   useEffect(() => {
@@ -35,7 +54,10 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
   // on ActiveWeekTelemetry's own sticky map at Le Mans -- see that file's own useMapZoomPan call).
   const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height, true, trackId);
 
-  const gpsLines = lines.map((line) => ({ ...line, gps: line.points.filter((point) => point.lat !== null && point.lon !== null) }));
+  const gpsLines = lines.map((line) => {
+    const gps = line.points.filter((point) => point.lat !== null && point.lon !== null);
+    return { ...line, gps, segments: splitGpsSegments(gps) };
+  });
   if (!gpsLines.some((line) => line.gps.length >= 2)) return <div className="track-map-empty">Mapa GPS indisponível.</div>;
 
   const boundaryPoints = boundary ? boundary.segments.flatMap((segment) => segment.pts.map(([lat, lon]) => ({ lat, lon }))) : [];
@@ -88,10 +110,10 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
             ? visibleSegments.map((segment, index) => (
               <polyline key={index} points={segment.pts.map(([lat, lon]) => project({ lat, lon })).join(" ")} className="track-outline" style={{ strokeWidth: Math.max(2, projectGps.metersToPixels(segment.width)) }} />
             ))
-            : gpsLines.map((line, index) => line.gps.length > 1 ? <polyline key={index} points={line.gps.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} /> : null)}
-          {gpsLines.map((line, index) => line.gps.length > 1 ? (
-            <polyline key={index} points={line.gps.map(project).join(" ")} className="track-compare-line" style={{ stroke: line.color, strokeDasharray: line.dashed ? "6 5" : undefined }} />
-          ) : null)}
+            : gpsLines.flatMap((line, lineIndex) => line.segments.map((segment, segmentIndex) => <polyline key={`${lineIndex}-${segmentIndex}`} points={segment.map(project).join(" ")} className="track-outline" style={{ strokeWidth: trackWidthPx }} />))}
+          {gpsLines.flatMap((line, lineIndex) => line.segments.map((segment, segmentIndex) => (
+            <polyline key={`${lineIndex}-${segmentIndex}`} points={segment.map(project).join(" ")} className="track-compare-line" style={{ stroke: line.color, strokeDasharray: line.dashed ? "6 5" : undefined }} />
+          )))}
           {/* Hover markers (29/08/2026: "mexer em um [gráfico], faz a bolinha na pista se movimentar
            * para os dois carros") -- one dot per car, driven by whatever point the caller has already
            * interpolated for the current hover position; this component just draws them. Radius/stroke
