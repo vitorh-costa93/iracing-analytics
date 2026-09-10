@@ -214,7 +214,7 @@ export default function RaceDebrief() {
     <div className="race-debrief">
       <div className="race-debrief-category-toggle">
         {CATEGORIES.map((category) => (
-          <button key={category} className={selected === category ? "active" : ""} onClick={() => setSelected(category)}>{CATEGORY_LABEL[category]}</button>
+          <button key={category} className={selected === category ? "active" : ""} onClick={() => { setSelected(category); setHoveredCorner(null); }}>{CATEGORY_LABEL[category]}</button>
         ))}
       </div>
 
@@ -227,6 +227,7 @@ export default function RaceDebrief() {
               <span className="section-kicker">DEBRIEF DA CORRIDA</span>
               <h3>{data.session.car} — {data.session.track}</h3>
               <p>{new Date(data.session.startedAt).toLocaleString("pt-BR")} • {data.session.durationMinutes} min de corrida • {data.lapsAnalyzed} voltas analisadas</p>
+              <span className={`sample-confidence ${(data.lapsAnalyzed ?? 0) >= 10 ? "strong" : "limited"}`}>{(data.lapsAnalyzed ?? 0) >= 10 ? "amostra robusta" : "amostra limitada"}</span>
             </div>
           </div>
 
@@ -241,12 +242,15 @@ export default function RaceDebrief() {
           </div>
 
           {data.lapScatter && data.lapScatter.length > 2 && (
+            <details className="race-debrief-disclosure">
+              <summary>Ver evidência do ritmo e consistência</summary>
             <div className="race-debrief-chart-block">
               <span className="section-kicker">DISPERSÃO DO RITMO</span>
               <h4>Tempo de volta ao longo do stint</h4>
               <p className="race-debrief-channels-note">Cada ponto é uma volta, na ordem em que aconteceram na corrida. A linha tracejada é a média. O ponto destacado é a mais rápida.</p>
               <LapScatterChart points={data.lapScatter} />
             </div>
+            </details>
           )}
 
           <div className="race-debrief-columns">
@@ -262,6 +266,8 @@ export default function RaceDebrief() {
             </div>
           </div>
 
+          <details className="race-debrief-disclosure">
+            <summary>Ver consistência por input e voltas descartadas</summary>
           <div className="race-debrief-channels">
             <span className="section-kicker">CONSISTÊNCIA POR CANAL</span>
             <p className="race-debrief-channels-note">Quanto menor a barra, mais você repete o mesmo padrão entre as voltas nesse canal.</p>
@@ -297,8 +303,11 @@ export default function RaceDebrief() {
               </ul>
             </div>
           )}
+          </details>
 
           {data.corners && data.corners.length > 0 && (
+            <details className="race-debrief-disclosure">
+              <summary>Abrir análise técnica, curva por curva</summary>
             <div className="race-debrief-chart-block">
               <span className="section-kicker">ANÁLISE POR CURVA</span>
               <h4>Curva por curva, o que fazer em cada uma</h4>
@@ -347,11 +356,15 @@ export default function RaceDebrief() {
                 ))}
               </div>
             </div>
+            </details>
           )}
 
+          <details className="race-debrief-disclosure">
+            <summary>Ver volta ideal e consistência por setor</summary>
           <div className="race-debrief-chart-block">
             <SectorConsistency category={selected} trackOutline={data.trackOutline} />
           </div>
+          </details>
         </>
       )}
     </div>

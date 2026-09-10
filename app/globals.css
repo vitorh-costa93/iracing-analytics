@@ -692,6 +692,8 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .week-context-card { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); }
 .week-context-card > span, .week-context-card small { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
 .week-context-card h3 { margin: 0; font-size: 16px; }.week-context-card strong { font-family: var(--mono); font-size: 25px; }.week-context-card strong.neutral { color: var(--soft); }
+.week-context-card a { margin-top: 4px; color: var(--brand); font-size: 12px; font-weight: 700; text-decoration: none; }
+.week-context-card a:hover { text-decoration: underline; }
 
 @media (max-width: 1080px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -761,6 +763,14 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .race-debrief-category-toggle button:last-child { border-right: 0; }
 .race-debrief-category-toggle button.active { background: var(--brand); color: var(--on-brand); }
 .race-debrief-header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
+.sample-confidence { display: inline-flex; margin-top: 8px; padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; }
+.sample-confidence.strong { color: var(--green); border-color: var(--green); }.sample-confidence.limited { color: var(--amber); border-color: var(--amber-dim); }
+.race-debrief-disclosure { margin-top: 16px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); }
+.race-debrief-disclosure > summary { cursor: pointer; padding: 12px 16px; color: var(--brand); font: 700 12px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
+.race-debrief-disclosure[open] > summary { border-bottom: 1px solid var(--border); }
+.race-debrief-disclosure .race-debrief-chart-block, .race-debrief-disclosure .race-debrief-channels { margin: 0; border: 0; border-radius: 0; }
+.telemetry-selection-note { display: grid; gap: 4px; margin: 12px 0; padding: 10px 12px; border-left: 3px solid var(--brand); background: var(--surface-muted); color: var(--muted); font-size: 12px; line-height: 1.45; }
+.telemetry-selection-note strong { color: var(--text); font: 10px var(--mono); letter-spacing: .06em; }.telemetry-selection-note.is-limited { border-left-color: var(--amber); }
 .race-debrief-summary { margin-top: 14px; padding: 16px; background: var(--brand-pale); border: 1px solid var(--border-strong); border-radius: 3px; }
 .race-debrief-summary > p { margin: 0; color: var(--on-brand); font-size: 14px; line-height: 1.55; }
 .race-debrief-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }

@@ -9,6 +9,7 @@ import ThemeToggle from "@/components/ThemeToggle";
 import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
 import DmaicReportModal from "@/components/DmaicReportModal";
+import DataFreshness from "@/components/DataFreshness";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -322,8 +323,9 @@ export default function Home() {
         {message && <div className="status-banner">{message}</div>}
 
         <section className="section-block week-context-section">
-          <div className="section-title-row"><div><span className="section-kicker">ESSA SEMANA NO IRACING</span><h2>Seu histórico nos contextos ativos</h2><p>Média de Δ iRating por corrida na mesma pista e categoria; amostra mínima de duas corridas.</p></div></div>
-          <div className="week-context-grid">{weeklyContexts.length ? weeklyContexts.map((item) => <article className="week-context-card" key={item.key}><span>{item.series}</span><h3>{item.track}</h3><strong className={item.avg === null ? "neutral" : item.avg >= 0 ? "positive" : "negative"}>{item.avg === null ? "—" : `${item.avg > 0 ? "+" : ""}${item.avg.toFixed(1)}`}</strong><small>{item.avg === null ? "Sem histórico suficiente" : `${item.races} corridas no contexto`}</small></article>) : <p className="comparison-note">Ainda não há corridas desta week para formar os contextos ativos.</p>}</div>
+          <div className="section-title-row"><div><span className="section-kicker">ESSA SEMANA NO IRACING</span><h2>Seu histórico nos contextos ativos</h2><p>Média de Δ iRating por corrida na mesma pista e categoria; amostra mínima de duas corridas.</p></div><a className="secondary-button" href="/telemetry">Preparar telemetria →</a></div>
+          <div className="week-context-grid">{weeklyContexts.length ? weeklyContexts.map((item) => <article className="week-context-card" key={item.key}><span>{item.series}</span><h3>{item.track}</h3><strong className={item.avg === null ? "neutral" : item.avg >= 0 ? "positive" : "negative"}>{item.avg === null ? "—" : `${item.avg > 0 ? "+" : ""}${item.avg.toFixed(1)}`}</strong><small>{item.avg === null ? "Sem histórico suficiente" : `${item.races} corridas no contexto`}</small><a href="/telemetry">Analisar volta elegível →</a></article>) : <p className="comparison-note">Ainda não há corridas desta week para formar os contextos ativos.</p>}</div>
+          <DataFreshness surface="telemetry" />
         </section>
 
         <section className="section-block">

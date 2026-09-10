@@ -47,6 +47,22 @@ function formatLapTime(value: number) {
   return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`;
 }
 
+function sessionTypeLabel(type: number | null | undefined) {
+  if (type === 3) return "corrida";
+  if (type === 2) return "qualifying";
+  if (type === 1) return "practice";
+  return "sessão registrada";
+}
+
+function selectionExplanation(item: Combination) {
+  if (!item.bestLap) return "Ainda não há uma volta limpa com telemetria para avaliar neste contexto.";
+  const activity = item.sessionTypes.map(sessionTypeLabel).join(", ");
+  if (item.bestLap.selectionReason === "race_best_lap_without_p2p") return `Escolhida a melhor volta de corrida sem P2P/Overtake. Atividade encontrada: ${activity || "sessão registrada"}.`;
+  if (item.bestLap.selectionReason === "race_best_lap") return `Escolhida a melhor volta de corrida. Atividade encontrada: ${activity || "sessão registrada"}.`;
+  if (item.bestLap.selectionReason === "practice_best_lap") return `Ainda não há volta de corrida elegível; foi escolhida a melhor volta de practice para preparar a semana. Atividade encontrada: ${activity || "practice"}.`;
+  return `Escolhida a melhor volta limpa disponível. Atividade encontrada: ${activity || "sessão registrada"}.`;
+}
+
 function parseCsvLine(line: string, delimiter: string) {
   const cells: string[] = [];
   let cell = "";
@@ -996,6 +1012,7 @@ export default function ActiveWeekTelemetry() {
             <div><span>ATIVIDADE</span><strong>{selected.sessions} sessões • {selected.lapsFound} voltas</strong></div>
             <div><span>FONTE</span><strong>{selected.bestLap?.selectionReason === "race_best_lap_without_p2p" ? "Garage61 • corrida sem P2P" : selected.bestLap?.selectionReason === "race_best_lap" ? "Garage61 • corrida" : selected.bestLap?.selectionReason === "practice_best_lap" ? "Garage61 • practice, pois ainda não há corrida" : "Garage61 • pré-carregada"}</strong></div>
           </div>
+          <div className={`telemetry-selection-note ${selected.bestLap ? "" : "is-limited"}`}><strong>CRITÉRIO DE ELEGIBILIDADE</strong><span>{selectionExplanation(selected)}</span></div>
           <div className="reference-bar">
             <div>
               <span className="section-kicker">REFERENCE LAP</span>
