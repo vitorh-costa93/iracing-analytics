@@ -796,11 +796,9 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .car-compare-row-fill { height: 100%; background: var(--blue); border-radius: 5px; }
 .car-compare-row-value { grid-area: value; font-family: var(--mono); font-size: 11px; color: var(--text); text-align: right; white-space: nowrap; }
 
-/* 09/09/2026: "trazer as condições da pista... garantir que as condições foram as mesmas" -- one
- * compact line per car (name + weather summary), same row rhythm as .car-compare-row above. */
-.car-compare-conditions { display: grid; gap: 8px; }
-.car-compare-conditions-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 12px; flex-wrap: wrap; }
-.car-compare-conditions-row > span:last-child { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+/* 10/09/2026: track conditions moved inline next to each car name in the best-lap ranking
+ * ("como informação adicional ao lado do nome de cada carro") instead of a separate section. */
+.car-compare-row-cond { font-weight: 400; color: var(--muted); font-size: 11px; }
 .comparison-note-warning { color: var(--orange, #e0973b); }
 
 .race-debrief-corner-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }

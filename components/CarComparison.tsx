@@ -54,11 +54,15 @@ type ComparisonPayload = {
  * quero que o nome todo apareça por extenso, depois vem a barrinha com o tempo") -- name+icon on
  * their own line since a full name like "McLaren 720S GT3 EVO" doesn't fit a fixed label column
  * alongside a bar and a time value without truncating one of them. */
-function CompareBar({ label, value, max, formatted }: { label: string; value: number; max: number; formatted: string }) {
+function CompareBar({ label, value, max, formatted, conditions }: { label: string; value: number; max: number; formatted: string; conditions?: LapConditions }) {
   const pct = max > 0 ? Math.max(2, (value / max) * 100) : 2;
+  const conditionsText = formatConditionsInline(conditions);
   return (
     <div className="car-compare-row">
-      <span className="car-compare-row-name"><CarBrandIcon name={label} />{label}</span>
+      <span className="car-compare-row-name">
+        <CarBrandIcon name={label} />{label}
+        {conditionsText && <span className="car-compare-row-cond"> ({conditionsText})</span>}
+      </span>
       <div className="car-compare-row-track"><div className="car-compare-row-fill" style={{ width: `${pct}%` }} /></div>
       <span className="car-compare-row-value">{formatted}</span>
     </div>
@@ -302,40 +306,19 @@ function CornerDeepDive({ sectors, cars, carAId, carBId, onOpenSector }: { secto
   );
 }
 
-/** "só quero garantir que as condições foram as mesmas" (09/09/2026) -- Garage61 weather is per
- * session (see route.ts's own extractConditions comment), taken here from each car's fastest lap.
- * Renders as one compact line per car so the driver can eyeball a mismatch at a glance, plus the
- * server's own conditionsNote when the spread between cars is large enough to actually matter for
- * the pace comparison above (not every few-tenths-of-a-degree drift within one session). */
-function formatConditions(conditions: LapConditions): string {
-  if (!conditions) return "Condições não disponíveis para essa volta.";
+/** "elas podem vir no gráfico de Melhor Volta, como informação adicional ao lado do nome de cada
+ * carro" (10/09/2026) -- track state for a car's fastest lap, shown inline next to the car name in
+ * the ranking instead of its own section. Kept to the two the driver named (track temp + rubber);
+ * the fuller weather read and the cross-car divergence warning (conditionsNote) still come from the
+ * server. Garage61 weather is per session, taken from each car's own fastest lap -- see
+ * route.ts's extractConditions comment. */
+function formatConditionsInline(conditions?: LapConditions): string | null {
+  if (!conditions) return null;
   const parts: string[] = [];
-  if (conditions.trackTempC !== null) parts.push(`pista ${conditions.trackTempC.toFixed(1)}°C`);
-  if (conditions.airTempC !== null) parts.push(`ar ${conditions.airTempC.toFixed(1)}°C`);
-  parts.push(conditions.trackWetness !== null && conditions.trackWetness > 0 ? `molhada (nível ${conditions.trackWetness})` : "seca");
-  if (conditions.trackUsagePct !== null) parts.push(`borracha na pista ${conditions.trackUsagePct.toFixed(0)}%`);
-  if (conditions.relativeHumidityPct !== null) parts.push(`umidade ${conditions.relativeHumidityPct.toFixed(0)}%`);
-  if (conditions.cloudsLabel) parts.push(conditions.cloudsLabel);
-  if (conditions.windSpeedKmh !== null) parts.push(`vento ${conditions.windSpeedKmh.toFixed(0)}km/h`);
-  return parts.join(" • ");
-}
-
-function ConditionsPanel({ cars, note }: { cars: CarStat[]; note?: string | null }) {
-  return (
-    <div className="race-debrief-chart-block">
-      <span className="section-kicker">CONDIÇÕES DA PISTA</span>
-      <h4>Sob que condições cada carro foi testado</h4>
-      <div className="car-compare-conditions">
-        {cars.map((car) => (
-          <div key={car.carId} className="car-compare-conditions-row">
-            <span className="car-compare-row-name" style={{ color: car.color }}><CarBrandIcon name={car.carName} />{car.carName}</span>
-            <span>{formatConditions(car.conditions)}</span>
-          </div>
-        ))}
-      </div>
-      {note && <p className="comparison-note comparison-note-warning">{note}</p>}
-    </div>
-  );
+  if (conditions.trackTempC !== null) parts.push(`temp. da pista: ${conditions.trackTempC.toFixed(1)}°C`);
+  if (conditions.trackWetness !== null && conditions.trackWetness > 0) parts.push(`pista molhada (nível ${conditions.trackWetness})`);
+  if (conditions.trackUsagePct !== null) parts.push(`borracha na pista: ${conditions.trackUsagePct.toFixed(0)}%`);
+  return parts.length ? parts.join(" | ") : null;
 }
 
 export default function CarComparison() {
@@ -457,9 +440,11 @@ export default function CarComparison() {
                     <div className="car-compare-block">
                       {data.cars.map((car) => (
                         <CompareBar key={car.carId} label={car.carName} value={car.deltaSeconds || maxDelta * 0.02} max={maxDelta}
-                          formatted={car.deltaSeconds === 0 ? `${car.bestLapFormatted} (referência)` : `+${car.deltaSeconds.toFixed(3)}s`} />
+                          formatted={car.deltaSeconds === 0 ? `${car.bestLapFormatted} (referência)` : `+${car.deltaSeconds.toFixed(3)}s`}
+                          conditions={car.conditions} />
                       ))}
                     </div>
+                    {data.conditionsNote && <p className="comparison-note comparison-note-warning">{data.conditionsNote}</p>}
                   </div>
                   {/* Engineer-style read of the numbers above, not a restatement of them (29/08/2026:
                    * "quero que ali seja de fato um engenheiro me aconselhando, enxergar os white
@@ -483,8 +468,6 @@ export default function CarComparison() {
                   </div>
                 )}
               </div>
-
-              <ConditionsPanel cars={data.cars} note={data.conditionsNote} />
 
               {!!data.sectors?.length && resolvedCarA !== null && resolvedCarB !== null && (
                 <div className="race-debrief-chart-block">
