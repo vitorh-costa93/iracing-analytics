@@ -6,6 +6,11 @@ type Props = { items: RankingItem[]; emptyText?: string; kind?: "car" | "track" 
 
 function signed(value: number) { return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR")}`; }
 function signedAvg(value: number) { return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}`; }
+function sampleSignal(races: number) {
+  if (races >= 8) return { label: "evidência consistente", tone: "strong" };
+  if (races >= 4) return { label: "evidência moderada", tone: "moderate" };
+  return { label: "sinal inicial", tone: "limited" };
+}
 
 function countryCode(label: string) {
   const value = label.toLowerCase();
@@ -37,10 +42,11 @@ export default function PerformanceRanking({ items, emptyText, kind = "car" }: P
       const positive = item.avgDelta > 0;
       const width = Math.max(Math.abs(item.avgDelta) / maxAbs * 48, 2);
       const code = kind === "track" ? countryCode(item.label) : null;
+      const confidence = sampleSignal(item.races);
       return <div className="diverging-row" key={`${item.group ?? ""}-${item.label}`}>
         <div className="diverging-label">
           {code ? <img src={`https://flagcdn.com/w20/${code}.png`} alt={`Bandeira ${code.toUpperCase()}`} width="20" height="14" onError={hideBrokenImage} /> : kind === "track" ? <MapPin size={15} /> : <CarBrandIcon name={item.label} />}
-          {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas • Δ total {signed(item.delta)}</small>
+          {item.group && <span className="performance-badge">{item.group}</span>}<strong>{item.label}</strong><small>{item.races} corridas • Δ total {signed(item.delta)} <span className={`ranking-confidence ${confidence.tone}`}>{confidence.label}</span></small>
         </div>
         <div className="diverging-bar"><i className="center-line" /><span className={positive ? "positive" : "negative"} style={positive ? { left: "50%", width: `${width}%` } : { right: "50%", width: `${width}%` }} /></div>
         <b className={positive ? "positive" : "negative"}>{signedAvg(item.avgDelta)}/corrida</b>

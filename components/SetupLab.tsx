@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bot, FileUp, FolderSearch, SlidersHorizontal } from "lucide-react";
+import { trackUiEvent } from "@/lib/track-ui-event";
 
 type SetupContext = {
   key: string;
@@ -83,6 +84,11 @@ export default function SetupLab() {
   const selected = contexts.find((item) => item.key === context) ?? null;
   const setupA = selected?.uploads.find((item) => item.id === baseSetupId) ?? null;
   const setupB = selected?.uploads.find((item) => item.id === comparisonSetupId) ?? null;
+  const groupedChanges = compareResult?.changes.reduce<Record<string, CompareChange[]>>((groups, change) => {
+    (groups[change.category] ??= []).push(change);
+    return groups;
+  }, {}) ?? {};
+  const categoryLabels = new Map((compareResult?.analysis.topCategories ?? []).map((item) => [item.category, item.label]));
 
   useEffect(() => {
     setActiveSetupId((current) => selected?.uploads.some((item) => item.id === current) ? current : selected?.uploads[0]?.id ?? "");
@@ -113,6 +119,7 @@ export default function SetupLab() {
       const response = await fetch("/api/setup/compare", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ baseSetupId, comparisonSetupId, carId: selected.car.id, trackId: selected.track.id }) });
       const result = await response.json(); if (!response.ok) throw new Error(result.message ?? "Erro no comparativo");
       setCompareResult(result); setMessage(null);
+      trackUiEvent("setup_comparison_completed", { carId: selected.car.id, trackId: selected.track.id });
     } catch (error) { setMessage(error instanceof Error ? error.message : String(error)); }
     finally { setComparing(false); }
   }
@@ -139,6 +146,7 @@ export default function SetupLab() {
       const response = await fetch("/api/setup/engineer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const result = await response.json(); if (!response.ok) throw new Error(result.message ?? "Erro na análise");
       setConversation((current) => [...current, { role: "assistant", result }]);
+      trackUiEvent("setup_engineer_recommendation_requested", { carId: selected.car.id, trackId: selected.track.id });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
     } finally { setAnalyzing(false); }
@@ -188,7 +196,13 @@ export default function SetupLab() {
                 <div className="setup-summary-categories">{compareResult.analysis.topCategories.map((item) => <span key={item.category} className="performance-badge">{item.label}: {item.count}</span>)}</div>
               )}
             </div>
-            {compareResult.changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}{!change.settable && <em className="setup-readonly-tag"> • resultado, não ajustável</em>}</span><strong>{change.label}</strong></div><div className="setup-values"><span><small>Setup A</small><del>{change.before}</del></span><b>→</b><span><small>Setup B</small><ins>{change.after}</ins></span></div><p>{change.explanation}</p></article>)}
+            <div className="setup-decision-guide"><span className="section-kicker">COMO TESTAR O PACOTE</span><ol><li>Comece pela categoria que mais mudou; ela é a intenção dominante do Setup B.</li><li>Valide a compensação citada no resumo antes de copiar uma alteração isolada.</li><li>Altere um grupo por vez no simulador e compare a mesma fase da curva, combustível e pista.</li></ol></div>
+            <div className="setup-diff-groups">{Object.entries(groupedChanges).map(([category, changes], index) => (
+              <details key={category} className="setup-diff-group" open={index === 0}>
+                <summary><span>{categoryLabels.get(category) ?? category}</span><small>{changes.length} {changes.length === 1 ? "alteração" : "alterações"}</small></summary>
+                {changes.map((change) => <article key={`${change.tab}-${change.section}-${change.label}`}><div><span>{change.tab} • {change.section}{!change.settable && <em className="setup-readonly-tag"> • resultado, não ajustável</em>}</span><strong>{change.label}</strong></div><div className="setup-values"><span><small>Setup A</small><del>{change.before}</del></span><b>→</b><span><small>Setup B</small><ins>{change.after}</ins></span></div><p>{change.explanation}</p></article>)}
+              </details>
+            ))}</div>
           </div>
         )}</>
       )}
@@ -197,6 +211,7 @@ export default function SetupLab() {
         <div className="engineer-layout">
           <article className="panel engineer-chat">
             <div className="engineer-message"><Bot size={18} /><div><strong>Engenheiro</strong><p>Conte o que o carro faz na entrada, meio e saída da curva, ou digite <code>/setup</code> pra mencionar dois setups e pedir um meio-termo entre eles. A conversa continua — cada mensagem nova leva em conta o contexto do carro e pista selecionados.</p></div></div>
+            <div className="engineer-quick-prompts"><span>COMEÇAR POR</span>{["Subesterça na entrada", "Traseira instável no trail braking", "Perde tração na saída", "Bate o fundo em zebra/ondulação"].map((prompt) => <button type="button" key={prompt} onClick={() => { setFeedback(prompt); trackUiEvent("setup_engineer_prompt_selected", { carId: selected?.car.id, trackId: selected?.track.id }); }}>{prompt}</button>)}</div>
 
             {conversation.length > 0 && (
               <div className="engineer-thread">

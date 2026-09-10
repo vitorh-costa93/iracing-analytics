@@ -3,6 +3,7 @@
 import { useEffect, useState, type MouseEvent, type TouchEvent } from "react";
 import SectorConsistency from "@/components/SectorConsistency";
 import TrackMap, { type TrackMapLine, type TrackMapMarker } from "@/components/TrackMap";
+import { trackUiEvent } from "@/lib/track-ui-event";
 
 type BinStat = { distance: number; mean: number; stddev: number };
 type ChannelStat = { channel: string; label: string; avgScore: number; binStats?: BinStat[] };
@@ -214,7 +215,7 @@ export default function RaceDebrief() {
     <div className="race-debrief">
       <div className="race-debrief-category-toggle">
         {CATEGORIES.map((category) => (
-          <button key={category} className={selected === category ? "active" : ""} onClick={() => { setSelected(category); setHoveredCorner(null); }}>{CATEGORY_LABEL[category]}</button>
+          <button key={category} className={selected === category ? "active" : ""} onClick={() => { setSelected(category); setHoveredCorner(null); trackUiEvent("debrief_category_selected", { category }); }}>{CATEGORY_LABEL[category]}</button>
         ))}
       </div>
 
@@ -242,7 +243,7 @@ export default function RaceDebrief() {
           </div>
 
           {data.lapScatter && data.lapScatter.length > 2 && (
-            <details className="race-debrief-disclosure">
+            <details className="race-debrief-disclosure" onToggle={(event) => { if (event.currentTarget.open) trackUiEvent("debrief_evidence_opened", { category: selected, group: "ritmo" }); }}>
               <summary>Ver evidência do ritmo e consistência</summary>
             <div className="race-debrief-chart-block">
               <span className="section-kicker">DISPERSÃO DO RITMO</span>
@@ -266,7 +267,7 @@ export default function RaceDebrief() {
             </div>
           </div>
 
-          <details className="race-debrief-disclosure">
+          <details className="race-debrief-disclosure" onToggle={(event) => { if (event.currentTarget.open) trackUiEvent("debrief_evidence_opened", { category: selected, group: "inputs" }); }}>
             <summary>Ver consistência por input e voltas descartadas</summary>
           <div className="race-debrief-channels">
             <span className="section-kicker">CONSISTÊNCIA POR CANAL</span>
@@ -306,7 +307,7 @@ export default function RaceDebrief() {
           </details>
 
           {data.corners && data.corners.length > 0 && (
-            <details className="race-debrief-disclosure">
+            <details className="race-debrief-disclosure" onToggle={(event) => { if (event.currentTarget.open) trackUiEvent("debrief_evidence_opened", { category: selected, group: "curvas" }); }}>
               <summary>Abrir análise técnica, curva por curva</summary>
             <div className="race-debrief-chart-block">
               <span className="section-kicker">ANÁLISE POR CURVA</span>
@@ -359,7 +360,7 @@ export default function RaceDebrief() {
             </details>
           )}
 
-          <details className="race-debrief-disclosure">
+          <details className="race-debrief-disclosure" onToggle={(event) => { if (event.currentTarget.open) trackUiEvent("debrief_evidence_opened", { category: selected, group: "setores" }); }}>
             <summary>Ver volta ideal e consistência por setor</summary>
           <div className="race-debrief-chart-block">
             <SectorConsistency category={selected} trackOutline={data.trackOutline} />

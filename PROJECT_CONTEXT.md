@@ -335,6 +335,17 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 - `Circuit des 24 Heures du Mans` possui as variantes Garage61 `95` e `195` (Historic). Ambas compartilham a geometria física completa da Sarthe já validada sob `95`; `getTrackBoundary` aplica esse alias para que nenhuma delas caia no fallback de GPS parcial. Isso se aplica ao mapa de Melhor volta vs referência e aos recortes do Meu Debrief.
 - Um traçado GPS com salto de mais de 350 m é renderizado em segmentos separados nos minimapas. A lacuna permanece honesta; a interface não desenha uma diagonal falsa ligando pontos que não pertencem à mesma sequência de GPS.
 
+## Setup Lab orientado a decisão (10/09/2026)
+
+- A análise A/B apresenta primeiro a intenção conjunta e os maiores contribuintes já calculados pelo comparador. Os parâmetros detalhados ficam agrupados por categoria mecânica/aerodinâmica; não sugerir que uma linha isolada seja a causa completa quando há compensações em outro grupo.
+- O painel Engenheiro oferece pontos de partida de comportamento (entrada, trail braking, tração e fundo em zebra), mas permanece uma coleta de sintoma: o piloto pode editar o texto antes de gerar a recomendação. Não alterar arquivos `.sto`; a validação é sempre um teste controlado no simulador e na telemetria.
+
+## Decisão, confiança e instrumentação privada (10/09/2026)
+
+- A Overview inicia a preparação pela semana ativa; Telemetry Lab expõe origem e critério da volta; Race Debrief revela evidência progressivamente; e os mapas usam sempre a mesma base física e os mesmos papéis de linha. Essas superfícies não devem competir por uma definição diferente de pista, referência ou volta elegível.
+- Rankings de contexto continuam exigindo pelo menos duas corridas. A interface classifica a leitura como **sinal inicial** (2–3), **evidência moderada** (4–7) ou **evidência consistente** (8+); a etiqueta comunica tamanho de amostra, não causalidade.
+- `ui_interaction_events` registra somente decisões discretas úteis para avaliar UX: abertura de contexto semanal/oportunidade, troca de sub-aba/contexto de telemetria, evidência aberta no debrief e uso do Setup Lab. O contexto é allow-listed (IDs de carro/pista, categoria, grupo e razão da seleção), sem telemetria, nome/conteúdo de setup, prompts livres ou qualquer dado de autenticação. A rota é same-origin, best-effort e limitada a 30 eventos por IP a cada 5 minutos.
+
 - Overview exposes **Resumo da semana** and **Resumo da season**. They consume the same server-side report endpoint and present the investigation as DMAIC: define the performance question, state what data was measured, present evidence-backed findings, recommend a controlled single-variable test, and state what should be monitored next.
 - The report must not present SoF, incident, car, track or win patterns as confirmed causes without a comparison that actually tests the hypothesis. Findings may identify a hypothesis and the exact next comparison needed.
 - Raw Garage61 telemetry is stored only in Supabase Storage bucket `telemetry`, never in Vercel storage. The Supabase Free project currently has a 1 GB file-storage allowance, so the historic backfill is intentionally resumable and bounded: the authenticated Vercel cron saves at most 12 missing CSVs per run, rejects individual files above 8 MB, measures existing bucket bytes first, and stops at `TELEMETRY_BACKFILL_MAX_BYTES` (default 700 MB). This prevents a public endpoint from spending Garage61 quota or filling storage and leaves headroom for normal operation.

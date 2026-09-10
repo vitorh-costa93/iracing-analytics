@@ -7,6 +7,7 @@ import { createTrackProjector } from "@/lib/track-map";
 import { getTrackBoundary, type TrackBoundary } from "@/lib/track-boundaries";
 import { useMapZoomPan } from "@/lib/useMapZoomPan";
 import FocusedGaugeChart, { type FocusedSide } from "@/components/FocusedGaugeChart";
+import { trackUiEvent } from "@/lib/track-ui-event";
 
 type Combination = {
   key: string;
@@ -995,7 +996,7 @@ export default function ActiveWeekTelemetry() {
         {data && data.combinations.length > 0 && (
           <label className="telemetry-selector">
             <span>CARRO — PISTA</span>
-            <select value={selectedKey} onChange={(event) => setSelectedKey(event.target.value)} disabled={data.combinations.length === 1}>
+            <select value={selectedKey} onChange={(event) => { const next = data.combinations.find((item) => item.key === event.target.value); setSelectedKey(event.target.value); if (next) trackUiEvent("telemetry_context_selected", { carId: next.car.id, trackId: next.track.id, selectionReason: next.bestLap?.selectionReason ?? "unavailable" }); }} disabled={data.combinations.length === 1}>
               {data.combinations.map((item) => <option value={item.key} key={item.key}>{item.label}</option>)}
             </select>
           </label>
@@ -1066,7 +1067,7 @@ export default function ActiveWeekTelemetry() {
                * isn't the point, where it puts you on track is. */}
               <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As curvas são numeradas na ordem em que aparecem na volta. Quando eu sei o nome real da curva, uso ele; quando não sei, mostro só o número.</p></div>
                   <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
-                    <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); }} key={item.title}>
+                    <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); trackUiEvent("telemetry_opportunity_opened", { carId: selected.car.id, trackId: selected.track.id, category: item.kind }); }} key={item.title}>
                       <strong>{item.title}</strong><span>até {item.gain.toFixed(3)}s estimados</span><p>{item.detail}</p><ul>{item.metrics.map((metric) => <li key={metric}>{metric}</li>)}</ul>
                     </button>
                   )) : <p className="comparison-note">A volta própria não apresentou perdas materiais nos segmentos analisados.</p>}</div>

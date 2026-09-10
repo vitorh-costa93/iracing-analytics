@@ -63,6 +63,7 @@ The browser cannot execute Analytics-origin JavaScript inside Garage61 or iRStat
 - Garage61 requests retry exactly once after a bounded `Retry-After` cooldown on HTTP 429. Incremental runs also close abandoned `laps_incremental` rows after 15 minutes so operations do not remain permanently marked as running.
 - Overview links active-week contexts to Telemetry Lab; representative-lap eligibility is explicit in the UI. Race Debrief is intentionally progressive: summary/actions first, detailed evidence in disclosures, with a robust-sample label only at 10+ analyzed laps.
 - Le Mans Historic (`track_id=195`) intentionally aliases the validated complete Sarthe geometry (`track_id=95`). Map renderers split GPS discontinuities instead of drawing a false diagonal across the circuit.
+- Setup A/B is presented as a package: the existing comparative narrative and contributors precede category-grouped parameter detail. Engineer prompt chips only seed editable driver feedback; no setup file is rewritten.
 
 ## Telemetry and map rules
 
@@ -126,3 +127,7 @@ Always inspect migrations, the live schema, and view consumers before changing d
 Before commit: review `git diff`, run `npm test`, `npx tsc --noEmit`, and `npm run build`. For schema/data changes, validate schema and representative results through the Supabase CLI and re-run the relevant incremental sync to prove idempotency.
 
 The user prefers production publishing after validation. Commit/push with Git CLI and deploy through Vercel CLI. Do not publish if validation fails without explaining the failure and obtaining explicit approval.
+
+## Product UX signals (10/09/2026)
+
+`ui_interaction_events` is an intentionally small, private product-usage log. It records only explicit interface decisions (week context, telemetry/debrief navigation, opened evidence and Setup Lab actions) with allow-listed identifiers/categories. It never receives telemetry samples, setup contents or filenames, or free-form engineer text. The endpoint is same-origin, best-effort and rate-limited; instrumentation must not block the driving-analysis flow.
