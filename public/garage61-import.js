@@ -205,17 +205,33 @@
   // before a single event page is fetched, and events already captured above (visited setup events)
   // are skipped to avoid refetching the same page twice in one run.
   async function discoverAndVisitLapsEvents(cutoffIso, alreadyVisitedIds) {
-    var configRes = await fetch("https://garage61.net/api/internal/config", { credentials: "same-origin" });
+    // 11/09/2026: "estava conectado mas não puxou" -- this whole discovery path (overview/events +
+    // per-pair events list) is unverified against a real live response, unlike everywhere else in this
+    // file marked "confirmed live": every step below logs its RAW counts (before any filtering) so a
+    // silent zero has a visible cause on the very next run instead of just "0 eventos novos" with no
+    // way to tell whether the overview call, the field names it expects (last_at/car/track), the
+    // per-pair events call, or the cutoff filter itself is where it actually broke.
+    var configRes;
+    try { configRes = await fetch("https://garage61.net/api/internal/config", { credentials: "same-origin" }); }
+    catch (e) { log("Falha de rede em /api/internal/config: " + e.message); return; }
+    if (!configRes.ok) { log("/api/internal/config: HTTP " + configRes.status + " -- não deu pra identificar o usuário logado."); return; }
     var config = await configRes.json();
     var slug = config && config.user && config.user.slug;
-    if (!slug) { log("Não achei o usuário logado no Garage61 -- pulando voltas/sessões."); return; }
+    if (!slug) { log("Não achei o usuário logado no Garage61 (resposta: " + JSON.stringify(config).slice(0, 200) + ") -- pulando voltas/sessões."); return; }
 
-    var overviewRes = await fetch("https://garage61.net/api/internal/overview/events?limit=" + OVERVIEW_LIMIT, { credentials: "same-origin" });
+    var overviewRes;
+    try { overviewRes = await fetch("https://garage61.net/api/internal/overview/events?limit=" + OVERVIEW_LIMIT, { credentials: "same-origin" }); }
+    catch (e) { log("Falha de rede em /api/internal/overview/events: " + e.message); return; }
+    if (!overviewRes.ok) { log("/api/internal/overview/events: HTTP " + overviewRes.status + "."); return; }
     var overview = await overviewRes.json();
-    var pairs = (overview.items || []).filter(function (item) {
+    var rawItems = overview.items || [];
+    log(rawItems.length + " item(ns) bruto(s) em overview/events (antes de filtrar por data/carro/pista).");
+    if (rawItems.length) log("Exemplo bruto: " + JSON.stringify(rawItems[0]).slice(0, 300));
+    var pairs = rawItems.filter(function (item) {
       return item.last_at >= cutoffIso && item.car && item.track;
     });
-    log(pairs.length + " combinação(ões) de carro/pista com atividade recente.");
+    log(pairs.length + " combinação(ões) de carro/pista com atividade recente (corte: " + cutoffIso + ").");
+    if (pairs.length) log("Pistas/carros: " + pairs.map(function (p) { return p.car.name + "/" + p.track.name + " (última em " + p.last_at + ")"; }).join("; "));
 
     var eventIds = {};
     for (var i = 0; i < pairs.length; i++) {
@@ -224,11 +240,19 @@
       setProgress(40 + ((i + 1) / Math.max(1, pairs.length)) * 20);
       try {
         var evRes = await fetch("https://garage61.net/api/internal/events?user=" + encodeURIComponent(slug) + "&car=" + pair.car.id + "&track=" + pair.track.id, { credentials: "same-origin" });
+        if (!evRes.ok) { log("Eventos de " + pair.car.name + "/" + pair.track.name + ": HTTP " + evRes.status + "."); continue; }
         var evJson = await evRes.json();
-        (evJson.items || []).forEach(function (ev) {
-          if (ev.started_at >= cutoffIso && !alreadyVisitedIds[ev.id]) eventIds[ev.id] = { car: ev.car_id, track: ev.track_id };
+        var evItems = evJson.items || [];
+        var matched = 0;
+        evItems.forEach(function (ev) {
+          if (ev.started_at >= cutoffIso && !alreadyVisitedIds[ev.id]) { eventIds[ev.id] = { car: ev.car_id, track: ev.track_id }; matched += 1; }
         });
-      } catch (e) { log("Falha ao listar eventos de " + pair.car.name + "/" + pair.track.name + "."); }
+        log(pair.car.name + "/" + pair.track.name + ": " + evItems.length + " evento(s) na resposta, " + matched + " novo(s) após o corte.");
+        if (evItems.length && !matched) {
+          var startedAts = evItems.map(function (ev) { return ev.started_at; }).sort();
+          log("  -> nenhum passou do corte -- eventos retornados vão de " + startedAts[0] + " até " + startedAts[startedAts.length - 1] + ". Se a corrida de hoje não está nesse intervalo, a API só devolveu uma página antiga/limitada.");
+        }
+      } catch (e) { log("Falha ao listar eventos de " + pair.car.name + "/" + pair.track.name + ": " + e.message); }
       await sleep(150);
     }
 
