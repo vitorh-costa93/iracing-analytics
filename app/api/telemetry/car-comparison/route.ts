@@ -49,6 +49,19 @@ function seasonKey(lap: LapRow): string | null {
   return id === undefined || id === null || id === "" ? null : String(id);
 }
 
+/** 11/09/2026 fix: "tá aparecendo como 34 a 2026 Season 3" -- lap.season?.name only ever came from the
+ * OLD sync/incremental payload shape (Garage61's public API includes a season NAME alongside the id);
+ * the browser bookmarklet's payload (public/garage61-import.js) only knows the season's bare numeric id
+ * from Garage61's internal api, so every lap synced through it fell back to showing the raw id instead
+ * of a real name. v_season_calendar (its own comment: "Season id/name/start-date calendar shared by all
+ * race_results-based views") is this app's actual source of truth for that mapping -- already the ONLY
+ * place season_start is read from for week numbering just below -- so it's the correct fallback here
+ * too, not another guess at Garage61's payload shape. */
+async function seasonNameMap(): Promise<Map<string, string>> {
+  const { data } = await supabaseAdmin.from("v_season_calendar").select("season_id,season_name");
+  return new Map((data ?? []).map((row) => [String(row.season_id), row.season_name as string]));
+}
+
 /** "trazer as condições da pista... o track usage, não só temperatura da pista" (10/09/2026) --
  * weather/track state for a car's fastest lap, read from that lap's own garage61_payload. Raw values
  * are SI-ish and don't read naturally (relativeHumidity/precipitation as 0-1 fractions, windVel in
@@ -828,6 +841,7 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
   const categoryByCar = await resolveCarCategories(allCarIds);
   const categoryLaps = roughlyValid.filter((lap) => categoryByCar.get(lap.car_id as number) === category);
 
+  const calendarNames = await seasonNameMap();
   const seasonInfo = new Map<string, { seasonName: string; latestStartedAt: string; lapCount: number }>();
   for (const lap of categoryLaps) {
     const seasonId = seasonKey(lap);
@@ -838,7 +852,7 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
       existing.lapCount += 1;
       if (startedAt > existing.latestStartedAt) existing.latestStartedAt = startedAt;
     } else {
-      seasonInfo.set(seasonId, { seasonName: lap.season?.name ?? seasonId, latestStartedAt: startedAt, lapCount: 1 });
+      seasonInfo.set(seasonId, { seasonName: calendarNames.get(seasonId) ?? lap.season?.name ?? seasonId, latestStartedAt: startedAt, lapCount: 1 });
     }
   }
   const seasons = [...seasonInfo.entries()]
@@ -990,6 +1004,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   // atrás, não é mais verdade no contexto atual"), so comparing across seasons by default would
   // silently mix cars under different balance rules. Default is therefore the single most recent
   // season with data, not "all time" -- "all" is still offered explicitly for when that's wanted.
+  const calendarNames = await seasonNameMap();
   const seasonInfo = new Map<string, { seasonName: string; latestStartedAt: string; lapCount: number }>();
   for (const laps of byCarCategory.values()) {
     for (const lap of laps) {
@@ -1001,7 +1016,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
         existing.lapCount += 1;
         if (startedAt > existing.latestStartedAt) existing.latestStartedAt = startedAt;
       } else {
-        seasonInfo.set(seasonId, { seasonName: lap.season?.name ?? seasonId, latestStartedAt: startedAt, lapCount: 1 });
+        seasonInfo.set(seasonId, { seasonName: calendarNames.get(seasonId) ?? lap.season?.name ?? seasonId, latestStartedAt: startedAt, lapCount: 1 });
       }
     }
   }
