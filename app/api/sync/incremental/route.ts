@@ -286,49 +286,14 @@ async function runIncrementalSessionSync() {
       if (upsertError) throw upsertError;
     }
 
-    // Stores lap telemetry CSV in Supabase Storage as part of this same recurring sync -- this is
-    // meant to be the ONLY place telemetry is ever fetched from Garage61. Every reading path (the
-    // telemetry viewer, race debrief, sector consistency) should read laps.telemetry_path from
-    // Storage, not call Garage61 on a page view. Capped per run (gradual backfill, not a burst --
-    // Garage61 is already rate-limited as of this writing) and skips laps that already have a
-    // stored path, which covers most laps here since the 168h overlap window reprocesses them.
-    const TELEMETRY_DOWNLOAD_CAP = 40;
-    let telemetryDownloaded = 0;
-    const telemetryCandidates = lapRows.filter((row) => row.can_view_telemetry);
-    if (telemetryCandidates.length) {
-      const { data: existingPaths, error: existingError } = await supabaseAdmin
-        .from("laps").select("id,telemetry_path").in("id", telemetryCandidates.map((row) => row.id));
-      if (existingError) throw existingError;
-      const alreadyStored = new Set((existingPaths ?? []).filter((row) => row.telemetry_path).map((row) => row.id as string));
-      const token = process.env.GARAGE61_API_TOKEN;
-      if (token) {
-        for (const row of telemetryCandidates) {
-          // 11/09/2026: this loop had NO time-budget check at all, unlike the car/track pair loop
-          // above -- capped only by count (40), not time. Each download is a real network round trip
-          // to Garage61 plus a Supabase Storage upload; 40 of those after the main loop already used
-          // up to TIME_BUDGET_MS could push the whole request well past Vercel's 300s ceiling on its
-          // own, exactly the kind of silent overrun this route is otherwise built to avoid. Laps
-          // skipped here are simply retried next run (alreadyStored only grows).
-          if (Date.now() - runStartedAtMs > TIME_BUDGET_MS) break;
-          if (alreadyStored.has(row.id) || telemetryDownloaded >= TELEMETRY_DOWNLOAD_CAP) continue;
-          try {
-            const response = await fetch(`https://garage61.net/api/v1/laps/${encodeURIComponent(row.id)}/csv`, {
-              headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" }, cache: "no-store",
-            });
-            if (!response.ok) continue;
-            const csv = await response.text();
-            const path = `laps/${row.track_id}/${row.id}.csv`;
-            const { error: uploadError } = await supabaseAdmin.storage.from("telemetry")
-              .upload(path, csv, { contentType: "text/csv; charset=utf-8", upsert: true });
-            if (uploadError) continue;
-            row.telemetry_path = path;
-            telemetryDownloaded += 1;
-          } catch {
-            // One lap's telemetry failing (network blip, malformed response) must not abort the sync.
-          }
-        }
-      }
-    }
+    // 11/09/2026: telemetry download used to happen right here, straight to plain uncompressed CSV
+    // with no storage-budget check at all -- a second, ungoverned copy of what
+    // lib/telemetry-backfill.ts already does properly (a real 900MB budget, gzip compaction, and a
+    // season retention window that deliberately excludes old laps). The daily cron already calls that
+    // governed backfill as its own separate step right after this route (see app/api/cron/hourly-sync),
+    // so telemetry is intentionally left out of this route entirely now -- see app/api/sync/telemetry
+    // for the on-demand equivalent "Atualizar Dados" calls.
+    const telemetryDownloaded = 0;
 
     // Chunked: Supabase/PostgREST has a payload-size ceiling and a busy week can produce thousands
     // of rows across all recent car/track pairs combined.

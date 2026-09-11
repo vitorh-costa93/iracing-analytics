@@ -234,10 +234,11 @@ export default function Home() {
       setMessage("Atualizando histórico de Safety Rating do Garage61...");
       const ratingsResult = await postSyncStep("/api/sync/rating-history", "sincronização de ratings");
 
-      const pendingNote = Number(telemetryResult.candidatesFound ?? 0) > Number(telemetryResult.telemetryDownloaded ?? 0)
-        ? " Ainda há telemetria pendente -- clique em Atualizar Dados de novo para continuar."
-        : "";
-      setMessage(`Sincronização concluída: ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) nova(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados.${pendingNote} Para sessões/voltas recentes e setups, use o favorito "Garage61" abaixo.`);
+      // 11/09/2026: telemetry now goes through lib/telemetry-backfill.ts's own governed batch (respects
+      // the 900MB storage budget and the current/previous-season retention window -- see that file's
+      // own comment), so there's no reliable "N ainda faltam" count to show here without re-querying;
+      // it keeps catching up a little on every click and on every daily cron run either way.
+      setMessage(`Sincronização concluída: ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) nova(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para sessões/voltas recentes e setups, use o favorito "Garage61" abaixo.`);
       await loadDashboard(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
