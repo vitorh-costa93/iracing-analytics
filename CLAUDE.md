@@ -40,8 +40,16 @@ iRStats in the user's browser
   -> race_results -> v_race_results_irating -> Overview/KPIs/context ranking
 
 Garage61 in the user's browser
-  -> incremental setup bookmarklet -> pending/import routes -> setup_files
-  -> server-side recurring sync -> catalogs, sessions, laps, sectors, ratings
+  -> same bookmarklet (public/garage61-import.js) now does both:
+     - setups -> pending/import routes -> setup_files (unchanged)
+     - sessions/laps/sectors -> Garage61's own internal api (garage61.net/api/internal/...,
+       the calls their own web app makes -- not the rate-limited public /api/v1) ->
+       /api/sync/garage61-laps -> driving_sessions, laps, lap_sectors
+  -> "Atualizar Dados" button (app/page.tsx) -> sync/all (catalog/ratings) + sync/telemetry
+     (CSV for laps the bookmarklet or cron already found, no discovery/pagination) + rating-history
+  -> daily cron (unattended, can't use the bookmarklet -- no live browser session) still runs
+     sync/incremental as the automatic fallback for sessions/laps/sectors (rate-limited but paced,
+     see lib/garage61.ts), so data still eventually arrives even if the bookmarklet is never run
   -> Supabase -> active-week telemetry, debrief, car comparison
 
 Reference CSV/IBT
@@ -61,6 +69,7 @@ The browser cannot execute Analytics-origin JavaScript inside Garage61 or iRStat
 - Vercel Hobby allows the scheduled sync once daily (09:00 UTC); do not claim hourly Vercel Cron is active.
 - Telemetry and Setup Lab expose source freshness through `/api/sync/status`. It reports the last successful Garage61 sync and latest iRStats/setup imports; a recent Garage61 error is informational and never replaces the last valid data.
 - Garage61 requests self-pace proactively (reading rate-limit headers on every response, not just reacting to 429) and retry with backoff on 429, per `lib/garage61.ts`. Incremental runs close abandoned `laps_incremental` rows after 6 minutes (comfortably past the route's own 300s ceiling) so operations do not remain permanently marked as running, and refuse to start a second `laps_incremental` run while one is still within that window -- a second run would only compete with the first for the same rate-limit bucket, not go faster.
+- Sessions/laps/sectors have two paths now (11/09/2026): the browser bookmarklet (`public/garage61-import.js` -> `/api/sync/garage61-laps`), which walks Garage61's own internal api and is not subject to the public API's rate limit, and `sync/incremental`'s server-side discovery (rate-limited, paced), which only the daily cron still runs, as the automatic fallback for whenever the bookmarklet wasn't run that day. Both write the exact same tables with the exact same conflict keys (`lib/garage61-sync-cutoff.ts` keeps their incremental cutoff logic identical), so running either or both is always safe and idempotent. Telemetry (the actual per-sample CSV) stays server-side only (`sync/telemetry`) -- Garage61's internal telemetry format is an undocumented binary blob, not CSV; do not attempt to decode or fetch it client-side.
 - Overview links active-week contexts to Telemetry Lab; representative-lap eligibility is explicit in the UI. Race Debrief is intentionally progressive: summary/actions first, detailed evidence in disclosures, with a robust-sample label only at 10+ analyzed laps.
 - Le Mans Historic (`track_id=195`) intentionally aliases the validated complete Sarthe geometry (`track_id=95`). Map renderers split GPS discontinuities instead of drawing a false diagonal across the circuit.
 - Setup A/B is presented as a package: the existing comparative narrative and contributors precede category-grouped parameter detail. Engineer prompt chips only seed editable driver feedback; no setup file is rewritten.

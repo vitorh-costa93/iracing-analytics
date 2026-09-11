@@ -14,7 +14,12 @@ export async function GET() {
     if (runsResult.error) throw runsResult.error;
     if (resultsResult.error) throw resultsResult.error;
     if (setupsResult.error) throw setupsResult.error;
-    const types = ["full", "catalog", "laps_incremental", "incremental"];
+    // 11/09/2026: "garage61_laps_bookmarklet" (public/garage61-import.js, no rate limit) and
+    // "telemetry" (app/api/sync/telemetry, the fast telemetry-only half of the old laps_incremental)
+    // are now real, common ways Garage61 data gets refreshed -- freshness has to count them too, or
+    // this would keep reporting stale/unknown right after a driver runs the bookmarklet or clicks
+    // Atualizar Dados.
+    const types = ["full", "catalog", "laps_incremental", "incremental", "garage61_laps_bookmarklet", "telemetry"];
     const runs = (runsResult.data ?? []) as SyncRun[];
     const attempt = latest(runs, types);
     const success = latest(runs, types, true);

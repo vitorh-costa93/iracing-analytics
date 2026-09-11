@@ -216,37 +216,28 @@ export default function Home() {
     return parsed;
   }
 
+  // 11/09/2026: "vamos testar usar o mesmo caminho dos setups" -- sessões/voltas/setores now come from
+  // the browser bookmarklet (public/garage61-import.js, via Garage61's own internal api, no rate
+  // limit), the SAME Favoritos button already used for setups. This button no longer discovers
+  // sessions/laps itself (that was sync/incremental's slow, rate-limited part -- see that route's own
+  // comment); it only fills in telemetry for laps the bookmarklet (or the daily cron fallback) already
+  // knows about, which needs no pagination at all.
   async function syncData() {
     setSyncing(true);
     setMessage("Atualizando dados via Supabase...");
     try {
       await postSyncStep("/api/sync/all", "sincronização geral");
 
-      setMessage("Atualizando sessões, voltas e telemetria recentes do Garage61...");
-      const sessionsResult = await postSyncStep("/api/sync/incremental", "sincronização de sessões");
-      // 11/09/2026: "coloquei pra rodar e tá demorando horrores" -- two overlapping runs found live,
-      // competing for the same Garage61 rate-limit bucket. sync/incremental now refuses to start a
-      // second run while one is still genuinely in flight; surface that plainly instead of silently
-      // reporting "0 sessões, 0 voltas" as if nothing was wrong.
-      if (sessionsResult.status === "skipped") {
-        setMessage(String(sessionsResult.message ?? "Uma sincronização já está em andamento."));
-        setSyncing(false);
-        return;
-      }
+      setMessage("Baixando telemetria de voltas já conhecidas...");
+      const telemetryResult = await postSyncStep("/api/sync/telemetry", "sincronização de telemetria");
 
       setMessage("Atualizando histórico de Safety Rating do Garage61...");
       const ratingsResult = await postSyncStep("/api/sync/rating-history", "sincronização de ratings");
 
-      // 11/09/2026: "dei voltas... 5 horas depois não apareceu nada" -- a heavy day (many recent
-      // car/track pairs) can hit sync/incremental's own time budget before reaching every pair, even
-      // though the freshest pairs are now processed first (see that route's own ordering fix). Telling
-      // the driver outright when that happened, instead of silently returning a partial result that
-      // reads identically to "fully done", is what turns "click again" into an understood next step
-      // instead of a mystery.
-      const pendingNote = Number(sessionsResult.pairsSkippedByBudget ?? 0) > 0
-        ? ` Ainda restam ${sessionsResult.pairsSkippedByBudget} combinações de carro/pista para sincronizar -- clique em Atualizar Dados de novo para continuar (as mais recentes já foram priorizadas).`
+      const pendingNote = Number(telemetryResult.candidatesFound ?? 0) > Number(telemetryResult.telemetryDownloaded ?? 0)
+        ? " Ainda há telemetria pendente -- clique em Atualizar Dados de novo para continuar."
         : "";
-      setMessage(`Sincronização concluída: ${sessionsResult.sessionsUpserted ?? 0} sessões, ${sessionsResult.lapsUpserted ?? 0} voltas e ${sessionsResult.telemetryDownloaded ?? 0} telemetrias novas; ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados.${pendingNote} Para resultados/setups novos, use os favoritos abaixo.`);
+      setMessage(`Sincronização concluída: ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) nova(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados.${pendingNote} Para sessões/voltas recentes e setups, use o favorito "Garage61" abaixo.`);
       await loadDashboard(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
