@@ -224,6 +224,15 @@ export default function Home() {
 
       setMessage("Atualizando sessões, voltas e telemetria recentes do Garage61...");
       const sessionsResult = await postSyncStep("/api/sync/incremental", "sincronização de sessões");
+      // 11/09/2026: "coloquei pra rodar e tá demorando horrores" -- two overlapping runs found live,
+      // competing for the same Garage61 rate-limit bucket. sync/incremental now refuses to start a
+      // second run while one is still genuinely in flight; surface that plainly instead of silently
+      // reporting "0 sessões, 0 voltas" as if nothing was wrong.
+      if (sessionsResult.status === "skipped") {
+        setMessage(String(sessionsResult.message ?? "Uma sincronização já está em andamento."));
+        setSyncing(false);
+        return;
+      }
 
       setMessage("Atualizando histórico de Safety Rating do Garage61...");
       const ratingsResult = await postSyncStep("/api/sync/rating-history", "sincronização de ratings");

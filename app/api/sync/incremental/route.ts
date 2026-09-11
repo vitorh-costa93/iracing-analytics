@@ -75,18 +75,40 @@ type SessionRow = {
 // (~120s) para os upserts finais, o download de telemetria e a sobrecarga da própria plataforma.
 const TIME_BUDGET_MS = 180_000;
 
+// 11/09/2026: "coloquei pra rodar e tá demorando horrores" -- found TWO overlapping "running" rows
+// live (18:52:45 and 18:57:36 UTC), both already well past the 300s ceiling. The stale-row sweep only
+// ran every 15 minutes, so a dead run (Vercel killed it, catch never fires) sat there looking "still
+// syncing" for up to 15 minutes -- long enough that an impatient re-click launches a SECOND run
+// competing with the (already-dead, but not yet detected) first one for the exact same Garage61
+// rate-limit bucket, which is its own way to make things much slower, not faster. Two changes: the
+// sweep threshold drops from 15 minutes to 6 (comfortably past the 300s/5min ceiling, so it only ever
+// catches genuinely dead runs, never a healthy one), and a new run now refuses to start at all while a
+// row still within that live window is running, instead of piling on.
+const STALE_RUN_MS = 6 * 60_000;
+
 async function runIncrementalSessionSync() {
   const runStartedAtMs = Date.now();
   const startedAt = new Date().toISOString();
   // Serverless termination can skip the catch block below, leaving a permanent "running" entry.
-  // This route has a five-minute ceiling, so anything still running after fifteen minutes is stale,
-  // not a concurrent healthy execution. Keep the row for diagnosis rather than deleting it.
   await supabaseAdmin
     .from("sync_runs")
     .update({ status: "error", finished_at: startedAt, error_message: "Execução encerrada sem status final (timeout ou interrupção)." })
     .eq("sync_type", "laps_incremental")
     .eq("status", "running")
-    .lt("started_at", new Date(Date.now() - 15 * 60_000).toISOString());
+    .lt("started_at", new Date(Date.now() - STALE_RUN_MS).toISOString());
+
+  const { data: alreadyRunning } = await supabaseAdmin
+    .from("sync_runs")
+    .select("id")
+    .eq("sync_type", "laps_incremental")
+    .eq("status", "running")
+    .gte("started_at", new Date(Date.now() - STALE_RUN_MS).toISOString())
+    .limit(1)
+    .maybeSingle();
+  if (alreadyRunning) {
+    return { status: "skipped" as const, message: "Já existe uma sincronização de sessões em andamento -- aguarde ela terminar antes de tentar de novo." };
+  }
+
   const { data: syncRun } = await supabaseAdmin
     .from("sync_runs")
     .insert({ sync_type: "laps_incremental", status: "running", started_at: startedAt })

@@ -39,7 +39,6 @@ type Comparison = {
   averageSpeedDifference: number;
   opportunities: { title: string; detail: string; gain: number; metrics: string[]; start: number; end: number; binStart: number; binEnd: number; deltaSeries: { distance: number; cumulativeGain: number }[]; kind: "corner" | "straight"; cornerNumber: number | null; cornerLabel: string | null; primaryType: string }[];
   channelInsights: string[];
-  lineDistance: { distance: number; meters: number }[];
 };
 
 type IbtVariable = { type: number; offset: number };
@@ -610,13 +609,7 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     ...[describeWheelspinVsReference(ownWheelspin.length, referenceWheelspin.length), describeCorrectionsVsReference(tractionCorrections.length, worstCorrectionLocation)]
       .filter((line): line is string => line !== null),
   ];
-  // Full-lap line-distance series (Garage61's own "line distance" chart) -- the same signed lateral
-  // metric already used for the per-opportunity insight text above, just exposed point-by-point
-  // instead of averaged into 5% buckets, so it can be drawn as an actual chart instead of only read
-  // as a sentence. This is the honest, data-backed way to show "how far apart the two lines are" —
-  // the track map's ribbon can't (see TrackMap's own comments on why).
-  const lineDistance = samples.filter((item) => item.lateral !== undefined).map((item) => ({ distance: Number(item.distance), meters: Number(item.lateral) }));
-  return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights, lineDistance };
+  return { estimatedReferenceTime, estimatedGap: ownLapTime - estimatedReferenceTime, averageSpeedDifference, opportunities, channelInsights };
 }
 
 /** Linear-interpolates an opportunity's running cumulative time delta (see its `deltaSeries` own
@@ -649,39 +642,7 @@ function nearestGpsPoint(points: TracePoint[], distance: number) {
   return best;
 }
 
-/** Linear-interpolates the signed lateral offset (meters) at an arbitrary distance from the
- * compareTraces-computed series (see compareTraces' own comment for the sign convention). */
-function interpolateLineDistance(lineDistance: { distance: number; meters: number }[], distance: number) {
-  if (!lineDistance.length) return null;
-  let prev = lineDistance[0], next = lineDistance[lineDistance.length - 1];
-  for (const point of lineDistance) {
-    if (point.distance >= distance) { next = point; break; }
-    prev = point;
-  }
-  const span = next.distance - prev.distance;
-  const ratio = span > 0 ? (distance - prev.distance) / span : 0;
-  return prev.meters + (next.meters - prev.meters) * ratio;
-}
-
-/** Reconstructs where the reference car was, in lat/lon, from YOUR own GPS point plus the already
- * -computed lateral offset at that same distance — the exact inverse of the math compareTraces used
- * to derive that offset in the first place. This is used instead of the reference's raw GPS trace
- * for the ON-MAP line: raw GPS noise (this environment has no way to compare against Garage61's own
- * likely-smoothed/filtered internal telemetry) was swallowing real, small divergence at map scale,
- * while the offset series itself is already a clean, meter-accurate, non-noisy signal. */
-function offsetGpsPoint(prevLat: number, prevLon: number, curLat: number, curLon: number, nextLat: number, nextLon: number, offsetMeters: number) {
-  const latRad = (prevLat + nextLat) / 2 * Math.PI / 180;
-  const tx = (nextLon - prevLon) * 111320 * Math.cos(latRad);
-  const ty = (nextLat - prevLat) * 110540;
-  const tlen = Math.hypot(tx, ty) || 1;
-  const ux = tx / tlen, uy = ty / tlen;
-  // Perpendicular consistent with compareTraces' `lateral = ux*ry - uy*rx`: solving for the
-  // perpendicular unit vector p such that ux*p.y - uy*p.x = 1 gives p = (-uy, ux).
-  const dxMeters = -uy * offsetMeters, dyMeters = ux * offsetMeters;
-  return { lat: curLat + dyMeters / 110540, lon: curLon + dxMeters / (111320 * Math.cos(latRad)) };
-}
-
-function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDistance, trackId, focusRequest }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; lineDistance?: { distance: number; meters: number }[]; trackId?: number | null; focusRequest?: { distance: number; nonce: number } | null }) {
+function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, trackId, focusRequest }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; trackId?: number | null; focusRequest?: { distance: number; nonce: number } | null }) {
   // Pan+zoom (01/09/2026: "eu quero usar o mouse para navegar... clico e movo o mouse para baixo eu
   // vou vendo a parte de cima do mapa... é uma funcionalidade bem conhecida") -- shared hook, same
   // one components/TrackMap.tsx uses, so every map in the app behaves identically now. Previously only
@@ -705,30 +666,13 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
   }, [trackId]);
   const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
-  const rawRefGps = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
-  // Reconstructed (own point + the already-computed lateral offset) instead of the reference's raw
-  // GPS trace, when available — see offsetGpsPoint's comment for why. Falls back to raw GPS when no
-  // lineDistance was passed in (e.g. no reference loaded at all yet).
-  const refGps: TracePoint[] = lineDistance && lineDistance.length > 10 && rawRefGps.length
-    ? gps.map((point, index) => {
-      const prevPoint = gps[Math.max(0, index - 1)], nextPoint = gps[Math.min(gps.length - 1, index + 1)];
-      const offsetMeters = interpolateLineDistance(lineDistance, point.distance);
-      if (offsetMeters === null || prevPoint.lat === null || nextPoint.lat === null || point.lat === null) return null;
-      // 11/09/2026: "mapa de Le Mans... segue bastante esquisito" -- on a track this long (13.6km),
-      // matching own/reference by lap-DISTANCE-% (compareTraces' own_distance/ref_distance) instead of
-      // real physical position can occasionally desync by a fraction of a percent at a corner or a GPS
-      // gap, which at this track's scale is hundreds of real meters, not the few meters a genuine
-      // side-by-side offset would be. offsetGpsPoint has no way to tell "real lateral gap" from "matched
-      // the wrong physical point" -- it just projects whatever `lateral` it's given, so a bad match
-      // drew a long spurious line straight across the track. A real lateral gap between two GPS traces
-      // on the same circuit is never more than a lane or two; anything past that is a mismatch, not a
-      // wide line -- skip reconstructing that one point (leaves a small gap in the drawn line) rather
-      // than plotting it somewhere that was never actually driven.
-      if (Math.abs(offsetMeters) > 60) return null;
-      const reconstructed = offsetGpsPoint(Number(prevPoint.lat), Number(prevPoint.lon), Number(point.lat), Number(point.lon), Number(nextPoint.lat), Number(nextPoint.lon), offsetMeters);
-      return { ...point, lat: reconstructed.lat, lon: reconstructed.lon } as TracePoint;
-    }).filter((point): point is TracePoint => point !== null)
-    : rawRefGps;
+  // 11/09/2026: "eu quero que todos os mapas sejam gerados por GPS, não essa coisa mal feita de
+  // própria posição + offset. Isso é ruim e não funciona" -- dropped the offset-reconstruction
+  // entirely (it derived the reference's map position from YOUR OWN GPS plus a computed lateral
+  // offset instead of the reference's actual recorded GPS, and a %-of-lap-distance mismatch on a long
+  // track like Le Mans could place that derived point hundreds of meters from anywhere real). Every
+  // map now draws each trace's own real recorded GPS, unconditionally.
+  const refGps: TracePoint[] = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
   // Keep the map window slightly wider than the input window: a hover must always have visible
   // approach and exit context on the linked trajectory. 03/09/2026: was +-3 -- reasonable back when
   // `range` was always a generic 5%-wide analysis bin (see the opportunities list in the component
@@ -1102,10 +1046,6 @@ export default function ActiveWeekTelemetry() {
                   </div>
                 );
               })()}
-              {/* No standalone chart here by design: this same lateral-offset data (comparison.lineDistance)
-               * is instead used to draw the actual track-usage divergence directly on the map (see
-               * TrackMap below) and to drive the per-corner "line" insight above -- the number itself
-               * isn't the point, where it puts you on track is. */}
               <div className="insights-heading"><span className="section-kicker">MAIORES OPORTUNIDADES</span><h3>Onde você perde tempo e o que fazer</h3><p>As curvas são numeradas na ordem em que aparecem na volta. Quando eu sei o nome real da curva, uso ele; quando não sei, mostro só o número.</p></div>
                   <div className="insights-grid" ref={insightsRef}>{comparison.opportunities.length ? comparison.opportunities.map((item) => (
                     <button type="button" className={selectedRange?.[0] === item.start ? "active" : ""} onClick={() => { setSelectedRange([item.start, item.end]); setHoveredDistance(null); setFocusedInsight(item); trackUiEvent("telemetry_opportunity_opened", { carId: selected.car.id, trackId: selected.track.id, category: item.kind }); }} key={item.title}>
@@ -1184,7 +1124,7 @@ export default function ActiveWeekTelemetry() {
                * real position:sticky column next to the chart, so both are visible at the same time,
                * at every scroll position, the whole time you're hovering. */}
               <aside className="telemetry-side-sticky">
-                <div className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={null} hoverDistance={hoveredDistance} lineDistance={comparison?.lineDistance} focusRequest={chartFocus} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs para localizar o ponto no mapa, clique para dar zoom ali, ou role o mouse sobre o mapa para aproximar/afastar.</p></div>
+                <div className="telemetry-map-sticky"><span className="section-kicker">TRACK POSITION</span><h3>{selected?.track.name}</h3><TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={null} hoverDistance={hoveredDistance} focusRequest={chartFocus} />{referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}<p>Passe o mouse nos inputs para localizar o ponto no mapa, clique para dar zoom ali, ou role o mouse sobre o mapa para aproximar/afastar.</p></div>
                 <div className="telemetry-hover-panel">
                 {hoveredDistance !== null ? (() => {
                   const own = (field: ChannelKey) => interpolate(trace.points, hoveredDistance, field);
@@ -1298,7 +1238,7 @@ export default function ActiveWeekTelemetry() {
                       })()}
                       <div className="insight-popup-map">
                         <span className="section-kicker">TRAÇADO</span>
-                        <TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom lineDistance={comparison?.lineDistance} />
+                        <TrackMap trace={trace} referenceTrace={referenceTrace} trackId={selected?.track.id} range={[focusedInsight.start, focusedInsight.end]} hoverDistance={popupHoverDistance} zoom />
                         {referenceTrace && <p className="track-map-legend"><span className="own">Sua volta</span><span className="reference">Referência</span></p>}
                         <p className="focused-hover-hint">{popupHoverDistance !== null ? `${popupHoverDistance.toFixed(1)}% da volta` : "Passe o mouse no gráfico acima para localizar o ponto no mapa."}</p>
                       </div>
