@@ -194,23 +194,39 @@ export default function Home() {
   // Getting NEW race results or setups still needs a real logged-in browser tab (see the bookmarklet
   // section below this button), since neither irstats.com nor Garage61's setup data can be reached
   // any other way, but that's a deliberate, separate, occasional action now — not tied to this click.
+  // 11/09/2026 fix: "Unexpected token 'A', 'An error o'... is not valid JSON" -- each step's response
+  // was parsed with a bare .json(), which throws that exact cryptic error when Vercel's platform (not
+  // this app's own code) kills a function past its time ceiling and returns an HTML error page instead
+  // of JSON. Reading the body as text first and parsing it ourselves lets us tell the user what
+  // actually happened (which step, timeout vs a real error) instead of a raw parser exception.
+  async function postSyncStep(url: string, label: string) {
+    const response = await fetch(url, { method: "POST" });
+    const text = await response.text();
+    let parsed: { message?: string; [key: string]: unknown } = {};
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error(
+        response.ok
+          ? `${label}: resposta inesperada do servidor (não era JSON).`
+          : `${label}: a Vercel encerrou a chamada antes de terminar (provável timeout). Tente de novo em alguns minutos -- a sincronização é incremental, então nada se perde.`
+      );
+    }
+    if (!response.ok) throw new Error(parsed.message ?? `Erro em ${label}`);
+    return parsed;
+  }
+
   async function syncData() {
     setSyncing(true);
     setMessage("Atualizando dados via Supabase...");
     try {
-      const generalResponse = await fetch("/api/sync/all", { method: "POST" });
-      const generalResult = await generalResponse.json();
-      if (!generalResponse.ok) throw new Error(generalResult.message ?? "Erro na sincronização geral");
+      await postSyncStep("/api/sync/all", "sincronização geral");
 
       setMessage("Atualizando sessões, voltas e telemetria recentes do Garage61...");
-      const sessionsResponse = await fetch("/api/sync/incremental", { method: "POST" });
-      const sessionsResult = await sessionsResponse.json();
-      if (!sessionsResponse.ok) throw new Error(sessionsResult.message ?? "Erro na sincronização de sessões");
+      const sessionsResult = await postSyncStep("/api/sync/incremental", "sincronização de sessões");
 
       setMessage("Atualizando histórico de Safety Rating do Garage61...");
-      const ratingsResponse = await fetch("/api/sync/rating-history", { method: "POST" });
-      const ratingsResult = await ratingsResponse.json();
-      if (!ratingsResponse.ok) throw new Error(ratingsResult.message ?? "Erro na sincronização de ratings");
+      const ratingsResult = await postSyncStep("/api/sync/rating-history", "sincronização de ratings");
 
       setMessage(`Sincronização concluída: ${sessionsResult.sessionsUpserted ?? 0} sessões, ${sessionsResult.lapsUpserted ?? 0} voltas e ${sessionsResult.telemetryDownloaded ?? 0} telemetrias novas; ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para resultados/setups novos, use os favoritos abaixo.`);
       await loadDashboard(true);

@@ -64,11 +64,16 @@ type ComparisonPayload = {
 // menos o volante com um carro do que com outro" -- only shows a rate when it's actually notable
 // (same NOTABLE_RATE_PER_10_LAPS=2 threshold as lib/traction-narrative.ts server-side), so a car with
 // a clean traction record just shows nothing here instead of "0.0x/10 voltas" clutter on every row.
+// 11/09/2026 fix: "não consegui entender esses comentários, até porque eu nem dei 10 voltas, foram
+// sempre 5" -- the rate IS a real normalized "per 10 laps" projection (needed so a car sampled on 1
+// lap and one sampled on 5 are comparable), but showing ONLY the projected number reads as if exactly
+// 10 laps were driven. Appending the real "(N em M voltas)" count ties the projection back to the
+// actual sample so it can't be misread as a literal 10-lap tally.
 const NOTABLE_TRACTION_RATE = 2;
 function formatTractionInline(events: TractionEvents): string | null {
   const parts: string[] = [];
-  if (events.wheelspinPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`destraciona ${events.wheelspinPer10Laps.toFixed(1)}x/10 voltas`);
-  if (events.correctionsPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`corrige o volante ${events.correctionsPer10Laps.toFixed(1)}x/10 voltas`);
+  if (events.wheelspinPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`destraciona ${events.wheelspinPer10Laps.toFixed(1)}x/10 voltas (${events.wheelspinCount} em ${events.lapsAnalyzed})`);
+  if (events.correctionsPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`corrige o volante ${events.correctionsPer10Laps.toFixed(1)}x/10 voltas (${events.correctionCount} em ${events.lapsAnalyzed})`);
   return parts.length ? parts.join(" • ") : null;
 }
 

@@ -67,7 +67,13 @@ type SessionRow = {
 // PÁGINAS novas dentro de um par) antes do teto, salvando o que já coletou. Como esta sync já é
 // incremental com sobreposição de 7 dias, um par que ficou de fora nesta execução é reprocessado
 // (com overlap) na próxima -- não perde dado, só adia.
-const TIME_BUDGET_MS = 250_000; // deixa ~50s de folga para upserts/telemetria depois do loop
+// 11/09/2026 revisão: um teste real levou 294s (perto demais do teto de 300s) -- o botão "Atualizar
+// Dados" chama esta rota como a SEGUNDA de três chamadas POST sequenciais (sync/all, depois esta,
+// depois rating-history; ver app/page.tsx), e nessa mesma tentativa a Vercel matou a função tarde
+// demais para o catch rodar, devolvendo uma página de erro HTML em vez de JSON -- exatamente o
+// "Unexpected token 'A', 'An error o'... is not valid JSON" reportado. 180s deixa uma folga real
+// (~120s) para os upserts finais, o download de telemetria e a sobrecarga da própria plataforma.
+const TIME_BUDGET_MS = 180_000;
 
 async function runIncrementalSessionSync() {
   const runStartedAtMs = Date.now();
