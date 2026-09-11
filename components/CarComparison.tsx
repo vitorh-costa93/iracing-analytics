@@ -70,9 +70,14 @@ type ComparisonPayload = {
 // vezes em 5 voltas" vs "20 vezes em 5 voltas"): the raw occurrence count. Leads with the count now,
 // rate per lap second -- both real, neither requires mentally rescaling a "/10 voltas" projection.
 const NOTABLE_TRACTION_RATE_PER_LAP = 0.2;
+// 11/09/2026: "eu realmente não lembro de destracionar tanto assim... podemos deixar aí só correção
+// de volante" -- the wheelspin (destracionamento) detector was validated by hand against exactly one
+// real lap (a Ferrari 499P GTP hybrid at Road Atlanta); a GT3 car's very different engine/gear
+// characteristics, sampled from only a handful of laps, made its RPM-vs-speed model unreliable enough
+// to read as implausible here (Mercedes-AMG GT3: 12x in 4 laps). Dropped from this specific view per
+// that call -- "corrige o volante" (steering correction) stays, it's the one the driver trusts.
 function formatTractionInline(events: TractionEvents): string | null {
   const parts: string[] = [];
-  if (events.wheelspinPerLap >= NOTABLE_TRACTION_RATE_PER_LAP) parts.push(`destraciona ${events.wheelspinCount}x em ${events.lapsAnalyzed} voltas (${events.wheelspinPerLap.toFixed(1)}/volta)`);
   if (events.correctionsPerLap >= NOTABLE_TRACTION_RATE_PER_LAP) parts.push(`corrige o volante ${events.correctionCount}x em ${events.lapsAnalyzed} voltas (${events.correctionsPerLap.toFixed(1)}/volta)`);
   return parts.length ? parts.join(" • ") : null;
 }

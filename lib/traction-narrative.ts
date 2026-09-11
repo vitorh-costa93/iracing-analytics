@@ -94,23 +94,26 @@ export function describeCorrectionHabit(summary: TractionSummary): string | null
   return `${base} -- acontece em boa parte das voltas, mas não em todas. Vale observar se tem relação com um trecho específico da pista.`;
 }
 
+// 11/09/2026: "eu realmente não lembro de destracionar tanto assim... podemos deixar aí só correção
+// de volante" -- wheelspin (destracionamento) dropped from this Comparar Carros comparison specifically
+// (compareTractionAcrossCars has no other caller). The detector was validated by hand against exactly
+// one real lap (a Ferrari 499P GTP hybrid); a GT3 car's very different engine/gear behavior, sampled
+// from only a handful of laps, produced an implausible read here (Mercedes-AMG GT3: 12x in 4 laps).
+// describeWheelspinVsReference/describeWheelspinHabit (Melhor Volta vs Referência, Meu Debrief) are
+// untouched -- this call site only.
 export function compareTractionAcrossCars(
   fasterCarName: string, fasterSummary: TractionSummary,
   otherCarName: string, otherSummary: TractionSummary,
 ): string | null {
-  if (!isNotableTractionPattern(fasterSummary) && !isNotableTractionPattern(otherSummary)) return null;
+  if (fasterSummary.correctionsPerLap < NOTABLE_RATE_PER_LAP && otherSummary.correctionsPerLap < NOTABLE_RATE_PER_LAP) return null;
 
-  const wheelspinGap = fasterSummary.wheelspinPerLap - otherSummary.wheelspinPerLap;
   const correctionGap = fasterSummary.correctionsPerLap - otherSummary.correctionsPerLap;
 
-  if (wheelspinGap >= MEANINGFUL_RATE_GAP || correctionGap >= MEANINGFUL_RATE_GAP) {
-    const signals: string[] = [];
-    if (wheelspinGap >= MEANINGFUL_RATE_GAP) signals.push(`destraciona ${fasterSummary.wheelspinCount}x em ${fasterSummary.lapsAnalyzed} voltas contra ${otherSummary.wheelspinCount}x em ${otherSummary.lapsAnalyzed}`);
-    if (correctionGap >= MEANINGFUL_RATE_GAP) signals.push(`corrige o volante ${fasterSummary.correctionCount}x em ${fasterSummary.lapsAnalyzed} voltas contra ${otherSummary.correctionCount}x em ${otherSummary.lapsAnalyzed}`);
-    return `No ${fasterCarName} você ${signals.join(" e ")} do que no ${otherCarName} -- é mais rápido, mas provavelmente mais difícil de segurar numa corrida longa; o ${otherCarName} pode valer mais em prova por ser mais fácil de manter consistente.`;
+  if (correctionGap >= MEANINGFUL_RATE_GAP) {
+    return `No ${fasterCarName} você corrige o volante ${fasterSummary.correctionCount}x em ${fasterSummary.lapsAnalyzed} voltas contra ${otherSummary.correctionCount}x em ${otherSummary.lapsAnalyzed} do que no ${otherCarName} -- é mais rápido, mas provavelmente mais difícil de segurar numa corrida longa; o ${otherCarName} pode valer mais em prova por ser mais fácil de manter consistente.`;
   }
-  if (otherSummary.wheelspinPerLap - fasterSummary.wheelspinPerLap >= MEANINGFUL_RATE_GAP || otherSummary.correctionsPerLap - fasterSummary.correctionsPerLap >= MEANINGFUL_RATE_GAP) {
-    return `Apesar de mais lento no ${otherCarName}, você destraciona e corrige menos nele do que no ${fasterCarName} -- vale considerar se a diferença de ritmo compensa o risco extra de manter o ${fasterCarName} na mão por muitas voltas.`;
+  if (otherSummary.correctionsPerLap - fasterSummary.correctionsPerLap >= MEANINGFUL_RATE_GAP) {
+    return `Apesar de mais lento no ${otherCarName}, você corrige o volante menos nele do que no ${fasterCarName} -- vale considerar se a diferença de ritmo compensa o risco extra de manter o ${fasterCarName} na mão por muitas voltas.`;
   }
   return null;
 }
