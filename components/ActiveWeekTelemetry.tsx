@@ -8,6 +8,8 @@ import { getTrackBoundary, type TrackBoundary } from "@/lib/track-boundaries";
 import { useMapZoomPan } from "@/lib/useMapZoomPan";
 import FocusedGaugeChart, { type FocusedSide } from "@/components/FocusedGaugeChart";
 import { trackUiEvent } from "@/lib/track-ui-event";
+import { buildGearRpmModel, detectWheelspin, compareToReference, type TractionSample } from "@/lib/traction-events";
+import { describeWheelspinVsReference, describeCorrectionsVsReference } from "@/lib/traction-narrative";
 
 type Combination = {
   key: string;
@@ -572,6 +574,32 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     };
   }).sort((a, b) => a.start - b.start);
   const avgAbs = (field: ChannelKey, source: Trace) => source.points.reduce((sum, point) => sum + Math.abs(point[field] ?? 0), 0) / source.points.length;
+
+  // 11/09/2026: "ver se eu tenho mais microcorreções/destracionamentos comparado ao da referência" --
+  // same lib/traction-events.ts engine as Comparar Carros, but only two laps exist here (not a pool),
+  // so wheelspin is judged per-lap against its OWN gear/speed model (works fine from a single flying
+  // lap, same as the real validation lap), and corrections use the reference lap itself as the
+  // baseline (lib/traction-events.ts's compareToReference) instead of a median across many laps.
+  const toTractionSamples = (points: TracePoint[]): TractionSample[] => points.map((point) => ({
+    distance: point.distance,
+    throttle: point.throttle ?? undefined, rpm: point.rpm ?? undefined, gear: point.gear ?? undefined,
+    speedMs: point.speed ?? undefined, steeringRad: point.steering ?? undefined, yawRate: point.yawRate ?? undefined,
+  }));
+  const ownSamples = toTractionSamples(own.points);
+  const referenceSamples = toTractionSamples(reference.points);
+  const ownWheelspin = detectWheelspin(ownSamples, buildGearRpmModel([ownSamples]));
+  const referenceWheelspin = detectWheelspin(referenceSamples, buildGearRpmModel([referenceSamples]));
+  const tractionCorrections = compareToReference(ownSamples, referenceSamples);
+  const worstCorrection = tractionCorrections.length
+    ? tractionCorrections.reduce((best, event) => (event.oscillationDeg - event.baselineDeg > best.oscillationDeg - best.baselineDeg ? event : best))
+    : null;
+  const worstCorrectionLocation = worstCorrection ? (() => {
+    const matched = cornersInRange(corners, worstCorrection.startDistance, worstCorrection.endDistance);
+    const namedCorners = Array.from(new Set(matched.map((corner) => corner.name).filter((name): name is string => Boolean(name))));
+    const label = namedCorners.length ? namedCorners.join("–") : matched.length ? `Curva ${matched[0].number}` : null;
+    return label ? `${matched.length > 1 ? "nas" : "na"} ${label}` : `em ${worstCorrection.startDistance.toFixed(0)}%-${worstCorrection.endDistance.toFixed(0)}% da volta`;
+  })() : null;
+
   const channelInsights = [
     `Volante: média absoluta ${(avgAbs("steering", own) * 180 / Math.PI).toFixed(1)}° contra ${(avgAbs("steering", reference) * 180 / Math.PI).toFixed(1)}° na referência.`,
     `RPM: média ${avgAbs("rpm", own).toFixed(0)} contra ${avgAbs("rpm", reference).toFixed(0)}; diferenças podem indicar marcha ou ponto de troca distintos.`,
@@ -579,6 +607,8 @@ function compareTraces(own: Trace, reference: Trace, ownLapTime: number, corners
     ...(reference.channels.some((channel) => /PushToPass|P2P_/i.test(channel))
       ? [`Push-to-pass: a referência IBT contém os canais de acionamento, estado e contagem. Use o tooltip para separar ganho de potência de ganho de pilotagem.`]
       : []),
+    ...[describeWheelspinVsReference(ownWheelspin.length, referenceWheelspin.length), describeCorrectionsVsReference(tractionCorrections.length, worstCorrectionLocation)]
+      .filter((line): line is string => line !== null),
   ];
   // Full-lap line-distance series (Garage61's own "line distance" chart) -- the same signed lateral
   // metric already used for the per-opportunity insight text above, just exposed point-by-point

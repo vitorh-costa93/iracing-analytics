@@ -1,6 +1,6 @@
 // lib/traction-events.test.ts
 import { describe, expect, it } from "vitest";
-import { buildGearRpmModel, detectWheelspin, detectSteeringCorrections, summarizeTractionEvents, type TractionSample } from "./traction-events";
+import { buildGearRpmModel, detectWheelspin, detectSteeringCorrections, compareToReference, summarizeTractionEvents, type TractionSample } from "./traction-events";
 
 /** A clean, steady 3rd-gear run: RPM tracks speed via a fixed ratio (a=140, b=500), speed ramps
  * smoothly, no wheelspin, no steering activity -- the "nothing to see here" baseline every positive
@@ -77,26 +77,27 @@ describe("detectWheelspin", () => {
   });
 });
 
+// A clean single-reversal turn-in/unwind (what a lap does at this corner normally) vs a zigzag
+// covering the same net displacement with much more back-and-forth (what only a "problem" lap does
+// there) -- this is the exact distinction an absolute reversal-count threshold couldn't make (see
+// this module's top comment) and the corner-relative baseline exists to catch. Shared by
+// detectSteeringCorrections (pool-baseline) and compareToReference (reference-lap-baseline) tests.
+const NORMAL_CORNER_DEG = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
+const ZIGZAG_CORNER_DEG = [0, 2, 5, 8, 10, 7, 9, 6, 10, 8, 10, 7, 9, 5, 8, 4, 6, 2, 3, 1];
+const CORNER_START_INDEX = 1000; // bin 50 (distance 50-51%) in a 2000-sample lap
+
+function applyCornerShape(lap: TractionSample[], degrees: number[]): TractionSample[] {
+  const copy = lap.map((sample) => ({ ...sample }));
+  degrees.forEach((deg, k) => {
+    const sample = copy[CORNER_START_INDEX + k];
+    if (!sample) return;
+    sample.steeringRad = (deg * Math.PI) / 180;
+    sample.yawRate = deg / 100; // synthetic but proportional -- nonzero whenever the wheel is off-center, more when it moves more
+  });
+  return copy;
+}
+
 describe("detectSteeringCorrections", () => {
-  // A clean single-reversal turn-in/unwind (what EVERY lap does at this corner normally) vs a zigzag
-  // covering the same net displacement with much more back-and-forth (what only the "problem" lap
-  // does there) -- this is the exact distinction an absolute reversal-count threshold couldn't make
-  // (see this module's top comment) and the corner-relative baseline exists to catch.
-  const NORMAL_CORNER_DEG = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1];
-  const ZIGZAG_CORNER_DEG = [0, 2, 5, 8, 10, 7, 9, 6, 10, 8, 10, 7, 9, 5, 8, 4, 6, 2, 3, 1];
-  const CORNER_START_INDEX = 1000; // bin 50 (distance 50-51%) in a 2000-sample lap
-
-  function applyCornerShape(lap: TractionSample[], degrees: number[]): TractionSample[] {
-    const copy = lap.map((sample) => ({ ...sample }));
-    degrees.forEach((deg, k) => {
-      const sample = copy[CORNER_START_INDEX + k];
-      if (!sample) return;
-      sample.steeringRad = (deg * Math.PI) / 180;
-      sample.yawRate = deg / 100; // synthetic but proportional -- nonzero whenever the wheel is off-center, more when it moves more
-    });
-    return copy;
-  }
-
   it("flags a lap with meaningfully more wasted steering motion than its own baseline at that spot", () => {
     const clean = () => applyCornerShape(baselineLap(2000), NORMAL_CORNER_DEG);
     const problem = applyCornerShape(baselineLap(2000), ZIGZAG_CORNER_DEG);
@@ -120,6 +121,28 @@ describe("detectSteeringCorrections", () => {
     const clean = () => applyCornerShape(baselineLap(2000), NORMAL_CORNER_DEG);
     const problem = applyCornerShape(baselineLap(2000), ZIGZAG_CORNER_DEG).map((sample) => ({ ...sample, speedMs: 5 }));
     expect(detectSteeringCorrections([problem, clean(), clean(), clean()])).toHaveLength(0);
+  });
+});
+
+describe("compareToReference", () => {
+  it("flags where the driver's own lap has meaningfully more wasted motion than the reference at the same spot", () => {
+    const own = applyCornerShape(baselineLap(2000), ZIGZAG_CORNER_DEG);
+    const reference = applyCornerShape(baselineLap(2000), NORMAL_CORNER_DEG);
+    const events = compareToReference(own, reference);
+    expect(events).toHaveLength(1);
+    expect(events[0].startDistance).toBeCloseTo(50, 0);
+  });
+
+  it("does not flag when both laps take the corner the same way", () => {
+    const own = applyCornerShape(baselineLap(2000), NORMAL_CORNER_DEG);
+    const reference = applyCornerShape(baselineLap(2000), NORMAL_CORNER_DEG);
+    expect(compareToReference(own, reference)).toHaveLength(0);
+  });
+
+  it("does not flag when the REFERENCE is the one with more wheel motion (directional, not symmetric)", () => {
+    const own = applyCornerShape(baselineLap(2000), NORMAL_CORNER_DEG);
+    const reference = applyCornerShape(baselineLap(2000), ZIGZAG_CORNER_DEG);
+    expect(compareToReference(own, reference)).toHaveLength(0);
   });
 });
 

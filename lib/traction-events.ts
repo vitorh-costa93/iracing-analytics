@@ -176,6 +176,39 @@ function binSteeringOscillation(samples: TractionSample[]): BinStats[] {
  * guessing from a single lap (see this file's top comment for why an absolute per-lap threshold failed
  * real validation). The yaw-variance floor stays as a light sanity check that the flagged bin reflects
  * the car actually rotating, not one noisy sample on the steering channel alone. */
+/** Shared by detectSteeringCorrections (baseline = this driver's own median at each bin, across a
+ * pool of laps) and compareToReference (baseline = the reference lap's own bins, one-to-one) -- same
+ * ratio+floor+yaw-sanity gate, same adjacent-bin merge, either way. */
+function flagBinsAgainstBaseline(lapBins: BinStats[], baselinePerBin: number[]): CorrectionEvent[] {
+  const flagged: { bin: number; oscillationDeg: number; baselineDeg: number; speedKmh: number }[] = [];
+  for (let bin = 0; bin < lapBins.length; bin += 1) {
+    const stats = lapBins[bin];
+    if (!stats || stats.speedKmh < CORRECTION_MIN_SPEED_KMH) continue;
+    const baseline = baselinePerBin[bin] ?? 0;
+    const exceedsRatio = stats.oscillationDeg > baseline * CORRECTION_RATIO;
+    const exceedsFloor = stats.oscillationDeg - baseline > CORRECTION_ABS_FLOOR_DEG;
+    if (!exceedsRatio || !exceedsFloor) continue;
+    if (stats.yawStd < CORRECTION_MIN_YAW_VARIANCE) continue;
+    flagged.push({ bin, oscillationDeg: stats.oscillationDeg, baselineDeg: baseline, speedKmh: stats.speedKmh });
+  }
+  if (!flagged.length) return [];
+  const groups: typeof flagged[] = [[flagged[0]]];
+  for (let i = 1; i < flagged.length; i += 1) {
+    const lastGroup = groups[groups.length - 1];
+    if (flagged[i].bin - lastGroup[lastGroup.length - 1].bin <= CORRECTION_MERGE_DISTANCE_PCT / CORRECTION_BIN_PCT) lastGroup.push(flagged[i]);
+    else groups.push([flagged[i]]);
+  }
+  return groups.map((group) => {
+    const peak = group.reduce((best, item) => (item.oscillationDeg - item.baselineDeg > best.oscillationDeg - best.baselineDeg ? item : best));
+    return {
+      startDistance: Number((group[0].bin * CORRECTION_BIN_PCT).toFixed(2)),
+      endDistance: Number(((group[group.length - 1].bin + 1) * CORRECTION_BIN_PCT).toFixed(2)),
+      oscillationDeg: Number(peak.oscillationDeg.toFixed(1)), baselineDeg: Number(peak.baselineDeg.toFixed(1)),
+      speedKmh: Number(peak.speedKmh.toFixed(1)),
+    };
+  });
+}
+
 export function detectSteeringCorrections(laps: TractionSample[][]): CorrectionEvent[] {
   if (laps.length < CORRECTION_MIN_LAPS) return [];
   const binnedPerLap = laps.map(binSteeringOscillation);
@@ -188,36 +221,21 @@ export function detectSteeringCorrections(laps: TractionSample[][]): CorrectionE
   }
 
   const events: CorrectionEvent[] = [];
-  for (const lapBins of binnedPerLap) {
-    const flagged: { bin: number; oscillationDeg: number; baselineDeg: number; speedKmh: number }[] = [];
-    for (let bin = 0; bin < binCount; bin += 1) {
-      const stats = lapBins[bin];
-      if (!stats || stats.speedKmh < CORRECTION_MIN_SPEED_KMH) continue;
-      const baseline = baselinePerBin[bin];
-      const exceedsRatio = stats.oscillationDeg > baseline * CORRECTION_RATIO;
-      const exceedsFloor = stats.oscillationDeg - baseline > CORRECTION_ABS_FLOOR_DEG;
-      if (!exceedsRatio || !exceedsFloor) continue;
-      if (stats.yawStd < CORRECTION_MIN_YAW_VARIANCE) continue;
-      flagged.push({ bin, oscillationDeg: stats.oscillationDeg, baselineDeg: baseline, speedKmh: stats.speedKmh });
-    }
-    if (!flagged.length) continue;
-    const groups: typeof flagged[] = [[flagged[0]]];
-    for (let i = 1; i < flagged.length; i += 1) {
-      const lastGroup = groups[groups.length - 1];
-      if (flagged[i].bin - lastGroup[lastGroup.length - 1].bin <= CORRECTION_MERGE_DISTANCE_PCT / CORRECTION_BIN_PCT) lastGroup.push(flagged[i]);
-      else groups.push([flagged[i]]);
-    }
-    for (const group of groups) {
-      const peak = group.reduce((best, item) => (item.oscillationDeg - item.baselineDeg > best.oscillationDeg - best.baselineDeg ? item : best));
-      events.push({
-        startDistance: Number((group[0].bin * CORRECTION_BIN_PCT).toFixed(2)),
-        endDistance: Number(((group[group.length - 1].bin + 1) * CORRECTION_BIN_PCT).toFixed(2)),
-        oscillationDeg: Number(peak.oscillationDeg.toFixed(1)), baselineDeg: Number(peak.baselineDeg.toFixed(1)),
-        speedKmh: Number(peak.speedKmh.toFixed(1)),
-      });
-    }
-  }
+  for (const lapBins of binnedPerLap) events.push(...flagBinsAgainstBaseline(lapBins, baselinePerBin));
   return events;
+}
+
+/** The "Melhor Volta vs Referência" case: only two traces exist (yours and the reference lap), not a
+ * pool to build a median from -- so the reference lap's own steering shape at each spot on track IS
+ * the baseline. Flags stretches where YOU show meaningfully more wasted wheel motion than the
+ * reference did at that exact point, i.e. corrections the reference didn't need to make. Directional
+ * on purpose: a reference lap having more wheel movement than you at some spot isn't "you're doing
+ * great", it just isn't what this comparison is for. */
+export function compareToReference(own: TractionSample[], reference: TractionSample[]): CorrectionEvent[] {
+  const ownBins = binSteeringOscillation(own);
+  const referenceBins = binSteeringOscillation(reference);
+  const baselinePerBin = referenceBins.map((stats) => stats?.oscillationDeg ?? 0);
+  return flagBinsAgainstBaseline(ownBins, baselinePerBin);
 }
 
 export type TractionSummary = {

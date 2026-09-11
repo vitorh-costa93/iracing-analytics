@@ -41,6 +41,27 @@ export function describeTractionPattern(summary: TractionSummary): string | null
  * mais dificuldades de manter esse carro na mão por muitas voltas") -- only speaks when the gap is
  * real, same "only when it's genuinely worth saying" philosophy as buildCarComparisonNarrative's own
  * clauses. Deliberately doesn't care which car is faster: the point is the tradeoff itself. */
+/** "Melhor Volta vs Referência" (11/09/2026): only two laps exist here, not a pool, so the comparison
+ * is a straight own-vs-reference count/location instead of a rate. Returns null when there's nothing
+ * worth saying (matches the "only speak when it's genuinely worth saying" rule the rest of this
+ * codebase's narrative functions already follow). */
+export function describeWheelspinVsReference(ownCount: number, referenceCount: number): string | null {
+  if (ownCount === 0 && referenceCount === 0) return null;
+  if (ownCount > referenceCount) {
+    return `Destracionamento: você perdeu tração ${ownCount}x nessa volta, contra ${referenceCount}x na referência -- pontos onde o acelerador pediu mais do que o pneu aguentava.`;
+  }
+  if (ownCount < referenceCount) {
+    return `Destracionamento: você perdeu tração só ${ownCount}x nessa volta, contra ${referenceCount}x na referência -- sua aplicação de acelerador está mais limpa que a da referência aqui.`;
+  }
+  return `Destracionamento: você e a referência perderam tração o mesmo número de vezes (${ownCount}x) nessa volta.`;
+}
+
+export function describeCorrectionsVsReference(count: number, worstLocation: string | null): string | null {
+  if (count === 0) return null;
+  const where = worstLocation ? ` O pior caso foi ${worstLocation}.` : "";
+  return `Microcorreções: em ${count} trecho${count > 1 ? "s" : ""} da volta você mexeu no volante bem mais que a referência no mesmo ponto -- sinal de estar corrigindo o carro ali, não conduzindo limpo.${where}`;
+}
+
 export function compareTractionAcrossCars(
   fasterCarName: string, fasterSummary: TractionSummary,
   otherCarName: string, otherSummary: TractionSummary,
