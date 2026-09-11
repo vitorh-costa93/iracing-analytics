@@ -51,7 +51,13 @@ const WHEELSPIN_THROTTLE_MIN = 0.85; // near-full throttle -- below this, an RPM
 const WHEELSPIN_RPM_SURPLUS_PCT = 8; // % above the gear's own RPM-vs-speed model to count as spin
 const WHEELSPIN_GEAR_STABLE_WINDOW = 3; // samples on each side that must share the same gear
 const WHEELSPIN_MIN_GEAR_SAMPLES = 20; // minimum pooled samples in a gear before trusting its regression at all
-const WHEELSPIN_MERGE_DISTANCE_PCT = 0.3; // two flagged samples this close together are one event, not two
+// 11/09/2026: "tem que ser contabilizado por trecho... o artefato que você criou, ali geraria 1
+// report de destracionada e 1 situação de correção de volante" -- turn-in, mid-corner and exit
+// moments of the SAME real corner used to merge only within a tight raw-distance window, splitting
+// one corner into 2-3 separate reported events. Widened toward a typical single corner's real span in
+// this app's own corner data (observed 2-8% of lap distance for a real corner in car-comparison/
+// ActiveWeekTelemetry's own corner lists) so one corner reads as one event again.
+const WHEELSPIN_MERGE_DISTANCE_PCT = 1.5; // two flagged samples this close together are one event, not two
 
 const CORRECTION_BIN_PCT = 1; // % of lap per bin -- close to the real-world distance the original 0.33s time-window covered at typical corner speed
 const CORRECTION_MIN_SPEED_KMH = 70; // ignore pit-lane/parked noise
@@ -59,7 +65,16 @@ const CORRECTION_MIN_LAPS = 3; // a median across fewer laps than this isn't a t
 const CORRECTION_RATIO = 2.5; // this lap's wasted motion in a bin must be at least this many times the bin's own median across the other laps
 const CORRECTION_ABS_FLOOR_DEG = 4; // AND exceed that median by at least this many degrees -- stops a near-zero baseline bin (a flat-out kink the driver always takes clean) from flagging off a trivial absolute wobble that happens to be a big ratio of ~nothing
 const CORRECTION_MIN_YAW_VARIANCE = 0.015; // rad/s stddev inside the flagged bin -- sanity floor confirming the car is actually rotating there, not just a lone noisy sample on the steering channel
-const CORRECTION_MERGE_DISTANCE_PCT = 1; // adjacent flagged bins are one event, not several
+// 11/09/2026: "as irregularidades da pista podem estar sendo contabilizadas como... correção do
+// volante, que são essas microvariações devido às irregularidades da pista. correção é algo mais
+// 'bruto' que isso" -- oscillationDeg alone (total wasted motion summed across a bin) can't tell many
+// tiny high-frequency wiggles (curb/kerb texture, track surface noise) from one or two decisive
+// countersteer moves: both can sum to the same total. Validated against 3 real Silverstone GP laps
+// (11/09/2026): every genuinely-flagged correction in that data had a single-sample steering step of
+// at least 2.68deg inside its bin, comfortably above the p90 (3.57deg) of ALL bins' own peak steps in
+// that same data -- a real correction is "brusco" (one sharp move), not just cumulatively noisy.
+const CORRECTION_MIN_PEAK_STEP_DEG = 2.5;
+const CORRECTION_MERGE_DISTANCE_PCT = 3; // adjacent flagged bins are one event, not several -- see WHEELSPIN_MERGE_DISTANCE_PCT's own comment on why this widened
 
 function mean(values: number[]) { return values.reduce((sum, value) => sum + value, 0) / values.length; }
 function stddev(values: number[], avg: number) { return Math.sqrt(values.reduce((sum, value) => sum + (value - avg) ** 2, 0) / values.length); }
@@ -143,12 +158,14 @@ function mergeNearbyPeaks<T extends { distance: number; index: number; rpmSurplu
   return groups.map((group) => group.reduce((best, item) => (item.rpmSurplusPct > best.rpmSurplusPct ? item : best)));
 }
 
-type BinStats = { oscillationDeg: number; yawStd: number; speedKmh: number } | null;
+type BinStats = { oscillationDeg: number; yawStd: number; speedKmh: number; maxStepDeg: number } | null;
 
 /** One lap's steering trace binned into CORRECTION_BIN_PCT-wide windows of lap distance. Per bin:
  * "wasted" steering motion = total absolute movement minus net displacement -- near zero for a smooth
  * monotonic turn-in (any real corner has some), large when the driver moves the wheel back and forth
- * without actually progressing the angle. */
+ * without actually progressing the angle. Also tracks the single LARGEST sample-to-sample step in the
+ * bin (see CORRECTION_MIN_PEAK_STEP_DEG's own comment for why: track-surface noise sums to a large
+ * oscillationDeg over many tiny steps, a real correction has at least one decisively large one). */
 function binSteeringOscillation(samples: TractionSample[]): BinStats[] {
   const binCount = Math.ceil(100 / CORRECTION_BIN_PCT);
   const bins: TractionSample[][] = Array.from({ length: binCount }, () => []);
@@ -159,14 +176,19 @@ function binSteeringOscillation(samples: TractionSample[]): BinStats[] {
   }
   return bins.map((binSamples) => {
     if (binSamples.length < 4) return null;
-    let totalMoveDeg = 0;
-    for (let i = 1; i < binSamples.length; i += 1) totalMoveDeg += Math.abs((binSamples[i].steeringRad! - binSamples[i - 1].steeringRad!) * (180 / Math.PI));
+    let totalMoveDeg = 0, maxStepDeg = 0;
+    for (let i = 1; i < binSamples.length; i += 1) {
+      const stepDeg = Math.abs((binSamples[i].steeringRad! - binSamples[i - 1].steeringRad!) * (180 / Math.PI));
+      totalMoveDeg += stepDeg;
+      if (stepDeg > maxStepDeg) maxStepDeg = stepDeg;
+    }
     const netMoveDeg = Math.abs((binSamples[binSamples.length - 1].steeringRad! - binSamples[0].steeringRad!) * (180 / Math.PI));
     const yawValues = binSamples.filter((sample) => sample.yawRate !== undefined).map((sample) => sample.yawRate!);
     return {
       oscillationDeg: totalMoveDeg - netMoveDeg,
       yawStd: yawValues.length >= 3 ? stddev(yawValues, mean(yawValues)) : 0,
       speedKmh: mean(binSamples.map((sample) => sample.speedMs!)) * 3.6,
+      maxStepDeg,
     };
   });
 }
@@ -191,6 +213,7 @@ function flagBinsAgainstBaseline(lapBins: BinStats[], baselinePerBin: number[], 
     const exceedsFloor = stats.oscillationDeg - baseline > CORRECTION_ABS_FLOOR_DEG;
     if (!exceedsRatio || !exceedsFloor) continue;
     if (stats.yawStd < CORRECTION_MIN_YAW_VARIANCE) continue;
+    if (stats.maxStepDeg < CORRECTION_MIN_PEAK_STEP_DEG) continue;
     flagged.push({ bin, oscillationDeg: stats.oscillationDeg, baselineDeg: baseline, speedKmh: stats.speedKmh });
   }
   if (!flagged.length) return [];

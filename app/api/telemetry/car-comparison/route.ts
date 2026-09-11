@@ -953,14 +953,31 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     .sort((a, b) => b.latestStartedAt.localeCompare(a.latestStartedAt));
   const selectedSeasonId = seasonParam === "all" ? null : seasonParam ?? seasons[0]?.seasonId ?? null;
 
-  // Plausibility floor computed once, across every car in this category+season pool together (not
-  // per car) -- a single car might legitimately have very few laps, too few to trust its own
-  // median, but the whole pool sharing one track always has enough signal.
+  // 11/09/2026: "veio com bug em road atlanta, a volta mais rápida é da Ferrari, uma volta de 57
+  // segundos, total irreal" -- pooling every car's laps together for ONE shared plausibility cluster
+  // (as this used to) breaks down inside a category that spans very different real pace, like "gtp"
+  // here (LMP2/Hypercar ~152-159s at Road Atlanta next to Super Formula's ~63-65s open-wheel pace):
+  // a slower car's genuinely broken SHORT laps (e.g. Ferrari's own 54-58s partial/incomplete records)
+  // can land within filterPlausibleTimes' 30% link of a FASTER car's genuine pace bracket, forming a
+  // cross-car cluster that beats that slower car's own small (2-lap) genuine cluster in size -- so the
+  // slower car's real laps got REJECTED as "implausible" while its broken ones survived, and (byCar
+  // being the only pool the GPS-coverage verification below ever sees) that broken lap became the only
+  // candidate left to verify, producing exactly this wrong result. Clustering PER CAR first (each against
+  // only its own laps, where a real pace bracket and a broken-record bracket are reliably far enough
+  // apart within one car's own pool) fixes that; only a car with too few laps of its own to safely
+  // self-cluster (filterPlausibleTimes' own <4 floor) falls back to the cross-car pool, which is still
+  // better than no filtering for that specific case.
   const pooledLaps = [...byCarCategory.values()].flatMap((laps) => selectedSeasonId ? laps.filter((lap) => seasonKey(lap) === selectedSeasonId) : laps);
-  const plausibleLapIds = new Set(filterPlausibleTimes(pooledLaps).map((lap) => lap.id));
+  const pooledPlausibleIds = new Set(filterPlausibleTimes(pooledLaps).map((lap) => lap.id));
 
   const byCar = new Map([...byCarCategory]
-    .map(([carId, laps]): [number, LapRow[]] => [carId, (selectedSeasonId ? laps.filter((lap) => seasonKey(lap) === selectedSeasonId) : laps).filter((lap) => plausibleLapIds.has(lap.id))])
+    .map(([carId, laps]): [number, LapRow[]] => {
+      const scoped = selectedSeasonId ? laps.filter((lap) => seasonKey(lap) === selectedSeasonId) : laps;
+      const ownPlausible = scoped.filter((lap) => Number(lap.lap_time) > 0).length >= 4
+        ? new Set(filterPlausibleTimes(scoped).map((lap) => lap.id))
+        : pooledPlausibleIds;
+      return [carId, scoped.filter((lap) => ownPlausible.has(lap.id))];
+    })
     .filter(([, laps]) => laps.length > 0));
 
   const carIds = [...byCar.keys()]
