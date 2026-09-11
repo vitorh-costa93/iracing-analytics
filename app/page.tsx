@@ -228,7 +228,16 @@ export default function Home() {
       setMessage("Atualizando histórico de Safety Rating do Garage61...");
       const ratingsResult = await postSyncStep("/api/sync/rating-history", "sincronização de ratings");
 
-      setMessage(`Sincronização concluída: ${sessionsResult.sessionsUpserted ?? 0} sessões, ${sessionsResult.lapsUpserted ?? 0} voltas e ${sessionsResult.telemetryDownloaded ?? 0} telemetrias novas; ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para resultados/setups novos, use os favoritos abaixo.`);
+      // 11/09/2026: "dei voltas... 5 horas depois não apareceu nada" -- a heavy day (many recent
+      // car/track pairs) can hit sync/incremental's own time budget before reaching every pair, even
+      // though the freshest pairs are now processed first (see that route's own ordering fix). Telling
+      // the driver outright when that happened, instead of silently returning a partial result that
+      // reads identically to "fully done", is what turns "click again" into an understood next step
+      // instead of a mystery.
+      const pendingNote = Number(sessionsResult.pairsSkippedByBudget ?? 0) > 0
+        ? ` Ainda restam ${sessionsResult.pairsSkippedByBudget} combinações de carro/pista para sincronizar -- clique em Atualizar Dados de novo para continuar (as mais recentes já foram priorizadas).`
+        : "";
+      setMessage(`Sincronização concluída: ${sessionsResult.sessionsUpserted ?? 0} sessões, ${sessionsResult.lapsUpserted ?? 0} voltas e ${sessionsResult.telemetryDownloaded ?? 0} telemetrias novas; ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados.${pendingNote} Para resultados/setups novos, use os favoritos abaixo.`);
       await loadDashboard(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");

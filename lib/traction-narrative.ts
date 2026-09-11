@@ -9,26 +9,28 @@ import type { TractionSummary } from "@/lib/traction-events";
 // handful of laps is noise, not a pattern worth a sentence. Matches "se eu tô tentando toda volta, é
 // um problema, caso seja pontual, não é" (11/09/2026): the threshold is deliberately about RATE, not
 // raw count, so it stays meaningful regardless of how many laps were sampled.
-const NOTABLE_RATE_PER_10_LAPS = 2;
+// 11/09/2026 revision: rescaled from a "per 10 laps" threshold (2) to per-lap (0.2) -- same real
+// sensitivity, just matching TractionSummary's own rate unit now.
+const NOTABLE_RATE_PER_LAP = 0.2;
 // A gap this size between two cars is a real behavioral difference, not sampling noise between two
 // similarly-sized lap pools.
-const MEANINGFUL_RATE_GAP = 1.5;
+const MEANINGFUL_RATE_GAP = 0.15;
 
 export function isNotableTractionPattern(summary: TractionSummary): boolean {
-  return summary.wheelspinPer10Laps >= NOTABLE_RATE_PER_10_LAPS || summary.correctionsPer10Laps >= NOTABLE_RATE_PER_10_LAPS;
+  return summary.wheelspinPerLap >= NOTABLE_RATE_PER_LAP || summary.correctionsPerLap >= NOTABLE_RATE_PER_LAP;
 }
 
 /** One car's own pattern, read in isolation -- "é hábito ou é pontual" stated directly. */
 export function describeTractionPattern(summary: TractionSummary): string | null {
   if (summary.lapsAnalyzed === 0) return null;
   const parts: string[] = [];
-  if (summary.wheelspinPer10Laps >= NOTABLE_RATE_PER_10_LAPS) {
-    parts.push(`destraciona em média ${summary.wheelspinPer10Laps.toFixed(1)}x a cada 10 voltas`);
+  if (summary.wheelspinPerLap >= NOTABLE_RATE_PER_LAP) {
+    parts.push(`destracionou ${summary.wheelspinCount}x em ${summary.lapsAnalyzed} voltas (${summary.wheelspinPerLap.toFixed(1)}x/volta)`);
   } else if (summary.wheelspinCount > 0) {
     parts.push("destracionou pontualmente, não é um padrão");
   }
-  if (summary.correctionsPer10Laps >= NOTABLE_RATE_PER_10_LAPS) {
-    parts.push(`corrige o volante bruscamente ${summary.correctionsPer10Laps.toFixed(1)}x a cada 10 voltas`);
+  if (summary.correctionsPerLap >= NOTABLE_RATE_PER_LAP) {
+    parts.push(`corrigiu o volante bruscamente ${summary.correctionCount}x em ${summary.lapsAnalyzed} voltas (${summary.correctionsPerLap.toFixed(1)}x/volta)`);
   } else if (summary.correctionCount > 0) {
     parts.push("corrigiu o volante pontualmente, não é um padrão");
   }
@@ -98,16 +100,16 @@ export function compareTractionAcrossCars(
 ): string | null {
   if (!isNotableTractionPattern(fasterSummary) && !isNotableTractionPattern(otherSummary)) return null;
 
-  const wheelspinGap = fasterSummary.wheelspinPer10Laps - otherSummary.wheelspinPer10Laps;
-  const correctionGap = fasterSummary.correctionsPer10Laps - otherSummary.correctionsPer10Laps;
+  const wheelspinGap = fasterSummary.wheelspinPerLap - otherSummary.wheelspinPerLap;
+  const correctionGap = fasterSummary.correctionsPerLap - otherSummary.correctionsPerLap;
 
   if (wheelspinGap >= MEANINGFUL_RATE_GAP || correctionGap >= MEANINGFUL_RATE_GAP) {
     const signals: string[] = [];
-    if (wheelspinGap >= MEANINGFUL_RATE_GAP) signals.push(`destraciona ${wheelspinGap.toFixed(1)}x mais a cada 10 voltas`);
-    if (correctionGap >= MEANINGFUL_RATE_GAP) signals.push(`corrige o volante ${correctionGap.toFixed(1)}x mais a cada 10 voltas`);
+    if (wheelspinGap >= MEANINGFUL_RATE_GAP) signals.push(`destraciona ${fasterSummary.wheelspinCount}x em ${fasterSummary.lapsAnalyzed} voltas contra ${otherSummary.wheelspinCount}x em ${otherSummary.lapsAnalyzed}`);
+    if (correctionGap >= MEANINGFUL_RATE_GAP) signals.push(`corrige o volante ${fasterSummary.correctionCount}x em ${fasterSummary.lapsAnalyzed} voltas contra ${otherSummary.correctionCount}x em ${otherSummary.lapsAnalyzed}`);
     return `No ${fasterCarName} você ${signals.join(" e ")} do que no ${otherCarName} -- é mais rápido, mas provavelmente mais difícil de segurar numa corrida longa; o ${otherCarName} pode valer mais em prova por ser mais fácil de manter consistente.`;
   }
-  if (otherSummary.wheelspinPer10Laps - fasterSummary.wheelspinPer10Laps >= MEANINGFUL_RATE_GAP || otherSummary.correctionsPer10Laps - fasterSummary.correctionsPer10Laps >= MEANINGFUL_RATE_GAP) {
+  if (otherSummary.wheelspinPerLap - fasterSummary.wheelspinPerLap >= MEANINGFUL_RATE_GAP || otherSummary.correctionsPerLap - fasterSummary.correctionsPerLap >= MEANINGFUL_RATE_GAP) {
     return `Apesar de mais lento no ${otherCarName}, você destraciona e corrige menos nele do que no ${fasterCarName} -- vale considerar se a diferença de ritmo compensa o risco extra de manter o ${fasterCarName} na mão por muitas voltas.`;
   }
   return null;

@@ -244,7 +244,12 @@ export function compareToReference(own: TractionSample[], reference: TractionSam
 export type TractionSummary = {
   lapsAnalyzed: number;
   wheelspinCount: number; correctionCount: number;
-  wheelspinPer10Laps: number; correctionsPer10Laps: number;
+  // 11/09/2026 revision: "isso tem que ser por ocorrência. E tem que ser uma taxa por volta" -- the
+  // rate is normalized PER LAP (not per-10-laps) so a car sampled on 1 lap and one sampled on 8 are
+  // still comparable ("destracionar 30 vezes em 5 voltas" vs "20 vezes em 5 voltas" is the comparison
+  // that matters, not what fraction of laps were merely touched -- see lapsWithWheelspin's own comment
+  // for why THAT question belongs to Meu Debrief specifically, not this general-purpose rate).
+  wheelspinPerLap: number; correctionsPerLap: number;
   // "se eu tô tentando toda volta, é um problema, caso seja pontual, não é" (11/09/2026, aimed
   // squarely at Meu Debrief) -- a rate alone can't answer that: 10 wheelspin events could be one per
   // lap across 10 laps (a real habit) or all 10 crammed into a single bad lap (isolated). These count
@@ -255,13 +260,12 @@ export type TractionSummary = {
 };
 
 /** The per-car summary every surface (Comparar Carros, Melhor Volta vs Referência, Meu Debrief)
- * consumes: how often, not just whether. Rates are normalized "per 10 laps" so a car sampled on 3
- * laps and one sampled on 8 laps are comparable, answering "é hábito ou é pontual" -- the question
- * this whole feature exists to answer, not a bare event count that scales with sample size. */
+ * consumes: how often, not just whether. Rates are normalized per lap so a car sampled on 3 laps and
+ * one sampled on 8 laps are comparable, not a bare event count that scales with sample size. */
 export function summarizeTractionEvents(laps: TractionSample[][]): TractionSummary {
   const validLaps = laps.filter((lap) => lap.length > 20);
   if (!validLaps.length) {
-    return { lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPer10Laps: 0, correctionsPer10Laps: 0, lapsWithWheelspin: 0, lapsWithCorrections: 0, worstWheelspin: null, worstCorrection: null };
+    return { lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPerLap: 0, correctionsPerLap: 0, lapsWithWheelspin: 0, lapsWithCorrections: 0, worstWheelspin: null, worstCorrection: null };
   }
   const model = buildGearRpmModel(validLaps);
   const wheelspinEvents: WheelspinEvent[] = [];
@@ -279,8 +283,8 @@ export function summarizeTractionEvents(laps: TractionSample[][]): TractionSumma
   return {
     lapsAnalyzed: lapCount,
     wheelspinCount: wheelspinEvents.length, correctionCount: correctionEvents.length,
-    wheelspinPer10Laps: Number(((wheelspinEvents.length / lapCount) * 10).toFixed(1)),
-    correctionsPer10Laps: Number(((correctionEvents.length / lapCount) * 10).toFixed(1)),
+    wheelspinPerLap: Number((wheelspinEvents.length / lapCount).toFixed(1)),
+    correctionsPerLap: Number((correctionEvents.length / lapCount).toFixed(1)),
     lapsWithWheelspin: new Set(wheelspinEvents.map((event) => event.lapIndex)).size,
     lapsWithCorrections: new Set(correctionEvents.map((event) => event.lapIndex)).size,
     worstWheelspin, worstCorrection,

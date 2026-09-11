@@ -24,7 +24,7 @@ type LapConditions = {
 } | null;
 type TractionEvents = {
   lapsAnalyzed: number; wheelspinCount: number; correctionCount: number;
-  wheelspinPer10Laps: number; correctionsPer10Laps: number;
+  wheelspinPerLap: number; correctionsPerLap: number;
   worstWheelspin: { distance: number; speedKmh: number; gear: number; throttlePct: number; rpmSurplusPct: number } | null;
   worstCorrection: { startDistance: number; endDistance: number; oscillationDeg: number; baselineDeg: number; speedKmh: number } | null;
 };
@@ -62,18 +62,18 @@ type ComparisonPayload = {
  * alongside a bar and a time value without truncating one of them. */
 // 11/09/2026: "na parte de Comparar Carros serviria para dar mais credibilidade se eu preciso corrigir
 // menos o volante com um carro do que com outro" -- only shows a rate when it's actually notable
-// (same NOTABLE_RATE_PER_10_LAPS=2 threshold as lib/traction-narrative.ts server-side), so a car with
-// a clean traction record just shows nothing here instead of "0.0x/10 voltas" clutter on every row.
-// 11/09/2026 fix: "não consegui entender esses comentários, até porque eu nem dei 10 voltas, foram
-// sempre 5" -- the rate IS a real normalized "per 10 laps" projection (needed so a car sampled on 1
-// lap and one sampled on 5 are comparable), but showing ONLY the projected number reads as if exactly
-// 10 laps were driven. Appending the real "(N em M voltas)" count ties the projection back to the
-// actual sample so it can't be misread as a literal 10-lap tally.
-const NOTABLE_TRACTION_RATE = 2;
+// (same NOTABLE_RATE_PER_LAP threshold as lib/traction-narrative.ts server-side), so a car with a
+// clean traction record just shows nothing here instead of clutter on every row.
+// 11/09/2026 revision: "não é essa métrica que eu quero... isso tem que ser por ocorrência. E tem que
+// ser uma taxa por volta" -- a first attempt showed the per-10-laps PROJECTION with the sample size in
+// parentheses, but that buried the thing that actually makes two cars comparable ("destracionar 30
+// vezes em 5 voltas" vs "20 vezes em 5 voltas"): the raw occurrence count. Leads with the count now,
+// rate per lap second -- both real, neither requires mentally rescaling a "/10 voltas" projection.
+const NOTABLE_TRACTION_RATE_PER_LAP = 0.2;
 function formatTractionInline(events: TractionEvents): string | null {
   const parts: string[] = [];
-  if (events.wheelspinPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`destraciona ${events.wheelspinPer10Laps.toFixed(1)}x/10 voltas (${events.wheelspinCount} em ${events.lapsAnalyzed})`);
-  if (events.correctionsPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`corrige o volante ${events.correctionsPer10Laps.toFixed(1)}x/10 voltas (${events.correctionCount} em ${events.lapsAnalyzed})`);
+  if (events.wheelspinPerLap >= NOTABLE_TRACTION_RATE_PER_LAP) parts.push(`destraciona ${events.wheelspinCount}x em ${events.lapsAnalyzed} voltas (${events.wheelspinPerLap.toFixed(1)}/volta)`);
+  if (events.correctionsPerLap >= NOTABLE_TRACTION_RATE_PER_LAP) parts.push(`corrige o volante ${events.correctionCount}x em ${events.lapsAnalyzed} voltas (${events.correctionsPerLap.toFixed(1)}/volta)`);
   return parts.length ? parts.join(" • ") : null;
 }
 

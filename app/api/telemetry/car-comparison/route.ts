@@ -378,8 +378,8 @@ function buildCarComparisonNarrative(cars: NarrativeCar[], sectors: NarrativeSec
   const rest = cars.filter((car) => car.carId !== fastest.carId);
   if (rest.length) {
     const calmest = rest.reduce((best, car) =>
-      (car.tractionEvents.wheelspinPer10Laps + car.tractionEvents.correctionsPer10Laps) <
-      (best.tractionEvents.wheelspinPer10Laps + best.tractionEvents.correctionsPer10Laps) ? car : best);
+      (car.tractionEvents.wheelspinPerLap + car.tractionEvents.correctionsPerLap) <
+      (best.tractionEvents.wheelspinPerLap + best.tractionEvents.correctionsPerLap) ? car : best);
     const tractionInsight = compareTractionAcrossCars(fastest.carName, fastest.tractionEvents, calmest.carName, calmest.tractionEvents);
     if (tractionInsight) parts.push(tractionInsight);
   }

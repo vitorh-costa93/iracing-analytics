@@ -147,13 +147,13 @@ describe("compareToReference", () => {
 });
 
 describe("summarizeTractionEvents", () => {
-  it("normalizes event counts to a per-10-laps rate across multiple laps", () => {
+  it("normalizes event counts to a per-lap rate across multiple laps", () => {
     const spikyLap = baselineLap().map((sample, i) => (i === 100 ? { ...sample, rpm: sample.rpm! * 1.15 } : sample));
     const cleanLap = baselineLap();
     const summary = summarizeTractionEvents([spikyLap, cleanLap, cleanLap, cleanLap, cleanLap]);
     expect(summary.lapsAnalyzed).toBe(5);
     expect(summary.wheelspinCount).toBe(1);
-    expect(summary.wheelspinPer10Laps).toBeCloseTo(2, 1); // 1 event / 5 laps * 10
+    expect(summary.wheelspinPerLap).toBeCloseTo(0.2, 1); // 1 event / 5 laps
     expect(summary.worstWheelspin).not.toBeNull();
     expect(summary.lapsWithWheelspin).toBe(1); // the ONE spiky lap, distinct from a bare event count
   });
@@ -176,6 +176,6 @@ describe("summarizeTractionEvents", () => {
 
   it("returns a zeroed-out summary for an empty lap pool", () => {
     const summary = summarizeTractionEvents([]);
-    expect(summary).toEqual({ lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPer10Laps: 0, correctionsPer10Laps: 0, lapsWithWheelspin: 0, lapsWithCorrections: 0, worstWheelspin: null, worstCorrection: null });
+    expect(summary).toEqual({ lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPerLap: 0, correctionsPerLap: 0, lapsWithWheelspin: 0, lapsWithCorrections: 0, worstWheelspin: null, worstCorrection: null });
   });
 });

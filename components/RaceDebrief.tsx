@@ -23,7 +23,7 @@ type CornerReport = {
 };
 type TractionEvents = {
   lapsAnalyzed: number; wheelspinCount: number; correctionCount: number;
-  wheelspinPer10Laps: number; correctionsPer10Laps: number;
+  wheelspinPerLap: number; correctionsPerLap: number;
   lapsWithWheelspin: number; lapsWithCorrections: number;
 };
 type CategoryDebrief = {

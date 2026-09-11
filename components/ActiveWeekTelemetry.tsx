@@ -714,6 +714,17 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, lineDista
       const prevPoint = gps[Math.max(0, index - 1)], nextPoint = gps[Math.min(gps.length - 1, index + 1)];
       const offsetMeters = interpolateLineDistance(lineDistance, point.distance);
       if (offsetMeters === null || prevPoint.lat === null || nextPoint.lat === null || point.lat === null) return null;
+      // 11/09/2026: "mapa de Le Mans... segue bastante esquisito" -- on a track this long (13.6km),
+      // matching own/reference by lap-DISTANCE-% (compareTraces' own_distance/ref_distance) instead of
+      // real physical position can occasionally desync by a fraction of a percent at a corner or a GPS
+      // gap, which at this track's scale is hundreds of real meters, not the few meters a genuine
+      // side-by-side offset would be. offsetGpsPoint has no way to tell "real lateral gap" from "matched
+      // the wrong physical point" -- it just projects whatever `lateral` it's given, so a bad match
+      // drew a long spurious line straight across the track. A real lateral gap between two GPS traces
+      // on the same circuit is never more than a lane or two; anything past that is a mismatch, not a
+      // wide line -- skip reconstructing that one point (leaves a small gap in the drawn line) rather
+      // than plotting it somewhere that was never actually driven.
+      if (Math.abs(offsetMeters) > 60) return null;
       const reconstructed = offsetGpsPoint(Number(prevPoint.lat), Number(prevPoint.lon), Number(point.lat), Number(point.lon), Number(nextPoint.lat), Number(nextPoint.lon), offsetMeters);
       return { ...point, lat: reconstructed.lat, lon: reconstructed.lon } as TracePoint;
     }).filter((point): point is TracePoint => point !== null)

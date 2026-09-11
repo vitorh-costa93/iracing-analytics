@@ -126,17 +126,26 @@ async function runIncrementalSessionSync() {
 
     const { data: stats, error: statsError } = await supabaseAdmin
       .from("daily_statistics")
-      .select("car_id, track_id")
+      .select("car_id, track_id, statistic_date")
       .eq("driver_id", driver.id)
       .gte("statistic_date", cutoffIso.slice(0, 10))
-      .not("track_id", "is", null);
+      .not("track_id", "is", null)
+      // 11/09/2026: "dei voltas em Road Atlanta hoje... 5 horas depois não apareceu nada" -- this had
+      // no explicit order, so the dedup Map below kept whichever row Postgres happened to return
+      // first, not the most recently driven pair. Combined with the time-budget guard above (added the
+      // same day to stop this route being hard-killed past Vercel's 300s ceiling -- see that guard's
+      // own comment), a heavy day with many stale car/track pairs could exhaust the budget before ever
+      // reaching TODAY's pair, silently starving exactly the data the driver just asked to see.
+      // Ordering newest-first means the dedup below keeps each pair's most recent occurrence AND the
+      // budget cutoff (if it ever triggers) drops the STALEST pairs, not the freshest.
+      .order("statistic_date", { ascending: false });
     if (statsError) throw statsError;
 
     const recentPairs = Array.from(
       new Map(
         (stats ?? [])
           .filter(
-            (row): row is { car_id: number; track_id: number } =>
+            (row): row is { car_id: number; track_id: number; statistic_date: string } =>
               typeof row.car_id === "number" && typeof row.track_id === "number"
           )
           .map((row) => [`${row.car_id}:${row.track_id}`, row])
