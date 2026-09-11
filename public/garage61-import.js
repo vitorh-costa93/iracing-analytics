@@ -135,6 +135,8 @@
             if (lap.start_time < agg.startedAt) agg.startedAt = lap.start_time;
             if (endedAt > agg.endedAt) agg.endedAt = endedAt;
 
+            var normalizedSessionType = typeof lap.session_type === "number" ? lap.session_type : (typeof session.session_type === "number" ? session.session_type : null);
+            var normalizedSeason = lap.season !== undefined && lap.season !== null ? { id: lap.season } : null;
             lapsOut.push({
               id: lap.id, carId: lap.car_id, trackId: lap.track_id,
               lapNumber: typeof lap.lap_number === "number" ? lap.lap_number : null,
@@ -157,7 +159,29 @@
               tireCompound: typeof lap.tire_compound === "number" ? lap.tire_compound : null,
               canViewTelemetry: !!lap.can_view_telemetry,
               canViewSetup: !!run.can_view_setup,
-              payload: lap,
+              // 11/09/2026 fix: "erro ao buscar temporadas e pistas" / voltas de hoje sumindo da
+              // comparação -- every OTHER reader of garage61_payload in this app (car-comparison,
+              // active-week, debrief, sectors, setup/inventory) was written against the OLD
+              // sync/incremental payload shape (Garage61's PUBLIC api, camelCase: startTime,
+              // season.id, pitLane, ...). This bookmarklet used to store the raw INTERNAL-api lap
+              // object verbatim here (payload: lap) -- snake_case (start_time, a bare season number,
+              // pit_in, ...) -- so every one of those readers silently got nulls for every
+              // bookmarklet-synced lap: no season/week attribution, no active-week eligibility, no
+              // event-scoped sector report. Building the payload explicitly in the shape those readers
+              // already expect, from the same values already decoded above for the real table columns,
+              // fixes all of them at the one place they all ultimately read from.
+              payload: {
+                id: lap.id, event: String(eventId), startTime: lap.start_time,
+                season: normalizedSeason, sessionType: normalizedSessionType,
+                lapTime: typeof lap.lap_time === "number" ? lap.lap_time : null,
+                lapNumber: typeof lap.lap_number === "number" ? lap.lap_number : null,
+                clean: lap.clean === true, joker: lap.joker === true, discontinuity: lap.discontinuity === true,
+                missing: lap.missing === true, incomplete: lap.incomplete === true,
+                offtrack: lap.offtrack === true, pitlane: lap.pitlane === true,
+                offTrack: lap.offtrack === true, pitLane: lap.pitlane === true,
+                pitIn: lap.pit_in === true, pitOut: lap.pit_out === true,
+                canViewTelemetry: !!lap.can_view_telemetry,
+              },
             });
             (lap.sectors || []).forEach(function (sector, sectorIdx) {
               sectorsOut.push({ lapId: lap.id, sectorNumber: sectorIdx + 1, sectorTime: typeof sector.sector_time === "number" ? sector.sector_time : null, incomplete: !!sector.incomplete });

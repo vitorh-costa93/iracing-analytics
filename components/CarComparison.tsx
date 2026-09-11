@@ -11,7 +11,7 @@ const CATEGORY_LABEL: Record<Category, string> = { gt3: "GT3", gtp: "GTP" };
 
 type TrackOption = { trackId: number; trackName: string; trackVariant: string | null; carCount: number; carNames: string[] };
 type SeasonOption = { seasonId: string; seasonName: string; lapCount: number; latestStartedAt: string };
-type ListPayload = { status: string; seasons: SeasonOption[]; selectedSeasonId: string | null; tracks: TrackOption[] };
+type ListPayload = { status: string; seasons: SeasonOption[]; selectedSeasonId: string | null; tracks: TrackOption[]; message?: string };
 type ChannelConsistency = { channel: string; name: string; score: number; label: string };
 type InputConsistency = { overall: { score: number; label: string }; channels: ChannelConsistency[] } | null;
 type LapTimeConsistency = { stddev: number; label: string } | null;
@@ -388,7 +388,7 @@ export default function CarComparison() {
       .then((response) => response.json())
       .then((result: ListPayload) => {
         if (!active) return;
-        if (result.status !== "ok") throw new Error("Erro ao buscar temporadas/pistas");
+        if (result.status !== "ok") throw new Error(result.message ?? "Erro ao buscar temporadas/pistas");
         setList(result);
         if (season === "auto" && result.selectedSeasonId) setSeason(result.selectedSeasonId);
         setTrackId((current) => (current !== null && result.tracks.some((track) => track.trackId === current) ? current : result.tracks[0]?.trackId ?? null));
