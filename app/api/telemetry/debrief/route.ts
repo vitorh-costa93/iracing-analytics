@@ -3,6 +3,8 @@ import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { lookupCornerNames } from "@/lib/track-corners";
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
+import { summarizeTractionEvents, type TractionSample } from "@/lib/traction-events";
+import { describeWheelspinHabit, describeCorrectionHabit } from "@/lib/traction-narrative";
 
 // Same missing-maxDuration bug as the sync routes (see app/api/sync/incremental/route.ts's comment):
 // this is the heaviest route in the app -- up to MAX_LAPS laps across up to 3 rating categories, each
@@ -42,7 +44,7 @@ async function fetchAllLaps(carId: number, trackId: number): Promise<Garage61Lap
   return all;
 }
 
-type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm" | "speed" | "latAccel" | "lat" | "lon";
+type ChannelKey = "throttle" | "brake" | "steering" | "gear" | "rpm" | "speed" | "latAccel" | "lat" | "lon" | "yawRate";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
 
 function normalizedHeader(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -75,6 +77,8 @@ function parseLapCsv(csv: string): { points: TracePoint[]; hasOvertakeChannel: b
     speed: find("speed", "speedms", "speedkph", "carspeed"),
     latAccel: find("lataccel", "lateralacceleration"),
     lat: find("lat", "latitude"), lon: find("lon", "longitude"),
+    // Added 11/09/2026 for destracionamento/microcorreções detection (lib/traction-events.ts).
+    yawRate: find("yawrate"),
   };
   const hasOvertakeChannel = find("pushtopass") >= 0 || find("p2pstatus") >= 0;
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
@@ -109,8 +113,8 @@ function interpolate(points: TracePoint[], distance: number, field: ChannelKey):
   return value === undefined ? null : value;
 }
 
-const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade", latAccel: "Força na curva", lat: "Latitude", lon: "Longitude" };
-const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "a mesma abertura de acelerador", brake: "a mesma pressão de freio", steering: "o mesmo tanto de volante", gear: "a mesma marcha", rpm: "a mesma rotação do motor", speed: "a mesma velocidade", latAccel: "a mesma força nas curvas", lat: "a mesma posição", lon: "a mesma posição" };
+const CHANNEL_LABELS: Record<ChannelKey, string> = { throttle: "Acelerador", brake: "Freio", steering: "Volante", gear: "Marcha", rpm: "RPM", speed: "Velocidade", latAccel: "Força na curva", lat: "Latitude", lon: "Longitude", yawRate: "Taxa de guinada" };
+const CHANNEL_PHRASE: Record<ChannelKey, string> = { throttle: "a mesma abertura de acelerador", brake: "a mesma pressão de freio", steering: "o mesmo tanto de volante", gear: "a mesma marcha", rpm: "a mesma rotação do motor", speed: "a mesma velocidade", latAccel: "a mesma força nas curvas", lat: "a mesma posição", lon: "a mesma posição", yawRate: "a mesma rotação do carro" };
 const CHART_CHANNELS: ChannelKey[] = ["throttle", "brake", "steering"];
 
 function formatLapTime(value: number) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
@@ -283,7 +287,13 @@ async function computeDebrief(driverId: string, gtpCarIds: Set<number>) {
     const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", category).maybeSingle();
     // "trackOutline" was added after some payloads were already cached — treat its absence as a stale
     // schema and force a rebuild once, rather than serving old payloads without the corner map forever.
-    const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && (cached.payload as Record<string, unknown>)?.cornerDetectionVersion === 4;
+    // 11/09/2026: this check wanted version 4, but buildDebriefPayload below had always written 3 --
+    // meaning every payload was permanently "stale" the instant it landed in cache, and this route
+    // recomputed from scratch (full Garage61 pagination + telemetry download, the reason it needs
+    // maxDuration=300 at all) on EVERY request, never actually benefiting from the cache table. Fixed
+    // here (both sides now write/expect 5) while also bumping it for the new destracionamento/
+    // microcorreções fields added below -- one version bump covers both.
+    const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && (cached.payload as Record<string, unknown>)?.cornerDetectionVersion === 5;
     if (cachedIsFresh) { results[category] = cached!.payload; continue; }
 
     try {
@@ -496,6 +506,22 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     return `${item.label}: o ponto onde você mais varia de volta pra volta é perto dos ${zone.distance}% da pista — você não está fazendo ${CHANNEL_PHRASE[item.channel as ChannelKey]} sempre igual ali. Repita o mesmo movimento, no mesmo lugar, todas as vezes — só depois de repetir bem vale tentar ganhar mais performance.`;
   });
 
+  // 11/09/2026: "quero uma análise de quantas microcorreções eu tenho, se eu tô tentando toda volta é
+  // um problema, caso seja pontual não é" -- Meu Debrief is the one surface with a real pool of RACE
+  // laps from a single stint (not just test laps like Comparar Carros, not just two like Melhor Volta
+  // vs Referência), so it's the natural place to answer "hábito ou pontual" for real. Runs on the
+  // SAME validTraces already downloaded/parsed above -- no new Garage61 call, no new Storage read.
+  // Outlier-rejected likely-overtake laps (findOutlierLaps above) are already excluded from
+  // validTraces, so Super Formula P2P contamination doesn't need separate handling here.
+  const toTractionSamples = (points: TracePoint[]): TractionSample[] => points.map((point) => ({
+    distance: point.distance,
+    throttle: point.throttle, rpm: point.rpm, gear: point.gear,
+    speedMs: point.speed, steeringRad: point.steering, yawRate: point.yawRate,
+  }));
+  const tractionEvents = summarizeTractionEvents(validTraces.map(({ points }) => toTractionSamples(points)));
+  const tractionNarrative = [describeWheelspinHabit(tractionEvents), describeCorrectionHabit(tractionEvents)]
+    .filter((line): line is string => line !== null);
+
   const consistencyWord = lapTimeStddev < 0.3 ? "bem consistente" : lapTimeStddev < 0.8 ? "moderadamente consistente" : "pouco consistente";
   const trendDeltas = lapScatter.map((item) => item.deltaFromBest);
   const trendDirection = trendDeltas.length >= 4 ? mean(trendDeltas.slice(-Math.ceil(trendDeltas.length / 2))) - mean(trendDeltas.slice(0, Math.floor(trendDeltas.length / 2))) : 0;
@@ -524,7 +550,8 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
     corners: cornerReports,
     cornerNarratives,
     trackOutline,
-    cornerDetectionVersion: 3,
+    cornerDetectionVersion: 5,
+    tractionEvents, tractionNarrative,
     summary: `Analisei suas ${validTraces.length} voltas mais rápidas dessa corrida (${formatLapTime(sortedLapTimes[0])} a ${formatLapTime(sortedLapTimes[sortedLapTimes.length - 1])}, desvio padrão de ${lapTimeStddev.toFixed(3)}s), com ${cornerReports.length} curvas identificadas e comparadas volta a volta. Seu ritmo foi ${consistencyWord} entre as voltas.${trendText}${excludedOutliers.length ? ` Descartei ${excludedOutliers.length} volta(s) estatisticamente anômala(s) (rápida(s) demais para o seu ritmo real, provável overtake): ${excludedOutliers.map((item) => `volta ${item.lapNumber ?? "?"} em ${item.lapTime}`).join(", ")}.` : ""}${!overtakeChannelAvailable && isSuperFormula ? " Aviso: a Garage61 não exporta o canal de overtake/push-to-pass nessas voltas, então a detecção acima é estatística (outlier de tempo), não uma leitura direta do overtake — confira manualmente se restar dúvida." : ""}`,
     strengths,
     improvements,

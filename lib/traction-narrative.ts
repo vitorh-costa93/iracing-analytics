@@ -62,6 +62,36 @@ export function describeCorrectionsVsReference(count: number, worstLocation: str
   return `Microcorreções: em ${count} trecho${count > 1 ? "s" : ""} da volta você mexeu no volante bem mais que a referência no mesmo ponto -- sinal de estar corrigindo o carro ali, não conduzindo limpo.${where}`;
 }
 
+/** "Meu Debrief" (11/09/2026): "se eu tô tentando toda volta, é um problema, caso seja pontual, não
+ * é". The rate alone can't answer that (see TractionSummary's own comment) -- this reads
+ * lapsWithWheelspin/lapsWithCorrections against lapsAnalyzed to say which one it is, in those exact
+ * terms. Threshold mirrors NOTABLE_RATE_PER_10_LAPS's spirit: touching more than half the analyzed
+ * laps reads as habit, a quarter or less reads as pontual, the middle ground is named honestly rather
+ * than forced into either bucket. */
+function habitWord(affectedLaps: number, lapsAnalyzed: number): "hábito" | "pontual" | "recorrente" {
+  if (lapsAnalyzed === 0) return "pontual";
+  const ratio = affectedLaps / lapsAnalyzed;
+  return ratio >= 0.5 ? "hábito" : ratio <= 0.25 ? "pontual" : "recorrente";
+}
+
+export function describeWheelspinHabit(summary: TractionSummary): string | null {
+  if (summary.wheelspinCount === 0) return null;
+  const word = habitWord(summary.lapsWithWheelspin, summary.lapsAnalyzed);
+  const base = `Destracionamento: aconteceu em ${summary.lapsWithWheelspin} de ${summary.lapsAnalyzed} voltas analisadas`;
+  if (word === "hábito") return `${base} -- é um hábito nessa combinação de carro e pista, não um deslize isolado. Vale trabalhar a suavidade na aplicação de acelerador na saída das curvas onde isso mais aparece.`;
+  if (word === "pontual") return `${base} -- foi pontual, não um padrão que se repete. Não é prioridade de treino agora.`;
+  return `${base} -- acontece com frequência, mas não em toda volta. Vale acompanhar se a tendência piora conforme o combustível/pneu degrada.`;
+}
+
+export function describeCorrectionHabit(summary: TractionSummary): string | null {
+  if (summary.correctionCount === 0) return null;
+  const word = habitWord(summary.lapsWithCorrections, summary.lapsAnalyzed);
+  const base = `Microcorreções: você precisou corrigir o volante bem mais que o normal em ${summary.lapsWithCorrections} de ${summary.lapsAnalyzed} voltas analisadas`;
+  if (word === "hábito") return `${base} -- é um hábito, o carro está te pedindo correção toda volta, não só numa passagem ruim. Vale olhar se é o setup ou o próprio traçado que está causando isso.`;
+  if (word === "pontual") return `${base} -- foi pontual, provavelmente uma volta específica onde algo saiu do previsto. Não é sinal de um problema de condução recorrente.`;
+  return `${base} -- acontece em boa parte das voltas, mas não em todas. Vale observar se tem relação com um trecho específico da pista.`;
+}
+
 export function compareTractionAcrossCars(
   fasterCarName: string, fasterSummary: TractionSummary,
   otherCarName: string, otherSummary: TractionSummary,

@@ -21,6 +21,11 @@ type CornerReport = {
   brakeShape: ShapeMetric | null; throttleShape: ShapeMetric | null;
   brakeBand: BandPoint[]; throttleBand: BandPoint[]; idealLine: IdealLine | null;
 };
+type TractionEvents = {
+  lapsAnalyzed: number; wheelspinCount: number; correctionCount: number;
+  wheelspinPer10Laps: number; correctionsPer10Laps: number;
+  lapsWithWheelspin: number; lapsWithCorrections: number;
+};
 type CategoryDebrief = {
   session: { startedAt: string; endedAt: string; durationMinutes: number; car: string; track: string; trackId: number | null } | null;
   message?: string;
@@ -39,6 +44,8 @@ type CategoryDebrief = {
   corners?: CornerReport[];
   cornerNarratives?: string[];
   trackOutline?: TrackOutlinePoint[] | null;
+  tractionEvents?: TractionEvents;
+  tractionNarrative?: string[];
 };
 
 const CONSISTENCY_CLASS: Record<string, string> = { "muito consistente": "great", "consistente": "good", "variável": "warn", "muito inconsistente": "bad" };
@@ -241,6 +248,23 @@ export default function RaceDebrief() {
               <div><span>DESVIO PADRÃO</span><strong>{data.lapTimeStddev}s</strong></div>
             </div>
           </div>
+
+          {/* 11/09/2026: "quero uma análise de quantas microcorreções eu tenho, se eu tô tentando
+           * toda volta é um problema, caso seja pontual não é" -- Tier 1, ao lado do resumo, não
+           * escondido num disclosure: é exatamente o tipo de leitura rápida que o Debrief existe pra
+           * dar. Só aparece quando há algo a reportar (nenhum destracionamento/correção = corrida
+           * limpa, nada a dizer aqui). */}
+          {data.tractionEvents && (data.tractionEvents.wheelspinCount > 0 || data.tractionEvents.correctionCount > 0) && (
+            <div className="race-debrief-chart-block">
+              <span className="section-kicker">TRAÇÃO E VOLANTE</span>
+              <h4>Destracionamento e microcorreções na corrida</h4>
+              <div className="race-debrief-metrics">
+                <div><span>DESTRACIONAMENTO</span><strong>{data.tractionEvents.wheelspinCount}x em {data.tractionEvents.lapsWithWheelspin} de {data.tractionEvents.lapsAnalyzed} voltas</strong></div>
+                <div><span>MICROCORREÇÕES</span><strong>{data.tractionEvents.correctionCount}x em {data.tractionEvents.lapsWithCorrections} de {data.tractionEvents.lapsAnalyzed} voltas</strong></div>
+              </div>
+              {data.tractionNarrative?.map((text) => <p key={text} className="race-debrief-channels-note">{text}</p>)}
+            </div>
+          )}
 
           {data.lapScatter && data.lapScatter.length > 2 && (
             <details className="race-debrief-disclosure" onToggle={(event) => { if (event.currentTarget.open) trackUiEvent("debrief_evidence_opened", { category: selected, group: "ritmo" }); }}>

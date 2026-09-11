@@ -34,6 +34,7 @@ export type WheelspinEvent = {
   gear: number;
   throttlePct: number; // 0-100
   rpmSurplusPct: number; // how far actual RPM sat above the lap's own gear/speed model
+  lapIndex?: number; // which lap in the pool this came from (set by summarizeTractionEvents) -- lets a caller tell "every lap" apart from "one bad lap"
 };
 
 export type CorrectionEvent = {
@@ -41,6 +42,7 @@ export type CorrectionEvent = {
   oscillationDeg: number; // "wasted" steering motion in this zone (sum of |Δ| minus net |Δ|), this lap
   baselineDeg: number; // this driver's own median wasted motion at this exact spot, across the other sampled laps
   speedKmh: number;
+  lapIndex?: number; // same as WheelspinEvent.lapIndex
 };
 
 export type GearRpmModel = Record<number, { a: number; b: number; n: number } | undefined>;
@@ -179,7 +181,7 @@ function binSteeringOscillation(samples: TractionSample[]): BinStats[] {
 /** Shared by detectSteeringCorrections (baseline = this driver's own median at each bin, across a
  * pool of laps) and compareToReference (baseline = the reference lap's own bins, one-to-one) -- same
  * ratio+floor+yaw-sanity gate, same adjacent-bin merge, either way. */
-function flagBinsAgainstBaseline(lapBins: BinStats[], baselinePerBin: number[]): CorrectionEvent[] {
+function flagBinsAgainstBaseline(lapBins: BinStats[], baselinePerBin: number[], lapIndex?: number): CorrectionEvent[] {
   const flagged: { bin: number; oscillationDeg: number; baselineDeg: number; speedKmh: number }[] = [];
   for (let bin = 0; bin < lapBins.length; bin += 1) {
     const stats = lapBins[bin];
@@ -205,6 +207,7 @@ function flagBinsAgainstBaseline(lapBins: BinStats[], baselinePerBin: number[]):
       endDistance: Number(((group[group.length - 1].bin + 1) * CORRECTION_BIN_PCT).toFixed(2)),
       oscillationDeg: Number(peak.oscillationDeg.toFixed(1)), baselineDeg: Number(peak.baselineDeg.toFixed(1)),
       speedKmh: Number(peak.speedKmh.toFixed(1)),
+      ...(lapIndex !== undefined ? { lapIndex } : {}),
     };
   });
 }
@@ -221,7 +224,7 @@ export function detectSteeringCorrections(laps: TractionSample[][]): CorrectionE
   }
 
   const events: CorrectionEvent[] = [];
-  for (const lapBins of binnedPerLap) events.push(...flagBinsAgainstBaseline(lapBins, baselinePerBin));
+  binnedPerLap.forEach((lapBins, lapIndex) => events.push(...flagBinsAgainstBaseline(lapBins, baselinePerBin, lapIndex)));
   return events;
 }
 
@@ -242,36 +245,44 @@ export type TractionSummary = {
   lapsAnalyzed: number;
   wheelspinCount: number; correctionCount: number;
   wheelspinPer10Laps: number; correctionsPer10Laps: number;
+  // "se eu tô tentando toda volta, é um problema, caso seja pontual, não é" (11/09/2026, aimed
+  // squarely at Meu Debrief) -- a rate alone can't answer that: 10 wheelspin events could be one per
+  // lap across 10 laps (a real habit) or all 10 crammed into a single bad lap (isolated). These count
+  // DISTINCT laps that had at least one event, the number that actually answers the question.
+  lapsWithWheelspin: number; lapsWithCorrections: number;
   worstWheelspin: WheelspinEvent | null;
   worstCorrection: CorrectionEvent | null;
 };
 
-/** The per-car summary every surface (Comparar Carros today, Melhor Volta vs Referência and Meu
- * Debrief later) consumes: how often, not just whether. Rates are normalized "per 10 laps" so a car
- * sampled on 3 laps and one sampled on 8 laps are comparable, answering "é hábito ou é pontual" --
- * the question this whole feature exists to answer, not a bare event count that scales with sample size. */
+/** The per-car summary every surface (Comparar Carros, Melhor Volta vs Referência, Meu Debrief)
+ * consumes: how often, not just whether. Rates are normalized "per 10 laps" so a car sampled on 3
+ * laps and one sampled on 8 laps are comparable, answering "é hábito ou é pontual" -- the question
+ * this whole feature exists to answer, not a bare event count that scales with sample size. */
 export function summarizeTractionEvents(laps: TractionSample[][]): TractionSummary {
   const validLaps = laps.filter((lap) => lap.length > 20);
   if (!validLaps.length) {
-    return { lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPer10Laps: 0, correctionsPer10Laps: 0, worstWheelspin: null, worstCorrection: null };
+    return { lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPer10Laps: 0, correctionsPer10Laps: 0, lapsWithWheelspin: 0, lapsWithCorrections: 0, worstWheelspin: null, worstCorrection: null };
   }
   const model = buildGearRpmModel(validLaps);
   const wheelspinEvents: WheelspinEvent[] = [];
-  for (const lap of validLaps) wheelspinEvents.push(...detectWheelspin(lap, model));
+  validLaps.forEach((lap, lapIndex) => wheelspinEvents.push(...detectWheelspin(lap, model).map((event) => ({ ...event, lapIndex }))));
   // detectSteeringCorrections needs the whole pool at once (it builds the corner-relative baseline
-  // from every OTHER lap), unlike wheelspin which is judged per-lap against a shared model.
+  // from every OTHER lap), unlike wheelspin which is judged per-lap against a shared model. It
+  // already stamps lapIndex itself (see its own implementation).
   const correctionEvents = detectSteeringCorrections(validLaps);
 
-  const laneCount = validLaps.length;
+  const lapCount = validLaps.length;
   const worstWheelspin = wheelspinEvents.length ? wheelspinEvents.reduce((best, event) => (event.rpmSurplusPct > best.rpmSurplusPct ? event : best)) : null;
   const worstCorrection = correctionEvents.length
     ? correctionEvents.reduce((best, event) => (event.oscillationDeg - event.baselineDeg > best.oscillationDeg - best.baselineDeg ? event : best))
     : null;
   return {
-    lapsAnalyzed: laneCount,
+    lapsAnalyzed: lapCount,
     wheelspinCount: wheelspinEvents.length, correctionCount: correctionEvents.length,
-    wheelspinPer10Laps: Number(((wheelspinEvents.length / laneCount) * 10).toFixed(1)),
-    correctionsPer10Laps: Number(((correctionEvents.length / laneCount) * 10).toFixed(1)),
+    wheelspinPer10Laps: Number(((wheelspinEvents.length / lapCount) * 10).toFixed(1)),
+    correctionsPer10Laps: Number(((correctionEvents.length / lapCount) * 10).toFixed(1)),
+    lapsWithWheelspin: new Set(wheelspinEvents.map((event) => event.lapIndex)).size,
+    lapsWithCorrections: new Set(correctionEvents.map((event) => event.lapIndex)).size,
     worstWheelspin, worstCorrection,
   };
 }

@@ -155,10 +155,27 @@ describe("summarizeTractionEvents", () => {
     expect(summary.wheelspinCount).toBe(1);
     expect(summary.wheelspinPer10Laps).toBeCloseTo(2, 1); // 1 event / 5 laps * 10
     expect(summary.worstWheelspin).not.toBeNull();
+    expect(summary.lapsWithWheelspin).toBe(1); // the ONE spiky lap, distinct from a bare event count
+  });
+
+  it("tells a habit (spread across every lap) apart from an isolated incident (one bad lap)", () => {
+    const spikyLap = baselineLap(2000);
+    // Three separate wheelspin moments, all crammed into the SAME lap -- an isolated bad lap, not a habit.
+    const isolated = [1000, 1200, 1400].reduce((lap, i) => lap.map((sample, j) => (j === i ? { ...sample, rpm: sample.rpm! * 1.15 } : sample)), spikyLap);
+    const clean = () => baselineLap(2000);
+    const isolatedSummary = summarizeTractionEvents([isolated, clean(), clean(), clean(), clean()]);
+    expect(isolatedSummary.wheelspinCount).toBe(3);
+    expect(isolatedSummary.lapsWithWheelspin).toBe(1); // 3 events, but only 1 lap -- pontual, not hábito
+
+    // The SAME total event count, but one per lap across every lap -- a real habit.
+    const habitLaps = [0, 1, 2].map((n) => baselineLap(2000).map((sample, j) => (j === 1000 + n ? { ...sample, rpm: sample.rpm! * 1.15 } : sample)));
+    const habitSummary = summarizeTractionEvents(habitLaps);
+    expect(habitSummary.wheelspinCount).toBe(3);
+    expect(habitSummary.lapsWithWheelspin).toBe(3); // same 3 events, spread across all 3 laps -- hábito
   });
 
   it("returns a zeroed-out summary for an empty lap pool", () => {
     const summary = summarizeTractionEvents([]);
-    expect(summary).toEqual({ lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPer10Laps: 0, correctionsPer10Laps: 0, worstWheelspin: null, worstCorrection: null });
+    expect(summary).toEqual({ lapsAnalyzed: 0, wheelspinCount: 0, correctionCount: 0, wheelspinPer10Laps: 0, correctionsPer10Laps: 0, lapsWithWheelspin: 0, lapsWithCorrections: 0, worstWheelspin: null, worstCorrection: null });
   });
 });
