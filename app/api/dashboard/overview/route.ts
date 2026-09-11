@@ -10,6 +10,18 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 // headline iRating for right now -- should have from the start.
 export const dynamic = "force-dynamic";
 
+// 11/09/2026: "rating_history safety_rating: Gateway Timeout" live on the Overview page -- this route
+// never had its own maxDuration, so it ran on Vercel's platform default (10s on Hobby). Same failure
+// mode already documented and fixed elsewhere in this codebase (app/api/sync/all/route.ts's own
+// comment): as rating_history accumulates more safety_rating rows over months of daily syncs, an
+// unbounded ORDER BY across the whole per-driver history (needed as-is -- see its own comment further
+// down, candidates are matched against arbitrary past cutoffs, so truncating rows here would silently
+// break historical weeks) got slow enough to blow that 10s budget under real load, not because of
+// anything wrong with the query's SHAPE. 60s matches the actual cost of a dashboard read (several
+// Supabase queries + in-memory computation, no telemetry download), well under this route's own
+// OVERVIEW_CACHE_TTL_MS-bounded need to ever run this often.
+export const maxDuration = 60;
+
 let overviewCache: { expiresAt: number; payload: unknown } | null = null;
 const OVERVIEW_CACHE_TTL_MS = 120_000;
 
