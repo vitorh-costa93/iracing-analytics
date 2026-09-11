@@ -303,6 +303,13 @@ async function runIncrementalSessionSync() {
       const token = process.env.GARAGE61_API_TOKEN;
       if (token) {
         for (const row of telemetryCandidates) {
+          // 11/09/2026: this loop had NO time-budget check at all, unlike the car/track pair loop
+          // above -- capped only by count (40), not time. Each download is a real network round trip
+          // to Garage61 plus a Supabase Storage upload; 40 of those after the main loop already used
+          // up to TIME_BUDGET_MS could push the whole request well past Vercel's 300s ceiling on its
+          // own, exactly the kind of silent overrun this route is otherwise built to avoid. Laps
+          // skipped here are simply retried next run (alreadyStored only grows).
+          if (Date.now() - runStartedAtMs > TIME_BUDGET_MS) break;
           if (alreadyStored.has(row.id) || telemetryDownloaded >= TELEMETRY_DOWNLOAD_CAP) continue;
           try {
             const response = await fetch(`https://garage61.net/api/v1/laps/${encodeURIComponent(row.id)}/csv`, {
