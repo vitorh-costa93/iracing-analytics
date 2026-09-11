@@ -950,8 +950,16 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
  * it down to live beside the ranking bars (29/08/2026: "o mapa está ocupando espaço demais") instead
  * of its own full-width block. */
 .sector-map-segment-colored { fill: none; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
-.sector-map.compact { min-height: 220px; }
-.sector-map-card.compact { padding: 8px; }
+/* 11/09/2026: "tem muito espaço disponível dentro do box" -- the grid cell (.car-compare-row1, below)
+ * already stretches this card to match the ranking-bars column's full height, but the SVG only ever
+ * took its own intrinsic viewBox-aspect height, leaving the rest of that stretched card empty. Making
+ * every level between the card and the SVG an actual flex column that grows (flex:1) lets the SVG's
+ * own height:100% finally reach the full stretched height instead of stopping short of it --
+ * preserveAspectRatio="xMidYMid meet" (components/TrackMap.tsx) still fits the real track without
+ * distorting it, it just now has the full box to fit into. */
+.sector-map.compact { min-height: 220px; height: 100%; }
+.sector-map-card.compact { padding: 8px; flex: 1; grid-template-rows: 1fr auto; }
+.car-compare-row1 .race-debrief-chart-block { display: flex; flex-direction: column; }
 .sector-curve-label { fill: var(--soft); font-family: var(--mono); font-size: 8px; }
 
 /* Row 1 (29/08/2026 layout: "Primeira linha de gráficos: melhor volta; mapa da pista"): ranking bars

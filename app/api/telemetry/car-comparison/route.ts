@@ -12,7 +12,10 @@ import { compareTractionAcrossCars } from "@/lib/traction-narrative";
 export const maxDuration = 300;
 
 const GARAGE61_BASE = "https://garage61.net/api/v1";
-const MAX_CARS = 6; // bounds cost if a driver has tested many cars at one track; covers every real case seen so far (2-4)
+// 11/09/2026: "tá falando que tem 8 carros testados, mas não aparecem todos" -- 6 stopped covering a
+// real case (Silverstone GT3, 8 cars tested). Raised with real headroom; the frontend scrolls the list
+// instead of ever needing this to be unbounded.
+const MAX_CARS = 20;
 const TELEMETRY_SAMPLE_LAPS = 5; // per car, for input-consistency and track-usage -- same pool size logic as debrief's MAX_LAPS
 const CANDIDATE_POOL_LAPS = 10; // wider than TELEMETRY_SAMPLE_LAPS -- see the GPS-coverage check below for why
 const MIN_LAP_COVERAGE_PCT = 85; // a genuine full lap's telemetry spans nearly the whole 0-100% lap distance
@@ -510,6 +513,29 @@ const TRACK_USAGE_SEGMENTS = 10; // 10% of the lap each -- coarse enough to read
 // app's dark background and distinguishable from the existing red/green channel colors.
 const CAR_COLORS = ["#4fc3d6", "#e0973b", "#a97ee0", "#f3c614", "#ff5c9d", "#8bd450"];
 
+// 11/09/2026: "cores padrão para os carros" (by manufacturer -- close to each brand's own livery
+// identity, so "o Ferrari" or "o McLaren" reads at a glance in the ranking/sector map without checking
+// the legend every time). Matched by a keyword in the car's own name; a car from a manufacturer not in
+// this list keeps the generic by-finish-order CAR_COLORS above. One shared list for GT3 and GTP --
+// Ferrari means the same red in both, and no other brand name overlaps between the two categories.
+const BRAND_COLORS: [string, string][] = [
+  ["aston martin", "#0f3d2e"],
+  ["lamborghini", "#9fd326"],
+  ["corvette", "#f4d312"],
+  ["ferrari", "#d2001c"],
+  ["mustang", "#1c62d9"],
+  ["mercedes", "#9aa0a6"],
+  ["mclaren", "#ff8200"],
+  ["porsche", "#f2f1ee"],
+  ["bmw", "#1c62d9"],
+  ["cadillac", "#f4d312"],
+  ["acura", "#f2f1ee"],
+];
+function brandColor(carName: string): string | null {
+  const lower = carName.toLowerCase();
+  return BRAND_COLORS.find(([brand]) => lower.includes(brand))?.[1] ?? null;
+}
+
 /** Same width-usage metric as trackWidthUsage, broken into TRACK_USAGE_SEGMENTS fixed distance bins
  * instead of one whole-lap average -- lets the UI show WHERE on track cars diverge in how much
  * width they use, not just a single aggregate number (29/08/2026: "Track Usage dá pra fazer algo
@@ -913,7 +939,22 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
   return { seasons, selectedSeasonId, tracks };
 }
 
-async function buildComparison(driverId: string, trackId: number, category: Category, seasonParam: string | null) {
+// 11/09/2026: "eu corri de Ferrari 499P em Road Atlanta essa Season, mas eu quero comparar com a
+// volta que eu dei hoje... precisa incluir um filtro de semana" -- a season can span many weeks of
+// informal testing at the same combo, and BoP/setup/tires don't reset week to week the way they do
+// season to season, so this doesn't need its own "latest by default" rule the way seasons does --
+// it's just an optional narrowing on top of whichever season is already selected. Week 1 starts at the
+// season's own start date (v_season_calendar.season_start), matching the same weekly cadence iRacing
+// itself uses and this app already reads elsewhere (app/api/telemetry/active-week/route.ts).
+const WEEK_MS = 7 * 86_400_000;
+function weekNumberOf(lap: LapRow, seasonStartMs: number): number | null {
+  if (!lap.startTime) return null;
+  const startedAt = new Date(lap.startTime).getTime();
+  if (!Number.isFinite(startedAt)) return null;
+  return Math.floor((startedAt - seasonStartMs) / WEEK_MS) + 1;
+}
+
+async function buildComparison(driverId: string, trackId: number, category: Category, seasonParam: string | null, weekParam: string | null) {
   // Same silent-truncation bug fetchAllDriverLaps's own comment already documents (a plain
   // unranged .select() here caps at Supabase's own 1000-row default) -- this query was never given
   // the same .range() pagination when it was written, so a track with 1000+ total laps across every
@@ -969,6 +1010,28 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     .sort((a, b) => b.latestStartedAt.localeCompare(a.latestStartedAt));
   const selectedSeasonId = seasonParam === "all" ? null : seasonParam ?? seasons[0]?.seasonId ?? null;
 
+  // Week numbers need the SELECTED season's own start date -- a lap's week is relative to whichever
+  // season it's in, not a global calendar week. Only fetched when a specific season is selected;
+  // "todas as temporadas" has no single season_start to count weeks from, so week filtering is simply
+  // unavailable there (the frontend hides the week picker in that case).
+  let seasonStartMs: number | null = null;
+  if (selectedSeasonId) {
+    const { data: calendarRow } = await supabaseAdmin.from("v_season_calendar").select("season_start").eq("season_id", selectedSeasonId).maybeSingle();
+    seasonStartMs = calendarRow?.season_start ? new Date(calendarRow.season_start).getTime() : null;
+  }
+
+  const seasonScopedLaps = [...byCarCategory.values()].flatMap((laps) => selectedSeasonId ? laps.filter((lap) => seasonKey(lap) === selectedSeasonId) : laps);
+  const weekInfo = new Map<number, number>();
+  if (seasonStartMs !== null) {
+    for (const lap of seasonScopedLaps) {
+      const week = weekNumberOf(lap, seasonStartMs);
+      if (week === null) continue;
+      weekInfo.set(week, (weekInfo.get(week) ?? 0) + 1);
+    }
+  }
+  const weeks = [...weekInfo.entries()].map(([weekNumber, lapCount]) => ({ weekNumber, lapCount })).sort((a, b) => b.weekNumber - a.weekNumber);
+  const selectedWeek = seasonStartMs === null || weekParam === "all" || !weekParam ? null : Number(weekParam);
+
   // 11/09/2026: "veio com bug em road atlanta, a volta mais rápida é da Ferrari, uma volta de 57
   // segundos, total irreal" -- pooling every car's laps together for ONE shared plausibility cluster
   // (as this used to) breaks down inside a category that spans very different real pace, like "gtp"
@@ -988,7 +1051,8 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
 
   const byCar = new Map([...byCarCategory]
     .map(([carId, laps]): [number, LapRow[]] => {
-      const scoped = selectedSeasonId ? laps.filter((lap) => seasonKey(lap) === selectedSeasonId) : laps;
+      let scoped = selectedSeasonId ? laps.filter((lap) => seasonKey(lap) === selectedSeasonId) : laps;
+      if (selectedWeek !== null && seasonStartMs !== null) scoped = scoped.filter((lap) => weekNumberOf(lap, seasonStartMs as number) === selectedWeek);
       const ownPlausible = scoped.filter((lap) => Number(lap.lap_time) > 0).length >= 4
         ? new Set(filterPlausibleTimes(scoped).map((lap) => lap.id))
         : pooledPlausibleIds;
@@ -1002,8 +1066,8 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   if (carIds.length < 2) {
     const seasonName = seasons.find((s) => s.seasonId === selectedSeasonId)?.seasonName;
     return {
-      status: "ok", track: null, cars: [], seasons, selectedSeasonId,
-      message: `Menos de 2 carros de ${CATEGORY_LABEL[category]} com voltas válidas nessa pista${seasonName ? ` em ${seasonName}` : ""}.${selectedSeasonId ? " Tente \"todas as temporadas\"." : ""}`,
+      status: "ok", track: null, cars: [], seasons, selectedSeasonId, weeks, selectedWeek,
+      message: `Menos de 2 carros de ${CATEGORY_LABEL[category]} com voltas válidas nessa pista${seasonName ? ` em ${seasonName}` : ""}.${selectedWeek !== null ? ` na semana ${selectedWeek}` : ""}${selectedSeasonId ? " Tente \"todas as temporadas\"." : ""}`,
     };
   }
 
@@ -1119,7 +1183,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   // Assigns each car a stable color (by finishing order) reused across the ranking, the sector map,
   // and the per-segment brake/throttle overlays -- one car, one color, everywhere in this view
   // (29/08/2026: "cada carro receberia uma cor").
-  const carColor = new Map(ranked.map((car, index) => [car.carId, CAR_COLORS[index % CAR_COLORS.length]]));
+  const carColor = new Map(ranked.map((car, index) => [car.carId, brandColor(car.carName) ?? CAR_COLORS[index % CAR_COLORS.length]]));
 
   // Real detected corners (29/08/2026: "concordo, é isso que eu realmente quero, setores reais"),
   // not fixed %-of-lap bins -- same GPS-based lateral-acceleration detector Meu Debrief already uses
@@ -1187,7 +1251,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   return {
     status: "ok",
     track: trackResult.data ? { id: trackResult.data.id, name: trackResult.data.name, variant: trackResult.data.variant } : { id: trackId, name: `Pista ${trackId}`, variant: null },
-    seasons, selectedSeasonId,
+    seasons, selectedSeasonId, weeks, selectedWeek,
     cars, trackOutline, sectors, mapSegments,
     narrative: buildCarComparisonNarrative(cars, sectors),
     conditionsNote: conditionsDivergence(cars),
@@ -1203,6 +1267,7 @@ export async function GET(request: Request) {
     const categoryParam = params.get("category");
     if (categoryParam !== "gt3" && categoryParam !== "gtp") return NextResponse.json({ status: "error", message: "category deve ser gt3 ou gtp" }, { status: 400 });
     const seasonParam = params.get("season"); // null = auto (latest season); "all" = no season filter; otherwise a specific season_id
+    const weekParam = params.get("week"); // null/"all" = every week in the selected season; otherwise a specific week number
 
     const trackIdParam = params.get("trackId");
     if (!trackIdParam) {
@@ -1211,7 +1276,7 @@ export async function GET(request: Request) {
     }
     const trackId = Number(trackIdParam);
     if (!Number.isFinite(trackId)) return NextResponse.json({ status: "error", message: "trackId inválido" }, { status: 400 });
-    const result = await buildComparison(driver.id, trackId, categoryParam, seasonParam);
+    const result = await buildComparison(driver.id, trackId, categoryParam, seasonParam, weekParam);
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });

@@ -46,10 +46,11 @@ type Sector = {
 };
 type MapSegment = { startPct: number; endPct: number; winnerCarId: number | null };
 type TrackOutlinePoint = { distance: number; lat: number; lon: number };
+type WeekOption = { weekNumber: number; lapCount: number };
 type ComparisonPayload = {
   status: string; track: { id: number; name: string; variant: string | null } | null;
   cars: CarStat[]; trackOutline?: TrackOutlinePoint[] | null; sectors?: Sector[]; mapSegments?: MapSegment[]; narrative?: string | null; message?: string;
-  conditionsNote?: string | null;
+  conditionsNote?: string | null; weeks?: WeekOption[]; selectedWeek?: number | null;
 };
 
 /** Used only for the best-lap ranking now (29/08/2026: "gráfico de barras horizontais, só manter
@@ -361,6 +362,12 @@ export default function CarComparison() {
   // removes the season filter entirely; anything else is a specific season_id. Changing category
   // resets this back to "auto" since a different category has its own season coverage.
   const [season, setSeason] = useState<string>("auto");
+  // 11/09/2026: "eu corri de Ferrari em Road Atlanta essa Season, mas eu quero comparar com a volta
+  // que eu dei hoje... precisa incluir um filtro de semana" -- narrows within whichever season is
+  // selected, since a season can span many weeks of informal testing at the same combo. "all" (no
+  // filter) is the default; resets whenever the track or season changes, since week 13 in one
+  // season/track combo has no relation to week 13 in another.
+  const [week, setWeek] = useState<string>("all");
   const [list, setList] = useState<ListPayload | null>(null);
   const [trackId, setTrackId] = useState<number | null>(null);
   const [data, setData] = useState<ComparisonPayload | null>(null);
@@ -399,7 +406,7 @@ export default function CarComparison() {
     setCarA("auto");
     setCarB("auto");
     setFocusedSector(null);
-    fetch(`/api/telemetry/car-comparison?trackId=${trackId}&category=${category}${season !== "auto" ? `&season=${season}` : ""}`, { cache: "no-store" })
+    fetch(`/api/telemetry/car-comparison?trackId=${trackId}&category=${category}${season !== "auto" ? `&season=${season}` : ""}${week !== "all" ? `&week=${week}` : ""}`, { cache: "no-store" })
       .then((response) => response.json())
       .then((result) => {
         if (!active) return;
@@ -409,7 +416,11 @@ export default function CarComparison() {
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoadingData(false));
     return () => { active = false; };
-  }, [trackId, category, season]);
+  }, [trackId, category, season, week]);
+
+  // A different season (or track) has no relation to whichever week number was picked before --
+  // reset back to "all" instead of silently carrying over a now-meaningless week filter.
+  useEffect(() => { setWeek("all"); }, [trackId, season]);
 
   if (loadingList && !list) return <div className="telemetry-state">Buscando temporadas e pistas onde você testou mais de um carro...</div>;
   if (error) return <div className="telemetry-state error">{error}</div>;
@@ -449,9 +460,19 @@ export default function CarComparison() {
             )}
             <select value={trackId ?? ""} onChange={(event) => setTrackId(Number(event.target.value))}>
               {list.tracks.map((track) => (
-                <option key={track.trackId} value={track.trackId}>{track.trackName}{track.trackVariant ? ` (${track.trackVariant})` : ""} — {track.carCount} carros</option>
+                <option key={track.trackId} value={track.trackId}>{track.trackName}{track.trackVariant ? ` (${track.trackVariant})` : ""} — {track.carCount} carro{track.carCount === 1 ? "" : "s"}</option>
               ))}
             </select>
+            {/* 11/09/2026: "estamos na semana 13... precisa incluir um filtro de semana" -- a season
+             * can span many weeks of informal testing at the same combo; only shown once the comparison
+             * for this track/season actually has more than one week of laps to tell apart (data.weeks
+             * only comes back non-empty once a specific season, not "todas as temporadas", is picked). */}
+            {!!data?.weeks?.length && data.weeks.length > 1 && (
+              <select value={week} onChange={(event) => setWeek(event.target.value)}>
+                <option value="all">Todas as semanas</option>
+                {data.weeks.map((item) => <option key={item.weekNumber} value={item.weekNumber}>Semana {item.weekNumber} ({item.lapCount} volta{item.lapCount === 1 ? "" : "s"})</option>)}
+              </select>
+            )}
           </div>
 
           {loadingData ? (
