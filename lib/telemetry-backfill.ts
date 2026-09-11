@@ -102,6 +102,11 @@ async function compact() {
   return { files, saved };
 }
 
+// 11/09/2026: "zere esse backlog de telemetrias para só começar a puxar as novas daqui pra frente" --
+// every lap that was ALREADY pending at that moment got telemetry_skip=true (see the migration adding
+// this column); excluding it here means the backfill only ever chases telemetry for laps that show up
+// AFTER that point (a fresh sync insert never sets telemetry_skip, so it defaults to false), instead of
+// competing with a multi-thousand-lap historical backlog for the same small per-run batch.
 async function pendingTelemetry(current: string, previous: string) {
   const eligible: Candidate[] = [];
   let from = 0;
@@ -109,6 +114,7 @@ async function pendingTelemetry(current: string, previous: string) {
     const q = await supabaseAdmin.from("laps")
       .select("id,track_id,garage61_payload")
       .eq("can_view_telemetry", true)
+      .eq("telemetry_skip", false)
       .is("telemetry_path", null)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
