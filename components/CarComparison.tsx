@@ -22,11 +22,17 @@ type LapConditions = {
   airTempC: number | null; relativeHumidityPct: number | null; windSpeedKmh: number | null;
   precipitationPct: number | null; cloudsLabel: string | null;
 } | null;
+type TractionEvents = {
+  lapsAnalyzed: number; wheelspinCount: number; correctionCount: number;
+  wheelspinPer10Laps: number; correctionsPer10Laps: number;
+  worstWheelspin: { distance: number; speedKmh: number; gear: number; throttlePct: number; rpmSurplusPct: number } | null;
+  worstCorrection: { startDistance: number; endDistance: number; oscillationDeg: number; baselineDeg: number; speedKmh: number } | null;
+};
 type CarStat = {
   carId: number; carName: string; color: string; lapsAnalyzed: number;
   bestLapSeconds: number; bestLapFormatted: string; deltaSeconds: number;
   lapTimeConsistency: LapTimeConsistency; inputConsistency: InputConsistency; trackUsage: TrackUsage;
-  trackUsageSegments: (number | null)[] | null; conditions: LapConditions;
+  trackUsageSegments: (number | null)[] | null; conditions: LapConditions; tractionEvents: TractionEvents;
 };
 type CurvePoint = { offset: number; value: number };
 type SectorTime = { carId: number; carName: string; seconds: number; deltaSeconds: number };
@@ -54,15 +60,29 @@ type ComparisonPayload = {
  * quero que o nome todo apareça por extenso, depois vem a barrinha com o tempo") -- name+icon on
  * their own line since a full name like "McLaren 720S GT3 EVO" doesn't fit a fixed label column
  * alongside a bar and a time value without truncating one of them. */
-function CompareBar({ label, value, max, formatted, conditions }: { label: string; value: number; max: number; formatted: string; conditions?: LapConditions }) {
+// 11/09/2026: "na parte de Comparar Carros serviria para dar mais credibilidade se eu preciso corrigir
+// menos o volante com um carro do que com outro" -- only shows a rate when it's actually notable
+// (same NOTABLE_RATE_PER_10_LAPS=2 threshold as lib/traction-narrative.ts server-side), so a car with
+// a clean traction record just shows nothing here instead of "0.0x/10 voltas" clutter on every row.
+const NOTABLE_TRACTION_RATE = 2;
+function formatTractionInline(events: TractionEvents): string | null {
+  const parts: string[] = [];
+  if (events.wheelspinPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`destraciona ${events.wheelspinPer10Laps.toFixed(1)}x/10 voltas`);
+  if (events.correctionsPer10Laps >= NOTABLE_TRACTION_RATE) parts.push(`corrige o volante ${events.correctionsPer10Laps.toFixed(1)}x/10 voltas`);
+  return parts.length ? parts.join(" • ") : null;
+}
+
+function CompareBar({ label, value, max, formatted, conditions, tractionEvents }: { label: string; value: number; max: number; formatted: string; conditions?: LapConditions; tractionEvents?: TractionEvents }) {
   const pct = max > 0 ? Math.max(2, (value / max) * 100) : 2;
   const conditionsText = formatConditionsInline(conditions);
+  const tractionText = tractionEvents ? formatTractionInline(tractionEvents) : null;
   return (
     <div className="car-compare-row">
       <span className="car-compare-row-name">
         <CarBrandIcon name={label} />{label}
         {conditionsText && <span className="car-compare-row-cond"> ({conditionsText})</span>}
       </span>
+      {tractionText && <span className="car-compare-row-traction">{tractionText}</span>}
       <div className="car-compare-row-track"><div className="car-compare-row-fill" style={{ width: `${pct}%` }} /></div>
       <span className="car-compare-row-value">{formatted}</span>
     </div>
@@ -441,7 +461,7 @@ export default function CarComparison() {
                       {data.cars.map((car) => (
                         <CompareBar key={car.carId} label={car.carName} value={car.deltaSeconds || maxDelta * 0.02} max={maxDelta}
                           formatted={car.deltaSeconds === 0 ? `${car.bestLapFormatted} (referência)` : `+${car.deltaSeconds.toFixed(3)}s`}
-                          conditions={car.conditions} />
+                          conditions={car.conditions} tractionEvents={car.tractionEvents} />
                       ))}
                     </div>
                     {data.conditionsNote && <p className="comparison-note comparison-note-warning">{data.conditionsNote}</p>}

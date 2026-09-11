@@ -829,7 +829,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 /* Name+icon on its own line, bar+time on the next -- a full car name ("McLaren 720S GT3 EVO") next
  * to a bar and a time value doesn't fit one row without truncating something (31/08/2026: "quero que
  * o nome todo apareça por extenso"). */
-.car-compare-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name name" "track value"; align-items: center; gap: 4px 10px; }
+.car-compare-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name name" "traction traction" "track value"; align-items: center; gap: 4px 10px; }
 .car-compare-row-name { grid-area: name; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
 .car-compare-row-track { grid-area: track; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
 .car-compare-row-fill { height: 100%; background: var(--blue); border-radius: 5px; }
@@ -838,6 +838,10 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 /* 10/09/2026: track conditions moved inline next to each car name in the best-lap ranking
  * ("como informação adicional ao lado do nome de cada carro") instead of a separate section. */
 .car-compare-row-cond { font-weight: 400; color: var(--muted); font-size: 11px; }
+/* 11/09/2026: destracionamento/microcorreções rate -- only rendered when notable (see
+ * formatTractionInline), amber like the other "pay attention" signals in this app (e.g.
+ * comparison-note-warning), not the neutral muted tone conditions use, since this one is actionable. */
+.car-compare-row-traction { grid-area: traction; font-family: var(--mono); font-size: 10.5px; color: var(--amber, #e0973b); }
 .comparison-note-warning { color: var(--orange, #e0973b); }
 
 .race-debrief-corner-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }

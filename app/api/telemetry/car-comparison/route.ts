@@ -4,6 +4,8 @@ import path from "node:path";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { detectCornersFromGps } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
+import { summarizeTractionEvents, type TractionSample, type TractionSummary } from "@/lib/traction-events";
+import { compareTractionAcrossCars } from "@/lib/traction-narrative";
 
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
@@ -109,7 +111,7 @@ function conditionsDivergence(cars: { carName: string; conditions: LapConditions
   return `Condições não foram idênticas entre os testes: ${parts.join(", ")} entre os carros -- parte da diferença de ritmo pode vir daí, não só do carro.`;
 }
 
-type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon" | "speed" | "gear";
+type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon" | "speed" | "gear" | "rpm" | "yawRate";
 type TracePoint = { distance: number } & Partial<Record<ChannelKey, number>>;
 
 function normalizedHeader(value: string) { return value.toLowerCase().replace(/[^a-z0-9]/g, ""); }
@@ -144,6 +146,10 @@ function parseLapCsv(csv: string): TracePoint[] {
     lat: find("lat", "latitude"), lon: find("lon", "longitude"),
     speed: find("speed", "speedms", "speedkph", "carspeed"),
     gear: find("gear"),
+    // Added 11/09/2026 for destracionamento/microcorreções detection (lib/traction-events.ts) --
+    // confirmed present, identically named, in every category this driver races (GT3/GTP/LMDh/Formula).
+    rpm: find("rpm", "enginerpm"),
+    yawRate: find("yawrate"),
   };
   const raw = lines.slice(1).map((line) => parseCsvLine(line, delimiter));
   const points = raw.map((cells) => {
@@ -184,6 +190,16 @@ function consistencyRatioLabel(ratio: number) {
 }
 function formatLapTime(value: number) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
 function median(values: number[]) { const sorted = [...values].sort((a, b) => a - b); const mid = Math.floor(sorted.length / 2); return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2; }
+
+// lib/traction-events.ts takes a minimal, source-agnostic sample shape so it stays reusable outside
+// this route (Melhor Volta vs Referência, Meu Debrief) -- this maps this route's own TracePoint (raw
+// steering in radians, speed in m/s, same units the CSV already carries) onto that shape.
+function toTractionSamples(points: TracePoint[]): TractionSample[] {
+  return points.map((point) => ({
+    distance: point.distance, throttle: point.throttle, rpm: point.rpm, gear: point.gear,
+    speedMs: point.speed, steeringRad: point.steering, yawRate: point.yawRate,
+  }));
+}
 
 /** "Limpar as sujeiras" (29/08/2026): a lap can be Garage61-"clean" (no off-track flag) and still be
  * a spin/save/reconnect that cost several seconds without leaving the racing surface -- the `clean`
@@ -284,6 +300,7 @@ type NarrativeCar = {
   lapTimeConsistency: { stddev: number; label: string } | null;
   inputConsistency: { overall: { score: number; label: string }; channels: { channel: string; name: string; score: number; label: string }[] } | null;
   trackUsage: { avgPct: number; maxPct: number } | null;
+  tractionEvents: TractionSummary;
 };
 type NarrativeSector = { name: string | null; cornerNumber: number; winnerCarId: number | null; times: { carId: number; seconds: number; deltaSeconds: number }[] };
 
@@ -353,6 +370,20 @@ function buildCarComparisonNarrative(cars: NarrativeCar[], sectors: NarrativeSec
     }
   }
 
+  // "às vezes eu sou mais rápido com um do que com outro, mas eu faço mais microcorreções, eu
+  // destraciono mais, o que leva a crer que eu vou ter mais dificuldades de manter esse carro na mão
+  // por muitas voltas" (11/09/2026) -- compares the fastest car against whichever OTHER car has the
+  // calmest traction pattern, same "is there a real tradeoff worth naming" philosophy as every other
+  // clause here.
+  const rest = cars.filter((car) => car.carId !== fastest.carId);
+  if (rest.length) {
+    const calmest = rest.reduce((best, car) =>
+      (car.tractionEvents.wheelspinPer10Laps + car.tractionEvents.correctionsPer10Laps) <
+      (best.tractionEvents.wheelspinPer10Laps + best.tractionEvents.correctionsPer10Laps) ? car : best);
+    const tractionInsight = compareTractionAcrossCars(fastest.carName, fastest.tractionEvents, calmest.carName, calmest.tractionEvents);
+    if (tractionInsight) parts.push(tractionInsight);
+  }
+
   if (!parts.length) return `O ${fastest.carName} vem na frente em praticamente tudo aqui — mais rápido, mais consistente e sem sinal claro de que outro carro te atende melhor nessa pista.`;
   return parts.join(" ");
 }
@@ -395,6 +426,9 @@ function buildDominantCarNarrative(fastest: NarrativeCar, second: NarrativeCar, 
       parts.push(`Isso combina com uma consistência bem maior no ${channelEdges[0].name.toLowerCase()} com o ${fastest.carName} do que com o ${second.carName} — provavelmente a maior parte de onde vem essa vantagem.`);
     }
   }
+
+  const dominantTraction = compareTractionAcrossCars(fastest.carName, fastest.tractionEvents, second.carName, second.tractionEvents);
+  if (dominantTraction) parts.push(dominantTraction);
 
   return parts.join(" ");
 }
@@ -1011,12 +1045,18 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     const trackUsage = boundary && traces.length ? trackWidthUsage(traces[0], boundary) : null;
     const trackUsageSegments = boundary && traces.length ? trackWidthUsageBySegment(traces[0], boundary) : null;
     const conditions = extractConditions(chosen.lap);
+    // 11/09/2026: "destracionamento, microcorreções... na parte de Comparar Carros serviria para dar
+    // mais credibilidade se eu preciso corrigir menos o volante com um carro do que com outro" -- runs
+    // over the SAME sample pool already downloaded for inputConsistency/trackUsage above, not a new
+    // telemetry fetch. Uses every sampled lap, not just the fastest one, so the rate reflects a habit
+    // across several laps rather than one lap's luck.
+    const tractionEvents = summarizeTractionEvents(traces.map(toTractionSamples));
 
     return {
       carId, carName: carNames.get(carId) ?? `Carro ${carId}`,
       lapsAnalyzed: timePool.length,
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
-      lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments, conditions,
+      lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments, conditions, tractionEvents,
       fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
       sampleTraces: traces, // same -- kept for per-corner consistency below, stripped before response
     };
