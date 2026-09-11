@@ -1186,9 +1186,33 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     .map((car) => ({ ...car, deltaSeconds: Number((car.bestLapSeconds - overallBest).toFixed(3)) }))
     .sort((a, b) => a.bestLapSeconds - b.bestLapSeconds);
 
-  // GPS outline for the sector map: the single fastest car's fastest lap, thinned -- same idea as
-  // debrief.ts's own trackOutline, just sourced from whichever car actually set the pace here.
-  const outlineSource = ranked.find((car) => car.fastestTrace)?.fastestTrace ?? null;
+  // Real detected corners (29/08/2026: "concordo, é isso que eu realmente quero, setores reais"),
+  // not fixed %-of-lap bins -- same GPS-based detector Meu Debrief already uses (lib/corner-detection.ts).
+  // 11/09/2026 fix: "só puxando a telemetria da curva 1" -- detectCornersFromGps self-calibrates its
+  // threshold from THAT lap's own heading-change distribution, so one car's telemetry with an
+  // abnormal GPS pattern (a low-rate/duplicated GPS channel in one specific CSV export, say) can
+  // collapse the whole detector down to a single giant "corner" while every OTHER car's trace at the
+  // same track works fine -- no real circuit has fewer than a handful of corners. This used to always
+  // trust the single fastest car's trace with no fallback; now it tries every car in pace order and
+  // keeps the first trace that clears a plausible corner count, falling back to whichever trace
+  // detected the most if none does -- still better than blindly trusting one possibly-bad trace, and
+  // it doesn't touch the detector's own carefully-tuned thresholds (verified live against Algarve and
+  // Red Bull Ring's real corner counts), only which recorded lap feeds it.
+  const MIN_PLAUSIBLE_CORNERS = 4;
+  const detectionCandidates = ranked
+    .filter((car) => car.fastestTrace)
+    .map((car) => {
+      const points = car.fastestTrace!.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null }));
+      return { trace: car.fastestTrace!, corners: detectCornersFromGps(points) };
+    });
+  const bestDetection = detectionCandidates.find((item) => item.corners.length >= MIN_PLAUSIBLE_CORNERS)
+    ?? [...detectionCandidates].sort((a, b) => b.corners.length - a.corners.length)[0]
+    ?? null;
+
+  // GPS outline for the sector map: the same trace the corner detector settled on above, thinned --
+  // same idea as debrief.ts's own trackOutline. Tied to the SAME source as detection (not just
+  // "whoever set the pace") so a corner's startPct/endPct always lines up with the drawn shape.
+  const outlineSource = bestDetection?.trace ?? null;
   const gpsPoints = outlineSource ? outlineSource.filter((point) => point.lat !== undefined && point.lon !== undefined) : [];
   const outlineStride = Math.max(1, Math.ceil(gpsPoints.length / 300));
   const trackOutline = gpsPoints.length >= 20
@@ -1200,12 +1224,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   // (29/08/2026: "cada carro receberia uma cor").
   const carColor = new Map(ranked.map((car, index) => [car.carId, brandColor(car.carName) ?? CAR_COLORS[index % CAR_COLORS.length]]));
 
-  // Real detected corners (29/08/2026: "concordo, é isso que eu realmente quero, setores reais"),
-  // not fixed %-of-lap bins -- same GPS-based lateral-acceleration detector Meu Debrief already uses
-  // (lib/corner-detection.ts), run on whichever car's trace anchors the map above. Corner names come
-  // from the same researched lookup table debrief.ts uses, matched by detected count.
-  const gpsForDetection = outlineSource ? outlineSource.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null })) : [];
-  const detectedCorners = gpsForDetection.length ? detectCornersFromGps(gpsForDetection) : [];
+  const detectedCorners = bestDetection?.corners ?? [];
   const cornerNames = trackResult.data ? lookupCornerNames(trackResult.data.name, trackResult.data.variant ?? "", detectedCorners.length) : null;
 
   const sectors = detectedCorners.map((corner, index) => {
