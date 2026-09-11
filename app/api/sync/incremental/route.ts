@@ -59,7 +59,18 @@ type SessionRow = {
   lap_count: number;
 };
 
+// 11/09/2026: a pausa proativa em garage61.ts (ver comentário lá) resolve o 429, mas junto com a
+// paginação por par carro+pista isso pode empurrar o job inteiro para além do teto de 300s da
+// Vercel -- a função é encerrada no meio, sem nunca cair no catch, e a linha em sync_runs fica
+// "running" para sempre (só é fechada pela varredura de 15min no topo desta função). Em vez de só
+// reagir a isso, o loop abaixo checa o próprio orçamento de tempo e para de pegar PARES NOVOS (ou
+// PÁGINAS novas dentro de um par) antes do teto, salvando o que já coletou. Como esta sync já é
+// incremental com sobreposição de 7 dias, um par que ficou de fora nesta execução é reprocessado
+// (com overlap) na próxima -- não perde dado, só adia.
+const TIME_BUDGET_MS = 250_000; // deixa ~50s de folga para upserts/telemetria depois do loop
+
 async function runIncrementalSessionSync() {
+  const runStartedAtMs = Date.now();
   const startedAt = new Date().toISOString();
   // Serverless termination can skip the catch block below, leaving a permanent "running" entry.
   // This route has a five-minute ceiling, so anything still running after fifteen minutes is stale,
@@ -139,8 +150,13 @@ async function runIncrementalSessionSync() {
     const sectorRows: { lap_id: string; sector_number: number; sector_time: number | null; incomplete: boolean }[] = [];
     let lapsReceived = 0;
     let recentLaps = 0;
+    let pairsSkippedByBudget = 0;
 
     for (const pair of recentPairs) {
+      if (Date.now() - runStartedAtMs > TIME_BUDGET_MS) {
+        pairsSkippedByBudget += 1;
+        continue;
+      }
       // Paginação completa (não só offset=0): alguns pares carro+pista já passam de 250 voltas na
       // season, e parar cedo demais descartava silenciosamente voltas — inclusive sessões de
       // corrida inteiras. MAS paginar até o fim do histórico inteiro do par a cada execução, só
@@ -152,6 +168,7 @@ async function runIncrementalSessionSync() {
       // e transforma isso de "sempre a temporada inteira" em de fato incremental.
       const laps: Garage61Lap[] = [];
       for (let offset = 0; ; offset += PAGE_SIZE) {
+        if (Date.now() - runStartedAtMs > TIME_BUDGET_MS) break;
         const response = await garage61Get<Garage61LapsResponse>("/laps", {
           cars: pair.car_id,
           tracks: pair.track_id,
@@ -298,6 +315,7 @@ async function runIncrementalSessionSync() {
       cutoff: cutoffIso,
       overlapHours: OVERLAP_HOURS,
       carTrackPairsChecked: recentPairs.length,
+      pairsSkippedByBudget,
       lapsReceived,
       recentLaps,
       sessionsUpserted: rows.length,
