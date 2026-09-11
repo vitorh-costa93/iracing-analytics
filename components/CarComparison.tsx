@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createTrackProjector } from "@/lib/track-map";
 import { CarBrandIcon } from "@/lib/car-brand";
 import TrackMap, { type TrackMapLine, type TrackMapMarker } from "@/components/TrackMap";
 import FocusedGaugeChart, { type FocusedSide } from "@/components/FocusedGaugeChart";
@@ -97,23 +96,28 @@ function CompareBar({ label, value, max, formatted, conditions, tractionEvents }
 /** Track map colored by which car was fastest through each fixed %-of-lap segment (29/08/2026:
  * "eu ainda quero a coloração da pista por setor, não por curva" -- real corners left long gray gaps
  * on every straight, since nothing gets "detected" as turning there; fixed segments give full, even
- * coverage). Same idea as SectorConsistency's own SectorTrackMap (components/SectorConsistency.tsx),
- * just colored by car identity instead of a consistency label. Kept compact (29/08/2026: "o mapa
- * está ocupando espaço demais") -- lives beside the ranking bars now, not its own full-width block. */
-function SectorMap({ outline, mapSegments, cars }: { outline: TrackOutlinePoint[]; mapSegments: MapSegment[]; cars: CarStat[] }) {
+ * coverage).
+ * 11/09/2026 fix: "a pista está mal renderizada... em qualquer lugar que elas forem renderizadas tem
+ * que ser a versão feita via GPS [real, OSM]" -- this used to draw its own synthetic ribbon around
+ * whichever single lap's raw GPS trace (trackOutline, the fastest car's own fastest lap) happened to
+ * be picked server-side, with no real track-edge geometry underneath. That trace could itself be a
+ * broken/partial lap (exactly the class of bug fixed the same day in the ranking above), and even a
+ * genuine one is noisier and less complete than the real thing -- confirmed live at Road Atlanta,
+ * where it rendered as an unrecognizable pointed shape instead of the actual circuit. Reuses
+ * components/TrackMap.tsx instead -- the shared real-OSM-boundary map every other surface in the app
+ * already draws on, with one colored TrackMapLine per segment instead of a hand-rolled projector. */
+function SectorMap({ outline, mapSegments, cars, trackId }: { outline: TrackOutlinePoint[]; mapSegments: MapSegment[]; cars: CarStat[]; trackId: number | null }) {
   if (outline.length < 20) return null;
-  const project = createTrackProjector(outline, 300, 220, 16);
   const colorByCarId = new Map(cars.map((car) => [car.carId, car.color]));
+  const lines: TrackMapLine[] = [];
+  for (const segment of mapSegments) {
+    const color = segment.winnerCarId !== null ? colorByCarId.get(segment.winnerCarId) : undefined;
+    const points = outline.filter((point) => point.distance >= segment.startPct && point.distance <= segment.endPct);
+    if (color && points.length > 1) lines.push({ points, color });
+  }
   return (
     <div className="sector-map-card compact">
-      <svg viewBox="0 0 300 220" className="sector-map compact" role="img" aria-label="Mapa da pista colorido pelo carro mais rápido em cada trecho">
-        <polyline points={outline.map(project).join(" ")} className="sector-map-base" />
-        {mapSegments.map((segment, index) => {
-          const points = outline.filter((point) => point.distance >= segment.startPct && point.distance <= segment.endPct);
-          const color = segment.winnerCarId !== null ? colorByCarId.get(segment.winnerCarId) : undefined;
-          return points.length > 1 && color ? <polyline key={index} points={points.map(project).join(" ")} style={{ stroke: color }} className="sector-map-segment-colored" /> : null;
-        })}
-      </svg>
+      <TrackMap trackId={trackId} lines={lines} width={300} height={220} className="sector-map compact" />
       <div className="sector-map-legend">
         {cars.map((car) => <span key={car.carId} style={{ color: car.color }}>{car.carName}</span>)}
       </div>
@@ -489,7 +493,7 @@ export default function CarComparison() {
                   <div className="race-debrief-chart-block">
                     <span className="section-kicker">MAIS RÁPIDO POR TRECHO</span>
                     <h4>Quem manda em cada pedaço da pista</h4>
-                    <SectorMap outline={data.trackOutline} mapSegments={data.mapSegments} cars={data.cars} />
+                    <SectorMap outline={data.trackOutline} mapSegments={data.mapSegments} cars={data.cars} trackId={data.track?.id ?? null} />
                   </div>
                 )}
               </div>

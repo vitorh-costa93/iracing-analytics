@@ -677,22 +677,34 @@ function isValidLap(lap: LapRow) {
  * did clearly-broken 1:27-1:52 "laps" for other cars -- broken/partial telemetry records made up
  * MORE than half of some cars' pools (confirmed: one had incomplete=true on 38 of 39 laps), so the
  * median itself was contaminated and no longer reflected genuine race pace.
- * Density clustering instead: sort every lap time in the pool, and single-link neighbors within 30%
- * of each other into the same cluster (broken records are scattered arbitrary fractions of a real
- * lap, so they essentially never cluster tightly with each other OR with the real pace group -- a
- * genuine lap, even an off-pace practice one, reliably lands within 30% of another genuine lap on
- * the same track). Keep only the LARGEST cluster; ties broken toward the slower one, since this
- * failure mode only ever produces bogus SHORT times, never bogus long ones. Needs at least 4 laps in
- * the pool to safely cluster; smaller pools are left alone (not enough signal to reject anything). */
+ * Density clustering instead: sort every lap time in the pool and group neighbors within 30% of the
+ * group's OWN anchor (its fastest/first member) into the same cluster (broken records are scattered
+ * arbitrary fractions of a real lap, so they essentially never cluster tightly with each other OR with
+ * the real pace group -- a genuine lap, even an off-pace practice one, reliably lands within 30% of
+ * another genuine lap on the same track).
+ * 11/09/2026 fix: "veio com bug em road atlanta, a volta mais rápida é da Ferrari, uma volta de 57
+ * segundos" -- the ORIGINAL version compared each point only to its immediately PRECEDING neighbor
+ * (single-linkage), which chains: a broken 57.9s record and the genuine ~70.5s pace group are each
+ * "close enough" to their own immediate neighbor (57.9->70.5 is 21%, under the 30% bar) even though
+ * 57.9s is nothing like real GTP hypercar pace at Road Atlanta -- so the whole real pace cluster
+ * (16 genuine laps, 70.5-77.8s) got silently swallowed into the SAME cluster as two broken short ones,
+ * and the merged group's fastest member (the broken 57.9s lap) came out as "the" plausible fastest lap.
+ * Anchoring every comparison to the CLUSTER'S OWN fastest member instead of the previous point stops
+ * that: once a cluster's span exceeds 30% of its own anchor, nothing further joins it, so a broken
+ * short lap can no longer drag a real (but numerically adjacent) pace group in with it.
+ * Keep only the LARGEST cluster; ties broken toward the slower one, since this failure mode only ever
+ * produces bogus SHORT times, never bogus long ones. Needs at least 4 laps in the pool to safely
+ * cluster; smaller pools are left alone (not enough signal to reject anything). */
 function filterPlausibleTimes<T extends { lap_time: number | null }>(laps: T[]) {
   const withTimes = laps.filter((lap) => Number(lap.lap_time) > 0);
   if (withTimes.length < 4) return laps;
   const sorted = [...withTimes].sort((a, b) => Number(a.lap_time) - Number(b.lap_time));
   const clusters: T[][] = [[sorted[0]]];
+  let anchor = Number(sorted[0].lap_time);
   for (let i = 1; i < sorted.length; i += 1) {
-    const prev = Number(sorted[i - 1].lap_time), current = Number(sorted[i].lap_time);
-    if (current / prev <= 1.3) clusters[clusters.length - 1].push(sorted[i]);
-    else clusters.push([sorted[i]]);
+    const current = Number(sorted[i].lap_time);
+    if (current / anchor <= 1.3) clusters[clusters.length - 1].push(sorted[i]);
+    else { clusters.push([sorted[i]]); anchor = current; }
   }
   const maxSize = Math.max(...clusters.map((cluster) => cluster.length));
   const best = clusters.filter((cluster) => cluster.length === maxSize).pop()!; // pop = slowest among tied-largest

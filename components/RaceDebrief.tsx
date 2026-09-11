@@ -387,7 +387,7 @@ export default function RaceDebrief() {
           <details className="race-debrief-disclosure" onToggle={(event) => { if (event.currentTarget.open) trackUiEvent("debrief_evidence_opened", { category: selected, group: "setores" }); }}>
             <summary>Ver volta ideal e consistência por setor</summary>
           <div className="race-debrief-chart-block">
-            <SectorConsistency category={selected} trackOutline={data.trackOutline} />
+            <SectorConsistency category={selected} trackOutline={data.trackOutline} trackId={data.session?.trackId ?? null} />
           </div>
           </details>
         </>
