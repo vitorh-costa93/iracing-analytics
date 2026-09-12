@@ -46,6 +46,13 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
   // recomputed from the previous frame's scale) so small per-frame rounding doesn't compound into
   // drift over a long pinch.
   const pinchState = useRef<{ initialDistance: number; initialScale: number } | null>(null);
+  // handleTouchMove below is defined inside an effect keyed on [enabled, initialScale], so it does
+  // NOT get a fresh closure over `camera` on every pan/zoom -- reading `camera.scale` directly
+  // there would read a stale value from whenever the effect last (re)ran. This ref mirrors the
+  // latest camera every render so the lazy pinch-start path (see handleTouchMove) always starts
+  // from the true current scale.
+  const cameraRef = useRef(camera);
+  useEffect(() => { cameraRef.current = camera; }, [camera]);
 
   // A different map instance (new popup, different corner) gets a fresh camera, not whatever the
   // previous instance's user left behind. width/height alone isn't enough for a map instance that
@@ -106,10 +113,25 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
     function handleMouseMove(event: MouseEvent) { panTo(event.clientX, event.clientY); }
     function handleMouseUp() { dragState.current = null; setIsDragging(false); }
     function handleTouchMove(event: TouchEvent) {
-      if (event.touches.length >= 2 && pinchState.current) {
+      // 12/09/2026 fix: "não é possível mexer com o zoom no mobile" -- this used to require BOTH
+      // fingers to already be down (pinchState set) before reacting at all, which only happens if
+      // the second finger's own touchstart landed exactly inside this map's <svg> bounds. In
+      // practice a real two-finger gesture often starts with one finger (already dragging THIS
+      // map, so dragState is set) and the second finger landing a little outside the svg's own
+      // hit area -- that second touchstart fires on a sibling/parent element with no listener, so
+      // pinchState never got created and the gesture silently stayed a one-finger pan. Upgrading
+      // to a pinch here too (gated on dragState/pinchState already belonging to THIS map, so an
+      // unrelated two-finger touch elsewhere on the page never hijacks a map the driver isn't
+      // touching) makes the transition robust to exactly where the second finger lands.
+      if (event.touches.length >= 2 && (dragState.current || pinchState.current)) {
         event.preventDefault();
         const [t1, t2] = [event.touches[0], event.touches[1]];
         const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        if (!pinchState.current) {
+          pinchState.current = { initialDistance: distance, initialScale: cameraRef.current.scale };
+          dragState.current = null;
+          setIsDragging(false);
+        }
         const midX = (t1.clientX + t2.clientX) / 2, midY = (t1.clientY + t2.clientY) / 2;
         const local = localPoint(midX, midY);
         if (!local || distance <= 0) return;

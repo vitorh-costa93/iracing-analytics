@@ -908,6 +908,13 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 @media (max-width: 720px) {
   .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
   .setup-comparison-head { grid-template-columns: 1fr; }
+  /* 12/09/2026 fix: "os cards de análise curva a curva tão vazando no mobile" -- both of these
+   * side-by-side layouts had a fixed-pixel minimum column (200px / 220px+220px = 440px combined)
+   * that a phone viewport can't satisfy without overflowing; stacking to one column on mobile
+   * matches every other side-by-side card in this file (.sector-map-layout, .car-compare-row1
+   * above) instead of leaving these two as the only ones that never got the same treatment. */
+  .race-debrief-corner-card { grid-template-columns: 1fr; }
+  .corner-mini-row { grid-template-columns: 1fr; }
 }
 
 .sector-consistency { margin-top: 18px; }
@@ -982,8 +989,14 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .corner-deep-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
 .corner-deep-picker select { padding: 6px 8px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); font-family: var(--mono); font-size: 12px; border-radius: 3px; }
 .corner-deep-picker span { color: var(--muted); font-family: var(--mono); font-size: 11px; }
-.corner-deep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 12px; }
-.corner-deep-card { padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
+/* 12/09/2026 fix: "os cards de análise curva a curva tão vazando no mobile" -- minmax(420px, 1fr)
+ * forces every column to be AT LEAST 420px wide even on a ~360-390px phone viewport, since
+ * minmax()'s minimum is never allowed to shrink the track below that floor; the card (and its
+ * text) then genuinely overflows the screen, it isn't just visually cramped. min(420px, 100%)
+ * caps that floor at the container's own width, so the single column fills the phone exactly
+ * instead of overflowing it, with no behavior change at all on desktop where 420px already fits. */
+.corner-deep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 12px; }
+.corner-deep-card { padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); min-width: 0; }
 .corner-deep-card h5 { margin: 0 0 8px; font-size: 14px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .corner-deep-card h5 span { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; white-space: nowrap; }
 /* The whole card is now the open-popup button (31/08/2026: "os inputs e o traçado só aparecem quando
