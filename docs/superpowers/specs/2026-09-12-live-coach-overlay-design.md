@@ -58,11 +58,16 @@ iracing-live-coach (new, C#/.NET, runs on the user's Windows PC)
   (`LOCAL_COACH_SECRET`, distinct from `GARAGE61_IMPORT_SECRET` so the two
   integrations can be rotated independently), same rejection shape (401 + JSON
   message) as the existing bookmarklet routes.
-- **Response shape** (per corner, for this car/track):
+- **Response shape** (per corner, for this car/track; updated 12/09/2026 after the
+  final whole-branch review -- `gearModel` is ONE pooled model for the whole
+  car, not per-corner, since a gear's RPM-vs-speed line doesn't change corner
+  to corner, only the exit-half samples used to judge a corner's own
+  `wheelspinRatePct` do):
   ```json
   {
     "status": "ok",
     "trackLengthMeters": 5891,
+    "gearModel": { "3": { "a": 42.1, "b": 850 }, "4": { "a": 38.7, "b": 920 } },
     "corners": [
       {
         "number": 1,
@@ -72,13 +77,17 @@ iracing-live-coach (new, C#/.NET, runs on the user's Windows PC)
         "brakingPointPct": 3.0,
         "brakingPointStdDev": 0.3,
         "correctionBaselineDeg": 6.2,
-        "wheelspinRpmModel": { "a": 42.1, "b": 850 },
+        "wheelspinRatePct": 12.5,
         "lapTimeContributionSeconds": 4.8,
         "lapTimeStdDev": 0.15
       }
     ]
   }
   ```
+  The live app compares its own live RPM against `gearModel[currentGear]` to
+  judge wheelspin in the moment; `wheelspinRatePct` is the historical summary
+  (how often this corner's exit showed a surplus), useful on its own but not
+  a substitute for the live per-sample check.
 - **Computation**: reuses `lib/corner-detection.ts` for corner boundaries (same
   method already used by Car Comparison/Race Debrief — GPS heading, lateral-accel
   fallback) and `lib/track-corners.ts` for corner names (verified names only;
