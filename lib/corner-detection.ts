@@ -169,7 +169,9 @@ function splitByProminence(segment: { distance: number; value: number }[], split
 // Rough meters-per-lap from a real GPS trace (equirectangular approximation, consistent with the
 // same lonScale used for headings below -- true great-circle precision isn't needed, only a sane
 // order-of-magnitude length to scale the merge-gap distance check).
-function estimateLapLengthMeters(valid: Array<{ lat: number; lon: number }>, lonScale: number): number {
+export function estimateLapLengthMeters(valid: Array<{ lat: number; lon: number }>, lonScale: number): number {
+  // (exported: app/api/telemetry/local-coach/baselines/route.ts also needs a real trackLengthMeters,
+  // not the hardcoded null it shipped with -- see this repo's own local-coach-baselines fix commit.)
   const METERS_PER_DEGREE_LAT = 111_320;
   let meters = 0;
   for (let i = 1; i < valid.length; i++) {

@@ -32,7 +32,7 @@ Two components, one existing repo extended, one new repo:
 
 ```text
 iracing-analytics (existing, Vercel + Supabase)
-  -> new GET /api/local-coach/baselines?car=<id>&track=<id>
+  -> new GET /api/telemetry/local-coach/baselines?car=<id>&track=<id>
      (shared-secret auth, same pattern as GARAGE61_IMPORT_SECRET)
      returns per-corner baselines for this car/track combo
 
@@ -51,7 +51,7 @@ iracing-live-coach (new, C#/.NET, runs on the user's Windows PC)
 
 ## Components
 
-### 1. `iracing-analytics`: `/api/local-coach/baselines`
+### 1. `iracing-analytics`: `/api/telemetry/local-coach/baselines`
 
 - **Method**: `GET`, query params `car` (car_id) and `track` (track_id).
 - **Auth**: `x-import-key` header checked against a new env var
