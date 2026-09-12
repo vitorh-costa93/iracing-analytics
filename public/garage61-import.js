@@ -109,16 +109,41 @@
     if (!(lap.lap_time > 0)) return lap.start_time;
     return new Date(new Date(lap.start_time).getTime() + Number(lap.lap_time) * 1000).toISOString();
   }
+  // 12/09/2026: "o bookmarklet tem que trazer esses campos [clima]... você consegue ver de onde vem"
+  // -- every OTHER field this bookmarklet reads (start_time, driver_rating, pit_in, ...) got its exact
+  // snake_case name from someone actually inspecting a real /api/internal/events/{id} response in the
+  // browser (see this file's own "Confirmed live" comment on captureIfSetup) -- weather never got that
+  // same treatment, so guessing a name here risks silently storing the WRONG field under "trackTemp"
+  // (exactly the class of bug this file's other fixes today were about undoing). Instead of guessing,
+  // log every key on the event/session/lap objects that LOOKS weather-related (name match only, once
+  // per run) so the very next bookmarklet run tells us the real name(s) to wire up -- no live access to
+  // garage61.net exists from where this app's server code runs, so this is the only way to find out.
+  var loggedWeatherShape = false;
+  function logWeatherLikeFields(obj, label) {
+    var pattern = /temp|wet|wind|humid|cloud|precip|rain|weather|usage|fog|track_state|air_|pressure/i;
+    var found = [];
+    for (var key in obj) {
+      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
+      var value = obj[key];
+      if (pattern.test(key) && (value === null || typeof value !== "object")) found.push(key + "=" + JSON.stringify(value));
+    }
+    if (found.length) log(label + " -- campos parecidos com clima: " + found.join(", "));
+    else log(label + " -- nenhum campo parecido com clima nas chaves: " + Object.keys(obj || {}).join(", "));
+  }
+
   function captureSessionsAndLaps(event) {
     var eventId = event.id;
     var eventType = typeof event.event_type === "number" ? event.event_type : null;
+    if (!loggedWeatherShape) { logWeatherLikeFields(event, "Evento #" + eventId); loggedWeatherShape = true; }
     (event.sessions || []).forEach(function (session, sessionIdx) {
       var sessionId = String(sessionIdx);
+      if (sessionIdx === 0) logWeatherLikeFields(session, "  Sessão 0");
       var runGroups = session.run_groups || [];
       runGroups.forEach(function (runGroup) {
         (runGroup.runs || []).forEach(function (run) {
-          (run.laps || []).forEach(function (lap) {
+          (run.laps || []).forEach(function (lap, lapIdx) {
             if (typeof lap.car_id !== "number" || typeof lap.track_id !== "number" || !lap.start_time) return;
+            if (sessionIdx === 0 && lapIdx === 0) logWeatherLikeFields(lap, "    Volta 0");
             var key3 = eventId + ":" + sessionId + ":" + lap.car_id + ":" + lap.track_id;
             var endedAt = lapEndTime(lap);
             var agg = sessionByKey[key3];
