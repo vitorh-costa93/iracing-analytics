@@ -36,6 +36,10 @@ export type CornerBaseline = {
 const BRAKE_THRESHOLD = 0.1; // matches parseLapCsv's own brake channel scale (0-1)
 const APPROACH_WINDOW_PCT = 8; // how far before a corner's own start to look for the brake-onset point
 const MIN_LAPS_FOR_BASELINE = 3; // mirrors traction-events.ts's own CORRECTION_MIN_LAPS -- a median across fewer laps isn't trustworthy
+const WHEELSPIN_RPM_SURPLUS_PCT = 8; // matches lib/traction-events.ts's own validated threshold
+const WHEELSPIN_MIN_GEAR_SAMPLES = 20; // matches lib/traction-events.ts's own validated threshold
+
+type GearModel = Record<number, { a: number; b: number } | undefined>;
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -81,7 +85,49 @@ function wastedSteeringDeg(lap: CoachSample[], corner: CoachCorner): number | nu
   return totalMoveDeg - netMoveDeg;
 }
 
+/** RPM = a*speed + b per gear, pooled across every lap in the pool -- same technique as
+ * lib/traction-events.ts's buildGearRpmModel, reimplemented here since this module works on
+ * CoachSample (distance-keyed, no lap-index bookkeeping needed) rather than TractionSample. */
+function buildGearModel(laps: CoachSample[][]): GearModel {
+  const byGear = new Map<number, { speed: number; rpm: number }[]>();
+  for (const lap of laps) {
+    for (const sample of lap) {
+      if (sample.gear === undefined || sample.rpm === undefined || sample.speedMs === undefined) continue;
+      if (sample.gear < 1 || sample.speedMs <= 1) continue;
+      if (!byGear.has(sample.gear)) byGear.set(sample.gear, []);
+      byGear.get(sample.gear)!.push({ speed: sample.speedMs, rpm: sample.rpm });
+    }
+  }
+  const model: GearModel = {};
+  for (const [gear, points] of byGear) {
+    if (points.length < WHEELSPIN_MIN_GEAR_SAMPLES) continue;
+    const n = points.length;
+    const sx = points.reduce((sum, point) => sum + point.speed, 0);
+    const sy = points.reduce((sum, point) => sum + point.rpm, 0);
+    const sxx = points.reduce((sum, point) => sum + point.speed ** 2, 0);
+    const sxy = points.reduce((sum, point) => sum + point.speed * point.rpm, 0);
+    const denominator = n * sxx - sx * sx;
+    if (denominator === 0) continue;
+    const a = (n * sxy - sx * sy) / denominator;
+    model[gear] = { a, b: (sy - a * sx) / n };
+  }
+  return model;
+}
+
+function hasWheelspinInCorner(lap: CoachSample[], corner: CoachCorner, model: GearModel): boolean {
+  return lap.some((sample) => {
+    if (sample.distance < corner.startDistance || sample.distance >= corner.endDistance) return false;
+    if (sample.gear === undefined || sample.rpm === undefined || sample.speedMs === undefined) return false;
+    const fit = model[sample.gear];
+    if (!fit) return false;
+    const predicted = fit.a * sample.speedMs + fit.b;
+    if (predicted <= 0) return false;
+    return ((sample.rpm - predicted) / predicted) * 100 >= WHEELSPIN_RPM_SURPLUS_PCT;
+  });
+}
+
 export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorner[]): CornerBaseline[] {
+  const gearModel = buildGearModel(laps);
   return corners.map((corner) => {
     const brakingPoints = laps.map((lap) => brakeOnsetDistance(lap, corner)).filter((value): value is number => value !== null);
     const hasEnoughBraking = brakingPoints.length >= MIN_LAPS_FOR_BASELINE;
@@ -93,7 +139,9 @@ export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorn
         const values = laps.map((lap) => wastedSteeringDeg(lap, corner)).filter((value): value is number => value !== null);
         return values.length >= MIN_LAPS_FOR_BASELINE ? Number(median(values).toFixed(2)) : null;
       })(),
-      wheelspinRatePct: null, // Task 3
+      wheelspinRatePct: laps.length >= MIN_LAPS_FOR_BASELINE
+        ? Number(((laps.filter((lap) => hasWheelspinInCorner(lap, corner, gearModel)).length / laps.length) * 100).toFixed(1))
+        : null,
       lapTimeContributionSeconds: null, lapTimeStdDev: null, // Task 4
     };
   });

@@ -46,3 +46,27 @@ describe("computeCornerBaselines -- steering correction", () => {
     expect(corner.correctionBaselineDeg!).toBeGreaterThan(0);
   });
 });
+
+function lapWithGearShift(rpmSurplusPct: number): CoachSample[] {
+  const samples: CoachSample[] = [];
+  for (let distance = 0; distance <= 100; distance += 0.5) {
+    const inCorner = distance >= 10 && distance < 20;
+    // Speed VARIES across the lap (unlike a constant) -- buildGearModel's linear regression needs
+    // more than one distinct speed value or it's degenerate (zero variance in x collapses the
+    // denominator to 0, silently skipping the gear entirely; verified numerically before this plan
+    // was finalized).
+    const speedMs = 20 + distance * 0.1;
+    const baseRpm = speedMs * 100; // consistent RPM-per-speed for gear 3 across every lap
+    samples.push({ distance, gear: 3, speedMs, rpm: inCorner ? baseRpm * (1 + rpmSurplusPct / 100) : baseRpm });
+  }
+  return samples;
+}
+
+describe("computeCornerBaselines -- wheelspin rate", () => {
+  it("reports how often this corner's exit shows an RPM surplus over this car's own gear model", () => {
+    const laps = [lapWithGearShift(15), lapWithGearShift(0), lapWithGearShift(0), lapWithGearShift(0)];
+    const [corner] = computeCornerBaselines(laps, CORNERS);
+    expect(corner.wheelspinRatePct).not.toBeNull();
+    expect(corner.wheelspinRatePct!).toBeCloseTo(25, 0); // 1 of 4 laps showed a surplus
+  });
+});
