@@ -73,6 +73,28 @@ export async function POST(request: NextRequest) {
     }
 
     if (laps.length) {
+      // 12/09/2026 fix: "sumiu a temperatura/borracha de todos, inclusive Silverstone que já
+      // sincronizava antes" -- this is a plain upsert on id, so re-visiting a car/track pair the
+      // bookmarklet has ALREADY discovered as "recent activity" (discoverAndVisitLapsEvents looks back
+      // up to computeIncrementalCutoff's own window, days, not just today) replaces the WHOLE
+      // garage61_payload column outright, including old laps that already had a real, richer payload
+      // from the legacy sync/laps-era public-api sync (with trackTemp/trackWetness/etc). This
+      // bookmarklet's own payload (public/garage61-import.js) deliberately doesn't know those weather
+      // fields at all (Garage61's internal api never had a confirmed shape for them) -- so a lap that
+      // already had good weather data silently lost it the moment the bookmarklet happened to re-touch
+      // it, nothing to do with THAT lap's own sync being new or broken. Fetching the existing payload
+      // first and merging (existing as the base, this run's own known fields winning) keeps whatever
+      // this sync doesn't know about instead of erasing it.
+      const existingPayloads = new Map<string, Record<string, unknown>>();
+      for (let index = 0; index < laps.length; index += CHUNK) {
+        const ids = laps.slice(index, index + CHUNK).map((l) => l.id);
+        const { data, error } = await supabaseAdmin.from("laps").select("id,garage61_payload").in("id", ids);
+        if (error) throw error;
+        for (const row of data ?? []) {
+          if (row.garage61_payload && typeof row.garage61_payload === "object") existingPayloads.set(row.id, row.garage61_payload as Record<string, unknown>);
+        }
+      }
+
       const rows = laps.map((l) => ({
         id: l.id, driver_id: driver.id, car_id: l.carId, track_id: l.trackId,
         lap_number: l.lapNumber, lap_time: l.lapTime, clean: l.clean, joker: l.joker,
@@ -81,7 +103,8 @@ export async function POST(request: NextRequest) {
         driver_rating: l.driverRating, fuel_level: l.fuelLevel, fuel_used: l.fuelUsed, fuel_added: l.fuelAdded,
         weight_penalty: l.weightPenalty, power_adjust: l.powerAdjust, tire_compound: l.tireCompound,
         can_view_telemetry: l.canViewTelemetry, can_view_setup: l.canViewSetup,
-        garage61_payload: l.payload, synced_at: new Date().toISOString(),
+        garage61_payload: { ...(existingPayloads.get(l.id) ?? {}), ...(l.payload as Record<string, unknown>) },
+        synced_at: new Date().toISOString(),
       }));
       for (let index = 0; index < rows.length; index += CHUNK) {
         const { error } = await supabaseAdmin.from("laps").upsert(rows.slice(index, index + CHUNK), { onConflict: "id" });
