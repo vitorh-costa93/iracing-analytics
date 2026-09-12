@@ -75,7 +75,19 @@ type LapConditions = {
 };
 const CLOUDS_LABEL = ["céu limpo", "poucas nuvens", "parcialmente nublado", "encoberto"];
 function extractConditions(lap: LapRow): LapConditions | null {
-  const num = (value: unknown): number | null => { const n = Number(value); return Number.isFinite(n) ? n : null; };
+  // 12/09/2026 fix: "não puxou a temperatura e borracha das últimas sessões sincronizadas" -- laps
+  // synced through the bookmarklet (public/garage61-import.js) don't carry these weather fields at all
+  // (Garage61's internal api never had a confirmed shape for them, so 11/09/2026's payload-normalization
+  // fix deliberately left them out rather than invent values) -- garage61_payload->>trackTemp on a row
+  // missing that key comes back as SQL NULL. `Number(null)` is 0 in JS, NOT NaN, so the old version of
+  // this helper silently turned "no data at all" into a false "0°C / 0% rubber" instead of the "sem
+  // dado" this same function already handles correctly for OTHER broken-payload cases just below.
+  // Explicit null/undefined check before the Number() coercion fixes it for every caller of num() here.
+  const num = (value: unknown): number | null => {
+    if (value === null || value === undefined || value === "") return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  };
   const trackTemp = num(lap.trackTemp);
   const wetness = num(lap.trackWetness);
   if (trackTemp === null && wetness === null) return null;
