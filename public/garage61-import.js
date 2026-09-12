@@ -109,41 +109,22 @@
     if (!(lap.lap_time > 0)) return lap.start_time;
     return new Date(new Date(lap.start_time).getTime() + Number(lap.lap_time) * 1000).toISOString();
   }
-  // 12/09/2026: "o bookmarklet tem que trazer esses campos [clima]... você consegue ver de onde vem"
-  // -- every OTHER field this bookmarklet reads (start_time, driver_rating, pit_in, ...) got its exact
-  // snake_case name from someone actually inspecting a real /api/internal/events/{id} response in the
-  // browser (see this file's own "Confirmed live" comment on captureIfSetup) -- weather never got that
-  // same treatment, so guessing a name here risks silently storing the WRONG field under "trackTemp"
-  // (exactly the class of bug this file's other fixes today were about undoing). Instead of guessing,
-  // log every key on the event/session/lap objects that LOOKS weather-related (name match only, once
-  // per run) so the very next bookmarklet run tells us the real name(s) to wire up -- no live access to
-  // garage61.net exists from where this app's server code runs, so this is the only way to find out.
-  var loggedWeatherShape = false;
-  function logWeatherLikeFields(obj, label) {
-    var pattern = /temp|wet|wind|humid|cloud|precip|rain|weather|usage|fog|track_state|air_|pressure/i;
-    var found = [];
-    for (var key in obj) {
-      if (!Object.prototype.hasOwnProperty.call(obj, key)) continue;
-      var value = obj[key];
-      if (pattern.test(key) && (value === null || typeof value !== "object")) found.push(key + "=" + JSON.stringify(value));
-    }
-    if (found.length) log(label + " -- campos parecidos com clima: " + found.join(", "));
-    else log(label + " -- nenhum campo parecido com clima nas chaves: " + Object.keys(obj || {}).join(", "));
-  }
-
+  // 12/09/2026: "o bookmarklet tem que trazer esses campos [clima]" -- confirmed live via a one-run
+  // diagnostic (since removed) that logged every event/session/lap key matching a weather-like name
+  // pattern: it lives directly on the LAP object (not the session), snake_case, different names than
+  // the old public-api payload -- track_temp, track_usage, track_wetness, and everything else prefixed
+  // weather_* (weather_air_temp, weather_wind_vel, weather_relative_humidity, weather_precipitation,
+  // weather_cloud_cover). See the payload object below for the exact mapping.
   function captureSessionsAndLaps(event) {
     var eventId = event.id;
     var eventType = typeof event.event_type === "number" ? event.event_type : null;
-    if (!loggedWeatherShape) { logWeatherLikeFields(event, "Evento #" + eventId); loggedWeatherShape = true; }
     (event.sessions || []).forEach(function (session, sessionIdx) {
       var sessionId = String(sessionIdx);
-      if (sessionIdx === 0) logWeatherLikeFields(session, "  Sessão 0");
       var runGroups = session.run_groups || [];
       runGroups.forEach(function (runGroup) {
         (runGroup.runs || []).forEach(function (run) {
-          (run.laps || []).forEach(function (lap, lapIdx) {
+          (run.laps || []).forEach(function (lap) {
             if (typeof lap.car_id !== "number" || typeof lap.track_id !== "number" || !lap.start_time) return;
-            if (sessionIdx === 0 && lapIdx === 0) logWeatherLikeFields(lap, "    Volta 0");
             var key3 = eventId + ":" + sessionId + ":" + lap.car_id + ":" + lap.track_id;
             var endedAt = lapEndTime(lap);
             var agg = sessionByKey[key3];
@@ -206,6 +187,24 @@
                 offTrack: lap.offtrack === true, pitLane: lap.pitlane === true,
                 pitIn: lap.pit_in === true, pitOut: lap.pit_out === true,
                 canViewTelemetry: !!lap.can_view_telemetry,
+                // 12/09/2026: confirmed live via this file's own logWeatherLikeFields diagnostic --
+                // weather lives directly on the LAP object (not the session), under different names
+                // than the old public-api payload (track_temp/track_usage/track_wetness snake_case;
+                // everything else prefixed weather_*). track_usage already reads 0-100 (e.g. 71, 42),
+                // same scale car-comparison.ts's trackUsagePct expects with no rescaling. windVel is
+                // m/s and relativeHumidity/precipitation are 0-1 fractions, same units that route
+                // already converts (*3.6, *100) -- matches the old payload's own units exactly, just a
+                // different field name. track_wetness=-1 paired with zeroed weather_* is this API's own
+                // ghost-lap placeholder (a reference lap, not a real driven one) -- exactly the
+                // trackTemp=0+wetness<0 "broken payload" case extractConditions already discards.
+                trackTemp: typeof lap.track_temp === "number" ? lap.track_temp : null,
+                trackWetness: typeof lap.track_wetness === "number" ? lap.track_wetness : null,
+                trackUsage: typeof lap.track_usage === "number" ? lap.track_usage : null,
+                airTemp: typeof lap.weather_air_temp === "number" ? lap.weather_air_temp : null,
+                precipitation: typeof lap.weather_precipitation === "number" ? lap.weather_precipitation : null,
+                relativeHumidity: typeof lap.weather_relative_humidity === "number" ? lap.weather_relative_humidity : null,
+                windVel: typeof lap.weather_wind_vel === "number" ? lap.weather_wind_vel : null,
+                clouds: typeof lap.weather_cloud_cover === "number" ? lap.weather_cloud_cover : null,
               },
             });
             (lap.sectors || []).forEach(function (sector, sectorIdx) {
@@ -283,7 +282,6 @@
     if (pairs.length) log("Pistas/carros: " + pairs.map(function (p) { return p.car.name + "/" + p.track.name + " (última em " + p.last_at + ")"; }).join("; "));
 
     var eventIds = {};
-    var mostRecentEvent = null; // tracked regardless of cutoff -- see the no-new-events fallback below
     for (var i = 0; i < pairs.length; i++) {
       var pair = pairs[i];
       setStatus("Voltas: buscando eventos " + (i + 1) + "/" + pairs.length + " — " + pair.car.name);
@@ -295,7 +293,6 @@
         var evItems = evJson.items || [];
         var matched = 0;
         evItems.forEach(function (ev) {
-          if (!mostRecentEvent || ev.started_at > mostRecentEvent.startedAt) mostRecentEvent = { id: ev.id, car: ev.car_id, track: ev.track_id, startedAt: ev.started_at };
           if (ev.started_at >= cutoffIso && !alreadyVisitedIds[ev.id]) { eventIds[ev.id] = { car: ev.car_id, track: ev.track_id }; matched += 1; }
         });
         log(pair.car.name + "/" + pair.track.name + ": " + evItems.length + " evento(s) na resposta, " + matched + " novo(s) após o corte.");
@@ -314,18 +311,6 @@
       setProgress(60 + ((j + 1) / Math.max(1, ids.length)) * 30);
       await visitEvent(ids[j], eventIds[ids[j]].car, eventIds[ids[j]].track);
       await sleep(GAP_BETWEEN_EVENTS_MS);
-    }
-
-    // 12/09/2026: "rodei, mas não vi nada" -- the weather-shape diagnostic (logWeatherLikeFields) only
-    // ever runs inside captureSessionsAndLaps, which only runs for events actually VISITED above. When
-    // everything is already incrementally synced (the normal, common case), `ids` is empty and NO event
-    // ever gets visited this run -- so the diagnostic never fires either, silently, with no indication
-    // why. Re-visiting the single most-recently-started known event even when nothing is "new" costs
-    // one extra fetch, is harmless now that the payload merge fix keeps existing data intact on a
-    // re-sync, and guarantees this diagnostic gets at least one real lap to inspect on every run.
-    if (!ids.length && mostRecentEvent) {
-      log("Nada novo pra sincronizar -- revisitando o evento mais recente (#" + mostRecentEvent.id + ") só pra checar o formato dos campos de clima.");
-      await visitEvent(mostRecentEvent.id, mostRecentEvent.car, mostRecentEvent.track);
     }
   }
 
