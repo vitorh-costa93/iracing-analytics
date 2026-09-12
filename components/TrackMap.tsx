@@ -38,7 +38,7 @@ function splitGpsSegments(points: TrackMapPoint[]) {
   }, []).filter((segment) => segment.length >= 2);
 }
 
-export default function TrackMap({ trackId, lines, width = 300, height = 200, className = "track-map", markers = [] }: { trackId: number | null; lines: TrackMapLine[]; width?: number; height?: number; className?: string; markers?: TrackMapMarker[] }) {
+export default function TrackMap({ trackId, lines, width = 300, height = 200, className = "track-map", markers = [], boundsHint }: { trackId: number | null; lines: TrackMapLine[]; width?: number; height?: number; className?: string; markers?: TrackMapMarker[]; boundsHint?: { lat: number | null; lon: number | null }[] }) {
   const [boundary, setBoundary] = useState<TrackBoundary | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -53,10 +53,23 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
   });
 
   const boundaryPoints = boundary ? boundary.segments.flatMap((segment) => segment.pts.map(([lat, lon]) => ({ lat, lon }))) : [];
+  // 12/09/2026: "aumenta a box do mapa para aparecer tudo" -- boundsHint lets a caller whose `lines`
+  // don't span the whole track by themselves (CarComparison's SectorMap: a segment with no
+  // determined winner is simply never added to `lines`, so the drawn lines' own extent could be a
+  // handful of disconnected fragments instead of the full lap) say explicitly "fit to THIS instead"
+  // -- here, the full lap outline. Without it, a `lines`-only fit plus the new fillScale zoom
+  // (lib/track-map.ts) compounded into cropping most of the track away, which is what actually
+  // shipped: fitting tight to two colored fragments, then zooming in further on that tiny bounds.
+  const boundsGps = boundsHint?.length
+    ? boundsHint.filter((point) => point.lat !== null && point.lon !== null)
+    : null;
   // Fits to the lines' own GPS extent, not the whole track boundary -- these lines are usually
   // already a narrow window (one corner), so fitting to the real boundary instead would zoom out to
-  // the whole circuit and shrink the actual comparison to a speck.
-  const boundsPoints = boundaryPoints.length && gpsLines.every((line) => line.gps.length < 2)
+  // the whole circuit and shrink the actual comparison to a speck. (Callers that DO span the whole
+  // track pass boundsHint instead of relying on this fallback -- see above.)
+  const boundsPoints = boundsGps?.length
+    ? boundsGps.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) }))
+    : boundaryPoints.length && gpsLines.every((line) => line.gps.length < 2)
     ? boundaryPoints
     : gpsLines.flatMap((line) => line.gps).map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) }));
   const projectGps = createTrackProjector(boundsPoints, width, height, 14, false);

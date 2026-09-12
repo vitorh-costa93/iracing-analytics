@@ -37,6 +37,15 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
   const [camera, setCamera] = useState<MapCamera>(() => defaultCamera(width, height, initialScale));
   const dragState = useRef<{ startLocal: { x: number; y: number }; startCenter: { x: number; y: number } } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  // 12/09/2026: "deixe totalmente personalizável a navegação, eu posso arrastar, dar zoom em um
+  // lugar específico" (reported from mobile) -- single-finger drag already worked, but the ONLY
+  // zoom trigger was the desktop-only `wheel` event, so a phone had no way to zoom at all. Two-
+  // finger pinch is the standard mobile equivalent; anchored at the current midpoint between the
+  // fingers, same "keep the content point under the gesture fixed on screen" algebra the wheel
+  // handler already uses. initialScale/initialDistance are captured once per gesture (not
+  // recomputed from the previous frame's scale) so small per-frame rounding doesn't compound into
+  // drift over a long pinch.
+  const pinchState = useRef<{ initialDistance: number; initialScale: number } | null>(null);
 
   // A different map instance (new popup, different corner) gets a fresh camera, not whatever the
   // previous instance's user left behind. width/height alone isn't enough for a map instance that
@@ -97,11 +106,31 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
     function handleMouseMove(event: MouseEvent) { panTo(event.clientX, event.clientY); }
     function handleMouseUp() { dragState.current = null; setIsDragging(false); }
     function handleTouchMove(event: TouchEvent) {
+      if (event.touches.length >= 2 && pinchState.current) {
+        event.preventDefault();
+        const [t1, t2] = [event.touches[0], event.touches[1]];
+        const distance = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+        const midX = (t1.clientX + t2.clientX) / 2, midY = (t1.clientY + t2.clientY) / 2;
+        const local = localPoint(midX, midY);
+        if (!local || distance <= 0) return;
+        const pinch = pinchState.current;
+        const factor = distance / pinch.initialDistance;
+        setCamera((prev) => {
+          const nextScale = Math.max(initialScale, Math.min(MAX_SCALE, pinch.initialScale * factor));
+          const contentX = prev.centerX + (local.x - width / 2) / prev.scale;
+          const contentY = prev.centerY + (local.y - height / 2) / prev.scale;
+          return { scale: nextScale, centerX: contentX - (local.x - width / 2) / nextScale, centerY: contentY - (local.y - height / 2) / nextScale };
+        });
+        return;
+      }
       if (!dragState.current || !event.touches[0]) return;
       event.preventDefault();
       panTo(event.touches[0].clientX, event.touches[0].clientY);
     }
-    function handleTouchEnd() { dragState.current = null; setIsDragging(false); }
+    function handleTouchEnd(event: TouchEvent) {
+      if (event.touches.length < 2) pinchState.current = null;
+      if (event.touches.length === 0) { dragState.current = null; setIsDragging(false); }
+    }
     document.addEventListener("mousemove", handleMouseMove);
     document.addEventListener("mouseup", handleMouseUp);
     document.addEventListener("touchmove", handleTouchMove, { passive: false });
@@ -113,7 +142,7 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
       document.removeEventListener("touchend", handleTouchEnd);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled]);
+  }, [enabled, initialScale]);
 
   function beginDrag(clientX: number, clientY: number) {
     // 1 (not initialScale) on purpose: a track drawn narrower than its box (initialScale > 1) already
@@ -127,7 +156,17 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
   }
 
   const onMouseDown = (event: ReactMouseEvent<SVGSVGElement>) => { event.preventDefault(); beginDrag(event.clientX, event.clientY); };
-  const onTouchStart = (event: ReactTouchEvent<SVGSVGElement>) => { if (event.touches[0]) beginDrag(event.touches[0].clientX, event.touches[0].clientY); };
+  const onTouchStart = (event: ReactTouchEvent<SVGSVGElement>) => {
+    if (!enabled) return;
+    if (event.touches.length >= 2) {
+      dragState.current = null;
+      setIsDragging(false);
+      const [t1, t2] = [event.touches[0], event.touches[1]];
+      pinchState.current = { initialDistance: Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY), initialScale: camera.scale };
+      return;
+    }
+    if (event.touches[0]) beginDrag(event.touches[0].clientX, event.touches[0].clientY);
+  };
 
   const transform = `translate(${width / 2}px, ${height / 2}px) scale(${camera.scale}) translate(${-camera.centerX}px, ${-camera.centerY}px)`;
   const zoomBy = (factor: number) => setCamera((prev) => {

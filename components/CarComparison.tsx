@@ -123,7 +123,13 @@ function SectorMap({ outline, mapSegments, cars, trackId }: { outline: TrackOutl
   }
   return (
     <div className="sector-map-card compact">
-      <TrackMap trackId={trackId} lines={lines} width={300} height={220} className="sector-map compact" />
+      {/* 12/09/2026: "a pista tá vindo com muito zoom" on mobile -- a segment with no determined
+       * winner is never added to `lines` above, so on a lap with several ties/gaps, the drawn
+       * lines' own GPS extent could be just a couple of disconnected fragments instead of the
+       * whole circuit. boundsHint tells TrackMap to fit to the FULL outline regardless of which
+       * segments happen to be colored, so the default zoom (lib/track-map.ts's fillScale) fills
+       * the box relative to the real track, not a tiny fragment of it. */}
+      <TrackMap trackId={trackId} lines={lines} boundsHint={outline} width={300} height={220} className="sector-map compact" />
       <div className="sector-map-legend">
         {cars.map((car) => <span key={car.carId} style={{ color: car.color }}>{car.carName}</span>)}
       </div>
