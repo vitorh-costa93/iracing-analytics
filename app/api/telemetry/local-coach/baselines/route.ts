@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "../../../../../lib/supabase-admin";
-import { detectCornersFromGps, type DetectedCorner } from "../../../../../lib/corner-detection";
-import { computeCornerBaselines, type CoachSample, type CoachCorner } from "../../../../../lib/local-coach-baselines";
+import { supabaseAdmin } from "@/lib/supabase-admin";
+import { detectCornersFromGps, type DetectedCorner } from "@/lib/corner-detection";
+import { computeCornerBaselines, type CoachSample, type CoachCorner } from "@/lib/local-coach-baselines";
 
 // 12/09/2026: feeds iracing-live-coach (separate repo, C#/.NET) -- see
 // docs/superpowers/specs/2026-09-12-live-coach-overlay-design.md. Distinct secret from

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from "vitest";
+import { describe, expect, it, vi, beforeEach, afterEach, afterAll } from "vitest";
 
 describe("GET /api/telemetry/local-coach/baselines", () => {
   const originalSecret = process.env.LOCAL_COACH_SECRET;
@@ -11,6 +11,10 @@ describe("GET /api/telemetry/local-coach/baselines", () => {
   process.env.SUPABASE_SERVICE_ROLE_KEY ||= "test-service-role-key";
   beforeEach(() => { process.env.LOCAL_COACH_SECRET = "test-secret"; });
   afterEach(() => { process.env.LOCAL_COACH_SECRET = originalSecret; });
+  afterAll(() => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.SUPABASE_SERVICE_ROLE_KEY;
+  });
 
   it("rejects a request without the correct x-import-key header", async () => {
     const { GET } = await import("./route");
