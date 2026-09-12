@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { detectCornersFromGps, type DetectedCorner } from "@/lib/corner-detection";
 import { computeCornerBaselines, type CoachSample, type CoachCorner } from "@/lib/local-coach-baselines";
+import { lookupCornerNames } from "@/lib/track-corners";
 
 // 12/09/2026: feeds iracing-live-coach (separate repo, C#/.NET) -- see
 // docs/superpowers/specs/2026-09-12-live-coach-overlay-design.md. Distinct secret from
@@ -103,8 +104,10 @@ export async function GET(request: Request) {
     const detectedCorners: DetectedCorner[] = detectCornersFromGps(
       valid[0].points.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null })),
     );
+    const { data: trackRow } = await supabaseAdmin.from("tracks").select("name,variant").eq("id", trackId).maybeSingle();
+    const cornerNames = trackRow ? lookupCornerNames(trackRow.name, trackRow.variant ?? "", detectedCorners.length) : null;
     const corners: CoachCorner[] = detectedCorners.map((corner) => ({
-      number: corner.number, name: null, // corner naming (lib/track-corners.ts) wired in a follow-up task once this shape is confirmed against a real track
+      number: corner.number, name: cornerNames?.[corner.number - 1] ?? null,
       startDistance: corner.startDistance, endDistance: corner.endDistance,
     }));
 
