@@ -283,6 +283,7 @@
     if (pairs.length) log("Pistas/carros: " + pairs.map(function (p) { return p.car.name + "/" + p.track.name + " (última em " + p.last_at + ")"; }).join("; "));
 
     var eventIds = {};
+    var mostRecentEvent = null; // tracked regardless of cutoff -- see the no-new-events fallback below
     for (var i = 0; i < pairs.length; i++) {
       var pair = pairs[i];
       setStatus("Voltas: buscando eventos " + (i + 1) + "/" + pairs.length + " — " + pair.car.name);
@@ -294,6 +295,7 @@
         var evItems = evJson.items || [];
         var matched = 0;
         evItems.forEach(function (ev) {
+          if (!mostRecentEvent || ev.started_at > mostRecentEvent.startedAt) mostRecentEvent = { id: ev.id, car: ev.car_id, track: ev.track_id, startedAt: ev.started_at };
           if (ev.started_at >= cutoffIso && !alreadyVisitedIds[ev.id]) { eventIds[ev.id] = { car: ev.car_id, track: ev.track_id }; matched += 1; }
         });
         log(pair.car.name + "/" + pair.track.name + ": " + evItems.length + " evento(s) na resposta, " + matched + " novo(s) após o corte.");
@@ -312,6 +314,18 @@
       setProgress(60 + ((j + 1) / Math.max(1, ids.length)) * 30);
       await visitEvent(ids[j], eventIds[ids[j]].car, eventIds[ids[j]].track);
       await sleep(GAP_BETWEEN_EVENTS_MS);
+    }
+
+    // 12/09/2026: "rodei, mas não vi nada" -- the weather-shape diagnostic (logWeatherLikeFields) only
+    // ever runs inside captureSessionsAndLaps, which only runs for events actually VISITED above. When
+    // everything is already incrementally synced (the normal, common case), `ids` is empty and NO event
+    // ever gets visited this run -- so the diagnostic never fires either, silently, with no indication
+    // why. Re-visiting the single most-recently-started known event even when nothing is "new" costs
+    // one extra fetch, is harmless now that the payload merge fix keeps existing data intact on a
+    // re-sync, and guarantees this diagnostic gets at least one real lap to inspect on every run.
+    if (!ids.length && mostRecentEvent) {
+      log("Nada novo pra sincronizar -- revisitando o evento mais recente (#" + mostRecentEvent.id + ") só pra checar o formato dos campos de clima.");
+      await visitEvent(mostRecentEvent.id, mostRecentEvent.car, mostRecentEvent.track);
     }
   }
 
