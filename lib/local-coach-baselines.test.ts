@@ -26,14 +26,14 @@ function lapWithSteering(cornerWiggleDeg: number): CoachSample[] {
 describe("computeCornerBaselines", () => {
   it("reports the median brake-onset point within the corner's own approach window", () => {
     const laps = [makeLap(8), makeLap(8.5), makeLap(7.5), makeLap(9)];
-    const [corner] = computeCornerBaselines(laps, CORNERS);
+    const [corner] = computeCornerBaselines(laps, CORNERS, [90, 90, 90, 90]);
     expect(corner.brakingPointPct).toBeCloseTo(8.25, 1);
     expect(corner.brakingPointStdDev).toBeGreaterThan(0);
   });
 
   it("returns null braking point for a corner nobody ever braked for", () => {
     const laps = [makeLap(50), makeLap(51), makeLap(52)]; // braking way outside corner 1's window
-    const [corner] = computeCornerBaselines(laps, CORNERS);
+    const [corner] = computeCornerBaselines(laps, CORNERS, [90, 90, 90]);
     expect(corner.brakingPointPct).toBeNull();
   });
 });
@@ -41,7 +41,7 @@ describe("computeCornerBaselines", () => {
 describe("computeCornerBaselines -- steering correction", () => {
   it("reports the median wasted steering motion inside the corner's own window", () => {
     const laps = [lapWithSteering(5), lapWithSteering(6), lapWithSteering(4), lapWithSteering(5.5)];
-    const [corner] = computeCornerBaselines(laps, CORNERS);
+    const [corner] = computeCornerBaselines(laps, CORNERS, [90, 90, 90, 90]);
     expect(corner.correctionBaselineDeg).not.toBeNull();
     expect(corner.correctionBaselineDeg!).toBeGreaterThan(0);
   });
@@ -65,8 +65,26 @@ function lapWithGearShift(rpmSurplusPct: number): CoachSample[] {
 describe("computeCornerBaselines -- wheelspin rate", () => {
   it("reports how often this corner's exit shows an RPM surplus over this car's own gear model", () => {
     const laps = [lapWithGearShift(15), lapWithGearShift(0), lapWithGearShift(0), lapWithGearShift(0)];
-    const [corner] = computeCornerBaselines(laps, CORNERS);
+    const [corner] = computeCornerBaselines(laps, CORNERS, [90, 90, 90, 90]);
     expect(corner.wheelspinRatePct).not.toBeNull();
     expect(corner.wheelspinRatePct!).toBeCloseTo(25, 0); // 1 of 4 laps showed a surplus
+  });
+});
+
+function lapWithConstantSpeed(speedMs: number): { samples: CoachSample[]; lapTimeSeconds: number } {
+  const samples: CoachSample[] = [];
+  for (let distance = 0; distance <= 100; distance += 0.5) samples.push({ distance, speedMs });
+  return { samples, lapTimeSeconds: 1609 / speedMs }; // 1609m = arbitrary fixed lap length for this fixture
+}
+
+describe("computeCornerBaselines -- lap-time contribution", () => {
+  it("reports how many seconds of the lap this corner's own window typically costs", () => {
+    const laps = [lapWithConstantSpeed(40), lapWithConstantSpeed(41), lapWithConstantSpeed(39)];
+    const [corner] = computeCornerBaselines(
+      laps.map((lap) => lap.samples), CORNERS, laps.map((lap) => lap.lapTimeSeconds),
+    );
+    expect(corner.lapTimeContributionSeconds).not.toBeNull();
+    expect(corner.lapTimeContributionSeconds!).toBeGreaterThan(0);
+    expect(corner.lapTimeStdDev).not.toBeNull();
   });
 });

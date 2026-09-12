@@ -126,11 +126,39 @@ function hasWheelspinInCorner(lap: CoachSample[], corner: CoachCorner, model: Ge
   });
 }
 
-export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorner[]): CornerBaseline[] {
+/** Seconds spent between two %-of-lap points, found by integrating 1/speed over distance and scaling
+ * by this lap's own real total time -- same technique already validated in
+ * app/api/telemetry/car-comparison/route.ts's integrateInverseSpeed/lapScale (a lap's average pace
+ * isn't uniform, but 1/speed integrates real elapsed time correctly along the way). */
+function cornerTimeSeconds(lap: CoachSample[], corner: CoachCorner, lapTimeSeconds: number): number | null {
+  const withSpeed = lap.filter((sample) => sample.speedMs !== undefined && sample.speedMs > 1).sort((a, b) => a.distance - b.distance);
+  if (withSpeed.length < 4) return null;
+  const integralBetween = (start: number, end: number) => {
+    let total = 0;
+    for (let index = 1; index < withSpeed.length; index += 1) {
+      const previous = withSpeed[index - 1], current = withSpeed[index];
+      if (current.distance <= start || previous.distance >= end) continue;
+      const segmentStart = Math.max(previous.distance, start), segmentEnd = Math.min(current.distance, end);
+      if (segmentEnd <= segmentStart) continue;
+      total += (segmentEnd - segmentStart) / current.speedMs!;
+    }
+    return total;
+  };
+  const fullLapIntegral = integralBetween(0, 100);
+  if (fullLapIntegral <= 0) return null;
+  const scale = lapTimeSeconds / fullLapIntegral;
+  return integralBetween(corner.startDistance, corner.endDistance) * scale;
+}
+
+export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorner[], lapTimesSeconds: number[]): CornerBaseline[] {
   const gearModel = buildGearModel(laps);
   return corners.map((corner) => {
     const brakingPoints = laps.map((lap) => brakeOnsetDistance(lap, corner)).filter((value): value is number => value !== null);
     const hasEnoughBraking = brakingPoints.length >= MIN_LAPS_FOR_BASELINE;
+    const cornerTimes = laps
+      .map((lap, index) => cornerTimeSeconds(lap, corner, lapTimesSeconds[index]))
+      .filter((value): value is number => value !== null);
+    const hasEnoughTimes = cornerTimes.length >= MIN_LAPS_FOR_BASELINE;
     return {
       number: corner.number, name: corner.name, startPct: corner.startDistance, endPct: corner.endDistance,
       brakingPointPct: hasEnoughBraking ? Number(median(brakingPoints).toFixed(2)) : null,
@@ -142,7 +170,8 @@ export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorn
       wheelspinRatePct: laps.length >= MIN_LAPS_FOR_BASELINE
         ? Number(((laps.filter((lap) => hasWheelspinInCorner(lap, corner, gearModel)).length / laps.length) * 100).toFixed(1))
         : null,
-      lapTimeContributionSeconds: null, lapTimeStdDev: null, // Task 4
+      lapTimeContributionSeconds: hasEnoughTimes ? Number(median(cornerTimes).toFixed(3)) : null,
+      lapTimeStdDev: hasEnoughTimes ? Number(stddev(cornerTimes).toFixed(3)) : null,
     };
   });
 }
