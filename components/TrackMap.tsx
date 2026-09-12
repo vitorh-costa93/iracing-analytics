@@ -47,18 +47,10 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
     return () => { cancelled = true; };
   }, [trackId]);
 
-  // resetKey=trackId: a map instance that stays mounted across a track change (e.g. Meu Debrief's
-  // per-corner maps when switching Formula/Sports tabs, which reuses the same corner-number React key
-  // for a different track's data) would otherwise keep whatever camera the previous track's map was
-  // left at, applied to a completely different coordinate space (02/09/2026, same bug confirmed live
-  // on ActiveWeekTelemetry's own sticky map at Le Mans -- see that file's own useMapZoomPan call).
-  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height, true, trackId);
-
   const gpsLines = lines.map((line) => {
     const gps = line.points.filter((point) => point.lat !== null && point.lon !== null);
     return { ...line, gps, segments: splitGpsSegments(gps) };
   });
-  if (!gpsLines.some((line) => line.gps.length >= 2)) return <div className="track-map-empty">Mapa GPS indisponível.</div>;
 
   const boundaryPoints = boundary ? boundary.segments.flatMap((segment) => segment.pts.map(([lat, lon]) => ({ lat, lon }))) : [];
   // Fits to the lines' own GPS extent, not the whole track boundary -- these lines are usually
@@ -70,6 +62,20 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
   const projectGps = createTrackProjector(boundsPoints, width, height, 14, false);
   const project = (point: { lat: number | null; lon: number | null }) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   const trackWidthPx = Math.max(6, Math.min(30, projectGps.metersToPixels(12)));
+
+  // resetKey=trackId: a map instance that stays mounted across a track change (e.g. Meu Debrief's
+  // per-corner maps when switching Formula/Sports tabs, which reuses the same corner-number React key
+  // for a different track's data) would otherwise keep whatever camera the previous track's map was
+  // left at, applied to a completely different coordinate space (02/09/2026, same bug confirmed live
+  // on ActiveWeekTelemetry's own sticky map at Le Mans -- see that file's own useMapZoomPan call).
+  // 12/09/2026: initialScale=projectGps.fillScale -- computed above, before this hook call, so a
+  // track/lines combo that leaves real empty space in the box (see lib/track-map.ts's own comment)
+  // starts already zoomed to use it, instead of the driver having to scroll-zoom in manually every
+  // time. boundsPoints only changes when trackId/lines actually change here (not on hover), so this
+  // never fights the driver's own manual pan/zoom mid-interaction.
+  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height, true, trackId, projectGps.fillScale);
+
+  if (!gpsLines.some((line) => line.gps.length >= 2)) return <div className="track-map-empty">Mapa GPS indisponível.</div>;
 
   // 03/09/2026: "em vários pontos da análise da volta em Le Mans, identifiquei isso -- os traçados
   // fora da linha de corrida" -- boundary.segments held the WHOLE circuit's OSM ways (13.6km at Le

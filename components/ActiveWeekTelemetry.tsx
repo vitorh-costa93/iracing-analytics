@@ -643,14 +643,6 @@ function nearestGpsPoint(points: TracePoint[], distance: number) {
 }
 
 function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, trackId, focusRequest }: { trace: Trace; referenceTrace?: Trace | null; range: [number, number] | null; hoverDistance?: number | null; zoom?: boolean; trackId?: number | null; focusRequest?: { distance: number; nonce: number } | null }) {
-  // Pan+zoom (01/09/2026: "eu quero usar o mouse para navegar... clico e movo o mouse para baixo eu
-  // vou vendo a parte de cima do mapa... é uma funcionalidade bem conhecida") -- shared hook, same
-  // one components/TrackMap.tsx uses, so every map in the app behaves identically now. Previously only
-  // this file's full/sticky map (zoom prop falsy) had scroll-zoom, and even that used click-to-recenter
-  // instead of drag-to-pan; the hover-panel and popup maps had no interactivity at all. Enabled for
-  // BOTH here now -- the popup map narrows its own bounds to the corner window already, but the driver
-  // still wants to pan/zoom further within that window to see exact positioning.
-  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform, zoomBy, focusOn } = useMapZoomPan(300, 200, true, trackId);
   // Tracks the last focusRequest.nonce actually applied, so the render-time focusOn() call below (see
   // its own comment) fires once per click on the input chart, not every render.
   const appliedFocusNonce = useRef<number | null>(null);
@@ -664,14 +656,13 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, trackId, 
     getTrackBoundary(trackId).then((result) => { if (!cancelled) setBoundary(result); });
     return () => { cancelled = true; };
   }, [trackId]);
-  const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
-  if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
   // 11/09/2026: "eu quero que todos os mapas sejam gerados por GPS, não essa coisa mal feita de
   // própria posição + offset. Isso é ruim e não funciona" -- dropped the offset-reconstruction
   // entirely (it derived the reference's map position from YOUR OWN GPS plus a computed lateral
   // offset instead of the reference's actual recorded GPS, and a %-of-lap-distance mismatch on a long
   // track like Le Mans could place that derived point hundreds of meters from anywhere real). Every
   // map now draws each trace's own real recorded GPS, unconditionally.
+  const gps = trace.points.filter((point) => point.lat !== null && point.lon !== null);
   const refGps: TracePoint[] = referenceTrace ? referenceTrace.points.filter((point) => point.lat !== null && point.lon !== null) : [];
   // Keep the map window slightly wider than the input window: a hover must always have visible
   // approach and exit context on the linked trajectory. 03/09/2026: was +-3 -- reasonable back when
@@ -706,6 +697,23 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, trackId, 
   // Never stretch X and Y independently: it made real corners look physically impossible.
   const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, 18, false);
   const project = (point: TracePoint) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
+
+  // Pan+zoom (01/09/2026: "eu quero usar o mouse para navegar... clico e movo o mouse para baixo eu
+  // vou vendo a parte de cima do mapa... é uma funcionalidade bem conhecida") -- shared hook, same
+  // one components/TrackMap.tsx uses, so every map in the app behaves identically now. Previously only
+  // this file's full/sticky map (zoom prop falsy) had scroll-zoom, and even that used click-to-recenter
+  // instead of drag-to-pan; the hover-panel and popup maps had no interactivity at all. Enabled for
+  // BOTH here now -- the popup map narrows its own bounds to the corner window already, but the driver
+  // still wants to pan/zoom further within that window to see exact positioning.
+  // 12/09/2026: initialScale=projectGps.fillScale, computed above (before this hook call, since it's
+  // needed here) from whichever bounds are active for this render (full track / zoomed corner / hover
+  // selection) -- boundsPoints only changes on a genuinely new selection (a different opportunity card,
+  // a different corner via prev/next, a different track), never on mere mouse hover, so this never
+  // fights the driver's own manual pan/zoom mid-interaction; it resets to a sensible fill for whatever
+  // is newly shown, same category as the existing resetKey=trackId reset.
+  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform, zoomBy, focusOn } = useMapZoomPan(300, 200, true, trackId, projectGps.fillScale);
+
+  if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
 
   // 03/09/2026: "os traçados fora da linha de corrida" -- same bug/fix as components/TrackMap.tsx
   // (see that file's own comment): boundary.segments held the WHOLE circuit, but a zoomed corner

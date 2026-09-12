@@ -21,13 +21,20 @@ const MIN_SCALE = 1;
 // single corner needs. Bumped to 40x (matches the fine-grained zoom real timing tools allow).
 const MAX_SCALE = 40;
 
-function defaultCamera(width: number, height: number): MapCamera {
-  return { scale: 1, centerX: width / 2, centerY: height / 2 };
+function defaultCamera(width: number, height: number, initialScale = 1): MapCamera {
+  return { scale: initialScale, centerX: width / 2, centerY: height / 2 };
 }
 
-export function useMapZoomPan(width: number, height: number, enabled = true, resetKey?: string | number | null) {
+// 11/09/2026: "dava para aplicar um zoom padrão no mapa, veja como tem espaço disponível" -- a track
+// shape much narrower than its box (e.g. a tall/narrow track in a very tall mobile viewport) otherwise
+// always starts at scale=1, centered with real empty margin on whichever axis wasn't the constraint.
+// initialScale (createTrackProjector's own fillScale) sets a sensible starting zoom instead, without
+// changing anything about how scroll-zoom/drag-pan work from there. Scroll-to-zero-out still resets to
+// THIS default, not scale=1 -- "zoomed all the way out" should mean "as filled-in as it starts", not a
+// smaller, more-empty view the driver would immediately have to zoom back in from.
+export function useMapZoomPan(width: number, height: number, enabled = true, resetKey?: string | number | null, initialScale = 1) {
   const svgRef = useRef<SVGSVGElement | null>(null);
-  const [camera, setCamera] = useState<MapCamera>(() => defaultCamera(width, height));
+  const [camera, setCamera] = useState<MapCamera>(() => defaultCamera(width, height, initialScale));
   const dragState = useRef<{ startLocal: { x: number; y: number }; startCenter: { x: number; y: number } } | null>(null);
   const [isDragging, setIsDragging] = useState(false);
 
@@ -39,7 +46,7 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
   // coordinate space carried over unchanged onto the next track's completely different one). Callers
   // whose map can swap content without remounting pass a resetKey (e.g. the track id) that changes
   // when that happens, forcing this same reset the width/height case already got.
-  useEffect(() => { setCamera(defaultCamera(width, height)); }, [width, height, resetKey]);
+  useEffect(() => { setCamera(defaultCamera(width, height, initialScale)); }, [width, height, resetKey, initialScale]);
 
   function localPoint(clientX: number, clientY: number) {
     const svg = svgRef.current;
@@ -61,8 +68,8 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
       if (!local) return;
       const factor = event.deltaY < 0 ? 1.25 : 1 / 1.25;
       setCamera((prev) => {
-        const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
-        if (nextScale === MIN_SCALE) return defaultCamera(width, height);
+        const nextScale = Math.max(initialScale, Math.min(MAX_SCALE, prev.scale * factor));
+        if (nextScale === initialScale) return defaultCamera(width, height, initialScale);
         // Keep the content point currently under the cursor fixed on screen while scale changes.
         const contentX = prev.centerX + (local.x - width / 2) / prev.scale;
         const contentY = prev.centerY + (local.y - height / 2) / prev.scale;
@@ -72,7 +79,7 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
     svg.addEventListener("wheel", handleWheel, { passive: false });
     return () => svg.removeEventListener("wheel", handleWheel);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [enabled, width, height]);
+  }, [enabled, width, height, initialScale]);
 
   function panTo(clientX: number, clientY: number) {
     const local = localPoint(clientX, clientY);
@@ -109,7 +116,10 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
   }, [enabled]);
 
   function beginDrag(clientX: number, clientY: number) {
-    if (!enabled || camera.scale <= MIN_SCALE) return; // nothing to pan when fully zoomed out
+    // 1 (not initialScale) on purpose: a track drawn narrower than its box (initialScale > 1) already
+    // has real off-screen content on the originally-unconstrained axis even at the default zoom, so
+    // panning stays meaningful there -- only true scale=1 is guaranteed to have nothing to reveal.
+    if (!enabled || camera.scale <= 1) return; // nothing to pan when fully zoomed out
     const local = localPoint(clientX, clientY);
     if (!local) return;
     dragState.current = { startLocal: local, startCenter: { x: camera.centerX, y: camera.centerY } };
@@ -121,10 +131,10 @@ export function useMapZoomPan(width: number, height: number, enabled = true, res
 
   const transform = `translate(${width / 2}px, ${height / 2}px) scale(${camera.scale}) translate(${-camera.centerX}px, ${-camera.centerY}px)`;
   const zoomBy = (factor: number) => setCamera((prev) => {
-    const nextScale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev.scale * factor));
-    return nextScale === MIN_SCALE ? defaultCamera(width, height) : { ...prev, scale: nextScale };
+    const nextScale = Math.max(initialScale, Math.min(MAX_SCALE, prev.scale * factor));
+    return nextScale === initialScale ? defaultCamera(width, height, initialScale) : { ...prev, scale: nextScale };
   });
   const focusOn = (contentX: number, contentY: number, scale = 3) => setCamera({ scale, centerX: contentX, centerY: contentY });
 
-  return { svgRef, camera, isDragging, isZoomed: camera.scale > MIN_SCALE, onMouseDown, onTouchStart, transform, zoomBy, focusOn };
+  return { svgRef, camera, isDragging, isZoomed: camera.scale > initialScale, onMouseDown, onTouchStart, transform, zoomBy, focusOn };
 }
