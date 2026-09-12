@@ -14,8 +14,11 @@ function makeLap(brakeOnsetPct: number): CoachSample[] {
 function lapWithSteering(cornerWiggleDeg: number): CoachSample[] {
   const samples: CoachSample[] = [];
   for (let distance = 0; distance <= 100; distance += 0.5) {
-    const inCorner = distance >= 10 && distance < 20;
-    samples.push({ distance, steeringRad: inCorner ? (cornerWiggleDeg * Math.PI) / 180 : 0 });
+    let steeringRad = 0;
+    if (distance >= 12.5 && distance < 17.5) {
+      steeringRad = (cornerWiggleDeg * Math.PI) / 180;
+    }
+    samples.push({ distance, steeringRad });
   }
   return samples;
 }

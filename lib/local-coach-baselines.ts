@@ -67,11 +67,10 @@ function brakeOnsetDistance(lap: CoachSample[], corner: CoachCorner): number | n
  * minus net displacement, same measure lib/traction-events.ts's binSteeringOscillation already
  * validated (near zero for a smooth turn-in, large when the wheel moves back and forth without
  * progressing the angle). Whole-corner window here (not per-1%-bin) since this is a single per-corner
- * baseline number for the live app, not a bin-by-bin anomaly scan. Window includes one sample-interval
- * buffer on each side to capture turn-in and turn-out transitions. */
+ * baseline number for the live app, not a bin-by-bin anomaly scan. */
 function wastedSteeringDeg(lap: CoachSample[], corner: CoachCorner): number | null {
   const inCorner = lap
-    .filter((sample) => sample.distance >= corner.startDistance - 0.5 && sample.distance < corner.endDistance + 0.5 && sample.steeringRad !== undefined)
+    .filter((sample) => sample.distance >= corner.startDistance && sample.distance < corner.endDistance && sample.steeringRad !== undefined)
     .sort((a, b) => a.distance - b.distance);
   if (inCorner.length < 4) return null;
   let totalMoveDeg = 0;
