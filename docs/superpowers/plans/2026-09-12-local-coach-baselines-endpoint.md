@@ -273,8 +273,12 @@ function lapWithGearShift(rpmSurplusPct: number): CoachSample[] {
   const samples: CoachSample[] = [];
   for (let distance = 0; distance <= 100; distance += 0.5) {
     const inCorner = distance >= 10 && distance < 20;
-    const speedMs = 30;
-    const baseRpm = speedMs * 100; // arbitrary but consistent RPM-per-speed for gear 3 across every lap
+    // Speed VARIES across the lap (unlike a constant) -- buildGearModel's linear regression needs
+    // more than one distinct speed value or it's degenerate (zero variance in x collapses the
+    // denominator to 0, silently skipping the gear entirely; verified numerically before this plan
+    // was finalized).
+    const speedMs = 20 + distance * 0.1;
+    const baseRpm = speedMs * 100; // consistent RPM-per-speed for gear 3 across every lap
     samples.push({ distance, gear: 3, speedMs, rpm: inCorner ? baseRpm * (1 + rpmSurplusPct / 100) : baseRpm });
   }
   return samples;
