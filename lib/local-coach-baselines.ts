@@ -63,6 +63,25 @@ function brakeOnsetDistance(lap: CoachSample[], corner: CoachCorner): number | n
   return null;
 }
 
+/** "Wasted" steering motion inside a corner's own window for one lap -- total absolute wheel movement
+ * minus net displacement, same measure lib/traction-events.ts's binSteeringOscillation already
+ * validated (near zero for a smooth turn-in, large when the wheel moves back and forth without
+ * progressing the angle). Whole-corner window here (not per-1%-bin) since this is a single per-corner
+ * baseline number for the live app, not a bin-by-bin anomaly scan. Window includes one sample-interval
+ * buffer on each side to capture turn-in and turn-out transitions. */
+function wastedSteeringDeg(lap: CoachSample[], corner: CoachCorner): number | null {
+  const inCorner = lap
+    .filter((sample) => sample.distance >= corner.startDistance - 0.5 && sample.distance < corner.endDistance + 0.5 && sample.steeringRad !== undefined)
+    .sort((a, b) => a.distance - b.distance);
+  if (inCorner.length < 4) return null;
+  let totalMoveDeg = 0;
+  for (let index = 1; index < inCorner.length; index += 1) {
+    totalMoveDeg += Math.abs((inCorner[index].steeringRad! - inCorner[index - 1].steeringRad!) * (180 / Math.PI));
+  }
+  const netMoveDeg = Math.abs((inCorner[inCorner.length - 1].steeringRad! - inCorner[0].steeringRad!) * (180 / Math.PI));
+  return totalMoveDeg - netMoveDeg;
+}
+
 export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorner[]): CornerBaseline[] {
   return corners.map((corner) => {
     const brakingPoints = laps.map((lap) => brakeOnsetDistance(lap, corner)).filter((value): value is number => value !== null);
@@ -71,7 +90,10 @@ export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorn
       number: corner.number, name: corner.name, startPct: corner.startDistance, endPct: corner.endDistance,
       brakingPointPct: hasEnoughBraking ? Number(median(brakingPoints).toFixed(2)) : null,
       brakingPointStdDev: hasEnoughBraking ? Number(stddev(brakingPoints).toFixed(2)) : null,
-      correctionBaselineDeg: null, // Task 2
+      correctionBaselineDeg: (() => {
+        const values = laps.map((lap) => wastedSteeringDeg(lap, corner)).filter((value): value is number => value !== null);
+        return values.length >= MIN_LAPS_FOR_BASELINE ? Number(median(values).toFixed(2)) : null;
+      })(),
       wheelspinRatePct: null, // Task 3
       lapTimeContributionSeconds: null, lapTimeStdDev: null, // Task 4
     };
