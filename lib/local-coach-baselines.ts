@@ -11,6 +11,7 @@ export type CoachSample = {
   rpm?: number;
   gear?: number;
   speedMs?: number;
+  throttle?: number; // 0-1
 };
 
 export type CoachCorner = {
@@ -38,8 +39,14 @@ const APPROACH_WINDOW_PCT = 8; // how far before a corner's own start to look fo
 const MIN_LAPS_FOR_BASELINE = 3; // mirrors traction-events.ts's own CORRECTION_MIN_LAPS -- a median across fewer laps isn't trustworthy
 const WHEELSPIN_RPM_SURPLUS_PCT = 8; // matches lib/traction-events.ts's own validated threshold
 const WHEELSPIN_MIN_GEAR_SAMPLES = 20; // matches lib/traction-events.ts's own validated threshold
+// Same two guards as lib/traction-events.ts's own detectWheelspin -- see that file's top comment for
+// why both are load-bearing (validated by hand against a real lap): below-threshold throttle makes an
+// RPM/speed mismatch more likely a lift or a shift than real spin, and a shift itself produces a brief
+// RPM/speed mismatch around the gear-change sample that isn't wheelspin either.
+const WHEELSPIN_THROTTLE_MIN = 0.85;
+const WHEELSPIN_GEAR_STABLE_WINDOW = 3;
 
-type GearModel = Record<number, { a: number; b: number } | undefined>;
+export type GearModel = Record<number, { a: number; b: number } | undefined>;
 
 function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
@@ -58,8 +65,7 @@ function stddev(values: number[]): number {
 function brakeOnsetDistance(lap: CoachSample[], corner: CoachCorner): number | null {
   const windowStart = corner.startDistance - APPROACH_WINDOW_PCT;
   const inWindow = lap
-    .filter((sample) => sample.distance >= windowStart && sample.distance < corner.endDistance)
-    .sort((a, b) => a.distance - b.distance);
+    .filter((sample) => sample.distance >= windowStart && sample.distance < corner.endDistance);
   for (let index = 1; index < inWindow.length; index += 1) {
     const previous = inWindow[index - 1], current = inWindow[index];
     if ((previous.brake ?? 0) < BRAKE_THRESHOLD && (current.brake ?? 0) >= BRAKE_THRESHOLD) return current.distance;
@@ -74,8 +80,7 @@ function brakeOnsetDistance(lap: CoachSample[], corner: CoachCorner): number | n
  * baseline number for the live app, not a bin-by-bin anomaly scan. */
 function wastedSteeringDeg(lap: CoachSample[], corner: CoachCorner): number | null {
   const inCorner = lap
-    .filter((sample) => sample.distance >= corner.startDistance && sample.distance < corner.endDistance && sample.steeringRad !== undefined)
-    .sort((a, b) => a.distance - b.distance);
+    .filter((sample) => sample.distance >= corner.startDistance && sample.distance < corner.endDistance && sample.steeringRad !== undefined);
   if (inCorner.length < 4) return null;
   let totalMoveDeg = 0;
   for (let index = 1; index < inCorner.length; index += 1) {
@@ -114,16 +119,34 @@ function buildGearModel(laps: CoachSample[][]): GearModel {
   return model;
 }
 
+/** Checked against only the EXIT half of the corner window (documented field: "this corner's exit
+ * shows an RPM surplus") -- a downshift on corner ENTRY produces its own brief RPM/speed mismatch
+ * (see the gear-stability window below) that would otherwise misread as wheelspin if the whole
+ * entry+apex+exit window were scanned. `lap` is assumed already in distance order (the route sorts
+ * once in parseLapCsv; this module's own test fixtures build samples in ascending distance order
+ * too), since the gear-stability check below needs real array-index neighbors, the same way
+ * lib/traction-events.ts's detectWheelspin does over its own index-ordered samples. */
 function hasWheelspinInCorner(lap: CoachSample[], corner: CoachCorner, model: GearModel): boolean {
-  return lap.some((sample) => {
-    if (sample.distance < corner.startDistance || sample.distance >= corner.endDistance) return false;
-    if (sample.gear === undefined || sample.rpm === undefined || sample.speedMs === undefined) return false;
+  const exitStart = (corner.startDistance + corner.endDistance) / 2;
+  for (let index = 0; index < lap.length; index += 1) {
+    const sample = lap[index];
+    if (sample.distance < exitStart || sample.distance >= corner.endDistance) continue;
+    if (sample.throttle === undefined || sample.throttle < WHEELSPIN_THROTTLE_MIN) continue;
+    if (sample.gear === undefined || sample.rpm === undefined || sample.speedMs === undefined) continue;
     const fit = model[sample.gear];
-    if (!fit) return false;
+    if (!fit) continue;
+
+    const windowStart = Math.max(0, index - WHEELSPIN_GEAR_STABLE_WINDOW);
+    const windowEnd = Math.min(lap.length - 1, index + WHEELSPIN_GEAR_STABLE_WINDOW);
+    let gearStable = true;
+    for (let i = windowStart; i <= windowEnd; i += 1) { if (lap[i].gear !== sample.gear) { gearStable = false; break; } }
+    if (!gearStable) continue;
+
     const predicted = fit.a * sample.speedMs + fit.b;
-    if (predicted <= 0) return false;
-    return ((sample.rpm - predicted) / predicted) * 100 >= WHEELSPIN_RPM_SURPLUS_PCT;
-  });
+    if (predicted <= 0) continue;
+    if (((sample.rpm - predicted) / predicted) * 100 >= WHEELSPIN_RPM_SURPLUS_PCT) return true;
+  }
+  return false;
 }
 
 /** Seconds spent between two %-of-lap points, found by integrating 1/speed over distance and scaling
@@ -131,7 +154,7 @@ function hasWheelspinInCorner(lap: CoachSample[], corner: CoachCorner, model: Ge
  * app/api/telemetry/car-comparison/route.ts's integrateInverseSpeed/lapScale (a lap's average pace
  * isn't uniform, but 1/speed integrates real elapsed time correctly along the way). */
 function cornerTimeSeconds(lap: CoachSample[], corner: CoachCorner, lapTimeSeconds: number): number | null {
-  const withSpeed = lap.filter((sample) => sample.speedMs !== undefined && sample.speedMs > 1).sort((a, b) => a.distance - b.distance);
+  const withSpeed = lap.filter((sample) => sample.speedMs !== undefined && sample.speedMs > 1);
   if (withSpeed.length < 4) return null;
   const integralBetween = (start: number, end: number) => {
     let total = 0;
@@ -150,9 +173,11 @@ function cornerTimeSeconds(lap: CoachSample[], corner: CoachCorner, lapTimeSecon
   return integralBetween(corner.startDistance, corner.endDistance) * scale;
 }
 
-export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorner[], lapTimesSeconds: number[]): CornerBaseline[] {
+export function computeCornerBaselines(
+  laps: CoachSample[][], corners: CoachCorner[], lapTimesSeconds: number[],
+): { corners: CornerBaseline[]; gearModel: Record<number, { a: number; b: number }> } {
   const gearModel = buildGearModel(laps);
-  return corners.map((corner) => {
+  const corners_ = corners.map((corner) => {
     const brakingPoints = laps.map((lap) => brakeOnsetDistance(lap, corner)).filter((value): value is number => value !== null);
     const hasEnoughBraking = brakingPoints.length >= MIN_LAPS_FOR_BASELINE;
     const cornerTimes = laps
@@ -174,4 +199,8 @@ export function computeCornerBaselines(laps: CoachSample[][], corners: CoachCorn
       lapTimeStdDev: hasEnoughTimes ? Number(stddev(cornerTimes).toFixed(3)) : null,
     };
   });
+  // Same model for the whole car regardless of corner -- returned once at the top level (not
+  // per-corner) so LiveCoachEngine can compare live RPM against it in real time, per corner or not.
+  // Values are only ever assigned in buildGearModel, so the map never actually holds `undefined`.
+  return { corners: corners_, gearModel: gearModel as Record<number, { a: number; b: number }> };
 }
