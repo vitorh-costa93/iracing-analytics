@@ -680,6 +680,17 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .engineer-setup-picker button:hover { background: var(--brand-pale); }
 .engineer-setup-picker button span { color: var(--soft); font-size: 11px; }
 .secondary-button.disabled { opacity: .55; cursor: wait; }.engineer-setup-select { display: grid; gap: 5px; margin-top: 18px; }.engineer-setup-select span { color: var(--soft); font-family: var(--mono); font-size: 11px; font-weight: 400; letter-spacing: .08em; }.engineer-setup-select select { padding: 10px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 3px; }.engineer-result { display: grid; gap: 12px; margin-top: 18px; padding-top: 18px; border-top: 1px solid var(--border); font-weight: 400; }.engineer-result > strong { font-size: 17px; font-weight: 500; line-height: 1.5; font-family: var(--body); }.engineer-result article { padding: 15px; border-left: 1px solid var(--brand); background: linear-gradient(90deg, rgba(28,79,156,.1), var(--surface-muted) 160px); }.engineer-result h4 { margin: 0 0 5px; font-size: 16px; font-weight: 500; }.engineer-result b { color: var(--brand); font-size: 15px; font-weight: 500; }.engineer-result p { margin: 7px 0; color: var(--muted); font-size: 15px; font-weight: 400; line-height: 1.55; }.engineer-result small { color: var(--soft); font-size: 13px; font-weight: 400; line-height: 1.55; }
+.engineer-loading { color: var(--muted); font-size: 12px; font-family: var(--mono); margin: 8px 0; }
+.engineer-turn-markdown { line-height: 1.55; }
+.engineer-turn-markdown p { margin: 0 0 8px; }
+.engineer-turn-markdown ul, .engineer-turn-markdown ol { margin: 0 0 8px; padding-left: 20px; }
+.engineer-turn-markdown strong { color: var(--text); font-weight: 700; }
+.engineer-turn-markdown code { font-family: var(--mono); font-size: 12px; background: var(--surface-muted); padding: 1px 4px; border-radius: 2px; }
+.engineer-turn-actions { display: flex; gap: 8px; margin-top: 6px; }
+.engineer-turn-actions button { background: none; border: 1px solid var(--border); color: var(--muted); font-size: 11px; font-family: var(--mono); padding: 3px 8px; border-radius: 3px; cursor: pointer; }
+.engineer-turn-actions button:hover { color: var(--text); border-color: var(--border-strong); }
+.engineer-turn.streaming .engineer-turn-markdown::after { content: "▋"; display: inline-block; margin-left: 2px; animation: engineer-cursor-blink 1s step-end infinite; color: var(--muted); }
+@keyframes engineer-cursor-blink { 50% { opacity: 0; } }
 .state-box { max-width: 720px; margin: 90px auto; padding: 22px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
 .state-box.error { color: var(--red); }
 .week-context-section { margin-top: 18px; }
