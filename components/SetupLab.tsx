@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Bot, FileUp, FolderSearch, SlidersHorizontal } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { trackUiEvent } from "@/lib/track-ui-event";
 
 type SetupContext = {
@@ -12,9 +13,7 @@ type SetupContext = {
   garage61: { scanned: boolean; accessible: boolean; observedLaps: number };
   uploads: { id: string; filename: string; file_size: number; setup_kind: "commercial" | "fixed" | "open" | "unknown"; source: string; decoder: string | null; decoded_at: string | null; created_at: string }[];
 };
-type EngineerRecommendation = { adjustment: string; direction: string; why: string; validate: string; parameter: { label: string; current: string } | null };
-type EngineerResult = { summary: string; limitation: string; hasDecodedParameters: boolean; recommendations: EngineerRecommendation[] };
-type ConversationTurn = { role: "user"; text: string } | { role: "assistant"; result: EngineerResult };
+type ChatMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: string };
 type CompareChange = { tab: string; section: string; label: string; before: string; after: string; explanation: string; category: string; settable: boolean };
 type CompareAnalysis = { topCategories: { category: string; label: string; count: number }[]; topContributors: { label: string; before: string; after: string; category: string }[] };
 type CompareResult = { summary: string; totalParameters: number; skippedCount: number; changes: CompareChange[]; analysis: CompareAnalysis };
@@ -48,7 +47,9 @@ export default function SetupLab() {
   const [uploading, setUploading] = useState(false);
   const [activeSetupId, setActiveSetupId] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
-  const [conversation, setConversation] = useState<ConversationTurn[]>([]);
+  const [conversation, setConversation] = useState<ChatMessage[]>([]);
+  const [streamingText, setStreamingText] = useState<string | null>(null); // in-progress assistant reply, null when not streaming
+  const [loadingThread, setLoadingThread] = useState(false);
   const [showSetupPicker, setShowSetupPicker] = useState(false);
   const [baseSetupId, setBaseSetupId] = useState("");
   const [comparisonSetupId, setComparisonSetupId] = useState("");
@@ -92,7 +93,15 @@ export default function SetupLab() {
 
   useEffect(() => {
     setActiveSetupId((current) => selected?.uploads.some((item) => item.id === current) ? current : selected?.uploads[0]?.id ?? "");
-    setConversation([]);
+    if (selected) {
+      setLoadingThread(true);
+      fetch(`/api/setup/engineer/chat?carId=${selected.car.id}&trackId=${selected.track.id}`, { cache: "no-store" })
+        .then((response) => response.json())
+        .then((data) => setConversation(data.status === "ok" ? data.messages : []))
+        .finally(() => setLoadingThread(false));
+    } else {
+      setConversation([]);
+    }
     const preferred = selected?.uploads.find((item) => /fixed/i.test(item.filename))?.id ?? selected?.uploads[0]?.id ?? "";
     setBaseSetupId(preferred);
     setComparisonSetupId(selected?.uploads.find((item) => item.id !== preferred)?.id ?? "");
@@ -131,25 +140,69 @@ export default function SetupLab() {
     setShowSetupPicker(false);
   }
 
-  async function runEngineer() {
+  async function sendToEngineer(userMessage: string | null) {
     if (!selected) return;
     const primarySetupId = mentionedSetupIds[0] ?? activeSetupId;
-    if (!primarySetupId) { setMessage("Anexe ou selecione um setup antes de analisar (ou mencione um com /setup)."); return; }
-    const userText = feedback.trim();
-    if (!userText) { setMessage("Escreva o que o carro está fazendo antes de gerar a recomendação."); return; }
     setAnalyzing(true); setMessage(null);
-    setConversation((current) => [...current, { role: "user", text: userText }]);
-    setFeedback("");
+    if (userMessage) {
+      setConversation((current) => [...current, { id: crypto.randomUUID(), role: "user", content: userMessage, createdAt: new Date().toISOString() }]);
+      setFeedback("");
+    }
+    setStreamingText("");
     try {
-      const body: Record<string, unknown> = { setupId: primarySetupId, carId: selected.car.id, trackId: selected.track.id, feedback: userText };
+      const body: Record<string, unknown> = {
+        carId: selected.car.id, trackId: selected.track.id, carName: selected.car.name, trackName: selected.track.name,
+        setupId: primarySetupId || undefined,
+      };
       if (mentionedSetupIds.length >= 2) body.blendWithSetupId = mentionedSetupIds[1];
-      const response = await fetch("/api/setup/engineer", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const result = await response.json(); if (!response.ok) throw new Error(result.message ?? "Erro na análise");
-      setConversation((current) => [...current, { role: "assistant", result }]);
+      if (userMessage) body.message = userMessage; else body.regenerate = true;
+
+      const response = await fetch("/api/setup/engineer/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (!response.ok || !response.body) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.message ?? "Erro na análise");
+      }
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let assembled = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        assembled += decoder.decode(value, { stream: true });
+        setStreamingText(assembled);
+      }
+      setConversation((current) => userMessage
+        ? [...current, { id: crypto.randomUUID(), role: "assistant", content: assembled, createdAt: new Date().toISOString() }]
+        : [...current.slice(0, -1), { id: crypto.randomUUID(), role: "assistant", content: assembled, createdAt: new Date().toISOString() }]);
       trackUiEvent("setup_engineer_recommendation_requested", { carId: selected.car.id, trackId: selected.track.id });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : String(error));
-    } finally { setAnalyzing(false); }
+    } finally {
+      setStreamingText(null);
+      setAnalyzing(false);
+    }
+  }
+
+  async function runEngineer() {
+    const userText = feedback.trim();
+    if (!userText) { setMessage("Escreva o que o carro está fazendo antes de enviar."); return; }
+    await sendToEngineer(userText);
+  }
+
+  async function regenerateLast() {
+    if (conversation.length === 0 || conversation[conversation.length - 1].role !== "assistant") return;
+    await sendToEngineer(null);
+  }
+
+  async function resetConversation() {
+    if (!selected) return;
+    if (!confirm("Apagar todo o histórico desta conversa (carro + pista atuais)?")) return;
+    await fetch(`/api/setup/engineer/chat?carId=${selected.car.id}&trackId=${selected.track.id}`, { method: "DELETE" });
+    setConversation([]);
+  }
+
+  function copyMessage(content: string) {
+    navigator.clipboard?.writeText(content).then(() => setMessage("Copiado.")).catch(() => setMessage("Não foi possível copiar."));
   }
 
   return (
@@ -213,24 +266,27 @@ export default function SetupLab() {
             <div className="engineer-message"><Bot size={18} /><div><strong>Engenheiro</strong><p>Conte o que o carro faz na entrada, meio e saída da curva, ou digite <code>/setup</code> pra mencionar dois setups e pedir um meio-termo entre eles. A conversa continua — cada mensagem nova leva em conta o contexto do carro e pista selecionados.</p></div></div>
             <div className="engineer-quick-prompts"><span>COMEÇAR POR</span>{["Subesterça na entrada", "Traseira instável no trail braking", "Perde tração na saída", "Bate o fundo em zebra/ondulação"].map((prompt) => <button type="button" key={prompt} onClick={() => { setFeedback(prompt); trackUiEvent("setup_engineer_prompt_selected", { carId: selected?.car.id, trackId: selected?.track.id }); }}>{prompt}</button>)}</div>
 
-            {conversation.length > 0 && (
+            {loadingThread && <p className="engineer-loading">Carregando conversa...</p>}
+            {(conversation.length > 0 || streamingText !== null) && (
               <div className="engineer-thread">
-                {conversation.map((turn, index) => turn.role === "user" ? (
-                  <div className="engineer-turn user" key={index}><span>VOCÊ</span><p>{turn.text.replace(/\[\[([^\]]+)\]\]/g, "「$1」")}</p></div>
+                {conversation.map((msg) => msg.role === "user" ? (
+                  <div className="engineer-turn user" key={msg.id}><span>VOCÊ</span><p>{msg.content.replace(/\[\[([^\]]+)\]\]/g, "「$1」")}</p></div>
                 ) : (
-                  <div className="engineer-turn assistant" key={index}>
+                  <div className="engineer-turn assistant" key={msg.id}>
                     <span>ENGENHEIRO</span>
-                    <p className="engineer-turn-summary">{turn.result.summary}</p>
-                    {turn.result.recommendations.map((item) => (
-                      <article key={`${index}-${item.adjustment}-${item.direction}`}>
-                        <h4>{item.adjustment}</h4><b>{item.direction}</b><p>{item.why}</p>
-                        {item.parameter && <div className="engineer-parameter"><span>PARÂMETRO NO SEU SETUP</span><strong>{item.parameter.label}</strong><span>valor atual: {item.parameter.current}</span></div>}
-                        <small>Validar: {item.validate}</small>
-                      </article>
-                    ))}
-                    <p className="setup-guardrail">{turn.result.limitation}</p>
+                    <div className="engineer-turn-markdown"><ReactMarkdown>{msg.content}</ReactMarkdown></div>
+                    <div className="engineer-turn-actions">
+                      <button type="button" onClick={() => copyMessage(msg.content)}>Copiar</button>
+                      {msg.id === conversation[conversation.length - 1]?.id && <button type="button" onClick={regenerateLast} disabled={analyzing}>Regenerar</button>}
+                    </div>
                   </div>
                 ))}
+                {streamingText !== null && (
+                  <div className="engineer-turn assistant streaming">
+                    <span>ENGENHEIRO</span>
+                    <div className="engineer-turn-markdown"><ReactMarkdown>{streamingText || "..."}</ReactMarkdown></div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -252,7 +308,8 @@ export default function SetupLab() {
 
             <div className="engineer-actions">
               <label className={`secondary-button ${uploading ? "disabled" : ""}`}>{uploading ? "Enviando..." : "Anexar setup"}<input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadSetup(file, "commercial"); event.target.value = ""; }} /></label>
-              <button className="primary-button" disabled={analyzing || (!activeSetupId && !mentionedSetupIds.length)} onClick={runEngineer}>{analyzing ? "Analisando..." : conversation.length ? "Enviar" : "Gerar recomendação"}</button>
+              {conversation.length > 0 && <button type="button" className="secondary-button" onClick={resetConversation}>Nova conversa</button>}
+              <button className="primary-button" disabled={analyzing || (!activeSetupId && !mentionedSetupIds.length)} onClick={runEngineer}>{analyzing ? "Enviando..." : conversation.length ? "Enviar" : "Gerar recomendação"}</button>
             </div>
           </article>
           <aside className="panel engineer-context"><span className="section-kicker">CONTEXTO AUTOMÁTICO</span><h3>O que entra na análise</h3><ul><li>carro e pista da semana;</li><li>setup atual e padrão;</li><li>telemetria própria e referência ativa;</li><li>feedback de entrada, meio e saída;</li><li>efeito e risco de cada alteração.</li></ul></aside>
