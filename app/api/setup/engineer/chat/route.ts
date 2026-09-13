@@ -128,6 +128,7 @@ export async function POST(request: NextRequest) {
         const reader = upstream.body!.getReader();
         const decoder = new TextDecoder();
         let buffer = "";
+        let streamFailed = false;
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -149,11 +150,19 @@ export async function POST(request: NextRequest) {
               }
             }
           }
+        } catch {
+          // reader.read() itself threw mid-transfer (dropped connection, etc.) -- the client would
+          // otherwise see the stream just end, indistinguishable from a complete answer. Surface it
+          // explicitly instead of silently truncating; the partial answer is still never persisted
+          // (streamFailed guards the block below), per the spec's "don't save an incomplete stream
+          // as a complete assistant turn" rule.
+          streamFailed = true;
+          controller.enqueue(encoder.encode("\n\n[Erro: conexão com a IA foi interrompida -- tente novamente ou peça para regenerar]"));
         } finally {
           controller.close();
         }
 
-        if (assembled.trim()) {
+        if (!streamFailed && assembled.trim()) {
           const finalMessages = [...messages, { id: crypto.randomUUID(), role: "assistant" as const, content: assembled, createdAt: new Date().toISOString() }];
           await supabaseAdmin.from("engineer_conversations").upsert(
             { driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, messages: finalMessages, updated_at: new Date().toISOString() },
