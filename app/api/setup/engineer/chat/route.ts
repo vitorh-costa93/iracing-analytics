@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { comparativeSummary, diffSetups, type DecodedRow } from "@/lib/setup-diff";
+import { buildSystemPrompt } from "@/lib/engineer-prompt";
 
 export type StoredMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: string };
 
@@ -40,6 +42,128 @@ export async function GET(request: NextRequest) {
       .maybeSingle();
     if (error) throw error;
     return NextResponse.json({ status: "ok", messages: (data?.messages as StoredMessage[] | undefined) ?? [] });
+  } catch (error) {
+    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400 });
+  }
+}
+
+const OPENAI_MODEL = "gpt-4o";
+const MAX_HISTORY_MESSAGES = 20; // mirrors dashboard-psi/api/post-content.js's own truncation
+
+type PostBody = {
+  carId?: number; trackId?: number; carName?: string; trackName?: string;
+  setupId?: string; blendWithSetupId?: string; message?: string; regenerate?: boolean;
+};
+
+async function loadSetupRows(driverId: string, carId: number, trackId: number, setupId: string): Promise<{ filename: string; rows: DecodedRow[] } | null> {
+  const { data } = await supabaseAdmin.from("setup_files").select("filename,decoded_params").eq("id", setupId).eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).maybeSingle();
+  if (!data) return null;
+  return { filename: data.filename, rows: Array.isArray(data.decoded_params) ? (data.decoded_params as DecodedRow[]) : [] };
+}
+
+async function loadDiff(driverId: string, carId: number, trackId: number, setupIdA: string, setupIdB: string) {
+  const { data } = await supabaseAdmin.from("setup_files").select("id,filename,decoded_params").eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).in("id", [setupIdA, setupIdB]);
+  if (!data || data.length !== 2) return null;
+  const a = data.find((row) => row.id === setupIdA)!, b = data.find((row) => row.id === setupIdB)!;
+  const rowsA: DecodedRow[] = Array.isArray(a.decoded_params) ? (a.decoded_params as DecodedRow[]) : [];
+  const rowsB: DecodedRow[] = Array.isArray(b.decoded_params) ? (b.decoded_params as DecodedRow[]) : [];
+  if (!rowsA.length || !rowsB.length) return null;
+  const changes = diffSetups(rowsA, rowsB);
+  return { baseLabel: a.filename, comparisonLabel: b.filename, summary: comparativeSummary(changes, a.filename, b.filename), changes };
+}
+
+export async function POST(request: NextRequest) {
+  const encoder = new TextEncoder();
+  try {
+    const body = (await request.json()) as PostBody;
+    if (!Number.isInteger(body.carId) || !Number.isInteger(body.trackId)) throw new Error("carId e trackId são obrigatórios");
+    if (!body.message?.trim() && !body.regenerate) throw new Error("Escreva uma mensagem ou peça para regenerar");
+    const apiKey = process.env.OPENAI_KEY;
+    if (!apiKey) throw new Error("OPENAI_KEY não configurada");
+
+    const { driverId, seasonId } = await context();
+    const carId = body.carId as number, trackId = body.trackId as number;
+
+    const { data: existingRow } = await supabaseAdmin
+      .from("engineer_conversations")
+      .select("messages")
+      .eq("driver_id", driverId).eq("season_id", seasonId).eq("car_id", carId).eq("track_id", trackId)
+      .maybeSingle();
+    let messages: StoredMessage[] = (existingRow?.messages as StoredMessage[] | undefined) ?? [];
+
+    if (body.regenerate) {
+      if (messages.length === 0 || messages[messages.length - 1].role !== "assistant") throw new Error("Nada para regenerar ainda");
+      messages = messages.slice(0, -1); // drop the last assistant turn; last remaining message is the user turn to re-answer
+    } else {
+      messages = [...messages, { id: crypto.randomUUID(), role: "user", content: body.message!.trim(), createdAt: new Date().toISOString() }];
+    }
+
+    const diff = body.blendWithSetupId && body.setupId && body.blendWithSetupId !== body.setupId
+      ? await loadDiff(driverId, carId, trackId, body.setupId, body.blendWithSetupId)
+      : null;
+    const primarySetup = !diff && body.setupId ? await loadSetupRows(driverId, carId, trackId, body.setupId) : null;
+
+    const systemPrompt = buildSystemPrompt({
+      carName: body.carName ?? "este carro", trackName: body.trackName ?? "esta pista",
+      primarySetup, diff: diff ? { baseLabel: diff.baseLabel, comparisonLabel: diff.comparisonLabel, summary: diff.summary, changes: diff.changes } : null,
+    });
+    const openAiMessages = [
+      { role: "system", content: systemPrompt },
+      ...messages.slice(-MAX_HISTORY_MESSAGES).map((message) => ({ role: message.role, content: message.content })),
+    ];
+
+    const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+      body: JSON.stringify({ model: OPENAI_MODEL, stream: true, messages: openAiMessages }),
+    });
+    if (!upstream.ok || !upstream.body) {
+      const detail = await upstream.text().catch(() => "");
+      throw new Error(`Erro da OpenAI (${upstream.status}): ${detail.slice(0, 300)}`);
+    }
+
+    let assembled = "";
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = upstream.body!.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            buffer += decoder.decode(value, { stream: true });
+            const events = buffer.split("\n\n");
+            buffer = events.pop() ?? "";
+            for (const event of events) {
+              const line = event.trim();
+              if (!line.startsWith("data:")) continue;
+              const payload = line.slice(5).trim();
+              if (payload === "[DONE]") continue;
+              try {
+                const json = JSON.parse(payload);
+                const delta: string | undefined = json.choices?.[0]?.delta?.content;
+                if (delta) { assembled += delta; controller.enqueue(encoder.encode(delta)); }
+              } catch {
+                // Malformed/partial SSE chunk -- skip it, the next read() call will complete it.
+              }
+            }
+          }
+        } finally {
+          controller.close();
+        }
+
+        if (assembled.trim()) {
+          const finalMessages = [...messages, { id: crypto.randomUUID(), role: "assistant" as const, content: assembled, createdAt: new Date().toISOString() }];
+          await supabaseAdmin.from("engineer_conversations").upsert(
+            { driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, messages: finalMessages, updated_at: new Date().toISOString() },
+            { onConflict: "driver_id,season_id,car_id,track_id" },
+          );
+        }
+      },
+    });
+
+    return new Response(stream, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400 });
   }
