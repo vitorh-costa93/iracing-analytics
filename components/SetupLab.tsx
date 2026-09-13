@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Bot, FileUp, FolderSearch, SlidersHorizontal } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { trackUiEvent } from "@/lib/track-ui-event";
@@ -54,8 +54,16 @@ export default function SetupLab() {
   const [baseSetupId, setBaseSetupId] = useState("");
   const [comparisonSetupId, setComparisonSetupId] = useState("");
   const [comparing, setComparing] = useState(false);
+  const [lastGrounding, setLastGrounding] = useState<{ setupId: string; blendWithSetupId?: string } | null>(null);
   const [compareResult, setCompareResult] = useState<CompareResult | null>(null);
   const [library, setLibrary] = useState<{ total: number; importedAt: string | null; items: LibraryItem[] }>({ total: 0, importedAt: null, items: [] });
+  // Mirrors TrackMap.tsx's/ActiveWeekTelemetry.tsx's own `cancelled`-flag idiom for the stale-context
+  // race, adapted for an imperative async call (sendToEngineer) instead of an effect: a plain closure
+  // over `context` can't detect a later change (each render's sendToEngineer captures that render's
+  // own value), so a ref that's kept in sync with the latest `context` is needed to tell whether the
+  // context has moved on since a send started.
+  const contextRef = useRef(context);
+  useEffect(() => { contextRef.current = context; }, [context]);
 
   function loadInventory() {
     fetch("/api/setup/inventory", { cache: "no-store" })
@@ -144,7 +152,16 @@ export default function SetupLab() {
 
   async function sendToEngineer(userMessage: string | null) {
     if (!selected) return;
-    const primarySetupId = mentionedSetupIds[0] ?? activeSetupId;
+    const sentForContextKey = context;
+    // Fresh send: compute grounding from the current /setup mention(s)/active setup and remember it
+    // for a future Regenerar of THIS turn (the feedback textarea is cleared right after sending, so
+    // by the time regenerateLast() runs there's no other way to know which setup(s) grounded it).
+    // Regenerate: reuse whatever grounded the turn being regenerated instead of re-deriving from the
+    // (by-then-empty) feedback/mentionedSetupIds.
+    const grounding = userMessage
+      ? { setupId: mentionedSetupIds[0] ?? activeSetupId, blendWithSetupId: mentionedSetupIds.length >= 2 ? mentionedSetupIds[1] : undefined }
+      : lastGrounding;
+    if (userMessage) setLastGrounding(grounding);
     setAnalyzing(true); setMessage(null);
     if (userMessage) {
       setConversation((current) => [...current, { id: crypto.randomUUID(), role: "user", content: userMessage, createdAt: new Date().toISOString() }]);
@@ -154,9 +171,9 @@ export default function SetupLab() {
     try {
       const body: Record<string, unknown> = {
         carId: selected.car.id, trackId: selected.track.id, carName: selected.car.name, trackName: selected.track.name,
-        setupId: primarySetupId || undefined,
+        setupId: grounding?.setupId || undefined,
       };
-      if (mentionedSetupIds.length >= 2) body.blendWithSetupId = mentionedSetupIds[1];
+      if (grounding?.blendWithSetupId) body.blendWithSetupId = grounding.blendWithSetupId;
       if (userMessage) body.message = userMessage; else body.regenerate = true;
 
       const response = await fetch("/api/setup/engineer/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -171,14 +188,38 @@ export default function SetupLab() {
         const { done, value } = await reader.read();
         if (done) break;
         assembled += decoder.decode(value, { stream: true });
-        setStreamingText(assembled);
+        if (contextRef.current === sentForContextKey) setStreamingText(assembled);
       }
-      setConversation((current) => userMessage
-        ? [...current, { id: crypto.randomUUID(), role: "assistant", content: assembled, createdAt: new Date().toISOString() }]
-        : [...current.slice(0, -1), { id: crypto.randomUUID(), role: "assistant", content: assembled, createdAt: new Date().toISOString() }]);
-      trackUiEvent("setup_engineer_recommendation_requested", { carId: selected.car.id, trackId: selected.track.id });
+      if (contextRef.current !== sentForContextKey) {
+        // Driver switched car/track while this reply was still streaming -- the answer belongs to a
+        // thread that isn't on screen any more. Drop it silently instead of writing it into whatever
+        // thread happens to be displayed now (it'll still be correctly persisted server-side, and the
+        // next thread-load effect for this context will pick it up).
+        return;
+      }
+      const streamFailed = assembled.includes("[Erro: conexão com a IA foi interrompida");
+      if (streamFailed) {
+        // The server never persists a failed stream's turn(s) (by design -- see the route's
+        // streamFailed guard). Keep client state truthful to that: don't leave an unpersisted
+        // optimistic user message stranded, and don't offer a Regenerar on a turn the server doesn't
+        // know about.
+        if (userMessage) setConversation((current) => current.slice(0, -1));
+        setMessage("A resposta do engenheiro foi interrompida antes de terminar. Tente novamente.");
+      } else {
+        setConversation((current) => userMessage
+          ? [...current, { id: crypto.randomUUID(), role: "assistant", content: assembled, createdAt: new Date().toISOString() }]
+          : [...current.slice(0, -1), { id: crypto.randomUUID(), role: "assistant", content: assembled, createdAt: new Date().toISOString() }]);
+        trackUiEvent("setup_engineer_recommendation_requested", { carId: selected.car.id, trackId: selected.track.id });
+      }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : String(error));
+      // POST failed before streaming even started (network error, non-OK response) -- the server
+      // never persisted anything for this turn either. Roll back the optimistic user message (fresh
+      // send) or leave the conversation as it was before this regenerate attempt, and surface the
+      // error via the banner instead of a chat bubble.
+      if (contextRef.current === sentForContextKey) {
+        if (userMessage) setConversation((current) => current.slice(0, -1));
+        setMessage(error instanceof Error ? error.message : String(error));
+      }
     } finally {
       setStreamingText(null);
       setAnalyzing(false);
@@ -311,7 +352,7 @@ export default function SetupLab() {
             <div className="engineer-actions">
               <label className={`secondary-button ${uploading ? "disabled" : ""}`}>{uploading ? "Enviando..." : "Anexar setup"}<input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) uploadSetup(file, "commercial"); event.target.value = ""; }} /></label>
               {conversation.length > 0 && <button type="button" className="secondary-button" onClick={resetConversation}>Nova conversa</button>}
-              <button className="primary-button" disabled={analyzing || (!activeSetupId && !mentionedSetupIds.length)} onClick={runEngineer}>{analyzing ? "Enviando..." : conversation.length ? "Enviar" : "Gerar recomendação"}</button>
+              <button className="primary-button" disabled={analyzing || !feedback.trim()} onClick={runEngineer}>{analyzing ? "Enviando..." : conversation.length ? "Enviar" : "Gerar recomendação"}</button>
             </div>
           </article>
           <aside className="panel engineer-context"><span className="section-kicker">CONTEXTO AUTOMÁTICO</span><h3>O que entra na análise</h3><ul><li>carro e pista da semana;</li><li>setup atual e padrão;</li><li>telemetria própria e referência ativa;</li><li>feedback de entrada, meio e saída;</li><li>efeito e risco de cada alteração.</li></ul></aside>

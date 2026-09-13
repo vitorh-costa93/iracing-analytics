@@ -26,15 +26,21 @@ MOLA TRASEIRA: no SF23 e GT3 é "Spring Rate" por roda (Left Rear / Right Rear, 
 BRAKE BIAS: mais bias dianteiro (número maior) reduz a chance de a traseira rotacionar na frenagem, mas pode empurrar em direção ao subesterço na entrada; menos bias dianteiro faz o oposto.
 
 REGRAS OBRIGATÓRIAS PARA TODA RESPOSTA:
-1. Diga sempre explicitamente se o piloto deve aumente ou diminua o valor que aparece na tela do jogo -- nunca s6 "deixe mais rígido/macio", porque isso não diz qual direção de seta/dropdown clicar.
+1. Diga sempre explicitamente a direção da mudança (ex.: "aumente" ou "diminua" o valor que aparece na tela do jogo) -- nunca só "deixe mais rígido/macio", porque isso não diz qual direção de seta/dropdown clicar.
 2. Nunca invente um valor-alvo contínuo exato (N/mm, mm, graus, %) que o carro talvez não aceite -- esses parâmetros só aceitam alguns degraus fixos do catálogo do carro, que não temos mapeados. Aponte a direção e deixe o piloto usar a seta/dropdown do próprio jogo para o próximo valor disponível. Cliques de amortecedor (damper clicks) são a única exceção -- ±1 clique sempre é um valor válido.
 3. Sempre deixe claro que o arquivo .sto original NÃO é regravado por este app -- qualquer mudança sugerida precisa ser aplicada manualmente no menu do carro dentro do iRacing.
 4. Se o piloto descrever um sintoma sem dizer a fase da curva (entrada/meio/saída) ou o eixo (dianteira/traseira), pergunte antes de sugerir uma mudança -- uma mudança de setup pode corrigir um trecho e piorar outro.`;
+
+// Cap the number of rows embedded in the prompt: an unusually large decoded-setup payload would
+// otherwise blow up the prompt size (and OpenAI cost) on every single turn of the conversation --
+// CLAUDE.md rule 7's cost guard-rail. 150 rows comfortably covers any real decoded setup file.
+const MAX_DECODED_ROWS = 150;
 
 function formatDecodedRows(rows: DecodedRow[]): string {
   if (!rows.length) return "";
   return rows
     .filter((row) => row.label)
+    .slice(0, MAX_DECODED_ROWS)
     .map((row) => `| ${row.tab ?? "Setup"} | ${row.section ?? "Geral"} | ${row.label} | ${row.metric_value ?? "—"} |`)
     .join("\n");
 }

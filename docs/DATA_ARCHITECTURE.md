@@ -86,6 +86,7 @@ Testei contra a API real com nosso token de servidor: o endpoint existe e o team
 | `setup_files` (Storage) / `telemetry_references` | Supabase Storage | CSV/IBT de referência por carro+pista; canais e amostras. | — |
 | `race_debriefs` | Derivado (Garage61 + cálculo interno) | Cache do Meu Debrief; `payload.session_id` casa com `driving_sessions.id`, auto-invalida quando a corrida-candidata muda. | — |
 | `sync_runs` | Interno | Observabilidade de todos os syncs (Garage61 e iRStats). | — |
+| `engineer_conversations` | Interno (OpenAI gpt-4o) | Histórico de chat do "Engenheiro" no Setup Lab, uma linha por combinação driver/season/carro/pista (`unique(driver_id, season_id, car_id, track_id)`); `messages` é um array JSONB de `{id, role: "user" \| "assistant", content, createdAt}`. Lido/escrito só por `app/api/setup/engineer/chat/route.ts` (GET carrega a thread, POST acrescenta a mensagem do piloto e faz upsert do turno completo do assistente antes de fechar o stream, DELETE apaga a conversa). Nunca recebe telemetria nem conteúdo de setup bruto — só o texto da conversa. | — |
 
 ## Views de consumo
 

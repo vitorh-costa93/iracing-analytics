@@ -3,6 +3,9 @@ import { supabaseAdmin } from "@/lib/supabase-admin";
 import { comparativeSummary, diffSetups, type DecodedRow } from "@/lib/setup-diff";
 import { buildSystemPrompt } from "@/lib/engineer-prompt";
 
+export const maxDuration = 60; // Vercel Hobby ceiling -- a streamed gpt-4o reply routinely takes 15-40s
+export const dynamic = "force-dynamic";
+
 export type StoredMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: string };
 
 // Copied from app/api/setup/inventory/route.ts's own context() -- this codebase's established
@@ -49,6 +52,37 @@ export async function GET(request: NextRequest) {
 
 const OPENAI_MODEL = "gpt-4o";
 const MAX_HISTORY_MESSAGES = 20; // mirrors dashboard-psi/api/post-content.js's own truncation
+const MAX_MESSAGE_LENGTH = 4000; // mirrors dashboard-psi/api/post-content.js's own per-message truncation length
+const MAX_COMPLETION_TOKENS = 1000; // CLAUDE.md rule 7 cost guard-rail -- caps spend on a single reply
+
+// Mirrors dashboard-psi/api/_openai-retry.js's fetchComRetentativa: retries on network error/timeout
+// or a 5xx/429 response (transient failures), never on other 4xx (our own request's problem, retrying
+// won't change the outcome). Kept route-local since no other route in this codebase shares an OpenAI
+// call yet -- if a second one appears, promote this to lib/.
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  { attempts = 2, baseDelayMs = 500, timeoutMs = 55000 }: { attempts?: number; baseDelayMs?: number; timeoutMs?: number } = {},
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt <= attempts; attempt++) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(url, { ...options, signal: controller.signal });
+      clearTimeout(timer);
+      const canRetry = !response.ok && (response.status >= 500 || response.status === 429);
+      if (!canRetry || attempt === attempts) return response;
+      lastError = new Error(`HTTP ${response.status}`);
+    } catch (error) {
+      clearTimeout(timer);
+      if (attempt === attempts) throw error;
+      lastError = error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, baseDelayMs * 2 ** attempt));
+  }
+  throw lastError;
+}
 
 type PostBody = {
   carId?: number; trackId?: number; carName?: string; trackName?: string;
@@ -78,6 +112,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as PostBody;
     if (!Number.isInteger(body.carId) || !Number.isInteger(body.trackId)) throw new Error("carId e trackId são obrigatórios");
     if (!body.message?.trim() && !body.regenerate) throw new Error("Escreva uma mensagem ou peça para regenerar");
+    if (body.message && body.message.length > MAX_MESSAGE_LENGTH) throw new Error(`Mensagem muito longa (máximo ${MAX_MESSAGE_LENGTH} caracteres)`);
     const apiKey = process.env.OPENAI_KEY;
     if (!apiKey) throw new Error("OPENAI_KEY não configurada");
 
@@ -112,14 +147,15 @@ export async function POST(request: NextRequest) {
       ...messages.slice(-MAX_HISTORY_MESSAGES).map((message) => ({ role: message.role, content: message.content })),
     ];
 
-    const upstream = await fetch("https://api.openai.com/v1/chat/completions", {
+    const upstream = await fetchWithRetry("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: OPENAI_MODEL, stream: true, messages: openAiMessages }),
+      body: JSON.stringify({ model: OPENAI_MODEL, stream: true, messages: openAiMessages, max_tokens: MAX_COMPLETION_TOKENS }),
     });
     if (!upstream.ok || !upstream.body) {
       const detail = await upstream.text().catch(() => "");
-      throw new Error(`Erro da OpenAI (${upstream.status}): ${detail.slice(0, 300)}`);
+      console.error(`Erro da OpenAI (${upstream.status}): ${detail.slice(0, 500)}`);
+      throw new Error(`Erro da OpenAI (status ${upstream.status}). Tente novamente.`);
     }
 
     let assembled = "";
@@ -157,18 +193,32 @@ export async function POST(request: NextRequest) {
           // (streamFailed guards the block below), per the spec's "don't save an incomplete stream
           // as a complete assistant turn" rule.
           streamFailed = true;
-          controller.enqueue(encoder.encode("\n\n[Erro: conexão com a IA foi interrompida -- tente novamente ou peça para regenerar]"));
-        } finally {
-          controller.close();
+          try {
+            controller.enqueue(encoder.encode("\n\n[Erro: conexão com a IA foi interrompida -- tente novamente ou peça para regenerar]"));
+          } catch {
+            // controller may already be torn down if the client disconnected -- nothing to enqueue into.
+          }
         }
 
+        // Persistence MUST happen before controller.close() below: on Vercel's serverless runtime,
+        // nothing guarantees the function invocation stays alive once the HTTP response is closed, so
+        // an awaited write placed after close() (as this used to be) can silently never execute in
+        // production, even though `next dev` (which keeps the whole process alive regardless) hides
+        // the bug locally. Wrapped in its own try/catch so a Supabase failure here can't skip the
+        // controller.close() call below, or crash the whole handler.
         if (!streamFailed && assembled.trim()) {
-          const finalMessages = [...messages, { id: crypto.randomUUID(), role: "assistant" as const, content: assembled, createdAt: new Date().toISOString() }];
-          await supabaseAdmin.from("engineer_conversations").upsert(
-            { driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, messages: finalMessages, updated_at: new Date().toISOString() },
-            { onConflict: "driver_id,season_id,car_id,track_id" },
-          );
+          try {
+            const finalMessages = [...messages, { id: crypto.randomUUID(), role: "assistant" as const, content: assembled, createdAt: new Date().toISOString() }];
+            await supabaseAdmin.from("engineer_conversations").upsert(
+              { driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, messages: finalMessages, updated_at: new Date().toISOString() },
+              { onConflict: "driver_id,season_id,car_id,track_id" },
+            );
+          } catch (persistError) {
+            console.error("Falha ao persistir engineer_conversations:", persistError);
+          }
         }
+
+        controller.close();
       },
     });
 
