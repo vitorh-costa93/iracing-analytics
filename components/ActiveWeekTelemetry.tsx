@@ -697,6 +697,13 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, trackId, 
   // Never stretch X and Y independently: it made real corners look physically impossible.
   const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), 300, 200, 18, false);
   const project = (point: TracePoint) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
+  // 13/09/2026 fix: "ainda está com o zoom padrão aplicado no mobile" -- the sticky/full map
+  // (!zoom && boundaryPoints.length, same condition as the full-track boundsPoints branch above)
+  // shows the WHOLE circuit on purpose; cropping part of it by default (fillScale can reach its own
+  // 2.5x cap on an elongated track like Spa in a small box) defeats the point of a whole-track view.
+  // Only the zoomed/narrow branches (a selected corner window) benefit from filling empty margin.
+  const isFullTrackView = !zoom && boundaryPoints.length > 0;
+  const initialScale = isFullTrackView ? 1 : projectGps.fillScale;
 
   // Pan+zoom (01/09/2026: "eu quero usar o mouse para navegar... clico e movo o mouse para baixo eu
   // vou vendo a parte de cima do mapa... é uma funcionalidade bem conhecida") -- shared hook, same
@@ -705,13 +712,13 @@ function TrackMap({ trace, referenceTrace, range, hoverDistance, zoom, trackId, 
   // instead of drag-to-pan; the hover-panel and popup maps had no interactivity at all. Enabled for
   // BOTH here now -- the popup map narrows its own bounds to the corner window already, but the driver
   // still wants to pan/zoom further within that window to see exact positioning.
-  // 12/09/2026: initialScale=projectGps.fillScale, computed above (before this hook call, since it's
-  // needed here) from whichever bounds are active for this render (full track / zoomed corner / hover
-  // selection) -- boundsPoints only changes on a genuinely new selection (a different opportunity card,
-  // a different corner via prev/next, a different track), never on mere mouse hover, so this never
-  // fights the driver's own manual pan/zoom mid-interaction; it resets to a sensible fill for whatever
-  // is newly shown, same category as the existing resetKey=trackId reset.
-  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform, zoomBy, focusOn } = useMapZoomPan(300, 200, true, trackId, projectGps.fillScale);
+  // 12/09/2026: initialScale (computed above) fills empty margin for a zoomed/narrow corner
+  // selection, but stays 1 for the full-track view (see that computation's own comment).
+  // boundsPoints only changes on a genuinely new selection (a different opportunity card, a
+  // different corner via prev/next, a different track), never on mere mouse hover, so this never
+  // fights the driver's own manual pan/zoom mid-interaction; it resets to a sensible fill for
+  // whatever is newly shown, same category as the existing resetKey=trackId reset.
+  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform, zoomBy, focusOn } = useMapZoomPan(300, 200, true, trackId, initialScale);
 
   if (gps.length < 20) return <div className="track-map-empty">Mapa GPS indisponível nesta volta.</div>;
 

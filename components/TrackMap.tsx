@@ -75,18 +75,27 @@ export default function TrackMap({ trackId, lines, width = 300, height = 200, cl
   const projectGps = createTrackProjector(boundsPoints, width, height, 14, false);
   const project = (point: { lat: number | null; lon: number | null }) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   const trackWidthPx = Math.max(6, Math.min(30, projectGps.metersToPixels(12)));
+  // 13/09/2026 fix: "ainda está com o zoom padrão aplicado no mobile" -- confirmed live (Spa,
+  // 300x220 box) that fillScale correctly computed 2.5x (its own cap), the intended fix -- but a
+  // boundsHint caller is asking to fit the WHOLE track (CarComparison's SectorMap: "aparecer
+  // tudo"), and cropping part of that same whole track by default defeats the entire point of the
+  // feature it asked for. fillScale is only useful when the box legitimately has empty margin
+  // around a narrower subject (a single corner's own GPS window) that the driver would want to
+  // zoom into anyway -- not when the subject IS the whole circuit and there's nothing to zoom
+  // "into", only content to crop out.
+  const initialScale = boundsGps?.length ? 1 : projectGps.fillScale;
 
   // resetKey=trackId: a map instance that stays mounted across a track change (e.g. Meu Debrief's
   // per-corner maps when switching Formula/Sports tabs, which reuses the same corner-number React key
   // for a different track's data) would otherwise keep whatever camera the previous track's map was
   // left at, applied to a completely different coordinate space (02/09/2026, same bug confirmed live
   // on ActiveWeekTelemetry's own sticky map at Le Mans -- see that file's own useMapZoomPan call).
-  // 12/09/2026: initialScale=projectGps.fillScale -- computed above, before this hook call, so a
-  // track/lines combo that leaves real empty space in the box (see lib/track-map.ts's own comment)
-  // starts already zoomed to use it, instead of the driver having to scroll-zoom in manually every
-  // time. boundsPoints only changes when trackId/lines actually change here (not on hover), so this
-  // never fights the driver's own manual pan/zoom mid-interaction.
-  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height, true, trackId, projectGps.fillScale);
+  // 12/09/2026: initialScale (computed above, before this hook call) starts a narrow-subject map
+  // already zoomed to fill its real empty margin, instead of the driver scroll-zooming in every
+  // time -- but stays 1 (fit the whole thing, no crop) for a boundsHint whole-track view, see that
+  // computation's own comment. boundsPoints only changes when trackId/lines actually change here
+  // (not on hover), so this never fights the driver's own manual pan/zoom mid-interaction.
+  const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height, true, trackId, initialScale);
 
   if (!gpsLines.some((line) => line.gps.length >= 2)) return <div className="track-map-empty">Mapa GPS indisponível.</div>;
 

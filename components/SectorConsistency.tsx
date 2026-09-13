@@ -32,7 +32,12 @@ function SectorTrackMap({ sectors, outline, trackId }: { sectors: SectorStat[]; 
 
   return (
     <div className="sector-map-card">
-      <TrackMap trackId={trackId} lines={lines} width={440} height={300} className="sector-map" />
+      {/* 13/09/2026: boundsHint={outline} here isn't needed for the BOUNDS math (every sector
+       * always gets a color, so `lines` already spans the whole lap on its own) -- it's needed so
+       * TrackMap treats this as a whole-track view and skips the default fill-zoom, matching
+       * CarComparison's own SectorMap (see that component's comment for the full story: a mobile
+       * "Mais rápido por trecho" map was cropping most of the circuit away by default). */}
+      <TrackMap trackId={trackId} lines={lines} boundsHint={outline} width={440} height={300} className="sector-map" />
       <div className="sector-map-legend">
         {Object.entries(CONSISTENCY_LABEL).map(([cls, label]) => <span key={cls} className={cls}>{label}</span>)}
       </div>
