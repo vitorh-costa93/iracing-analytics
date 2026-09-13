@@ -93,12 +93,13 @@ export default function SetupLab() {
 
   useEffect(() => {
     setActiveSetupId((current) => selected?.uploads.some((item) => item.id === current) ? current : selected?.uploads[0]?.id ?? "");
+    let cancelled = false;
     if (selected) {
       setLoadingThread(true);
       fetch(`/api/setup/engineer/chat?carId=${selected.car.id}&trackId=${selected.track.id}`, { cache: "no-store" })
         .then((response) => response.json())
-        .then((data) => setConversation(data.status === "ok" ? data.messages : []))
-        .finally(() => setLoadingThread(false));
+        .then((data) => { if (!cancelled) setConversation(data.status === "ok" ? data.messages : []); })
+        .finally(() => { if (!cancelled) setLoadingThread(false); });
     } else {
       setConversation([]);
     }
@@ -106,6 +107,7 @@ export default function SetupLab() {
     setBaseSetupId(preferred);
     setComparisonSetupId(selected?.uploads.find((item) => item.id !== preferred)?.id ?? "");
     setCompareResult(null);
+    return () => { cancelled = true; };
   }, [context, selected?.uploads]);
 
   async function uploadSetup(file: File, setupKind: "commercial" | "fixed" | "open" | "unknown" = "commercial") {
