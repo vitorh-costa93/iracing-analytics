@@ -324,6 +324,11 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 - Telemetry Lab e Setup Lab passam a expor estado de fonte em leitura: último sync útil do Garage61, última importação iRStats para resultados e última importação Garage61 para setups. Quando a tentativa mais recente do Garage61 falha, a interface avisa que os dados exibidos continuam sendo o último sync válido; não inventa sucesso.
 - `garage61Get` respeita uma única espera de retry diante de HTTP 429, limitada a 60 segundos. O sync permanece incremental e limitado; não transforma rate limit em loops ou backfill. Antes de iniciar um novo `laps_incremental`, execuções `running` há mais de 15 minutos são registradas como erro recuperável, pois a rota tem teto de cinco minutos e uma linha presa indicaria timeout/interrupção.
 
+## Ponte Garage61 no botão principal (14/09/2026)
+
+- O botão **Atualizar dados** volta a acionar a ponte local do Chrome quando ela estiver instalada. A ponte abre Garage61 e iRStats nas origens autenticadas e executa os importadores empacotados; esse é o caminho que materializa sessões, voltas, setores e setups novos do Garage61 sem depender do fallback server-side rate-limited.
+- Sem a ponte, a interface mantém o favorito manual como fallback e declara explicitamente que ele precisa ser clicado dentro do Garage61. A abertura simples de `garage61.net/app` não é uma importação.
+
 ## Fluxo de decisão nas superfícies analíticas (10/09/2026)
 
 - A Overview preserva KPIs e histórico, mas o bloco **Essa semana no iRacing** também funciona como entrada para a preparação: cada contexto ativo leva ao Telemetry Lab e o estado das fontes fica visível. Não inferir uma corrida a partir de Practice; o card histórico continua exigindo duas corridas para exibir média de Δ iRating.

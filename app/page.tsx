@@ -234,11 +234,19 @@ export default function Home() {
       setMessage("Atualizando histórico de Safety Rating do Garage61...");
       const ratingsResult = await postSyncStep("/api/sync/rating-history", "sincronização de ratings");
 
-      // 11/09/2026: telemetry now goes through lib/telemetry-backfill.ts's own governed batch (respects
-      // the 900MB storage budget and the current/previous-season retention window -- see that file's
-      // own comment), so there's no reliable "N ainda faltam" count to show here without re-querying;
-      // it keeps catching up a little on every click and on every daily cron run either way.
-      setMessage(`Sincronização concluída: ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) nova(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para sessões/voltas recentes e setups, use o favorito "Garage61" abaixo.`);
+      // The Chrome bridge is the supported path for fresh Garage61 sessions/laps/setups and iRStats
+      // results: it opens the logged-in source tabs and executes the packaged importers in their
+      // own origins. The previous UI only displayed the bridge's fallback bookmarklet, leaving this
+      // primary action disconnected even when the bridge was already installed and ready.
+      const bridgeReady = document.documentElement.dataset.iracingAnalyticsSyncBridge === "ready";
+      if (bridgeReady) {
+        window.postMessage({ source: "iracing-analytics", type: "start-external-sync" }, window.location.origin);
+        setMessage(`Preparando fontes do servidor e abrindo Garage61/iRStats para importar a atividade nova. A página será atualizada quando cada origem concluir. ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) armazenada(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados.`);
+      } else {
+        // Keep the browser bookmarklet as a supported fallback, but make the limitation explicit:
+        // a normal web page cannot execute code inside Garage61's logged-in origin by itself.
+        setMessage(`Preparação no servidor concluída: ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) armazenada(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para sessões, voltas e setups novos, abra Garage61 e clique no favorito de importação do navegador.`);
+      }
       await loadDashboard(true);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Erro na sincronização");
