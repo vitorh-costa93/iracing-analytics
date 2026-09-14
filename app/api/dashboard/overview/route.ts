@@ -248,6 +248,7 @@ export async function GET(request: Request) {
       historicalResult,
       ratingsResult,
       safetyHistoryResult,
+      calendarResult,
     ] = await Promise.all([
       supabaseAdmin
         .from("v_season_summary")
@@ -347,6 +348,10 @@ export async function GET(request: Request) {
         .eq("rating_type", "safety_rating")
         .in("category", ["formula_car", "sports_car"])
         .order("recorded_at", { ascending: true }),
+
+      supabaseAdmin
+        .from("v_season_calendar")
+        .select("season_id, season_name, season_start"),
     ]);
 
     // =====================================================
@@ -388,6 +393,7 @@ export async function GET(request: Request) {
       );
     }
     if (safetyHistoryResult.error) throwSupabaseError("rating_history safety_rating", safetyHistoryResult.error);
+    if (calendarResult.error) throwSupabaseError("v_season_calendar", calendarResult.error);
 
     // =====================================================
     // DADOS
@@ -413,28 +419,44 @@ export async function GET(request: Request) {
       (ratingsResult.data ??
         []) as RatingRow[];
     const safetyHistory = (safetyHistoryResult.data ?? []) as SafetyHistoryRow[];
+    const seasonCalendar = (calendarResult.data ?? []) as SeasonCalendarRow[];
 
     // =====================================================
     // SEASONS
     // =====================================================
 
-    const orderedSeasons = [
-      ...seasons,
-    ].sort(
-      (a, b) =>
-        seasonNumber(
-          b.season_id
-        ) -
-        seasonNumber(
-          a.season_id
-        )
+    // The current season belongs to the calendar, not to the most recently driven session.
+    // At 21:00 Monday in Brasilia (00:00 UTC Tuesday) a new iRacing week/season must become
+    // visible even before the driver has recorded a lap or the first iRStats result exists.
+    const now = Date.now();
+    const orderedCalendar = [...seasonCalendar].sort(
+      (a, b) => new Date(b.season_start).getTime() - new Date(a.season_start).getTime()
     );
+    const activeCalendarSeason = orderedCalendar.find((row) => {
+      const start = new Date(row.season_start).getTime();
+      return now >= start && now < start + 84 * 86_400_000;
+    });
+    const previousCalendarSeason = activeCalendarSeason
+      ? orderedCalendar.find((row) => new Date(row.season_start).getTime() < new Date(activeCalendarSeason.season_start).getTime())
+      : undefined;
 
-    const currentSeason =
-      orderedSeasons[0];
-
-    const previousSeason =
-      orderedSeasons[1];
+    const summariesById = new Map(seasons.map((row) => [normalizeSeasonId(row.season_id), row]));
+    const currentSeason = activeCalendarSeason
+      ? summariesById.get(normalizeSeasonId(activeCalendarSeason.season_id)) ?? {
+        season_id: activeCalendarSeason.season_id,
+        season_name: activeCalendarSeason.season_name,
+        race_sessions: 0,
+        total_laps: 0,
+      }
+      : [...seasons].sort((a, b) => seasonNumber(b.season_id) - seasonNumber(a.season_id))[0];
+    const previousSeason = previousCalendarSeason
+      ? summariesById.get(normalizeSeasonId(previousCalendarSeason.season_id)) ?? {
+        season_id: previousCalendarSeason.season_id,
+        season_name: previousCalendarSeason.season_name,
+        race_sessions: 0,
+        total_laps: 0,
+      }
+      : [...seasons].sort((a, b) => seasonNumber(b.season_id) - seasonNumber(a.season_id))[1];
 
     if (
       !currentSeason ||
@@ -455,13 +477,6 @@ export async function GET(request: Request) {
         previousSeason.season_id
       );
 
-    const { data: seasonCalendarRows, error: calendarError } = await supabaseAdmin
-      .from("v_season_calendar")
-      .select("season_id, season_name, season_start")
-      .in("season_id", [currentSeasonId, previousSeasonId]);
-    if (calendarError) throwSupabaseError("v_season_calendar", calendarError);
-
-    const seasonCalendar = (seasonCalendarRows ?? []) as SeasonCalendarRow[];
     const calendarById = new Map(seasonCalendar.map((row) => [normalizeSeasonId(row.season_id), row]));
     const currentSeasonStart = calendarById.get(currentSeasonId)?.season_start;
     const previousSeasonStart = calendarById.get(previousSeasonId)?.season_start;

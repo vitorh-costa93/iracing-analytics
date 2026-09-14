@@ -329,6 +329,12 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 - O botão **Atualizar dados** volta a acionar a ponte local do Chrome quando ela estiver instalada. A ponte abre Garage61 e iRStats nas origens autenticadas e executa os importadores empacotados; esse é o caminho que materializa sessões, voltas, setores e setups novos do Garage61 sem depender do fallback server-side rate-limited.
 - Sem a ponte, a interface mantém o favorito manual como fallback e declara explicitamente que ele precisa ser clicado dentro do Garage61. A abertura simples de `garage61.net/app` não é uma importação.
 
+## Calendário oficial 2026 S4 e troca de week (14/09/2026)
+
+- A Season 4 de 2026 começa em `2026-09-15 00:00 UTC`, isto é, segunda-feira às 21:00 em `America/Sao_Paulo`. `v_season_calendar` contém a season `35`; as grades de `v_season_weekly_irating` passam a existir mesmo sem corrida registrada.
+- A Overview e o Telemetry Lab calculam season/week ativa pelo calendário e pelo relógio atual, nunca pela última corrida. Assim, a virada ocorre automaticamente no reset oficial e uma Practice nova da S4 não fica presa à Week 12 da S3.
+- O calendário semanal S4 usado nos três cards da Overview foi validado com o PDF oficial fornecido pelo piloto: Super Formula 23, IMSA e a série oficial **GT3 Challenge Fixed by Fanatec** (não as Regional Tours). Os cards usam histórico por classe+pista e continuam exigindo duas corridas para exibir média de Δ iRating.
+
 ## Fluxo de decisão nas superfícies analíticas (10/09/2026)
 
 - A Overview preserva KPIs e histórico, mas o bloco **Essa semana no iRacing** também funciona como entrada para a preparação: cada contexto ativo leva ao Telemetry Lab e o estado das fontes fica visível. Não inferir uma corrida a partir de Practice; o card histórico continua exigindo duas corridas para exibir média de Δ iRating.

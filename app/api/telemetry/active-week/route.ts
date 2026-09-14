@@ -71,28 +71,24 @@ export async function GET() {
       .single();
     if (driverError || !driver) throw new Error("Driver não encontrado no Supabase");
 
-    const { data: latestRace, error: latestRaceError } = await supabaseAdmin
-      .from("race_results")
-      .select("raced_at, season_week, category")
-      .eq("driver_id", driver.id)
-      .order("raced_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-    if (latestRaceError) throw latestRaceError;
-    if (!latestRace) {
-      return NextResponse.json({ status: "ok", week: null, combinations: [] });
-    }
-
-    const { data: calendarRow, error: calendarError } = await supabaseAdmin
+    const { data: calendarRows, error: calendarError } = await supabaseAdmin
       .from("v_season_calendar")
       .select("season_id, season_name, season_start")
-      .lte("season_start", latestRace.raced_at)
-      .order("season_start", { ascending: false })
-      .limit(1)
-      .single();
     if (calendarError) throw calendarError;
 
-    const weekNumber = latestRace.season_week ?? 1;
+    // Do not derive the active week from the most recent race: on a new Monday at 21:00 BRT
+    // that race still belongs to the previous season, while a fresh practice lap already belongs
+    // to the new one. The official calendar changes the workspace exactly at the iRacing reset.
+    const now = Date.now();
+    const calendarRow = ((calendarRows ?? []) as { season_id: string | number; season_name: string; season_start: string }[])
+      .sort((left, right) => new Date(right.season_start).getTime() - new Date(left.season_start).getTime())
+      .find((row) => {
+        const start = new Date(row.season_start).getTime();
+        return now >= start && now < start + 84 * 86_400_000;
+      });
+    if (!calendarRow) return NextResponse.json({ status: "ok", week: null, combinations: [] });
+
+    const weekNumber = Math.floor((now - new Date(calendarRow.season_start).getTime()) / (7 * 86_400_000)) + 1;
     const weekStart = new Date(new Date(calendarRow.season_start).getTime() + (weekNumber - 1) * 7 * 86_400_000);
     const weekEnd = new Date(weekStart.getTime() + 7 * 86_400_000);
     const week: WeekRow = {

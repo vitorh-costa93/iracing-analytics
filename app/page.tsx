@@ -11,6 +11,7 @@ import RaceTable from "@/components/RaceTable";
 import DmaicReportModal from "@/components/DmaicReportModal";
 import DataFreshness from "@/components/DataFreshness";
 import { trackUiEvent } from "@/lib/track-ui-event";
+import { getScheduledWeekContexts, type ScheduledWeekContext } from "@/lib/season-calendar";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -81,17 +82,13 @@ type DashboardData = {
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
-type WeekContext = { series: string; track: string; matches: (row: HistoricalRow) => boolean };
 
-// Weekly schedule is intentionally explicit. Garage61 exposes activity, not the official schedule;
-// deriving these cards from races already driven made the section disappear before the first race.
-const WEEKLY_CONTEXTS: Record<string, WeekContext[]> = {
-  "34:11": [
-    { series: "Super Formula 23", track: "Algarve", matches: (row) => /super formula/i.test(row.car) && /algarve|portim/i.test(row.track) },
-    { series: "IMSA", track: "Road Atlanta", matches: (row) => (row.carClass === "GTP" || row.carClass === "LMP2") && /road atlanta/i.test(row.track) },
-    { series: "GT3", track: "Red Bull Ring", matches: (row) => row.carClass === "GT3" && /red bull ring/i.test(row.track) },
-  ],
-};
+function scheduledContextMatches(context: ScheduledWeekContext, row: HistoricalRow) {
+  if (!context.trackPattern.test(row.track)) return false;
+  if (context.kind === "sf23") return /super formula/i.test(row.car);
+  if (context.kind === "imsa") return row.carClass === "GTP" || row.carClass === "LMP2";
+  return row.carClass === "GT3";
+}
 
 function shortSeason(name: string) {
   return name.replace(" Season ", " S");
@@ -289,14 +286,13 @@ export default function Home() {
     return counts;
   }, new Map<string, number>()).entries()).sort((a, b) => b[1] - a[1]);
   const scatter = categoryRaces.filter((race) => chartSeries === "all" || (race.series ?? "Sem série") === chartSeries).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
-  const scheduleKey = `${data.season.current.id}:${data.kpis.formula.irating.week}`;
-  const scheduledContexts = WEEKLY_CONTEXTS[scheduleKey];
+  const scheduledContexts = getScheduledWeekContexts(data.season.current.id, data.kpis.formula.irating.week);
   // 03/09/2026: "aqui tá a IMSA, mas eu tenho certeza que fiz mais corridas lá, qual é o contexto
   // que tá sendo considerado?" -- the auto-derived fallback below used to match track + EXACT car,
   // so "Le Mans" for this week's Ferrari 499P only counted the 5 races run in that specific car,
-  // hiding the 51 other Le Mans races run in different GTP/GT3/LMP2 cars. The hand-curated
-  // WEEKLY_CONTEXTS entries above already match by track + carClass (see "34:11") for exactly this
-  // reason -- mirror that here instead of falling back to an exact-car match, so an auto-derived
+  // hiding the 51 other Le Mans races run in different GTP/GT3/LMP2 cars. The official weekly
+  // calendar matches by track + carClass for exactly this reason -- mirror that in the fallback
+  // instead of falling back to an exact-car match, so an auto-derived
   // card gets the same broader "same class, same track" sample the curated ones do. Only falls
   // back to exact-car matching when the car has no known class (e.g. Formula cars aren't grouped
   // into car_groups), where mixing by a null "class" would wrongly lump unrelated cars together.
@@ -304,7 +300,13 @@ export default function Home() {
   for (const row of data.historical) {
     if (!carClassByCar.has(row.car)) carClassByCar.set(row.car, row.carClass);
   }
-  const weeklyContexts = (scheduledContexts ?? data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => {
+  const weeklyContexts = (scheduledContexts
+    ? scheduledContexts.map((context) => ({
+      series: context.series,
+      track: context.track,
+      matches: (row: HistoricalRow) => scheduledContextMatches(context, row),
+    }))
+    : data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => {
     const carClass = carClassByCar.get(race.car) ?? null;
     return {
       series: stripFixedSuffix(race.series ?? race.car),
