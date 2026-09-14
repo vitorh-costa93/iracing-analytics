@@ -333,6 +333,7 @@ O estado conhecido é **aguardando disponibilidade/exceção/resposta de registr
 
 - A Season 4 de 2026 começa em `2026-09-15 00:00 UTC`, isto é, segunda-feira às 21:00 em `America/Sao_Paulo`. `v_season_calendar` contém a season `35`; as grades de `v_season_weekly_irating` passam a existir mesmo sem corrida registrada.
 - A Overview e o Telemetry Lab calculam season/week ativa pelo calendário e pelo relógio atual, nunca pela última corrida. Assim, a virada ocorre automaticamente no reset oficial e uma Practice nova da S4 não fica presa à Week 12 da S3.
+- O cache em memória da Overview é encurtado no próximo limite oficial de week; ele não pode manter uma resposta de antes das 21:00 BRT depois do reset.
 - O calendário semanal S4 usado nos três cards da Overview foi validado com o PDF oficial fornecido pelo piloto: Super Formula 23, IMSA e a série oficial **GT3 Challenge Fixed by Fanatec** (não as Regional Tours). Os cards usam histórico por classe+pista e continuam exigindo duas corridas para exibir média de Δ iRating.
 
 ## Fluxo de decisão nas superfícies analíticas (10/09/2026)

@@ -25,6 +25,16 @@ export const maxDuration = 60;
 let overviewCache: { expiresAt: number; payload: unknown } | null = null;
 const OVERVIEW_CACHE_TTL_MS = 120_000;
 
+function overviewCacheExpiresAt(calendar: SeasonCalendarRow[], now: number) {
+  // The regular cache is intentionally short, but it must never straddle an iRacing reset.
+  // A response calculated at 20:59 BRT cannot keep S3/W12 on screen after 21:00 BRT.
+  const nextBoundary = calendar.flatMap((season) => {
+    const start = new Date(season.season_start).getTime();
+    return Array.from({ length: 13 }, (_, week) => start + week * 7 * 86_400_000);
+  }).filter((boundary) => boundary > now).sort((left, right) => left - right)[0];
+  return Math.min(now + OVERVIEW_CACHE_TTL_MS, nextBoundary ?? Number.POSITIVE_INFINITY);
+}
+
 type SeasonSummaryRow = {
   season_id: string | number;
   season_name: string;
@@ -1000,7 +1010,7 @@ export async function GET(request: Request) {
           "Wins vêm automaticamente de irstats.com, sem necessidade de captura manual.",
       },
     };
-    overviewCache = { expiresAt: Date.now() + OVERVIEW_CACHE_TTL_MS, payload };
+    overviewCache = { expiresAt: overviewCacheExpiresAt(seasonCalendar, Date.now()), payload };
     return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } });
   } catch (error) {
     console.error(
