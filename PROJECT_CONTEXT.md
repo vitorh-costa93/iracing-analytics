@@ -89,6 +89,8 @@ e deve ficar entre 1 e 12. O histórico da view semanal registrou:
 
 Essas datas estavam codificadas na view discutida. Ao adicionar seasons, preferir uma dimensão/tabela de calendário validada contra a fonte oficial em vez de espalhar datas hardcoded.
 
+Em 16/09/2026, a dimensão passou a ser efetiva: `season_calendars` guarda a identidade, o início UTC e metadados do arquivo; `season_week_contexts` guarda as 12 weeks dos três recortes seguidos (SF23 open, IMSA open e GT3 Challenge Fixed oficial). `v_season_calendar` agora lê essa dimensão e preserva o contrato de `season_id`, `season_name`, `season_start` consumido pelas views analíticas. A modal **Calendário** no Overview lê o PDF oficial localmente no navegador, ignora a GT3 regional, valida 36 contextos e chama a RPC atômica `import_season_calendar`; somente a grade estruturada e o SHA-256 do PDF são salvos, não o PDF. O calendário aplicado muda imediatamente os cards “Essa semana no iRacing” e, no próximo limite oficial de sete dias, o Overview. O limite continua sendo 00:00 UTC de terça-feira (21:00 de segunda-feira em Brasília), sem derivação por mês civil.
+
 ## Matching de delta de iRating
 
 Garage61 fornece a atividade detalhada e um histórico de rating, mas não um vínculo confiável e direto entre cada resultado oficial e sua mudança de iRating. A camada atual faz associação temporal.

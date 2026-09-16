@@ -153,6 +153,15 @@ type SeasonCalendarRow = {
   season_start: string;
 };
 
+type SeasonWeekContextRow = {
+  season_id: string;
+  week_number: number;
+  context_key: "sf23" | "imsa" | "gt3";
+  series_name: string;
+  track_name: string;
+  track_match_terms: string[];
+};
+
 function normalizeSeasonId(value: string | number) {
   return String(value);
 }
@@ -718,6 +727,17 @@ export async function GET(request: Request) {
     }
 
     const elapsedWeek = Math.max(1, Math.min(12, weeklyFor(currentSeasonId, "formula_car").findLast((point) => new Date(point.weekStart) <= new Date())?.week ?? 1));
+    // This comes from the imported official calendar rather than a client-side hardcoded Season 4
+    // array. It makes "Essa semana no iRacing" switch at the official Monday 21:00 BRT boundary
+    // as soon as a new PDF is applied, including before the first race of that season exists.
+    const { data: importedContextRows, error: importedContextError } = await supabaseAdmin
+      .from("season_week_contexts")
+      .select("season_id,week_number,context_key,series_name,track_name,track_match_terms")
+      .eq("season_id", currentSeasonId)
+      .eq("week_number", elapsedWeek)
+      .order("context_key", { ascending: true });
+    if (importedContextError) throwSupabaseError("season_week_contexts", importedContextError);
+    const weeklyContexts = (importedContextRows ?? []) as SeasonWeekContextRow[];
     function iratingAtSameWeek(category: "formula_car" | "sports_car") {
       return weeklyFor(previousSeasonId, category).find((point) => point.week === elapsedWeek)?.iratingEnd ?? null;
     }
@@ -998,6 +1018,13 @@ export async function GET(request: Request) {
               0,
           })
         ),
+
+      weeklyContexts: weeklyContexts.map((context) => ({
+        kind: context.context_key,
+        series: context.series_name,
+        track: context.track_name,
+        trackMatchTerms: context.track_match_terms,
+      })),
 
       races,
 

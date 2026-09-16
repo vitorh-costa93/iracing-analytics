@@ -10,8 +10,8 @@ import RaceScatterPlot from "@/components/RaceScatterPlot";
 import RaceTable from "@/components/RaceTable";
 import DmaicReportModal from "@/components/DmaicReportModal";
 import DataFreshness from "@/components/DataFreshness";
+import SeasonCalendarImportModal from "@/components/SeasonCalendarImportModal";
 import { trackUiEvent } from "@/lib/track-ui-event";
-import { getScheduledWeekContexts, type ScheduledWeekContext } from "@/lib/season-calendar";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -41,6 +41,13 @@ type HistoricalRow = {
   races: number;
   delta: number;
   avgDelta: number;
+};
+
+type ScheduledWeekContext = {
+  kind: "sf23" | "imsa" | "gt3";
+  series: string;
+  track: string;
+  trackMatchTerms: string[];
 };
 
 type DashboardData = {
@@ -73,6 +80,7 @@ type DashboardData = {
     sports: { current: WeekPoint[]; previous: WeekPoint[] };
   };
   historical: HistoricalRow[];
+  weeklyContexts: ScheduledWeekContext[];
   featureAvailability: { wins: boolean; winsReason: string };
   races: Array<{ id: number; startedAt: string; endedAt: string; durationMinutes: number | null; delta: number | null; ratingCategory: "formula_car" | "sports_car" | null; series: string | null; car: string; track: string; seasonWeek?: number | null; bestLap: string | null; startPosition: number | null; finishPosition: number | null }>;
   streaks: {
@@ -83,8 +91,16 @@ type DashboardData = {
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
 
+function normalizedText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 function scheduledContextMatches(context: ScheduledWeekContext, row: HistoricalRow) {
-  if (!context.trackPattern.test(row.track)) return false;
+  const historicalTrack = normalizedText(row.track);
+  if (!context.trackMatchTerms.some((term) => {
+    const normalizedTerm = normalizedText(term);
+    return normalizedTerm.length >= 3 && (historicalTrack.includes(normalizedTerm) || normalizedTerm.includes(historicalTrack));
+  })) return false;
   if (context.kind === "sf23") return /super formula/i.test(row.car);
   if (context.kind === "imsa") return row.carClass === "GTP" || row.carClass === "LMP2";
   return row.carClass === "GT3";
@@ -286,7 +302,9 @@ export default function Home() {
     return counts;
   }, new Map<string, number>()).entries()).sort((a, b) => b[1] - a[1]);
   const scatter = categoryRaces.filter((race) => chartSeries === "all" || (race.series ?? "Sem série") === chartSeries).map((race) => ({ id: race.id, durationMinutes: race.durationMinutes, delta: race.delta!, car: race.car, track: race.track, startedAt: race.startedAt }));
-  const scheduledContexts = getScheduledWeekContexts(data.season.current.id, data.kpis.formula.irating.week);
+  // Cached Overview payloads from before the calendar importer did not contain this field. Keep
+  // their existing race-derived fallback alive until the fresh request replaces localStorage.
+  const scheduledContexts = data.weeklyContexts ?? [];
   // 03/09/2026: "aqui tá a IMSA, mas eu tenho certeza que fiz mais corridas lá, qual é o contexto
   // que tá sendo considerado?" -- the auto-derived fallback below used to match track + EXACT car,
   // so "Le Mans" for this week's Ferrari 499P only counted the 5 races run in that specific car,
@@ -300,7 +318,7 @@ export default function Home() {
   for (const row of data.historical) {
     if (!carClassByCar.has(row.car)) carClassByCar.set(row.car, row.carClass);
   }
-  const weeklyContexts = (scheduledContexts
+  const weeklyContexts = (scheduledContexts.length
     ? scheduledContexts.map((context) => ({
       series: context.series,
       track: context.track,
@@ -351,6 +369,7 @@ export default function Home() {
              * extension. */}
             <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
             <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
+            <SeasonCalendarImportModal onImported={() => loadDashboard(true)} />
             <DmaicReportModal />
             <ThemeToggle />
           </div>

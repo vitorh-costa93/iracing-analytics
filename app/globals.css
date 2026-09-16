@@ -1050,6 +1050,21 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .dmaic-stage strong { display: block; color: var(--brand); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; }
 .dmaic-stage p { margin: 6px 0 0; color: var(--text); font-size: 14px; line-height: 1.55; }
 .dmaic-error { margin-top: 18px; padding: 12px; border: 1px solid var(--red); background: var(--red-pale); color: var(--red); }
+.calendar-import-modal { max-width: 760px; }
+.calendar-import-body { padding-top: 18px; }
+.calendar-drop { display: grid; gap: 6px; padding: 20px; border: 1px dashed var(--border-strong); background: var(--surface-muted); cursor: pointer; }
+.calendar-drop:hover { border-color: var(--brand); background: var(--surface-raised); }
+.calendar-drop.disabled { opacity: .62; cursor: wait; }
+.calendar-drop strong { color: var(--text); }
+.calendar-drop span, .calendar-preview small, .calendar-import-message, .calendar-success { color: var(--muted); font-size: 13px; line-height: 1.5; }
+.calendar-drop input { display: none; }
+.calendar-preview { display: grid; gap: 10px; margin-top: 14px; padding: 16px; border: 1px solid var(--brand); background: var(--brand-pale); }
+.calendar-preview > div { display: grid; gap: 3px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+.calendar-preview span { color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .1em; }
+.calendar-preview strong { font-size: 14px; }
+.calendar-preview .primary-button { justify-self: start; margin-top: 2px; }
+.calendar-import-message, .calendar-success { margin: 14px 0 0; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface-muted); }
+.calendar-success { border-color: var(--green); color: var(--text); }
 @media (max-width: 760px) {
   .dmaic-report-actions { width: 100%; }
   .dmaic-report-actions .quick-open-button, .dmaic-report-actions .primary-button { flex: 1; padding: 10px 8px; font-size: 11px; }
