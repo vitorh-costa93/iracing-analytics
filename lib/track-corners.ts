@@ -26,8 +26,17 @@ const ENTRIES: TrackCornerEntry[] = [
     // 17 (GTP) -- rebuilt against Formula1.com's own official numbered breakdown (19 real turns
     // total, matching GT3 exactly), each complex split into its real sub-turns with a null for the
     // unnamed second/third apex.
+    //
+    // 23/09/2026 re-audit: kept 19 slots but fixed everything after Pouhon. On 10 real GT3 laps
+    // (Garage61 track 444) the detector found 17-20 corners (19 on 3, 18 on 4). On every lap it
+    // found Pouhon as ONE long corner (~54.9%, ~175 km/h), while the old list reserved a null for a
+    // second Pouhon apex. That pushed every later name one corner late: "Fagnes" landed on Fagnes'
+    // exit, "Campus" on Paul Frère (~73.8%), and "Paul Frère" on the first Blanchimont kink (~79.8%).
+    // Moved that null to the fast Blanchimont section, where the detector does find extra apexes
+    // (79.8% on some laps, 84.5% and 88.5% on all of them). Order confirmed by minimum speed: La
+    // Source ~62 km/h @5.5%, Bruxelles ~88 km/h @43.8%, Bus Stop ~67 km/h @96.3/97.5%.
     match: (t) => /spa-francorchamps/i.test(t),
-    names: ["La Source", "Eau Rouge", "Raidillon", null, "Les Combes", null, "Malmedy", "Bruxelles", "Jacky Ickx Curve", "Pouhon", null, "Fagnes", null, "Campus", "Paul Frère", "Blanchimont", null, "Bus Stop", null],
+    names: ["La Source", "Eau Rouge", "Raidillon", null, "Les Combes", null, "Malmedy", "Bruxelles", "Jacky Ickx Curve", "Pouhon", "Fagnes", null, "Campus", "Paul Frère", null, "Blanchimont", null, "Bus Stop", null],
   },
   {
     // 31/08/2026 sweep: was 9 entries (one per NAMED section, several of which -- Esses, Casio
@@ -35,12 +44,37 @@ const ENTRIES: TrackCornerEntry[] = [
     // -- padded to Suzuka's real, documented 18-turn count, named corners placed at their standard
     // turn numbers (T8 Dunlop, T9/T10 Degner 1/2, T11 Hairpin, T13 Spoon, T15 130R, T16 Casio
     // Triangle), nulls for the Esses' individual apexes (T1-T7) and unnamed link turns.
+    //
+    // 23/09/2026 re-audit: the 18-slot list above still misplaced every name by one or two corners.
+    // Re-running detectCornersFromGps on real Suzuka GP laps (SF23, Ferrari 296 GT3, Mustang GT3,
+    // 911 GT3 R; Garage61 track 57) found 17 on 3 of 5 laps, the same count as on 31/08, and 18 on
+    // the other 2 (one extra sub-apex, at 34.6% or 66%). The 17-corner order has the first corner (T1-T2) as ONE detected corner, four more for
+    // the Esses, Dunlop as a single long corner (#6), Degner 1/2 (#7/#8), the right under the bridge
+    // (#9), the Hairpin (#10, ~77 km/h, the slowest point on the lap), two more before Spoon (#13),
+    // 130R (#14, ~285 km/h) and the Casio Triangle chicane plus the final corner (#15-#17). The old
+    // list put "Dunlop Curve" on Degner 2, "Hairpin" on the corner before Spoon, and "130R" on the
+    // Casio Triangle. Rebuilt to that 17-corner order.
     match: (t) => /suzuka/i.test(t),
-    names: [null, null, null, null, null, null, null, "Dunlop Curve", "Degner 1", "Degner 2", "Hairpin", null, "Spoon Curve", null, "130R", "Casio Triangle", null, null],
+    names: [null, null, null, null, null, "Dunlop Curve", "Degner 1", "Degner 2", null, "Hairpin", null, null, "Spoon Curve", "130R", "Casio Triangle", null, null],
   },
   {
+    // 23/09/2026 fix (a real, named corner was being shown under the wrong name): the old 11-entry
+    // list matched this driver's own detector count (11 on a real Interlagos GP lap, Garage61 track
+    // 67) but not its ORDER -- the detector splits the Senna S into its two real apexes (T1 left @8.4%
+    // and T2 right @10.5%, same ~117 km/h minimum), while the old list gave the S only one slot, so
+    // every later name slid one corner early: the Senna S exit got "Curva do Sol", Curva do Sol got
+    // "Descida do Lago", and the real Descida do Lago (official T4, one wide detected corner spanning
+    // T4-T5 @31-38%) got "Ferradura". The old tail also had both "Subida dos Boxes" and
+    // "Arquibancadas", but the detector finds only one corner on the flat-out climb (@84.6%, ~250
+    // km/h), which is what kept the count at 11 and hid the shift. Rebuilt against the official
+    // numbering (T1-2 Senna S, T3 Curva do Sol, T4-5 Descida do Lago, T6-7 Ferradura, T8 Laranjinha,
+    // T9 Pinheirinho, T10 Bico de Pato, T11 Mergulho, T12 Junção, then the climb) with a null for
+    // the S's second apex; the minimum speeds at each detected corner (Bico de Pato the slowest, ~86
+    // km/h @64%; Junção ~138 km/h @75.6%) line up with that order. Cross-checked on two Ferrari 499P
+    // laps, which put the corners at the same positions (11 and 12 detected). The 12-corner lap only
+    // adds Descida do Lago's second apex (T5 @35.7%). 2 of the 3 laps with usable GPS found 11.
     match: (t) => /jos[eé] carlos pace|interlagos/i.test(t),
-    names: ["Senna S", "Curva do Sol", "Descida do Lago", "Ferradura", "Laranjinha", "Pinheirinho", "Bico de Pato", "Mergulho", "Junção", "Subida dos Boxes", "Arquibancadas"],
+    names: ["Senna S", null, "Curva do Sol", "Descida do Lago", "Ferradura", "Laranjinha", "Pinheirinho", "Bico de Pato", "Mergulho", "Junção", "Subida dos Boxes"],
   },
   {
     // 31/08/2026 sweep: was 12 entries (conflating Casanova/Savelli and Biondetti 1/2 into one each)
@@ -60,12 +94,28 @@ const ENTRIES: TrackCornerEntry[] = [
     // their own turn count, so mapping each of THOSE to one specific official turn number/name isn't
     // reliable -- Sachskurve is real and well documented as the corner right before the pit straight,
     // placed on the last detected corner on that basis, the rest stay null rather than guessed.
+    //
+    // 23/09/2026 re-audit: the count still holds (5 real McLaren GT3 laps, Garage61 track 171, found
+    // 10/11/11/10/12), and so do Nordkurve and Spitzkehre (the hairpin @46%, ~48 km/h, the slowest
+    // point on the lap). The name on the last detected corner was wrong, though. The corner right
+    // before the pit straight is the Südkurve, not the Sachskurve. The Sachskurve is the slow
+    // left-hand hairpin inside the stadium, detected on every lap at ~83.1% (~90 km/h, #9). The
+    // last corner (~90.3%, ~115 km/h) is the Südkurve.
     match: (t) => /hockenheim/i.test(t),
-    names: ["Nordkurve", null, null, "Spitzkehre", null, null, null, null, null, null, "Sachskurve"],
+    names: ["Nordkurve", null, null, "Spitzkehre", null, null, null, null, "Sachskurve", null, "Südkurve"],
   },
   {
+    // 23/09/2026 audit: was 7 entries (one per named complex) against this driver's own detector
+    // finding 15 on a real Monza GP lap (SF23, Garage61 track 77). COUNT_TOLERANCE meant these names
+    // never matched and Monza always fell back to plain numbering. Detected order, by position and
+    // minimum speed: Prima Variante as 3 corners (#1-#3, ~68-95 km/h), Curva Grande (#4, ~257 km/h),
+    // Variante della Roggia as 3 (#5-#7, ~115 km/h), Lesmo 1 (#8) with a sub-apex (#9) and Lesmo 2
+    // (#10, ~5% of the lap after Lesmo 1), the Serraglio kink (#11, ~262 km/h), Variante Ascari as 3
+    // (#12-#14), and Parabolica as one long corner (#15). Sub-apexes of a named complex get null, same
+    // as the other tracks here. Medium confidence on #9 vs #10 for Lesmo 2 (both ~180 km/h); placed by
+    // the real ~300 m gap between the two Lesmos.
     match: (t) => /monza/i.test(t),
-    names: ["Prima Variante", "Curva Grande", "Variante della Roggia", "Lesmo 1", "Lesmo 2", "Variante Ascari", "Curva Alboreto (Parabolica)"],
+    names: ["Prima Variante", null, null, "Curva Grande", "Variante della Roggia", null, null, "Lesmo 1", null, "Lesmo 2", "Curva del Serraglio", "Variante Ascari", null, null, "Curva Alboreto (Parabolica)"],
   },
   {
     match: (t) => /hermanos rodr[ií]guez/i.test(t),
@@ -79,12 +129,28 @@ const ENTRIES: TrackCornerEntry[] = [
     // Chute, T7 The Toe of the Boot, T8 The Heel of the Boot, T9 The Off Camber, T10-11 unnamed back
     // to the front straight). "Bus Stop" dropped -- that's the short/Cup-course chicane, not part of
     // this Boot layout.
+    //
+    // 23/09/2026 re-audit: the detector found 13 corners on every one of 4 real Boot laps (SF23 plus 3
+    // Cadillac GTP, Garage61 track 324), always at the same positions. With 11 slots the names were
+    // being used, but they landed 1-2 corners early. The fast section between the Esses and the Boot
+    // produces three detected corners (~34.6/36.8/41.7%, ~180-200 km/h in the GTP), not one, so
+    // "The Toe of the Boot" fell on the Chute and "The Heel" on the Toe. Rebuilt to 13. The Chute is
+    // #7 (the last fast corner before the Boot), the Toe is #8 (~51.4%, ~138 km/h, where the Boot
+    // starts) and the Heel is #9 (~60.3%). "The Off Camber" is now null: two slow corners (~73.3% and
+    // ~79.6%, both ~115 km/h) could each be it, and this data can't tell which.
     match: (t) => /watkins glen/i.test(t),
-    names: ["The 90", null, null, null, null, "The Chute", "The Toe of the Boot", "The Heel of the Boot", "The Off Camber", null, null],
+    names: ["The 90", null, null, null, null, null, "The Chute", "The Toe of the Boot", "The Heel of the Boot", null, null, null, null],
   },
   {
+    // 23/09/2026 audit: the count was close (15 names vs 16 detected on real Silverstone GP laps:
+    // W13 plus 4 of 5 GT3 laps; the fifth found 15; Garage61 track 80), so these names were being
+    // used, but the order broke after Becketts.
+    // The detector splits Becketts into its left and right apexes (#11/#12) before Chapel (#13), so
+    // every name from "Chapel" on landed one corner early ("Stowe" on Chapel, "Club" on Vale). Added a
+    // null for Becketts' second apex. #1-#11 were already right: Abbey ~278 km/h, Village/Loop ~90-98
+    // km/h, Copse ~278 km/h, Vale/Club ~107 km/h at #15-#16.
     match: (t) => /silverstone/i.test(t),
-    names: ["Abbey", "Farm Curve", "Village", "The Loop", "Aintree", "Brooklands", "Luffield", "Woodcote", "Copse", "Maggotts", "Becketts", "Chapel", "Stowe", "Vale", "Club"],
+    names: ["Abbey", "Farm Curve", "Village", "The Loop", "Aintree", "Brooklands", "Luffield", "Woodcote", "Copse", "Maggotts", "Becketts", null, "Chapel", "Stowe", "Vale", "Club"],
   },
   {
     // 03/09/2026 rebuild ("você tá chamando a Mulsanne de Indianapolis", driver-supplied reference
@@ -122,8 +188,19 @@ const ENTRIES: TrackCornerEntry[] = [
     // names) against this driver's own detector finding 12 -- respaced to the circuit's real,
     // documented 14-turn count, anchored on two turn numbers a source stated explicitly (Moraine
     // Sweep = turn 4, Carousel = turns 9-10; Hurry Downs is described as coming just before turn 8).
+    //
+    // 23/09/2026 re-audit: that respacing still had "Kink" as corner 2, but the Kink is official
+    // T11, the flat-out left between the Carousel and Canada Corner (roadamerica.com / NASCAR turn
+    // guides: Moraine Sweep T3-T5, Hurry Downs T7-T8, Carousel T9-T10, Kink T11, Kettle Bottoms
+    // T11A -- a straight, not a corner -- Canada Corner T12, Thunder Valley T13). Running
+    // detectCornersFromGps on real Road America laps (SF23 plus 4 Ferrari 499P laps, Garage61 track
+    // 49) found 12 every time, at the same positions: T1, T3, T5,
+    // T6, T7, T8, Carousel (#7, one long corner), the Kink (#8, ~278 km/h), Canada Corner (#9, ~146
+    // km/h), a Canada exit sub-apex (#10), T13 (#11) and T14 (#12). The old list put "Carousel" on
+    // Canada Corner and "Canada Corner" on T13. Rebuilt to that 12-corner order; Kettle Bottoms
+    // dropped because it is a straight.
     match: (t) => /road america/i.test(t),
-    names: [null, "Kink", null, "Moraine Sweep", null, null, "Hurry Downs", null, "Carousel", null, "Kettle Bottoms", "Canada Corner", "Thunder Valley", null],
+    names: [null, "Moraine Sweep", null, null, "Hurry Downs", null, "Carousel", "Kink", "Canada Corner", null, "Thunder Valley", null],
   },
   {
     match: (t) => /indianapolis/i.test(t),
@@ -136,8 +213,17 @@ const ENTRIES: TrackCornerEntry[] = [
     // narrative order (start/finish -> Tamburello chicane -> Villeneuve -> Tosa -> Piratella -> Acque
     // Minerali -> Variante Alta -> Rivazza (two lefts) -> Variante Bassa chicane back to start/finish),
     // with nulls where a chicane's second apex or an unnamed link corner sits.
+    //
+    // 23/09/2026 re-audit: this list had 19 slots, but the detector finds 17 (2 real GT3 laps with
+    // full GPS, Garage61 track 53, both 17, at the same positions), so names were used with the
+    // wrong offsets: "Tosa" landed on the corner before Tosa and "Piratella" on the corner after it.
+    // Rebuilt to the detected 17 using minimum speeds: Tamburello chicane #1-#3 (~122-160 km/h,
+    // from 14.1%), Villeneuve #4-#5 (~27-29%), an unnamed #6, Tosa #7 (~84 km/h @34.8%, the slowest
+    // corner in the first half), Piratella #8 (~195 km/h @42.6%), Acque Minerali #10-#11 (~58-60%),
+    // Variante Alta #12-#13 (~89 km/h @68-69%), Rivazza 1/2 #15/#16 (~98 and ~116 km/h), Variante
+    // Bassa #17 (~94%).
     match: (t) => /enzo e dino ferrari|imola/i.test(t),
-    names: [null, "Tamburello", null, null, "Villeneuve", "Tosa", null, null, "Piratella", "Acque Minerali", null, "Variante Alta", null, null, "Rivazza 1", "Rivazza 2", null, "Variante Bassa", null],
+    names: ["Tamburello", null, null, "Villeneuve", null, null, "Tosa", "Piratella", null, "Acque Minerali", null, "Variante Alta", null, null, "Rivazza 1", "Rivazza 2", "Variante Bassa"],
   },
   {
     // 31/08/2026 sweep: was 7 entries against this driver's own detector consistently finding 10 --
@@ -153,8 +239,19 @@ const ENTRIES: TrackCornerEntry[] = [
     // consistently finding 20 -- the real, documented corner count is 23 (confirmed: 8 turns climbing
     // the mountain before Sulman Park, 9 more on the technical descent after it) -- respaced with
     // nulls for the unnamed turns in each of those two stretches, same named corners/order as before.
+    //
+    // 23/09/2026 re-audit: the order above was wrong. It put "The Esses" BEFORE Reid Park, but the
+    // Esses come after Skyline, at the top of the descent. On 5 real GT3 laps (Garage61 track 79) the
+    // detector found 20 corners on 4 and 21 on 1, always at the same positions: Hell Corner #1 (~107
+    // km/h @6%), Griffins Bend #2 (~24%), The Cutting #3 (~90 km/h @32%), then the climb (#4-#6),
+    // McPhillamy Park #7 (~218 km/h @48%, the fast blind left), Skyline #8 (@53%), the Esses/Dipper
+    // group #9-#14 (~90-100 km/h), Forrest's Elbow #15 (~86 km/h @62.7%), its exit #16, The Chase
+    // #17-#19 (~263 km/h @84%, from the end of Conrod), and Murray's Corner #20 (~98 km/h @98%).
+    // Rebuilt to that 20-corner order. Reid Park and Sulman Park are placed on the first two climb
+    // corners after The Cutting (medium confidence). The Dipper stays null because this data can't
+    // tell which Esses apex it is.
     match: (t) => /mount panorama/i.test(t),
-    names: ["Hell Corner", "Griffins Bend", null, null, null, null, null, "The Esses", null, "Reid Park", "Sulman Park", "McPhillamy Park", "Skyline", null, "The Dipper", null, "Forrest's Elbow", null, null, "The Chase", null, "Murray's Corner"],
+    names: ["Hell Corner", "Griffins Bend", "The Cutting", "Reid Park", "Sulman Park", null, "McPhillamy Park", "Skyline", "The Esses", null, null, null, null, null, "Forrest's Elbow", null, "The Chase", null, null, "Murray's Corner"],
   },
   {
     // 31/08/2026 sweep: was 10 entries packed with no gaps against this driver's own detector
@@ -163,8 +260,17 @@ const ENTRIES: TrackCornerEntry[] = [
     // two turn numbers a source stated explicitly (Michael-Schumacher-S = turns 9-10, Coca-Cola-Kurve
     // = the final corner, turn 15); same named corners as before, just no longer falsely claiming
     // there are only 10 real turns on this lap.
+    //
+    // 23/09/2026 re-audit: kept the count but fixed the order. Running detectCornersFromGps on a
+    // real Nürburgring GP lap (SF23, Garage61 track 66) found 15: T1-T2 (#1-#2), the Mercedes-Arena
+    // pair (#3-#4, ~94 km/h), Valvoline (#5), Ford (#6), Dunlop-Kehre (#7, the hairpin at the bottom
+    // of the descent), the Michael-Schumacher-S as #8-#9 (en.wikipedia.org gives it as turns 8 and
+    // 9, not 9-10), then #10, #11, Advan-Bogen (#12, ~260 km/h), the chicane as #13-#14 (~98 km/h),
+    // and Coca-Cola (#15). The old list put "Valvoline-Kurve" on the arena, "Dunlop-Kehre" was
+    // correct only by coincidence, "Michael-Schumacher-S" landed on the S's exit, and it had
+    // Veedol-Schikane BEFORE Advan-Bogen (the real order is the reverse).
     match: (t) => /n[uü]rburgring/i.test(t),
-    names: ["Yokohama-S", null, "Valvoline-Kurve", null, "Ford-Kurve", null, "Dunlop-Kehre", null, "Michael-Schumacher-S", null, "Kumho-Kurve", "Warsteiner-Kurve", "Veedol-Schikane", "Advan-Bogen", "Coca-Cola-Kurve"],
+    names: ["Yokohama-S", null, null, null, "Valvoline-Kurve", "Ford-Kurve", "Dunlop-Kehre", "Michael-Schumacher-S", null, "Kumho-Kurve", "Warsteiner-Kurve", "Advan-Bogen", "Veedol-Schikane", null, "Coca-Cola-Kurve"],
   },
   {
     match: (t) => /donington/i.test(t),
@@ -188,8 +294,18 @@ const ENTRIES: TrackCornerEntry[] = [
     names: ["Niki Lauda Kurve", "Remus", "Schlossgold", "Rauch", null, null, null, "Jochen Rindt Kurve", null, null],
   },
   {
+    // 23/09/2026 audit: 13 slots in the wrong real order. "Slotemakerbocht" (official T5) came AFTER
+    // Scheivlak (T7), and "Arie Luyendykbocht" (T14, the banked final corner onto the straight) sat at
+    // slot 13. The official order (circuitzandvoort.nl / F1 guides) is: T1 Tarzan, T2 Gerlach, T3
+    // Hugenholtz, T4 Hunserug, T5 Rob Slotemaker, T6, T7 Scheivlak, T8 Masters, T9, T10, T11-12
+    // Hans Ernst chicane, T13 (unnamed since Kumho left), T14 Arie Luyendyk. The detector found 15 on
+    // 3 of 5 real GT3 laps (the others found 14 and 16; Garage61 track 409). By minimum speed:
+    // Tarzan #1 (~80 km/h @8.8%), Gerlach #2, Hugenholtz as two apexes #3-#4 (~87-106 km/h),
+    // Hunserug #5, Slotemaker #6, T6 #7 (~190-210 km/h), Scheivlak #8 (~135 km/h @40%), Masters #9,
+    // T9/T10 #10-#11 (~78-83 km/h), the Hans Ernst chicane #12-#13 (~70-84 km/h @73-75%), T13 #14
+    // and Arie Luyendyk #15 (~172 km/h @88%). Rebuilt to that 15-corner order.
     match: (t) => /zandvoort/i.test(t),
-    names: ["Tarzanbocht", "Gerlachbocht", "Hugenholtzbocht", null, null, "Scheivlak", null, "Slotemakerbocht", null, null, null, null, "Arie Luyendykbocht"],
+    names: ["Tarzanbocht", "Gerlachbocht", "Hugenholtzbocht", null, "Hunserug", "Rob Slotemakerbocht", null, "Scheivlak", "Mastersbocht", null, null, "Hans Ernstbocht", null, null, "Arie Luyendykbocht"],
   },
   {
     // 31/08/2026 sweep: was 9 entries packed with no gaps against this driver's own detector
@@ -197,12 +313,29 @@ const ENTRIES: TrackCornerEntry[] = [
     // respaced across 17 slots with nulls for the unnamed link turns, same named corners/order as
     // before (confirmed: Old Hall opens the lap, Cascades -> Island Bend -> Shell Oils in sequence,
     // Deer Leap is the final corner onto the pit straight).
+    //
+    // 23/09/2026 re-audit: the list still had Knickerbrook BEFORE Shell Hairpin and Hislop's.
+    // The real International order is Old Hall, Dentons, Cascades, Island Bend, Shell Oils Hairpin,
+    // Britten's chicane, Hislop's chicane, Knickerbrook, Clay Hill, Druids, Lodge, Deer Leap. The
+    // detector found 16 on 2 of 3 real GT3 laps (17 on the third, with an extra kink at 0.3%;
+    // Garage61 track 96). By minimum speed: Old Hall #1 (~145 km/h @6.3%), Dentons #2 (~205), Cascades
+    // #3 (~145 @18%), Island Bend #4 (~210 @32%), Shell Hairpin #5 (~81-87 km/h @38.7%, the slowest
+    // point on the lap), #6, Britten's #7-#9 (~95-110 @47-50%), Hislop's #10-#11 (~90-96 @60-62%),
+    // Knickerbrook #12 (~110 @64%), #13 (fast, ~214), Druids #14 (~150 @80%), Lodge #15 (~98 @92%)
+    // and Deer Leap #16 (~156 @96.5%). Rebuilt to 16.
     match: (t) => /oulton park/i.test(t),
-    names: ["Old Hall", null, "Cascades", null, "Island Bend", null, "Knickerbrook", null, "Shell Hairpin", null, "Hislop's", null, "Druids", null, "Lodge Corner", null, "Deer Leap"],
+    names: ["Old Hall", "Dentons", "Cascades", "Island Bend", "Shell Hairpin", null, "Brittens", null, null, "Hislop's", null, "Knickerbrook", null, "Druids", "Lodge Corner", "Deer Leap"],
   },
   {
+    // 23/09/2026 audit: the 11-slot list assumed the detector finds the flat T1 kink first. On 4 real
+    // GTP laps with usable GPS (Garage61 track 34) it found T1 only once (@0.1%). Counts were 10, 10,
+    // 11 and 12, and on every lap the first detected corner was the Andretti Hairpin (~72-80 km/h
+    // @13.8%), so "Andretti Hairpin" landed on T3 and "The Corkscrew" on T6. Rebuilt to the 10-corner
+    // order: Andretti #1, T3-T6 #2-#5, the Corkscrew as two apexes #6-#7 (~75 km/h @68.4/69.9%),
+    // Rainey #8 (~155-170 km/h @75.5%), T10 #9, T11 #10 (~70 km/h @91.5%). Laps that also detect T1
+    // or an extra kink will still be off by one; this detector can't avoid that on Laguna.
     match: (t) => /laguna seca/i.test(t),
-    names: [null, "Andretti Hairpin", null, null, null, null, null, "The Corkscrew", "Rainey Curve", null, null],
+    names: ["Andretti Hairpin", null, null, null, null, "The Corkscrew", null, "Rainey Curve", null, null],
   },
   {
     match: (t) => /gilles villeneuve/i.test(t),
@@ -211,8 +344,14 @@ const ENTRIES: TrackCornerEntry[] = [
   {
     // All 13 turns are officially named except T3/T4 — most are named after MotoGP riders and
     // circuit figures (Ángel Nieto himself gives the track its name).
+    //
+    // 23/09/2026 audit: the only real Jerez GP lap with usable GPS (Huracán GT3, Garage61 track 398)
+    // detected 14. It matched these 13 names in order through T11, except that T11 (Crivillé) came out
+    // as two apexes of the same speed (~83-87 km/h @77/78.5%). That pushed "Ferrari" onto Crivillé's
+    // second apex and "Jorge Lorenzo" onto T12, leaving the real final hairpin (~79 km/h @90.6%)
+    // unnamed. Added a null for Crivillé's second apex. Evidence is one lap only.
     match: (t) => /jerez/i.test(t),
-    names: ["Expo '92", "Michelin", null, null, "Sito Pons", "Dani Pedrosa", "Carmelo Ezpeleta", "Jorge Martínez 'Aspar'", "Ángel Nieto", "Peluqui", "Álex Crivillé", "Ferrari", "Jorge Lorenzo"],
+    names: ["Expo '92", "Michelin", null, null, "Sito Pons", "Dani Pedrosa", "Carmelo Ezpeleta", "Jorge Martínez 'Aspar'", "Ángel Nieto", "Peluqui", "Álex Crivillé", null, "Ferrari", "Jorge Lorenzo"],
   },
   {
     // Superseded the earlier web-guide cross-check with OpenStreetMap's own `ref` tags on each named
