@@ -49,7 +49,19 @@ export type RaceResult = {
    * per-race pace reference for duration estimation, since a driver who DNFs before setting any
    * timed lap of their own still has laps=0 and needs *some* reference pace. */
   raceFastestLapTime: string | null;
+  /** Own best lap of the OVERALL winner (row 0). Not the same as raceFastestLapTime, which can
+   * belong to a driver who didn't win. In a multiclass race this is usually another class's car —
+   * use `finishers` to find the winner of the driver's own class. */
+  winnerFastestLapTime: string | null;
+  /** True when the results table has a "Cls" column (IMSA-style multiclass race). */
+  multiclass: boolean;
+  /** Every row of the results table in finishing order. */
+  finishers: Array<{ carName: string; fastestLapTime: string | null }>;
 };
+
+function lapTimeOrNull(text: string): string | null {
+  return text === "" || text === "—" ? null : text;
+}
 
 function raceStat($: cheerio.CheerioAPI, label: string): string {
   const span = $("span.race-stat").filter((_, el) => $(el).find("b").first().text().trim() === label).first();
@@ -167,6 +179,11 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
 
   const fastestLapText = cells.eq(fastestCol).text().trim();
 
+  const finishers = rows.map((row) => {
+    const rowCells = $(row).find("td");
+    return { carName: rowCells.eq(carCol).text().trim(), fastestLapTime: lapTimeOrNull(rowCells.eq(fastestCol).text().trim()) };
+  });
+
   return {
     irstatsRaceId: 0,
     racedAt,
@@ -185,11 +202,14 @@ export function parseRaceDetailPage(html: string, driverName: string): RaceResul
     positionChange: parseIntOrNull(cells.eq(changeCol).text()),
     laps: parseIntOrNull(cells.eq(lapsCol).text()),
     lapsLed: parseIntOrNull(cells.eq(ledCol).text()),
-    fastestLapTime: fastestLapText === "" || fastestLapText === "—" ? null : fastestLapText,
+    fastestLapTime: lapTimeOrNull(fastestLapText),
     incidents: parseIntOrNull(cells.eq(incCol).text()),
     points: parseIntOrNull(cells.eq(ptsCol).text()),
     sof,
     raceFastestLapTime: raceFastestLap,
+    winnerFastestLapTime: finishers[0]?.fastestLapTime ?? null,
+    multiclass: headerCells.includes("Cls"),
+    finishers,
   };
 }
 

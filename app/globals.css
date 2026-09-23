@@ -275,6 +275,8 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .brand-icon-chip .brand-icon { box-shadow: none !important; object-fit: contain !important; filter: brightness(0); }
 .diverging-label strong { min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; font-size: 12px; font-weight: 600; color: var(--text); }.diverging-label small { grid-column: 2 / 4; color: var(--muted); font-size: 10px; line-height: 1.2; }.diverging-label .brand-icon { object-fit: contain; box-shadow: none; }
 .diverging-bar { position: relative; height: 8px; background: linear-gradient(90deg, rgba(255,92,92,.09) 0 49.7%, var(--border) 49.7% 50.3%, rgba(53,212,136,.09) 50.3%); }.diverging-bar .center-line { position: absolute; left: 50%; top: -3px; width: 1px; height: 14px; background: var(--border-strong); }
+.diverging-bar.gap-bar { background: var(--border); }
+.winner-gap-panel { margin-top: 16px; }
 .diverging-bar span { position: absolute; top: 1px; height: 6px; }.diverging-bar span.positive { background: var(--green); }.diverging-bar span.negative { background: var(--red); }
 .diverging-row > b { font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .performance-row-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }

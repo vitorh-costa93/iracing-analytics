@@ -12,7 +12,7 @@ function sampleSignal(races: number) {
   return { label: "sinal inicial", tone: "limited" };
 }
 
-function countryCode(label: string) {
+export function countryCode(label: string) {
   const value = label.toLowerCase();
   const countries: [string[], string][] = [
     [["monza", "imola", "enzo e dino ferrari", "mugello", "vallelunga", "misano"], "it"], [["spa", "zolder"], "be"], [["silverstone", "brands hatch", "donington", "oulton", "snetterton", "knockhill", "thruxton", "cadwell"], "gb"],

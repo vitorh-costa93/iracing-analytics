@@ -131,7 +131,10 @@ const DETAIL_PAGE_FIXTURE = `
 describe("parseRaceDetailPage", () => {
   it("extracts the named driver's row and the race-level metadata", () => {
     const result = parseRaceDetailPage(DETAIL_PAGE_FIXTURE, "Vitor Hugo Da Costa");
-    expect(result).toEqual({
+    expect(result.multiclass).toBe(false);
+    expect(result.finishers).toHaveLength(4);
+    expect(result.finishers[1]).toEqual({ carName: "Super Formula SF23 - Honda", fastestLapTime: "1:27.305" });
+    expect(result).toMatchObject({
       irstatsRaceId: 0, // caller fills this in from the URL, not the HTML — see Task 5
       racedAt: "2026-08-21T20:30:00.000Z",
       seriesName: "Formula B - Super Formula Series",
@@ -154,6 +157,7 @@ describe("parseRaceDetailPage", () => {
       points: 234,
       sof: 4487,
       raceFastestLapTime: "1:26.253",
+      winnerFastestLapTime: "1:26.253",
     });
   });
 
@@ -180,6 +184,28 @@ describe("parseRaceDetailPage", () => {
     // 1:27.305 — confirms this reads the race-wide stat, not the queried driver's row.
     expect(result.raceFastestLapTime).toBe("1:26.253");
     expect(result.fastestLapTime).toBe("1:27.305");
+  });
+
+  it("reads winnerFastestLapTime from row 0 of the results table, distinct from the race-stat block's outright fastest lap", () => {
+    // Give the winner (row 0, Kevin A Foster) a slower own-best than the race's outright fastest
+    // lap (still the race-stat block's 1:26.253) -- proves winnerFastestLapTime comes from the
+    // winner's own row, not a duplicate read of raceFastestLapTime.
+    const winnerNotFastest = DETAIL_PAGE_FIXTURE.replace(
+      '<td class="text-center fw-semibold text-primary">1:26.253</td>',
+      '<td class="text-center fw-semibold text-primary">1:26.900</td>'
+    );
+    const result = parseRaceDetailPage(winnerNotFastest, "Vitor Hugo Da Costa");
+    expect(result.winnerFastestLapTime).toBe("1:26.900");
+    expect(result.raceFastestLapTime).toBe("1:26.253");
+  });
+
+  it("treats the em-dash placeholder in the winner's Fastest cell as null", () => {
+    const winnerNoLap = DETAIL_PAGE_FIXTURE.replace(
+      '<td class="text-center fw-semibold text-primary">1:26.253</td>',
+      '<td class="text-center fw-semibold text-primary">—</td>'
+    );
+    const result = parseRaceDetailPage(winnerNoLap, "Vitor Hugo Da Costa");
+    expect(result.winnerFastestLapTime).toBeNull();
   });
 
   it("returns null raceFastestLapTime when the Fastest Lap block is absent", () => {
@@ -293,6 +319,8 @@ describe("parseRaceDetailPage", () => {
     expect(result.fastestLapTime).toBe("1:34.213");
     expect(result.incidents).toBe(11);
     expect(result.points).toBe(105);
+    expect(result.winnerFastestLapTime).toBe("1:33.901");
+    expect(result.multiclass).toBe(true);
   });
 });
 

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import KpiCard from "@/components/KpiCard";
 import PerformanceRanking from "@/components/PerformanceRanking";
+import WinnerGapRanking, { type WinnerGapItem } from "@/components/WinnerGapRanking";
 import SeasonChart from "@/components/SeasonChart";
 import AppTabs from "@/components/AppTabs";
 import ThemeToggle from "@/components/ThemeToggle";
@@ -87,6 +88,7 @@ type DashboardData = {
     formula_car: { current: number; best: number };
     sports_car: { current: number; best: number };
   };
+  winnerGapByTrack?: WinnerGapItem[];
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
@@ -487,6 +489,17 @@ export default function Home() {
               <PerformanceRanking items={rankings.imsa} kind={imsaMode} />
             </article>
           </div>
+
+          <article className="panel ranking-panel winner-gap-panel">
+            <div className="panel-heading compact">
+              <div>
+                <span className="section-kicker">GAP PARA O VENCEDOR</span>
+                <h3>Sua melhor volta vs. a do vencedor da sua classe, por pista</h3>
+                <p>Ordenado do menor para o maior gap percentual (compara pistas de tamanhos diferentes).</p>
+              </div>
+            </div>
+            <WinnerGapRanking items={data.winnerGapByTrack ?? []} />
+          </article>
         </section>
 
         <section className="panel season-races-panel">

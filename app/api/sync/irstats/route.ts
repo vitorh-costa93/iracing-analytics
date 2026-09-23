@@ -2,6 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { fetchIrstatsPage, parseRaceDetailPage, parseRaceListPage } from "@/lib/irstats";
+import { classWinnerFastestLap, normalizeRaceClass } from "@/lib/winner-gap";
 
 // The rate-limited sequential fetch loop below can run well past a platform's default serverless
 // timeout (commonly 10s). Give it real headroom and force dynamic rendering (no caching) since
@@ -41,12 +42,26 @@ function sleep(ms: number) {
  * response are meant to make that visible instead of silent.
  */
 async function resolveCarTrackIds() {
-  const [carsResult, tracksResult] = await Promise.all([
+  const [carsResult, tracksResult, groupsResult, membersResult] = await Promise.all([
     supabaseAdmin.from("cars").select("id, name, variant"),
     supabaseAdmin.from("tracks").select("id, name, variant"),
+    supabaseAdmin.from("car_groups").select("id, name"),
+    supabaseAdmin.from("car_group_members").select("car_group_id, car_id"),
   ]);
   if (carsResult.error) throw carsResult.error;
   if (tracksResult.error) throw tracksResult.error;
+  if (groupsResult.error) throw groupsResult.error;
+  if (membersResult.error) throw membersResult.error;
+
+  const groupNameById = new Map((groupsResult.data ?? []).map((row) => [row.id as number, String(row.name)]));
+  const groupNamesByCarId = new Map<number, string[]>();
+  for (const member of membersResult.data ?? []) {
+    const groupName = groupNameById.get(member.car_group_id as number);
+    if (!groupName) continue;
+    const list = groupNamesByCarId.get(member.car_id as number) ?? [];
+    list.push(groupName);
+    groupNamesByCarId.set(member.car_id as number, list);
+  }
 
   const carByCombined = new Map<string, number>();
   const carByName = new Map<string, number>();
@@ -66,7 +81,7 @@ async function resolveCarTrackIds() {
     if (variant) trackByCombined.set(`${name}::${variant}`.toLowerCase(), row.id as number);
   }
 
-  return { carByCombined, carByName, trackByCombined, trackByName };
+  return { carByCombined, carByName, trackByCombined, trackByName, groupNamesByCarId };
 }
 
 function resolveCarId(carName: string, carByCombined: Map<string, number>, carByName: Map<string, number>) {
@@ -101,6 +116,10 @@ export async function importRaceFromHtml(raceId: number, html: string, driverId:
   const parsed = parseRaceDetailPage(html, driverName);
   const carId = resolveCarId(parsed.carName, catalog.carByCombined, catalog.carByName);
   const trackId = resolveTrackId(parsed.trackName, parsed.trackConfig, catalog.trackByCombined, catalog.trackByName);
+  const classOf = (name: string) => {
+    const id = resolveCarId(name, catalog.carByCombined, catalog.carByName);
+    return normalizeRaceClass(name, id === null ? [] : catalog.groupNamesByCarId.get(id) ?? []);
+  };
   const row = {
     irstats_race_id: raceId,
     driver_id: driverId,
@@ -123,6 +142,7 @@ export async function importRaceFromHtml(raceId: number, html: string, driverId:
     laps_led: parsed.lapsLed,
     fastest_lap_time: parsed.fastestLapTime,
     race_fastest_lap_time: parsed.raceFastestLapTime,
+    winner_fastest_lap_time: classWinnerFastestLap(parsed, classOf),
     incidents: parsed.incidents,
     points: parsed.points,
     sof: parsed.sof,

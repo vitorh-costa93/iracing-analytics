@@ -37,6 +37,7 @@ type CategoryDebrief = {
   lapTimeSpread?: string;
   lapTimeStddev?: string;
   summary?: string;
+  winnerGap?: { ownLap: string; winnerLap: string; seconds: number; pct: number } | null;
   strengths?: string[];
   improvements?: string[];
   channelStats?: ChannelStat[];
@@ -246,6 +247,10 @@ export default function RaceDebrief() {
               <div><span>PIOR DAS ANALISADAS</span><strong>{data.worstLap}</strong></div>
               <div><span>VARIAÇÃO (SPREAD)</span><strong>{data.lapTimeSpread}s</strong></div>
               <div><span>DESVIO PADRÃO</span><strong>{data.lapTimeStddev}s</strong></div>
+              {data.winnerGap && <div title={`Sua melhor volta ${data.winnerGap.ownLap} vs. ${data.winnerGap.winnerLap} do vencedor da sua classe (iRStats)`}>
+                <span>GAP P/ VENCEDOR</span>
+                <strong>{data.winnerGap.seconds > 0 ? "+" : ""}{data.winnerGap.seconds.toFixed(3)}s <small>({data.winnerGap.pct > 0 ? "+" : ""}{data.winnerGap.pct.toFixed(2)}%)</small></strong>
+              </div>}
             </div>
           </div>
 

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { aggregateWinnerGapByTrack, parseLapTimeSeconds, type WinnerGapRace } from "@/lib/winner-gap";
 
 // 31/08/2026: "o iRating segue desatualizado... a tabela no fim dessa aba já contém as duas corridas
 // que fiz hoje" -- without this, the route has no dynamic-only API call to force Next.js to treat it
@@ -114,13 +115,6 @@ type RaceResultRow = {
   irating_before: number;
 };
 
-/** Parses irstats' "M:SS.mmm" lap-time text (e.g. "1:27.305") into seconds. */
-function parseLapTimeSeconds(text: string | null): number | null {
-  if (!text) return null;
-  const match = text.match(/^(\d+):(\d{2}(?:\.\d+)?)$/);
-  if (!match) return null;
-  return Number(match[1]) * 60 + Number(match[2]);
-}
 
 /**
  * irstats.com exposes no session-duration field, only lap counts and lap times — so this is an
@@ -580,6 +574,26 @@ export async function GET(request: Request) {
       }
     }
 
+    // Gap to the class winner's best lap, per track. Only races imported after the column existed
+    // carry winner_fastest_lap_time, so this set is small and grows forward.
+    const winnerGapRows: WinnerGapRace[] = [];
+    {
+      const pageSize = 1000;
+      for (let offset = 0; ; offset += pageSize) {
+        const { data: page, error: pageError } = await supabaseAdmin
+          .from("race_results")
+          .select("track_name,fastest_lap_time,winner_fastest_lap_time")
+          .eq("driver_id", driver.id)
+          .not("winner_fastest_lap_time", "is", null)
+          .order("raced_at", { ascending: true })
+          .range(offset, offset + pageSize - 1);
+        if (pageError) throwSupabaseError("race_results (winner gap)", pageError);
+        winnerGapRows.push(...((page ?? []) as WinnerGapRace[]));
+        if (!page || page.length < pageSize) break;
+      }
+    }
+    const winnerGapByTrack = aggregateWinnerGapByTrack(winnerGapRows);
+
     function streakStats(rows: { irating_delta: number }[]) {
       let current = 0;
       let best = 0;
@@ -1029,6 +1043,8 @@ export async function GET(request: Request) {
       races,
 
       streaks,
+
+      winnerGapByTrack,
 
       featureAvailability: {
         wins: true,

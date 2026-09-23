@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { lookupCornerNames } from "@/lib/track-corners";
+import { raceWinnerGap } from "@/lib/winner-gap";
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
 import { summarizeTractionEvents, type TractionSample } from "@/lib/traction-events";
 import { describeWheelspinHabit, describeCorrectionHabit } from "@/lib/traction-narrative";
@@ -261,7 +262,7 @@ async function computeDebrief(driverId: string, gtpCarIds: Set<number>) {
   // candidate race from race_results directly, then locating its telemetry session, fixes that.
   const { data: races, error: racesError } = await supabaseAdmin
     .from("race_results")
-    .select("id,raced_at,category,car_id,track_id,laps")
+    .select("id,raced_at,category,car_id,track_id,laps,fastest_lap_time,winner_fastest_lap_time")
     .eq("driver_id", driverId)
     .not("car_id", "is", null).not("track_id", "is", null)
     .order("raced_at", { ascending: false }).limit(400);
@@ -294,11 +295,15 @@ async function computeDebrief(driverId: string, gtpCarIds: Set<number>) {
     // here (both sides now write/expect 5) while also bumping it for the new destracionamento/
     // microcorreções fields added below -- one version bump covers both.
     const cachedIsFresh = cached && Number(cached.session_id) === Number(candidate.id) && (cached.payload as Record<string, unknown>)?.cornerDetectionVersion === 5;
-    if (cachedIsFresh) { results[category] = cached!.payload; continue; }
+    // Kept out of the cached payload: it comes from race_results, not telemetry, so it must not
+    // depend on (or invalidate) the cache version.
+    const gap = raceWinnerGap(validRace.fastest_lap_time, validRace.winner_fastest_lap_time);
+    const winnerGap = gap ? { ownLap: validRace.fastest_lap_time, winnerLap: validRace.winner_fastest_lap_time, seconds: Number(gap.seconds.toFixed(3)), pct: Number(gap.pct.toFixed(3)) } : null;
+    if (cachedIsFresh) { results[category] = { ...(cached!.payload as Record<string, unknown>), winnerGap }; continue; }
 
     try {
       const payload = await buildDebriefPayload(candidate);
-      results[category] = payload;
+      results[category] = { ...payload, winnerGap };
       await supabaseAdmin.from("race_debriefs").upsert({ driver_id: driverId, rating_category: category, session_id: candidate.id, payload, computed_at: new Date().toISOString() }, { onConflict: "driver_id,rating_category" });
     } catch (error) {
       results[category] = { status: "error", message: error instanceof Error ? error.message : String(error) };
