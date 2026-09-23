@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { readTelemetryText, storeTelemetryCsv } from "@/lib/telemetry-storage";
 
 const BASE_URL = "https://garage61.net/api/v1";
 
@@ -10,6 +11,11 @@ const BASE_URL = "https://garage61.net/api/v1";
  * laps.telemetry_path (Supabase Storage) first, and only falls back to a live Garage61 fetch (then
  * stores it, so the NEXT view is already fast) for a lap the sync hasn't reached yet -- a very
  * recent lap, or one outside the sync's current lookback window.
+ *
+ * Reads go through lib/telemetry-storage.ts (gunzips .csv.gz -- this route used to hand the browser
+ * raw gzip bytes -- and enforces the daily Storage download budget). When a stored lap can't be read
+ * (e.g. budget reached), the live Garage61 fetch is served WITHOUT re-storing it, so it never
+ * overwrites the compressed copy.
  */
 export async function GET(
   request: NextRequest,
@@ -20,11 +26,10 @@ export async function GET(
 
     const { data: lapRow } = await supabaseAdmin.from("laps").select("track_id,telemetry_path").eq("id", id).maybeSingle();
     if (lapRow?.telemetry_path) {
-      const { data: file, error: downloadError } = await supabaseAdmin.storage.from("telemetry").download(lapRow.telemetry_path);
-      if (!downloadError && file) {
-        return new NextResponse(await file.text(), { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "X-Telemetry-Source": "storage" } });
+      const text = await readTelemetryText(lapRow.telemetry_path);
+      if (text) {
+        return new NextResponse(text, { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "X-Telemetry-Source": "storage" } });
       }
-      // Fall through to live fetch if the Storage object is somehow missing despite the DB path.
     }
 
     const token = process.env.GARAGE61_API_TOKEN;
@@ -41,13 +46,7 @@ export async function GET(
       return NextResponse.json({ status: "error", httpStatus: response.status, message: data }, { status: response.status });
     }
 
-    // Opportunistic store: the sync will re-download this same lap again later if this fails, so
-    // errors here are silently ignored -- the important thing is the CSV still reaches the viewer now.
-    if (lapRow?.track_id) {
-      const path = `laps/${lapRow.track_id}/${id}.csv`;
-      const { error: uploadError } = await supabaseAdmin.storage.from("telemetry").upload(path, data, { contentType: "text/csv; charset=utf-8", upsert: true });
-      if (!uploadError) await supabaseAdmin.from("laps").update({ telemetry_path: path }).eq("id", id);
-    }
+    if (lapRow?.track_id && !lapRow.telemetry_path) await storeTelemetryCsv(lapRow.track_id, id, data);
 
     return new NextResponse(data, { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "X-Telemetry-Source": "live" } });
   } catch (error) {

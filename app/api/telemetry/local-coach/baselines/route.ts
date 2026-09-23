@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { readTelemetryText } from "@/lib/telemetry-storage";
 import { detectCornersFromGps, estimateLapLengthMeters, type DetectedCorner } from "@/lib/corner-detection";
 import { computeCornerBaselines, type CoachSample, type CoachCorner } from "@/lib/local-coach-baselines";
 import { lookupCornerNames } from "@/lib/track-corners";
@@ -135,9 +136,9 @@ export async function GET(request: Request) {
     if (!lapRows.length) return NextResponse.json({ status: "ok", trackLengthMeters: null, corners: [] });
 
     const traces = await Promise.all(lapRows.map(async (row) => {
-      const { data: file, error } = await supabaseAdmin.storage.from("telemetry").download(row.telemetry_path!);
-      if (error || !file) return null;
-      return { points: parseLapCsv(await file.text()), lapTimeSeconds: Number(row.lap_time) };
+      const text = await readTelemetryText(row.telemetry_path!);
+      if (!text) return null;
+      return { points: parseLapCsv(text), lapTimeSeconds: Number(row.lap_time) };
     }));
     const valid = traces.filter((trace): trace is { points: TracePoint[]; lapTimeSeconds: number } => !!trace && trace.points.length > 20);
     if (!valid.length) return NextResponse.json({ status: "ok", trackLengthMeters: null, corners: [] });

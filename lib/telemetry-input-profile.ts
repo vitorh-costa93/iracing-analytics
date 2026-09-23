@@ -1,4 +1,4 @@
-import { gunzipSync } from "node:zlib";
+import { readTelemetryText } from "@/lib/telemetry-storage";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { Category, RaceInput } from "@/lib/race-engineer-analysis";
 import { telemetryFeatures } from "@/lib/telemetry-features";
@@ -112,9 +112,8 @@ export async function telemetryInputProfile(driverId:string,category:Category,ra
   const hit=cached.get(lap.id);
   if(hit)return{lapTime:lap.lap_time!,session:String(lap.car_id)+"|"+String(lap.track_id),throttleSmoothness:hit.throttle_smoothness,brakeSmoothness:hit.brake_smoothness,steeringSmoothness:hit.steering_smoothness,cornerBrakes:hit.corner_brakes};
   if(!lap.telemetry_path)return null;
-  const d=await supabaseAdmin.storage.from("telemetry").download(lap.telemetry_path);if(d.error||!d.data)return null;
-  let raw=Buffer.from(await d.data.arrayBuffer());try{if(lap.telemetry_path.endsWith(".gz"))raw=gunzipSync(raw)}catch{return null}
-  const csv=raw.toString("utf8");if(csv.split(/\r?\n/).length<3)return null;
+  // .gz-aware and budget-enforced -- see lib/telemetry-storage.ts.
+  const csv=await readTelemetryText(lap.telemetry_path);if(!csv)return null;if(csv.split(/\r?\n/).length<3)return null;
   const features=telemetryFeatures(csv),corners=cornerBrakePoints(csv);
   // Write-through: grava o resultado assim que calculado (aguardado, não fire-and-forget -- numa
   // função serverless o processo pode ser encerrado antes de uma promise solta terminar) pra nunca

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { readTelemetryText } from "@/lib/telemetry-storage";
 
 const BUCKET = "telemetry-references";
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -43,11 +44,11 @@ export async function GET(request: NextRequest) {
       .eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).maybeSingle();
     if (error) throw error;
     if (!reference) return NextResponse.json({ status: "ok", reference: null });
-    const { data: file, error: downloadError } = await supabaseAdmin.storage.from(BUCKET).download(reference.storage_path);
-    if (downloadError || !file) throw downloadError ?? new Error("Referência não encontrada no Storage");
+    const csv = await readTelemetryText(reference.storage_path, BUCKET);
+    if (csv == null) throw new Error("Referência indisponível agora (arquivo ausente ou limite diário de download atingido)");
     return NextResponse.json({ status: "ok", reference: {
       filename: reference.original_filename, channels: reference.channels, sampleCount: reference.sample_count,
-      uploadedAt: reference.uploaded_at, csv: await file.text(),
+      uploadedAt: reference.uploaded_at, csv,
     }});
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });

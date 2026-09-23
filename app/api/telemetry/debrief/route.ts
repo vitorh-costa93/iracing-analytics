@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { readTelemetryText, storeTelemetryCsv } from "@/lib/telemetry-storage";
 import { lookupCornerNames } from "@/lib/track-corners";
 import { raceWinnerGap } from "@/lib/winner-gap";
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
@@ -344,17 +345,15 @@ async function buildDebriefPayload(session: { id: number; garage61_event_id: str
   const traces = await Promise.all(candidateLaps.map(async (lap) => {
     const stored = pathByLapId.get(lap.id);
     if (stored?.telemetry_path) {
-      const { data: file, error: downloadError } = await supabaseAdmin.storage.from("telemetry").download(stored.telemetry_path);
-      if (!downloadError && file) return { lap, lapTime: Number(lap.lapTime), ...parseLapCsv(await file.text()) };
+      // .gz-aware and budget-enforced (lib/telemetry-storage.ts). A stored lap that can't be read is
+      // skipped rather than re-fetched and re-uploaded, which used to undo compression.
+      const text = await readTelemetryText(stored.telemetry_path);
+      return text ? { lap, lapTime: Number(lap.lapTime), ...parseLapCsv(text) } : null;
     }
     const response = await fetch(`${GARAGE61_BASE}/laps/${encodeURIComponent(lap.id)}/csv`, { headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" }, cache: "no-store" });
     if (!response.ok) return null;
     const csv = await response.text();
-    if (stored?.track_id) {
-      const path = `laps/${stored.track_id}/${lap.id}.csv`;
-      const { error: uploadError } = await supabaseAdmin.storage.from("telemetry").upload(path, csv, { contentType: "text/csv; charset=utf-8", upsert: true });
-      if (!uploadError) await supabaseAdmin.from("laps").update({ telemetry_path: path }).eq("id", lap.id);
-    }
+    if (stored?.track_id) await storeTelemetryCsv(stored.track_id, lap.id, csv);
     const parsed = parseLapCsv(csv);
     return { lap, lapTime: Number(lap.lapTime), ...parsed };
   }));

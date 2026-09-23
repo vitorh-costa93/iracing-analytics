@@ -7,6 +7,7 @@ import { lookupCornerNames } from "@/lib/track-corners";
 import { summarizeTractionEvents, type TractionSample, type TractionSummary } from "@/lib/traction-events";
 import { compareTractionAcrossCars } from "@/lib/traction-narrative";
 import { checkLapsGps, type LapGpsCheck } from "@/lib/lap-gps-check-cache";
+import { readTelemetryText, storeTelemetryCsv } from "@/lib/telemetry-storage";
 
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
@@ -800,20 +801,21 @@ function traceGpsDistanceMeters(points: TracePoint[]) {
 
 async function downloadTrace(lapId: string, trackId: number, telemetryPath: string | null): Promise<TracePoint[] | null> {
   if (telemetryPath) {
-    const { data: file, error } = await supabaseAdmin.storage.from("telemetry").download(telemetryPath);
-    if (!error && file) {
-      const points = parseLapCsv(await file.text());
+    const text = await readTelemetryText(telemetryPath);
+    if (text) {
+      const points = parseLapCsv(text);
       if (points.length > 20) return points;
     }
+    // Stored but unreadable (budget reached, or genuinely short): don't re-fetch from Garage61 and
+    // re-upload -- that used to overwrite a compressed lap and feed a download/recompress loop.
+    return null;
   }
   const token = process.env.GARAGE61_API_TOKEN;
   if (!token) return null;
   const response = await fetch(`${GARAGE61_BASE}/laps/${encodeURIComponent(lapId)}/csv`, { headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" }, cache: "no-store" });
   if (!response.ok) return null;
   const csv = await response.text();
-  const path = `laps/${trackId}/${lapId}.csv`;
-  const { error: uploadError } = await supabaseAdmin.storage.from("telemetry").upload(path, csv, { contentType: "text/csv; charset=utf-8", upsert: true });
-  if (!uploadError) await supabaseAdmin.from("laps").update({ telemetry_path: path }).eq("id", lapId);
+  await storeTelemetryCsv(trackId, lapId, csv);
   const points = parseLapCsv(csv);
   return points.length > 20 ? points : null;
 }

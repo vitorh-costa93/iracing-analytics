@@ -1,5 +1,6 @@
 import { gzipSync } from "node:zlib";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { downloadTelemetryBytes } from "@/lib/telemetry-storage";
 
 const BUCKET = "telemetry";
 // PERMANENT GUARD-RAIL (see CLAUDE.md "Non-negotiable rules" #7): the Supabase project is on the
@@ -11,7 +12,10 @@ const MAX_FILE_BYTES = 8 * 1024 * 1024;
 export const TELEMETRY_STORAGE_BUDGET_BYTES = 900 * 1024 * 1024;
 const BUDGET = TELEMETRY_STORAGE_BUDGET_BYTES;
 const BATCH = 24;
-const COMPACTION_BATCH = 10;
+// 23/09/2026: 10 -> 40 to finish compressing the ~480 legacy plain-CSV laps in ~12 daily runs
+// (each is ~3x smaller as .csv.gz). Bounded anyway by the daily download budget in
+// lib/telemetry-storage.ts, and it stops doing anything once no plain .csv is left.
+const COMPACTION_BATCH = 40;
 const PAGE = 500;
 
 type Entry = { id?: string | null; name: string; metadata?: { size?: number } | null };
@@ -80,9 +84,9 @@ async function rotateExpiredTelemetry(current: string, previous: string) {
 async function compact() {
   let files = 0, saved = 0;
   for (const source of await listRaw()) {
-    const d = await supabaseAdmin.storage.from(BUCKET).download(source);
-    if (d.error || !d.data) continue;
-    const raw = Buffer.from(await d.data.arrayBuffer());
+    // Budget-enforced like every other telemetry read (lib/telemetry-storage.ts).
+    const raw = await downloadTelemetryBytes(source, BUCKET);
+    if (!raw) continue;
     const gz = gzipSync(raw, { level: 9 });
     if (gz.length >= raw.length) continue;
     const target = source + ".gz";
