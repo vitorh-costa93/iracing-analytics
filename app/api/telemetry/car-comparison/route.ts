@@ -6,6 +6,7 @@ import { detectCornersFromGps } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
 import { summarizeTractionEvents, type TractionSample, type TractionSummary } from "@/lib/traction-events";
 import { compareTractionAcrossCars } from "@/lib/traction-narrative";
+import { checkLapsGps, type LapGpsCheck } from "@/lib/lap-gps-check-cache";
 
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
@@ -817,6 +818,21 @@ async function downloadTrace(lapId: string, trackId: number, telemetryPath: stri
   return points.length > 20 ? points : null;
 }
 
+async function loadLapGpsChecks(lapIds: string[]) {
+  const found = new Map<string, LapGpsCheck>();
+  for (let from = 0; from < lapIds.length; from += 500) {
+    const { data, error } = await supabaseAdmin.from("lap_gps_checks").select("lap_id,coverage_pct,gps_distance_m").in("lap_id", lapIds.slice(from, from + 500));
+    if (error) { console.error("lap_gps_checks load failed:", error); return found; }
+    for (const row of data ?? []) found.set(row.lap_id, { coveragePct: Number(row.coverage_pct), gpsDistanceMeters: Number(row.gps_distance_m) });
+  }
+  return found;
+}
+
+async function saveLapGpsChecks(rows: Array<{ lapId: string } & LapGpsCheck>) {
+  const { error } = await supabaseAdmin.from("lap_gps_checks").upsert(rows.map((row) => ({ lap_id: row.lapId, coverage_pct: row.coveragePct, gps_distance_m: row.gpsDistanceMeters })));
+  if (error) throw error;
+}
+
 const LAPS_PAGE_SIZE = 1000; // matches Supabase's own default row cap -- a plain unranged .select()
 // here silently truncated at 1000 rows once this driver's laps table passed that count, undercounting
 // cars for whichever tracks' rows happened to land past the cutoff (confirmed live 29/08/2026: the
@@ -924,22 +940,39 @@ async function listSeasonsAndTracks(driverId: string, category: Category, season
   // fastest few laps (not buildComparison's full CANDIDATE_POOL_LAPS=10) -- enough to find one
   // genuine lap in the common case without downloading everything twice over.
   const VERIFY_CANDIDATE_LAPS = 3;
-  const eligible = (await Promise.all(cheapEligible.map(async ([trackId, plausibleCars]) => {
+  const candidatesByTrackCar = new Map<string, LapRow[]>();
+  for (const [trackId, plausibleCars] of cheapEligible) {
     const byCar = lapsByTrackAndCar.get(trackId)!;
-    const verifiedByCar = await Promise.all([...plausibleCars].map(async (carId) => {
-      const candidates = byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time)).slice(0, VERIFY_CANDIDATE_LAPS);
-      const traces = await Promise.all(candidates.map((lap) => downloadTrace(lap.id, trackId, lap.telemetry_path)));
+    for (const carId of plausibleCars) {
+      candidatesByTrackCar.set(`${trackId}:${carId}`, byCar.get(carId)!.slice().sort((a, b) => Number(a.lap_time) - Number(b.lap_time)).slice(0, VERIFY_CANDIDATE_LAPS));
+    }
+  }
+  const lapById = new Map([...candidatesByTrackCar.values()].flat().map((lap) => [lap.id, lap]));
+  // Cached per lap in lap_gps_checks: before this, every picker load re-downloaded these telemetry
+  // files (the main source of the org's Supabase "Cached Egress" overage, 23/09/2026).
+  const checks = await checkLapsGps([...lapById.keys()], {
+    load: loadLapGpsChecks,
+    save: saveLapGpsChecks,
+    compute: async (lapId) => {
+      const lap = lapById.get(lapId)!;
+      const trace = await downloadTrace(lap.id, lap.track_id as number, lap.telemetry_path);
+      return trace ? { coveragePct: traceCoveragePct(trace), gpsDistanceMeters: traceGpsDistanceMeters(trace) } : null;
+    },
+  });
+  const eligible = cheapEligible.map(([trackId, plausibleCars]) => {
+    const verifiedByCar = [...plausibleCars].map((carId) => {
+      const candidates = candidatesByTrackCar.get(`${trackId}:${carId}`)!;
       const fullCoverage = candidates
-        .map((lap, index) => ({ lap, trace: traces[index] }))
-        .filter((item): item is { lap: LapRow; trace: TracePoint[] } => !!item.trace && traceCoveragePct(item.trace) >= MIN_LAP_COVERAGE_PCT);
+        .map((lap) => checks.get(lap.id))
+        .filter((check): check is LapGpsCheck => !!check && check.coveragePct >= MIN_LAP_COVERAGE_PCT);
       if (!fullCoverage.length) return null;
-      return { carId, gpsDistanceMeters: traceGpsDistanceMeters(fullCoverage[0].trace) };
-    }));
+      return { carId, gpsDistanceMeters: fullCoverage[0].gpsDistanceMeters };
+    });
     const verified = verifiedByCar.filter((item): item is { carId: number; gpsDistanceMeters: number } => item !== null);
     const referenceLapMeters = Math.max(0, ...verified.map((item) => item.gpsDistanceMeters));
     const finalCars = new Set(verified.filter((item) => referenceLapMeters === 0 || item.gpsDistanceMeters >= referenceLapMeters * 0.85).map((item) => item.carId));
     return [trackId, finalCars] as [number, Set<number>];
-  }))).filter(([, cars]) => cars.size >= 2);
+  }).filter(([, cars]) => cars.size >= 2);
   if (!eligible.length) return { seasons, selectedSeasonId, tracks: [] };
 
   const trackIds = eligible.map(([trackId]) => trackId);
