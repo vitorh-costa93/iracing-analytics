@@ -370,6 +370,16 @@ const ENTRIES: TrackCornerEntry[] = [
     match: (t) => /magny-cours/i.test(t),
     names: ["Grande Courbe", "Estoril", null, "Adelaide", null, "Nürburgring (chicane)", "180°", null, "Imola (chicane)", null, "Château d'Eau", "Complexe du Lycée (chicane)"],
   },
+  {
+    // 23/09/2026: Motegi officially numbers its 14 turns and names only a few landmarks. This
+    // driver's detector finds 11 corners on the GP layout (4 of 5 GTP laps; the 5th adds a fast
+    // kink at ~88.5% before the final chicane): 6.5%, 20%, 34.8%, 41% (fastest, ~215), 48% and
+    // 51%, 57%, 66.7% (slowest, ~72), 84%, 90.6%, 92.3%. Mapped by the documented order T6 130R ->
+    // T7/T8 S-Curve -> V-Corner -> Hairpin -> downhill straight -> T11 90° Corner -> Victory Corner
+    // (final slow right); T1-T5 and the chicane's first apex stay null. GP layout only.
+    match: (t, v) => /motegi/i.test(t) && /grand prix/i.test(v),
+    names: [null, null, null, "130R", "S-Curve", null, "V-Corner", "Hairpin", "90° Corner", null, "Victory Corner"],
+  },
 ];
 
 /** Given a track name/variant and how many corners were actually detected from this lap's telemetry,
