@@ -32,18 +32,6 @@ const keep = (lap: Candidate, current: string, previous: string) => {
   return season === current || (season === previous && isRace(lap.garage61_payload ?? {}));
 };
 
-async function listRaw(prefix = "", out: string[] = []): Promise<string[]> {
-  const q = await supabaseAdmin.storage.from(BUCKET).list(prefix, { limit: 1000 });
-  if (q.error) throw q.error;
-  for (const e of (q.data ?? []) as Entry[]) {
-    const path = pathOf(prefix, e.name);
-    if (e.id && path.endsWith(".csv")) out.push(path);
-    else if (!e.id) await listRaw(path, out);
-    if (out.length >= COMPACTION_BATCH) break;
-  }
-  return out;
-}
-
 async function used(prefix = ""): Promise<number> {
   const q = await supabaseAdmin.storage.from(BUCKET).list(prefix, { limit: 1000 });
   if (q.error) throw q.error;
@@ -81,16 +69,23 @@ async function rotateExpiredTelemetry(current: string, previous: string) {
   return { files: removedFiles };
 }
 
+// Candidates come from laps.telemetry_path (only laps that are actually read), not from listing the
+// bucket: a listing also returns unreferenced leftover .csv objects, which were downloaded and
+// "compressed" for nothing (23/09/2026: 198 of 325 plain CSVs were unreferenced). The upload uses
+// upsert because the old re-upload loop left some laps with both a .csv and a stale .csv.gz -- without
+// upsert that upload failed forever, after the download had already been paid for.
 async function compact() {
   let files = 0, saved = 0;
-  for (const source of await listRaw()) {
+  const q = await supabaseAdmin.from("laps").select("telemetry_path").like("telemetry_path", "%.csv").limit(COMPACTION_BATCH);
+  if (q.error) throw q.error;
+  for (const source of (q.data ?? []).map(row => row.telemetry_path as string)) {
     // Budget-enforced like every other telemetry read (lib/telemetry-storage.ts).
     const raw = await downloadTelemetryBytes(source, BUCKET);
     if (!raw) continue;
     const gz = gzipSync(raw, { level: 9 });
     if (gz.length >= raw.length) continue;
     const target = source + ".gz";
-    const up = await supabaseAdmin.storage.from(BUCKET).upload(target, gz, { contentType: "application/gzip" });
+    const up = await supabaseAdmin.storage.from(BUCKET).upload(target, gz, { contentType: "application/gzip", upsert: true });
     if (up.error) continue;
     const db = await supabaseAdmin.from("laps").update({ telemetry_path: target }).eq("telemetry_path", source);
     if (db.error) {
