@@ -6,10 +6,14 @@ const latest = (runs: SyncRun[], types: string[], completed = false) => runs.fin
 
 export async function GET() {
   try {
-    const [runsResult, resultsResult, setupsResult] = await Promise.all([
+    // driverResult (25/09/2026, redesign etapa 1): identidade do piloto no cabeçalho global -- uma
+    // linha de `drivers`, mesma escolha do /api/dashboard/overview (a mais recentemente atualizada),
+    // para o cabeçalho não depender da rota pesada da Visão Geral em todas as telas.
+    const [runsResult, resultsResult, setupsResult, driverResult] = await Promise.all([
       supabaseAdmin.from("sync_runs").select("sync_type,status,started_at,finished_at,error_message").order("started_at", { ascending: false }).limit(100),
       supabaseAdmin.from("race_results").select("imported_at").order("imported_at", { ascending: false }).limit(1).maybeSingle(),
       supabaseAdmin.from("setup_files").select("created_at").eq("source", "garage61").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabaseAdmin.from("drivers").select("name, platform_driver_id").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (runsResult.error) throw runsResult.error;
     if (resultsResult.error) throw resultsResult.error;
@@ -28,7 +32,9 @@ export async function GET() {
       run.status === "error" &&
       new Date(run.started_at).getTime() >= Date.now() - 24 * 60 * 60_000
     ) ?? null;
-    return NextResponse.json({ status: "ok", sources: {
+    // Falha ao ler o piloto não derruba o estado das fontes: o cabeçalho só omite a identidade.
+    const driver = driverResult.error || !driverResult.data ? null : { name: driverResult.data.name as string, iracingId: driverResult.data.platform_driver_id == null ? null : String(driverResult.data.platform_driver_id) };
+    return NextResponse.json({ status: "ok", driver, sources: {
       garage61: {
         lastSuccessAt: success?.finished_at ?? null,
         latestStatus: attempt?.status ?? "unknown",

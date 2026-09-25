@@ -13,6 +13,7 @@ import DmaicReportModal from "@/components/DmaicReportModal";
 import DataFreshness from "@/components/DataFreshness";
 import SeasonCalendarImportModal from "@/components/SeasonCalendarImportModal";
 import { trackUiEvent } from "@/lib/track-ui-event";
+import { DATA_SYNC_DONE_EVENT, DATA_SYNC_PROGRESS_EVENT, type DataSyncDetail } from "@/lib/data-sync-action";
 
 type Category = "formula" | "sports";
 type RankingMode = "car" | "track";
@@ -153,7 +154,6 @@ function aggregateRows(
 export default function Home() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [syncing, setSyncing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [chartCategory, setChartCategory] = useState<Category>("formula");
   // Options depend on which series this driver actually raced in that category this season, not a
@@ -204,71 +204,25 @@ export default function Home() {
     return () => window.removeEventListener("message", onImportComplete);
   }, [loadDashboard]);
 
-  // Server-side only, no browser extension involved (or needed) at all — this talks exclusively to
-  // our own API, which already syncs telemetry/laps/ratings/catalog on its own via the hourly cron.
-  // Getting NEW race results or setups still needs a real logged-in browser tab (see the bookmarklet
-  // section below this button), since neither irstats.com nor Garage61's setup data can be reached
-  // any other way, but that's a deliberate, separate, occasional action now — not tied to this click.
-  // 11/09/2026 fix: "Unexpected token 'A', 'An error o'... is not valid JSON" -- each step's response
-  // was parsed with a bare .json(), which throws that exact cryptic error when Vercel's platform (not
-  // this app's own code) kills a function past its time ceiling and returns an HTML error page instead
-  // of JSON. Reading the body as text first and parsing it ourselves lets us tell the user what
-  // actually happened (which step, timeout vs a real error) instead of a raw parser exception.
-  async function postSyncStep(url: string, label: string) {
-    const response = await fetch(url, { method: "POST" });
-    const text = await response.text();
-    let parsed: { message?: string; [key: string]: unknown } = {};
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      throw new Error(
-        response.ok
-          ? `${label}: resposta inesperada do servidor (não era JSON).`
-          : `${label}: a Vercel encerrou a chamada antes de terminar (provável timeout). Tente de novo em alguns minutos -- a sincronização é incremental, então nada se perde.`
-      );
+  // "Atualizar dados" (25/09/2026, redesign etapa 1): o botão mudou para o cabeçalho global
+  // (components/AppHeader.tsx) e a sequência de passos foi extraída sem mudanças para
+  // lib/data-sync-action.ts. Esta tela só acompanha o progresso pelos eventos e recarrega o
+  // dashboard no fim, como antes.
+  useEffect(() => {
+    function onProgress(event: Event) {
+      setMessage((event as CustomEvent<DataSyncDetail>).detail.message);
     }
-    if (!response.ok) throw new Error(parsed.message ?? `Erro em ${label}`);
-    return parsed;
-  }
-
-  // 11/09/2026: "vamos testar usar o mesmo caminho dos setups" -- sessões/voltas/setores now come from
-  // the browser bookmarklet (public/garage61-import.js, via Garage61's own internal api, no rate
-  // limit), the SAME Favoritos button already used for setups. This button no longer discovers
-  // sessions/laps itself (that was sync/incremental's slow, rate-limited part -- see that route's own
-  // comment); it only fills in telemetry for laps the bookmarklet (or the daily cron fallback) already
-  // knows about, which needs no pagination at all.
-  async function syncData() {
-    setSyncing(true);
-    setMessage("Atualizando dados via Supabase...");
-    try {
-      await postSyncStep("/api/sync/all", "sincronização geral");
-
-      setMessage("Baixando telemetria de voltas já conhecidas...");
-      const telemetryResult = await postSyncStep("/api/sync/telemetry", "sincronização de telemetria");
-
-      setMessage("Atualizando histórico de Safety Rating do Garage61...");
-      const ratingsResult = await postSyncStep("/api/sync/rating-history", "sincronização de ratings");
-
-      // The Chrome bridge is the supported path for fresh Garage61 sessions/laps/setups and iRStats
-      // results: it opens the logged-in source tabs and executes the packaged importers in their
-      // own origins. The previous UI only displayed the bridge's fallback bookmarklet, leaving this
-      // primary action disconnected even when the bridge was already installed and ready.
-      const bridgeReady = document.documentElement.dataset.iracingAnalyticsSyncBridge === "ready";
-      if (bridgeReady) {
-        window.postMessage({ source: "iracing-analytics", type: "start-external-sync" }, window.location.origin);
-        setMessage(`Preparando fontes do servidor e abrindo Garage61/iRStats para importar a atividade nova. A página será atualizada quando cada origem concluir. ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) armazenada(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados.`);
-      } else {
-        // Keep the browser bookmarklet as a supported fallback, but make the limitation explicit:
-        // a normal web page cannot execute code inside Garage61's logged-in origin by itself.
-        setMessage(`Preparação no servidor concluída: ${telemetryResult.telemetryDownloaded ?? 0} telemetria(s) armazenada(s); ${ratingsResult.recordsSynced ?? 0} pontos de Safety Rating verificados. Para sessões, voltas e setups novos, abra Garage61 e clique no favorito de importação do navegador.`);
-      }
-      await loadDashboard(true);
-    } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Erro na sincronização");
-    } finally {
-      setSyncing(false);
+    function onDone(event: Event) {
+      setMessage((event as CustomEvent<DataSyncDetail>).detail.message);
+      void loadDashboard(true);
     }
-  }
+    window.addEventListener(DATA_SYNC_PROGRESS_EVENT, onProgress);
+    window.addEventListener(DATA_SYNC_DONE_EVENT, onDone);
+    return () => {
+      window.removeEventListener(DATA_SYNC_PROGRESS_EVENT, onProgress);
+      window.removeEventListener(DATA_SYNC_DONE_EVENT, onDone);
+    };
+  }, [loadDashboard]);
 
   const rankings = useMemo(() => {
     if (!data) return null;
@@ -360,9 +314,6 @@ export default function Home() {
               <span>SEASON</span>
               <strong>{currentLabel}</strong>
             </div>
-            <button type="button" className={`primary-button ${syncing ? "disabled" : ""}`} disabled={syncing} onClick={() => void syncData()}>
-              {syncing ? "Atualizando..." : "Atualizar dados"}
-            </button>
             {/* These open the site in a new tab -- a real convenience (no typing the URL, no hunting
              * for the bookmarklet in Favoritos) but NOT the same as running the import: a page can't
              * inject/run a script into another origin's tab it doesn't control, so the bookmarklet

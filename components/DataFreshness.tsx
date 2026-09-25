@@ -1,11 +1,10 @@
 "use client";
-import { useEffect, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Database } from "lucide-react";
-type Payload = { status: string; sources?: { garage61: { lastSuccessAt: string | null; latestStatus: string; latestError: string | null; recentError: { at: string; message: string | null } | null }; irstats: { lastImportAt: string | null }; setups: { lastImportAt: string | null } } };
+import { useSyncStatus } from "@/lib/use-sync-status";
 const date = (value: string | null) => value ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(value)) : "sem registro";
 export default function DataFreshness({ surface }: { surface: "telemetry" | "setup" }) {
-  const [data, setData] = useState<Payload | null>(null);
-  useEffect(() => { fetch("/api/sync/status", { cache: "no-store" }).then((response) => response.json()).then((payload) => { if (payload.status === "ok") setData(payload); }).catch(() => undefined); }, []);
+  // Mesma requisição do cabeçalho (lib/use-sync-status.ts), não uma segunda chamada.
+  const data = useSyncStatus();
   if (!data?.sources) return null;
   const { garage61, irstats, setups } = data.sources;
   const failed = garage61.latestStatus === "error";

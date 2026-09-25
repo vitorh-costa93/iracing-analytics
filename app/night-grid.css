@@ -1,0 +1,367 @@
+/* Night Grid (redesign opção B, etapa 1 -- 25/09/2026). Base visual da nova UI: tokens, cabeçalho
+ * fixo e componentes de components/ui/. Fonte da verdade visual: docs/redesign-mockup/*.dc.html
+ * (valores de cor, raio, padding e tipografia copiados literalmente do mockup aprovado).
+ *
+ * Os tokens usam o prefixo --ng- de propósito: as telas atuais ainda dependem de --bg/--surface/...
+ * em app/globals.css, e trocar esses valores agora mudaria telas que só serão migradas nas etapas
+ * 2 a 7. Quando a última tela antiga sair, os tokens antigos e este prefixo podem ser unificados.
+ *
+ * Tema claro: o ThemeToggle continua valendo (data-theme="light" em <html>). O mockup só define o
+ * tema escuro; o bloco claro abaixo é uma tradução provisória da mesma identidade (mesma marca e
+ * mesmas cores de categoria, superfícies claras) para o toggle não quebrar -- não foi desenhado nem
+ * aprovado no mockup. */
+:root {
+  --ng-bg: #080B14;
+  --ng-header: #0E1322;
+  --ng-card: #111830;
+  --ng-card-2: #171F3B;
+  --ng-border: #222C50;
+  --ng-line: #1B2444;
+  --ng-text: #E8EEFF;
+  --ng-text-2: #C5D0F0;
+  --ng-muted: #9DAAD0;
+  --ng-soft: #8593BE;
+  --ng-brand: #FF2D3C;
+  --ng-on-brand: #FFFFFF;
+  --ng-gain: #3DD68C;
+  --ng-loss: #FF6B6B;
+  --ng-reference: #2DE2E6;
+  --ng-reference-popup: #B48CFF;
+  --ng-sports: #4DA3FF;
+  --ng-formula: #FFB020;
+  --ng-road: #B48CFF;
+  --ng-selected: #222C50;
+  --ng-code-bg: #1E2748;
+  --ng-tooltip-border: #3A4A82;
+  --ng-sr-badge: #0153DB;
+  --ng-caution: #FFB020;
+
+  --ng-radius-card: 10px;
+  --ng-radius-control: 8px;
+  --ng-radius-button: 6px;
+  --ng-radius-segment: 5px;
+  --ng-radius-tag: 5px;
+  --ng-radius-pill: 14px;
+
+  --ng-header-h: 60px;
+  --ng-page-x: 32px;
+
+  --ng-font-display: var(--font-chakra), "Chakra Petch", "Arial Narrow", sans-serif;
+  --ng-font-body: var(--font-plex), "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+
+:root[data-theme="light"] {
+  --ng-bg: #F2F4FA;
+  --ng-header: #FFFFFF;
+  --ng-card: #FFFFFF;
+  --ng-card-2: #EEF1F9;
+  --ng-border: #D5DBEC;
+  --ng-line: #E3E7F2;
+  --ng-text: #0E1322;
+  --ng-text-2: #26304F;
+  --ng-muted: #4A5680;
+  --ng-soft: #5E6A93;
+  --ng-brand: #E0202E;
+  --ng-gain: #13985A;
+  --ng-loss: #D93636;
+  --ng-reference: #0B9DA1;
+  --ng-reference-popup: #7F52D6;
+  --ng-sports: #1F74D8;
+  --ng-formula: #B87500;
+  --ng-road: #7F52D6;
+  --ng-selected: #DDE3F3;
+  --ng-code-bg: #E3E8F5;
+  --ng-tooltip-border: #B9C3E0;
+  --ng-caution: #B87500;
+}
+
+/* Números tabulares por padrão em todo o app (decisão fixa do plano). */
+body { font-variant-numeric: tabular-nums; }
+
+/* ------------------------------------------------------------------ cabeçalho fixo (B.dc.html) */
+.ng-header {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  height: var(--ng-header-h);
+  display: flex;
+  align-items: center;
+  gap: 32px;
+  padding: 0 var(--ng-page-x);
+  background: var(--ng-header);
+  border-bottom: 1px solid var(--ng-border);
+  color: var(--ng-text);
+  font-family: var(--ng-font-body);
+  letter-spacing: normal;
+}
+.ng-brand { display: flex; align-items: center; gap: 10px; color: var(--ng-text); text-decoration: none; flex-shrink: 0; }
+.ng-brand-mark { width: 28px; height: 28px; background: var(--ng-brand); clip-path: polygon(0 0, 100% 0, 72% 100%, 0 100%); }
+.ng-brand-name { font-family: var(--ng-font-display); font-weight: 700; font-size: 20px; letter-spacing: .06em; text-transform: uppercase; white-space: nowrap; }
+.ng-brand-name span { color: var(--ng-brand); }
+
+.ng-nav { display: flex; gap: 4px; height: 100%; }
+.ng-nav a {
+  display: flex;
+  align-items: center;
+  padding: 0 16px;
+  font-size: 15px;
+  color: var(--ng-muted);
+  text-decoration: none;
+  white-space: nowrap;
+  border-bottom: 3px solid transparent;
+  margin-top: 3px;
+}
+.ng-nav a:hover { color: var(--ng-text); }
+.ng-nav a[aria-current="page"] { color: var(--ng-text); font-weight: 600; border-bottom-color: var(--ng-brand); }
+
+.ng-header-spacer { flex-grow: 1; }
+.ng-freshness { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ng-muted); white-space: nowrap; }
+.ng-freshness-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ng-gain); flex-shrink: 0; }
+.ng-freshness-dot[data-state="stale"] { background: var(--ng-caution); }
+.ng-freshness-dot[data-state="error"] { background: var(--ng-loss); }
+.ng-freshness-dot[data-state="unknown"] { background: var(--ng-soft); }
+
+.ng-driver { display: flex; align-items: center; gap: 10px; padding-left: 20px; border-left: 1px solid var(--ng-border); flex-shrink: 0; }
+.ng-driver-text { text-align: right; line-height: 1.15; }
+.ng-driver-name { font-weight: 600; font-size: 14px; white-space: nowrap; }
+.ng-driver-id { font-size: 12px; color: var(--ng-muted); white-space: nowrap; }
+.ng-avatar { width: 36px; height: 36px; border-radius: 50%; background: var(--ng-card-2); display: flex; align-items: center; justify-content: center; font-family: var(--ng-font-display); font-weight: 700; font-size: 15px; color: var(--ng-text); }
+
+/* Mensagem de progresso/resultado do "Atualizar dados" disparado pelo cabeçalho. */
+.ng-sync-toast {
+  position: fixed;
+  top: calc(var(--ng-header-h) + 12px);
+  right: var(--ng-page-x);
+  z-index: 41;
+  max-width: min(520px, calc(100vw - 32px));
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--ng-header);
+  border: 1px solid var(--ng-tooltip-border);
+  border-radius: var(--ng-radius-control);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, .45);
+  color: var(--ng-text);
+  font-family: var(--ng-font-body);
+  font-size: 13px;
+  line-height: 1.45;
+}
+.ng-sync-toast button { flex-shrink: 0; border: 0; background: transparent; color: var(--ng-muted); cursor: pointer; font-size: 13px; padding: 0; }
+.ng-sync-toast button:hover { color: var(--ng-text); }
+
+@media (max-width: 1180px) {
+  .ng-header { gap: 20px; }
+  .ng-driver-text { display: none; }
+  .ng-driver { padding-left: 14px; }
+}
+@media (max-width: 980px) {
+  .ng-freshness-text { display: none; }
+}
+/* Até a etapa 7 (Mobile.dc.html, navegação inferior), o celular mantém o cabeçalho com a navegação
+ * rolando na horizontal -- funcional, mas ainda não é o desenho mobile aprovado. */
+@media (max-width: 760px) {
+  :root { --ng-header-h: 56px; --ng-page-x: 16px; }
+  .ng-header { gap: 12px; }
+  .ng-brand-name { display: none; }
+  .ng-brand-mark { width: 24px; height: 24px; }
+  .ng-nav { overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+  .ng-nav a { padding: 0 10px; font-size: 14px; }
+  .ng-header-spacer { display: none; }
+  .ng-driver { border-left: 0; padding-left: 0; }
+  .ng-avatar { width: 32px; height: 32px; font-size: 13px; }
+  .ng-header .ng-button { padding: 0 10px; font-size: 13px; }
+}
+
+/* ------------------------------------------------------------------ superfície Night Grid */
+/* Página nova (ex.: /debriefs): usa a superfície e a tipografia do mockup por inteiro. */
+.ng-page {
+  min-height: calc(100vh - var(--ng-header-h));
+  background: var(--ng-bg);
+  color: var(--ng-text);
+  font-family: var(--ng-font-body);
+  letter-spacing: normal;
+}
+.ng-main { padding: 20px var(--ng-page-x) 24px; display: flex; flex-direction: column; gap: 16px; }
+
+.ng-page-title { display: flex; align-items: flex-end; gap: 24px; flex-wrap: wrap; }
+.ng-eyebrow { font-size: 12px; color: var(--ng-muted); letter-spacing: .1em; text-transform: uppercase; }
+.ng-h1 { margin: 2px 0 0; font-family: var(--ng-font-display); font-weight: 700; font-size: 30px; letter-spacing: .02em; text-transform: uppercase; color: var(--ng-text); }
+.ng-page-title-aside { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+
+/* Panel / cartão padrão */
+.ng-panel {
+  background: var(--ng-card);
+  border: 1px solid var(--ng-border);
+  border-radius: var(--ng-radius-card);
+  padding: 16px 20px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ng-text);
+  font-family: var(--ng-font-body);
+}
+.ng-panel[data-density="compact"] { padding: 14px 16px; gap: 4px; }
+.ng-panel-head { display: flex; align-items: flex-start; gap: 12px; }
+.ng-panel-head-text { min-width: 0; }
+.ng-panel-head-actions { margin-left: auto; display: flex; align-items: center; gap: 12px; flex-shrink: 0; }
+.ng-kicker { font-size: 11px; letter-spacing: .14em; color: var(--ng-brand); font-weight: 600; text-transform: uppercase; }
+.ng-panel-title { margin: 0; font-family: var(--ng-font-display); font-weight: 600; font-size: 18px; letter-spacing: .03em; text-transform: uppercase; color: var(--ng-text); }
+.ng-panel-title[data-size="md"] { font-size: 19px; }
+.ng-panel-title[data-size="lg"] { font-size: 22px; }
+.ng-panel-subtitle { font-size: 12px; color: var(--ng-soft); margin-top: 2px; }
+.ng-inset { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 10px 12px; }
+
+/* Botão primário (Atualizar dados) */
+.ng-button {
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: var(--ng-radius-button);
+  background: var(--ng-brand);
+  color: var(--ng-on-brand);
+  font-family: var(--ng-font-body);
+  font-weight: 600;
+  font-size: 14px;
+  cursor: pointer;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ng-button:hover:not(:disabled) { filter: brightness(1.08); }
+.ng-button:disabled { opacity: .6; cursor: progress; }
+.ng-button:focus-visible, .ng-segmented button:focus-visible, .ng-nav a:focus-visible { outline: 2px solid var(--ng-text); outline-offset: 2px; }
+
+/* SegmentedControl */
+.ng-segmented { display: inline-flex; gap: 4px; padding: 3px; background: var(--ng-header); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-control); flex-shrink: 0; }
+.ng-segmented button {
+  height: 28px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--ng-radius-segment);
+  background: transparent;
+  color: var(--ng-muted);
+  font-family: var(--ng-font-body);
+  font-weight: 400;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.ng-segmented button:hover:not([aria-pressed="true"]) { color: var(--ng-text); }
+.ng-segmented button[aria-pressed="true"] { background: var(--ng-selected); color: var(--ng-text); font-weight: 600; }
+
+/* SelectPill: <select> nativo com a aparência do seletor do mockup (texto + ▾ apagado). */
+.ng-select { position: relative; display: inline-flex; align-items: center; flex-shrink: 0; }
+.ng-select select {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 34px;
+  padding: 0 32px 0 12px;
+  background: var(--ng-header);
+  border: 1px solid var(--ng-border);
+  border-radius: var(--ng-radius-control);
+  color: var(--ng-text);
+  font-family: var(--ng-font-body);
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+  max-width: 100%;
+}
+.ng-select select:focus-visible { outline: 2px solid var(--ng-text); outline-offset: 2px; }
+.ng-select select option { background: var(--ng-header); color: var(--ng-text); }
+.ng-select-arrow { position: absolute; right: 12px; pointer-events: none; color: var(--ng-muted); font-size: 13px; }
+.ng-field-label { font-size: 12px; color: var(--ng-soft); text-transform: uppercase; }
+
+/* Chip */
+.ng-chip {
+  --chip: var(--ng-soft);
+  height: 22px;
+  padding: 0 8px;
+  border-radius: var(--ng-radius-tag);
+  background: color-mix(in srgb, var(--chip) 13.3%, transparent);
+  color: var(--chip);
+  font-family: var(--ng-font-body);
+  font-size: 12px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.ng-chip[data-tone="gain"] { --chip: var(--ng-gain); }
+.ng-chip[data-tone="loss"] { --chip: var(--ng-loss); }
+.ng-chip[data-tone="brand"] { --chip: var(--ng-brand); }
+.ng-chip[data-tone="reference"] { --chip: var(--ng-reference); }
+.ng-chip[data-tone="sports"] { --chip: var(--ng-sports); }
+.ng-chip[data-tone="formula"] { --chip: var(--ng-formula); }
+.ng-chip[data-tone="road"] { --chip: var(--ng-road); }
+.ng-chip[data-variant="solid"] { background: var(--ng-sr-badge); color: #fff; }
+.ng-chip[data-variant="pill"] {
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid var(--ng-border);
+  border-radius: var(--ng-radius-pill);
+  background: var(--ng-card-2);
+  color: var(--ng-text);
+  font-size: 12.5px;
+  font-weight: 400;
+}
+.ng-chip[data-variant="pill"][data-surface="header"] { background: var(--ng-header); }
+button.ng-chip { cursor: pointer; }
+button.ng-chip[data-variant="pill"]:hover { border-color: var(--ng-tooltip-border); }
+.ng-chip[data-variant="code"] {
+  width: 24px;
+  height: 18px;
+  padding: 0;
+  justify-content: center;
+  border-radius: 3px;
+  background: var(--ng-code-bg);
+  color: var(--ng-muted);
+  font-size: 10px;
+}
+
+/* KpiCard (B.dc.html, revisão aprovada 25/09/2026): a cor da categoria é uma barrinha vertical de
+ * 4px DENTRO do cartão, à esquerda -- não uma borda superior grossa sobre o canto arredondado. */
+.ng-kpi {
+  --kpi-accent: var(--ng-soft);
+  position: relative;
+  background: var(--ng-card);
+  border: 1px solid var(--ng-border);
+  border-radius: var(--ng-radius-card);
+  padding: 14px 16px 14px 26px;
+  box-sizing: border-box;
+  height: 168px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  color: var(--ng-text);
+  font-family: var(--ng-font-body);
+}
+.ng-kpi[data-category="sports"] { --kpi-accent: var(--ng-sports); }
+.ng-kpi[data-category="formula"] { --kpi-accent: var(--ng-formula); }
+.ng-kpi[data-category="road"] { --kpi-accent: var(--ng-road); }
+.ng-kpi[data-auto-height] { height: auto; }
+.ng-kpi-accent { position: absolute; left: 10px; top: 14px; bottom: 14px; width: 4px; border-radius: 2px; background: var(--kpi-accent); }
+/* Mobile.dc.html: cartão mais compacto (padding 12px, barra a 8px da borda). */
+@media (max-width: 760px) {
+  .ng-kpi { padding: 12px 12px 12px 22px; gap: 3px; height: auto; }
+  .ng-kpi-label { font-size: 11px; }
+  .ng-kpi-value { font-size: 26px; }
+  .ng-kpi-accent { left: 8px; top: 12px; bottom: 12px; }
+}
+.ng-kpi-label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-muted); }
+.ng-kpi-value-row { display: flex; align-items: center; gap: 10px; }
+.ng-kpi-value { font-family: var(--ng-font-display); font-weight: 700; font-size: 30px; line-height: 1; }
+.ng-kpi-trend { font-size: 13px; font-weight: 500; color: var(--ng-muted); }
+.ng-kpi-trend[data-tone="gain"] { color: var(--ng-gain); }
+.ng-kpi-trend[data-tone="loss"] { color: var(--ng-loss); }
+.ng-kpi-spark { width: 100%; height: 34px; margin-top: 2px; display: block; }
+.ng-kpi-desc { font-size: 12px; color: var(--ng-soft); }
+
+.ng-category-heading { display: flex; align-items: center; gap: 8px; font-family: var(--ng-font-display); font-weight: 600; font-size: 14px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-text); }
+.ng-category-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--ng-soft); }
+.ng-category-swatch[data-category="sports"] { background: var(--ng-sports); }
+.ng-category-swatch[data-category="formula"] { background: var(--ng-formula); }
+.ng-category-swatch[data-category="road"] { background: var(--ng-road); }

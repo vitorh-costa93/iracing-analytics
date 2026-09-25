@@ -1,17 +1,11 @@
 "use client";
 
-import Link from "next/link";
-import { Activity, Gauge, Wrench, Bookmark, X } from "lucide-react";
-import { usePathname } from "next/navigation";
+import { Bookmark, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
-// Renamed 29/08/2026 (kept the routes/hrefs as-is, only the labels changed): Overview stays,
-// Telemetria -> Analysis, Setup -> Laboratory.
-const tabs = [
-  { href: "/", label: "Overview", icon: Gauge },
-  { href: "/telemetry", label: "Analysis", icon: Activity },
-  { href: "/setup", label: "Laboratory", icon: Wrench },
-];
+// 25/09/2026 (redesign etapa 1): a navegação entre áreas saiu daqui para o cabeçalho global
+// (components/AppHeader.tsx: Visão Geral, Telemetry Lab, Debriefs, Setup Lab). Esta faixa ficou só
+// com o atalho "Favoritos" (bookmarklets de iRStats/Garage61) até as telas serem migradas.
 
 const IRSTATS_BOOKMARKLET = "javascript:(function(){var d=document,s=d.createElement('script');s.src='https://iracing-analytics.vercel.app/irstats-import.js?v='+Date.now();d.body.appendChild(s);})();";
 const GARAGE61_BOOKMARKLET = "javascript:(function(){var d=document,s=d.createElement('script');s.src='https://iracing-analytics.vercel.app/garage61-import.js?v='+Date.now();d.body.appendChild(s);})();";
@@ -31,16 +25,10 @@ function BookmarkletLink({ href, children }: { href: string; children: React.Rea
 }
 
 export default function AppTabs() {
-  const pathname = usePathname();
   const [open, setOpen] = useState(false);
   return (
     <>
-      <nav className="app-tabs" aria-label="Áreas do Racing Analytics">
-        {tabs.map(({ href, label, icon: Icon }) => (
-          <Link key={href} href={href} className={pathname === href ? "active" : ""}>
-            <Icon size={15} aria-hidden />{label}
-          </Link>
-        ))}
+      <nav className="app-tabs" aria-label="Importação por favoritos">
         <div className="app-tabs-actions">
           <button type="button" className="app-tabs-action" onClick={() => setOpen(true)}>
             <Bookmark size={15} aria-hidden />Favoritos
