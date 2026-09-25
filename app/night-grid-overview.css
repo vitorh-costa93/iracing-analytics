@@ -1,0 +1,135 @@
+/* Night Grid -- Visão Geral (redesign etapa 2, 25/09/2026). Só o que é específico da rota /;
+ * tokens e componentes base ficam em night-grid.css. Referência: docs/redesign-mockup/B.dc.html
+ * (1440 px) e Mobile.dc.html (390 px). Prefixo ngo- = "night grid overview". */
+
+.ngo-main { max-width: none; }
+.ngo-banner { padding: 10px 14px; border: 1px solid var(--ng-tooltip-border); border-radius: var(--ng-radius-control); background: var(--ng-card); color: var(--ng-text-2); font-size: 13px; }
+.ngo-empty { padding: 28px 0; color: var(--ng-soft); font-size: 14px; text-align: center; }
+.ngo-counter { font-size: 14px; color: var(--ng-muted); }
+.ngo-counter strong { color: var(--ng-text); font-weight: 600; }
+.ng-page-title { justify-content: space-between; }
+.ng-page-title-aside { margin-left: 0; }
+
+/* Ferramentas discretas (calendário, debrief, atalhos das fontes, tema). Reaproveitam os botões
+ * antigos, só recoloridos para a superfície nova. */
+.ngo-tools { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: -6px; }
+.ngo-tools .quick-open-button, .ngo-tools .primary-button, .ngo-tools button, .ngo-tools a {
+  height: 30px; padding: 0 12px; display: inline-flex; align-items: center; gap: 6px;
+  background: transparent; color: var(--ng-muted); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-control);
+  font-family: var(--ng-font-body); font-size: 12.5px; font-weight: 400; text-decoration: none; cursor: pointer; box-shadow: none;
+}
+.ngo-tools .quick-open-button:hover, .ngo-tools .primary-button:hover, .ngo-tools button:hover, .ngo-tools a:hover { color: var(--ng-text); border-color: var(--ng-tooltip-border); }
+.ngo-tools .dmaic-report-actions { display: inline-flex; gap: 8px; margin: 0; }
+
+/* KPIs */
+.ngo-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px; }
+.ngo-kpi-group { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.ngo-kpi-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+
+/* Linha dispersão + contextos */
+.ngo-row-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.ngo-scatter-panel, .ngo-context-panel { height: 340px; }
+.ngo-scatter-panel { gap: 2px; }
+.ngo-scatter { width: 100%; flex: 1 1 0; min-height: 0; margin-top: 4px; display: block; overflow: visible; }
+.ngo-scatter text { font-family: var(--ng-font-body); }
+.ngo-context-panel { gap: 10px; }
+.ngo-context-panel .ng-panel-head { align-items: center; }
+.ngo-link { font-size: 13px; color: var(--ng-muted); text-decoration: none; }
+.ngo-link:hover { color: var(--ng-text); }
+.ngo-context { display: flex; align-items: center; gap: 12px; padding: 10px 12px; background: var(--ng-card-2); border-radius: var(--ng-radius-control); color: var(--ng-text); text-decoration: none; }
+.ngo-context:hover { outline: 1px solid var(--ng-tooltip-border); }
+.ngo-context-bar { width: 6px; align-self: stretch; border-radius: 3px; flex-shrink: 0; }
+.ngo-context-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.ngo-context-track { font-weight: 600; font-size: 15px; }
+.ngo-context-sub { font-size: 13px; color: var(--ng-muted); }
+.ngo-context-avg { text-align: right; display: flex; flex-direction: column; }
+.ngo-context-avg span { font-family: var(--ng-font-display); font-weight: 600; font-size: 20px; }
+.ngo-context-avg small { font-size: 12px; color: var(--ng-muted); }
+
+/* Performance por contexto */
+.ngo-perf { display: flex; flex-direction: column; gap: 12px; }
+.ngo-perf-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; justify-content: space-between; }
+.ngo-perf-controls { display: flex; gap: 12px; flex-wrap: wrap; }
+.ngo-perf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.ngo-perf-grid .ng-kicker { color: var(--ng-soft); }
+.ngo-perf-grid .ng-panel-title { font-size: 17px; margin-bottom: 4px; }
+.ngo-rank { display: flex; flex-direction: column; }
+/* 200px no mockup; 240px aqui porque nomes reais de carro ("Aston Martin Vantage GT3 EVO") quebravam em 3 linhas. */
+.ngo-rank-axis, .ngo-rank-row { display: grid; grid-template-columns: 240px minmax(0, 1fr) 96px; gap: 12px; }
+.ngo-rank-axis { font-size: 11px; letter-spacing: .12em; color: var(--ng-soft); margin-top: 4px; }
+.ngo-rank-axis > span:nth-child(2) { display: flex; justify-content: space-between; }
+.ngo-rank-row { align-items: center; min-height: 38px; border-top: 1px solid var(--ng-line); padding: 2px 0; }
+.ngo-rank-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ngo-flag { flex-shrink: 0; border-radius: 2px; object-fit: cover; box-shadow: 0 0 0 1px rgba(255, 255, 255, .08); }
+.ngo-lead-icon { display: inline-flex; width: 20px; justify-content: center; flex-shrink: 0; color: var(--ng-muted); }
+.ngo-rank-text { min-width: 0; }
+.ngo-rank-name { font-weight: 600; font-size: 14px; line-height: 1.15; overflow-wrap: anywhere; }
+.ngo-rank-sub { font-size: 11.5px; color: var(--ng-soft); }
+.ngo-rank-bar { position: relative; height: 14px; }
+.ngo-rank-bar > span { position: absolute; top: 2px; height: 10px; border-radius: 2px; }
+.ngo-rank-center { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: #5C6A9E; }
+.ngo-rank-value { text-align: right; font-weight: 600; font-size: 14px; white-space: nowrap; }
+.ngo-rank-value span { display: block; font-weight: 400; font-size: 11px; color: var(--ng-soft); line-height: 1.15; }
+.ngo-rank-value:not(.ngo-rank-value-2) span { display: inline; }
+.ngo-rank-value-2 { line-height: 1.15; }
+
+/* Últimas corridas */
+.ngo-races-panel { padding: 14px 20px; gap: 2px; }
+.ngo-races { display: flex; flex-direction: column; }
+.ngo-races-row { display: grid; grid-template-columns: 70px minmax(0, 1.6fr) minmax(0, 1.3fr) 60px 60px 80px; gap: 12px; padding: 0 8px; min-height: 34px; align-items: center; font-size: 14px; border-bottom: 1px solid var(--ng-line); }
+.ngo-races-head { min-height: 0; padding-top: 4px; padding-bottom: 4px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); border-bottom-color: var(--ng-border); }
+.ngo-races-row .r { text-align: right; }
+.ngo-races-date { color: var(--ng-muted); }
+.ngo-races-track { font-weight: 500; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ngo-races-track span { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
+.ngo-races-car { color: var(--ng-text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngo-races-grid { color: var(--ng-muted); }
+.ngo-races-pos, .ngo-races-delta { font-weight: 600; }
+.ngo-races-mobile-sub { display: none; }
+.ngo-pager { display: flex; align-items: center; justify-content: center; gap: 12px; padding-top: 10px; font-size: 13px; color: var(--ng-muted); }
+.ngo-pager button { height: 28px; padding: 0 12px; background: transparent; border: 1px solid var(--ng-border); border-radius: var(--ng-radius-segment); color: var(--ng-text); font-family: var(--ng-font-body); font-size: 13px; cursor: pointer; }
+.ngo-pager button:disabled { opacity: .4; cursor: default; }
+
+@media (max-width: 1180px) {
+  .ngo-kpis { grid-template-columns: minmax(0, 1fr); }
+  .ngo-row-2, .ngo-perf-grid { grid-template-columns: minmax(0, 1fr); }
+  .ngo-scatter-panel { height: 380px; }
+  .ngo-context-panel { height: auto; }
+}
+
+/* Mobile.dc.html (390 px): KPIs compactos em 2 colunas sem minigráfico, dispersão baixa, ranking em
+ * duas linhas (nome + valor / barra fina), corridas em duas linhas. */
+@media (max-width: 760px) {
+  .ng-h1 { font-size: 24px; }
+  .ng-eyebrow { font-size: 11px; }
+  .ng-page-title { flex-direction: column; align-items: flex-start; gap: 4px; }
+  .ngo-main { gap: 14px; padding-top: 16px; }
+  .ngo-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .ngo-kpi-grid .ng-kpi-spark, .ngo-kpi-grid .ng-kpi-desc { display: none; }
+  .ngo-kpi-grid > :nth-child(3) { grid-column: 1 / -1; }
+  .ngo-scatter-panel .ng-panel-head-actions { width: 100%; }
+  .ngo-scatter-panel .ng-select { flex: 1 1 auto; min-width: 0; }
+  .ngo-scatter-panel .ng-select select { width: 100%; }
+  .ngo-tools .dmaic-report-actions { display: contents; }
+  .ng-kpi-trend { font-size: 12px; }
+  .ngo-scatter-panel { height: auto; padding: 14px 16px; }
+  .ngo-scatter { min-height: 170px; flex: none; }
+  .ngo-scatter-panel .ng-panel-head, .ngo-perf-head { flex-wrap: wrap; }
+  .ngo-scatter-panel .ng-panel-head-actions { margin-left: 0; flex-wrap: wrap; }
+  .ngo-perf-controls { width: 100%; }
+  .ngo-perf-controls .ng-segmented { max-width: 100%; overflow-x: auto; }
+  .ngo-rank-axis { display: none; }
+  .ngo-rank-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label value" "bar bar"; gap: 4px 10px; padding: 8px 0; }
+  .ngo-rank-label { grid-area: label; }
+  .ngo-rank-value { grid-area: value; }
+  .ngo-rank-bar { grid-area: bar; height: 6px; background: var(--ng-code-bg); border-radius: 3px; }
+  .ngo-rank-bar > span { top: 0; height: 6px; border-radius: 3px; }
+  .ngo-rank-center { display: none; }
+  .ngo-races-panel { padding: 14px 16px; }
+  .ngo-races-head { display: none; }
+  .ngo-races-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "track delta" "sub sub"; min-height: 48px; padding: 6px 0; row-gap: 0; gap: 0 10px; }
+  .ngo-races-date, .ngo-races-car, .ngo-races-grid, .ngo-races-pos { display: none; }
+  .ngo-races-track { grid-area: track; font-weight: 600; }
+  .ngo-races-delta { grid-area: delta; }
+  .ngo-races-mobile-sub { display: block; grid-area: sub; font-size: 12px; color: var(--ng-soft); padding-left: 16px; }
+}

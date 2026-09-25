@@ -1,17 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import KpiCard from "@/components/KpiCard";
-import PerformanceRanking from "@/components/PerformanceRanking";
-import WinnerGapRanking, { type WinnerGapItem } from "@/components/WinnerGapRanking";
-import SeasonChart from "@/components/SeasonChart";
-import AppTabs from "@/components/AppTabs";
+import "./night-grid-overview.css";
+import type { WinnerGapItem } from "@/components/WinnerGapRanking";
 import ThemeToggle from "@/components/ThemeToggle";
-import RaceScatterPlot from "@/components/RaceScatterPlot";
-import RaceTable from "@/components/RaceTable";
 import DmaicReportModal from "@/components/DmaicReportModal";
-import DataFreshness from "@/components/DataFreshness";
 import SeasonCalendarImportModal from "@/components/SeasonCalendarImportModal";
+import { CategoryHeading, KpiCard, Panel, PageTitle, SegmentedControl, SelectPill } from "@/components/ui";
+import type { KpiCategory, KpiTone } from "@/components/ui";
+import RaceScatter from "@/components/overview/RaceScatter";
+import LatestRaces from "@/components/overview/LatestRaces";
+import { DeltaByContext, GapToWinner, gapOverall } from "@/components/overview/PerformancePanels";
+import { signedNumber } from "@/components/overview/format";
 import { trackUiEvent } from "@/lib/track-ui-event";
 import { DATA_SYNC_DONE_EVENT, DATA_SYNC_PROGRESS_EVENT, type DataSyncDetail } from "@/lib/data-sync-action";
 
@@ -155,7 +155,8 @@ export default function Home() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
-  const [chartCategory, setChartCategory] = useState<Category>("formula");
+  const [chartCategory, setChartCategory] = useState<Category>("sports");
+  const [perfTab, setPerfTab] = useState<"sf" | "gt3" | "imsa">("gt3");
   // Options depend on which series this driver actually raced in that category this season, not a
   // hardcoded taxonomy — the real list (GT3 Challenge Fixed, IMSA, GT Sprint, Prototype, LMP2...)
   // is messier than "GT3/IMSA x Open/Fixed" and a fixed set would silently exclude series outside it.
@@ -239,16 +240,14 @@ export default function Home() {
   }, [data, gt3Mode, imsaMode, imsaClass]);
 
   if (loading) {
-    return <main className="app-shell"><div className="state-box">Carregando Racing Analytics...</div></main>;
+    return <div className="ng-page"><main className="ng-main"><div className="ngo-empty">Carregando Racing Analytics...</div></main></div>;
   }
 
   if (!data || !rankings) {
-    return <main className="app-shell"><div className="state-box error">{message ?? "Não foi possível carregar os dados."}<button type="button" className="retry-button" onClick={() => loadDashboard()}>Tentar novamente</button></div></main>;
+    return <div className="ng-page"><main className="ng-main"><div className="ngo-empty">{message ?? "Não foi possível carregar os dados."} <button type="button" className="ng-button" onClick={() => loadDashboard()}>Tentar novamente</button></div></main></div>;
   }
 
-  const currentLabel = shortSeason(data.season.current.name);
   const previousLabel = shortSeason(data.season.previous.name);
-  const weekly = chartCategory === "formula" ? data.weekly.formula : data.weekly.sports;
   const categoryRaces = data.races.filter((race) => race.ratingCategory === (chartCategory === "formula" ? "formula_car" : "sports_car") && race.delta !== null);
   // Sorted by how many races each series has this season — the driver's most-raced series leads
   // the dropdown instead of alphabetical order burying it.
@@ -296,172 +295,173 @@ export default function Home() {
     items.push({ key, series: context.series, track: context.track, avg, races });
     return items;
   }, []).slice(0, 3);
+
+  // ---- Night Grid: dados dos KPIs (mesmas fontes de antes: data.kpis, data.streaks, data.weekly, data.races)
+  const prevShort = previousLabel.replace(/^\d{4}\s*/, "");
+  const currentRaceRows = (category: "formula_car" | "sports_car") => data.races.filter((race) => race.ratingCategory === category);
+  const weekSeries = (points: WeekPoint[]) => points.map((point) => point.iratingEnd ?? point.iratingFirst ?? point.iratingBeforeWeek);
+  const kpiGroups = (["formula", "sports"] as const).map((key) => {
+    const kpi = data.kpis[key];
+    const category = key === "formula" ? "formula_car" : "sports_car";
+    const streak = data.streaks[category];
+    const rows = currentRaceRows(category).slice().reverse(); // cronológico
+    const weeklyCat = data.weekly[key];
+    const current = weekSeries(weeklyCat.current);
+    const previous = weekSeries(weeklyCat.previous);
+    const iratingDiff = kpi.irating.current !== null && kpi.irating.previousSameWeek !== null ? kpi.irating.current - kpi.irating.previousSameWeek : null;
+    const winsDiff = kpi.wins.current !== null && kpi.wins.previous !== null ? kpi.wins.current - kpi.wins.previous : null;
+    let cumulative = 0;
+    const winSteps = rows.map((race) => (race.finishPosition === 1 ? ++cumulative : cumulative));
+    const toneOf = (diff: number | null): KpiTone => (diff === null || diff === 0 ? "neutral" : diff > 0 ? "gain" : "loss");
+    const arrow = (diff: number) => (diff > 0 ? "↗" : diff < 0 ? "↘" : "→");
+    return {
+      key,
+      category: key as KpiCategory,
+      name: key === "formula" ? "Formula Car" : "Sports Car",
+      cards: [
+        <KpiCard key="ir" category={key} label="iRating"
+          value={kpi.irating.current === null ? "—" : kpi.irating.current.toLocaleString("pt-BR")}
+          badge={kpi.safetyRating.currentDisplay ?? undefined}
+          trend={iratingDiff === null ? "Sem comparação anterior" : `${arrow(iratingDiff)} ${signedNumber(iratingDiff)} vs. ${prevShort} W${kpi.irating.week}`}
+          trendTone={toneOf(iratingDiff)}
+          sparkline={current.some((v) => v !== null) ? { kind: "lines", current, previous: previous.some((v) => v !== null) ? previous : undefined, count: Math.max(current.length, previous.length) } : undefined}
+          description={`Tracejado: ${prevShort}`} />,
+        <KpiCard key="w" category={key} label="Vitórias"
+          value={kpi.wins.current === null ? "—" : kpi.wins.current.toLocaleString("pt-BR")}
+          trend={winsDiff === null ? "Sem comparação anterior" : `${arrow(winsDiff)} ${signedNumber(winsDiff)} vs. ${prevShort}`}
+          trendTone={toneOf(winsDiff)}
+          sparkline={winSteps.length ? { kind: "steps", values: winSteps } : undefined}
+          description={`Vitórias registradas · ${prevShort}: ${kpi.wins.previous?.toLocaleString("pt-BR") ?? "—"}`} />,
+        /* 05/09/2026: sequência atual + recorde all-time (carreira inteira via iRStats). */
+        <KpiCard key="s" category={key} label="Sequência"
+          value={streak.current}
+          trend={streak.current > 0 ? `${streak.current} corrida${streak.current === 1 ? "" : "s"} seguida${streak.current === 1 ? "" : "s"} ganhando iRating` : "Última corrida perdeu iRating"}
+          trendTone={streak.current > 0 ? "gain" : "neutral"}
+          sparkline={rows.length ? { kind: "bars", values: rows.slice(-12).map((race) => race.delta ?? 0) } : undefined}
+          description={`Recorde all-time · ${streak.best} seguida${streak.best === 1 ? "" : "s"}`} />,
+      ],
+    };
+  });
+
+  const perfMode = perfTab === "gt3" ? gt3Mode : perfTab === "imsa" ? imsaMode : "track";
+  const perfItems = perfTab === "sf" ? rankings.tracks : perfTab === "gt3" ? rankings.gt3 : rankings.imsa;
+  const perfLabel = perfTab === "sf" ? "SUPER FORMULA 23" : perfTab === "gt3" ? "GT3" : "IMSA GTP / LMP2";
+  const gapItems = data.winnerGapByTrack ?? [];
+  const seasonWeek = data.kpis.formula.irating.week;
+
   return (
-    <main className="app-shell">
-      <div className="app-frame">
-        <header className="app-header">
-          <div className="brand-block">
-            <div className="brand-mark"><span /></div>
+    <div className="ng-page">
+      <main className="ng-main ngo-main">
+        {message && <div className="ngo-banner" role="status">{message}</div>}
+
+        <PageTitle
+          eyebrow={`${data.season.current.name} · Semana ${seasonWeek} · vs. ${data.season.previous.name}`}
+          title="Visão Geral da Temporada"
+          aside={<div className="ngo-counter"><strong>{data.season.current.races}</strong> corridas <span>·</span> <strong>{data.season.current.laps.toLocaleString("pt-BR")}</strong> voltas</div>}
+        />
+
+        {/* Ações que o mockup não redesenha e que continuam existindo: atalhos das fontes, calendário,
+         * debrief da semana/season e tema. Ficam numa linha discreta logo abaixo do título. */}
+        <div className="ngo-tools">
+          <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
+          <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
+          <SeasonCalendarImportModal onImported={() => loadDashboard(true)} />
+          <DmaicReportModal />
+          <ThemeToggle />
+        </div>
+
+        <section className="ngo-kpis" aria-label="Indicadores da temporada">
+          {kpiGroups.map((group) => (
+            <div className="ngo-kpi-group" key={group.key}>
+              <CategoryHeading category={group.category}>{group.name}</CategoryHeading>
+              <div className="ngo-kpi-grid">{group.cards}</div>
+            </div>
+          ))}
+        </section>
+
+        <section className="ngo-row-2">
+          <Panel
+            className="ngo-scatter-panel"
+            kicker="RACE SURVIVAL"
+            title="Duração × Δ iRating"
+            titleSize="md"
+            actions={
+              <>
+                <SegmentedControl ariaLabel="Categoria do gráfico" value={chartCategory} onChange={(value) => { setChartCategory(value); setChartSeries("all"); }}
+                  options={[{ value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
+                {seriesOptions.length > 1 && (
+                  <SelectPill ariaLabel="Filtrar por série" value={chartSeries} onChange={setChartSeries}
+                    options={[{ value: "all", label: `Todas as séries (${categoryRaces.length})` }, ...seriesOptions.map(([series, count]) => ({ value: series, label: `${series} (${count})` }))]} />
+                )}
+              </>
+            }
+          >
+            <div className="ng-panel-subtitle">Só a season atual · duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</div>
+            <RaceScatter points={scatter} />
+          </Panel>
+
+          <Panel
+            className="ngo-context-panel"
+            title="Contextos da semana"
+            titleSize="md"
+            actions={<a className="ngo-link" href="/telemetry">Telemetry Lab →</a>}
+          >
+            {weeklyContexts.length ? weeklyContexts.map((item) => (
+              <a className="ngo-context" key={item.key} href="/telemetry" onClick={() => trackUiEvent("overview_week_context_opened", { series: item.series })}>
+                <span className="ngo-context-bar" style={{ background: /formula|sf23|super/i.test(item.series) ? "var(--ng-formula)" : "var(--ng-sports)" }} />
+                <span className="ngo-context-text">
+                  <span className="ngo-context-track">{item.track}</span>
+                  <span className="ngo-context-sub">{item.series} · {item.avg === null ? "sem histórico suficiente" : `${item.races} corridas no contexto`}</span>
+                </span>
+                <span className="ngo-context-avg">
+                  <span style={{ color: item.avg === null ? "var(--ng-muted)" : item.avg >= 0 ? "var(--ng-gain)" : "var(--ng-loss)" }}>{item.avg === null ? "—" : signedNumber(item.avg, 1)}</span>
+                  <small>Δ médio</small>
+                </span>
+              </a>
+            )) : <p className="ngo-empty">Ainda não há corridas desta week para formar os contextos ativos.</p>}
+          </Panel>
+        </section>
+
+        <section className="ngo-perf">
+          <div className="ngo-perf-head">
             <div>
-              <div className="brand-kicker">IRACING ANALYTICS</div>
-              <h1>Racing Analytics</h1>
-              <p>{data.driver.name} <span>•</span> iRacing #{data.driver.iracingId}</p>
+              <div className="ng-kicker">HISTORICAL PERFORMANCE</div>
+              <h2 className="ng-panel-title" data-size="lg">Performance por contexto</h2>
+              <div className="ng-panel-subtitle">Todo o período com dados detalhados disponíveis · onde você rende melhor e pior, por duas medidas.</div>
+            </div>
+            <div className="ngo-perf-controls">
+              <SegmentedControl ariaLabel="Categoria de performance" value={perfTab} onChange={setPerfTab}
+                options={[{ value: "sf", label: "Super Formula" }, { value: "gt3", label: "GT3" }, { value: "imsa", label: "IMSA GTP / LMP2" }]} />
+              {perfTab !== "sf" && (
+                <SegmentedControl ariaLabel="Agrupar por" value={perfMode as RankingMode}
+                  onChange={(mode) => (perfTab === "gt3" ? setGt3Mode(mode) : setImsaMode(mode))}
+                  options={[{ value: "track", label: "Pista" }, { value: "car", label: "Carro" }]} />
+              )}
             </div>
           </div>
-
-          <div className="header-actions">
-            <div className="season-chip">
-              <span>SEASON</span>
-              <strong>{currentLabel}</strong>
-            </div>
-            {/* These open the site in a new tab -- a real convenience (no typing the URL, no hunting
-             * for the bookmarklet in Favoritos) but NOT the same as running the import: a page can't
-             * inject/run a script into another origin's tab it doesn't control, so the bookmarklet
-             * click on that tab is still a separate, required step. Explicit in the label so it never
-             * reads as "this button does the whole sync" — it doesn't, and can't, without an
-             * extension. */}
-            <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
-            <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
-            <SeasonCalendarImportModal onImported={() => loadDashboard(true)} />
-            <DmaicReportModal />
-            <ThemeToggle />
-          </div>
-        </header>
-        <AppTabs />
-
-        {message && <div className="status-banner">{message}</div>}
-
-        <section className="section-block week-context-section">
-          <div className="section-title-row"><div><span className="section-kicker">ESSA SEMANA NO IRACING</span><h2>Seu histórico nos contextos ativos</h2><p>Média de Δ iRating por corrida na mesma pista e categoria; amostra mínima de duas corridas.</p></div><a className="secondary-button" href="/telemetry">Preparar telemetria →</a></div>
-          <div className="week-context-grid">{weeklyContexts.length ? weeklyContexts.map((item) => <article className="week-context-card" key={item.key}><span>{item.series}</span><h3>{item.track}</h3><strong className={item.avg === null ? "neutral" : item.avg >= 0 ? "positive" : "negative"}>{item.avg === null ? "—" : `${item.avg > 0 ? "+" : ""}${item.avg.toFixed(1)}`}</strong><small>{item.avg === null ? "Sem histórico suficiente" : `${item.races} corridas no contexto`}</small><a href="/telemetry" onClick={() => trackUiEvent("overview_week_context_opened", { series: item.series })}>Analisar volta elegível →</a></article>) : <p className="comparison-note">Ainda não há corridas desta week para formar os contextos ativos.</p>}</div>
-          <DataFreshness surface="telemetry" />
-        </section>
-
-        <section className="section-block">
-          <div className="section-title-row">
-            <div>
-              <span className="section-kicker">SEASON PERFORMANCE</span>
-              <h2>{currentLabel} <em>Season to Date vs.</em> {previousLabel}</h2>
-            </div>
-            <div className="season-summary">
-              <strong>{data.season.current.races}</strong> corridas <span>•</span> <strong>{data.season.current.laps.toLocaleString("pt-BR")}</strong> voltas
-            </div>
-          </div>
-
-          <div className="kpi-grid">
-            <KpiCard eyebrow="Formula Car • iRating" value={data.kpis.formula.irating.current} previousValue={data.kpis.formula.irating.previousSameWeek} previousLabel={`${previousLabel} W${data.kpis.formula.irating.week}`} safetyRatingDisplay={data.kpis.formula.safetyRating.currentDisplay} />
-            <KpiCard eyebrow="Sports Car • iRating" value={data.kpis.sports.irating.current} previousValue={data.kpis.sports.irating.previousSameWeek} previousLabel={`${previousLabel} W${data.kpis.sports.irating.week}`} safetyRatingDisplay={data.kpis.sports.safetyRating.currentDisplay} />
-            <KpiCard eyebrow="Formula Car • Vitórias" value={data.kpis.formula.wins.current} previousValue={data.kpis.formula.wins.previous} previousLabel={previousLabel} mode="wins" />
-            <KpiCard eyebrow="Sports Car • Vitórias" value={data.kpis.sports.wins.current} previousValue={data.kpis.sports.wins.previous} previousLabel={previousLabel} mode="wins" />
-            {/* 05/09/2026: "corridas seguidas ganhando iRating... embaixo, como Secondary KPI,
-             * mostrar o meu recorde all-time" -- substitui o card de Contexto de Corrida (SoF/
-             * incidentes) da varredura anterior. Current = corridas mais recentes consecutivas
-             * com Δ iRating positivo (0 quando a última corrida da carteira foi negativa, como
-             * é o caso agora nas duas); best = recorde all-time, carreira inteira via iRStats,
-             * não só a season atual. */}
-            <KpiCard eyebrow="Formula Car • Sequência" value={data.streaks.formula_car.current} record={data.streaks.formula_car.best} mode="streak" previousValue={null} previousLabel="" />
-            <KpiCard eyebrow="Sports Car • Sequência" value={data.streaks.sports_car.current} record={data.streaks.sports_car.best} mode="streak" previousValue={null} previousLabel="" />
+          <div className="ngo-perf-grid">
+            <Panel kicker={`MEDIDA 1 · ${perfLabel}`} title={`Média de Δ iRating por ${perfMode === "car" ? "carro" : "pista"}`} titleSize="sm" as="article"
+              actions={perfTab === "imsa" && imsaMode === "track" ? (
+                <SegmentedControl ariaLabel="Classe IMSA" value={imsaClass} onChange={setImsaClass}
+                  options={[{ value: "all", label: "Todos" }, { value: "GTP", label: "GTP" }, { value: "LMP2", label: "LMP2" }]} />
+              ) : undefined}>
+              <DeltaByContext items={perfItems} kind={perfMode as RankingMode} />
+            </Panel>
+            <Panel kicker="MEDIDA 2 · GAP PARA O VENCEDOR" title="Sua melhor volta vs. a do vencedor" titleSize="sm" as="article"
+              subtitle={<>Vencedor da sua classe, por pista · do menor para o maior gap percentual{gapItems.length ? ` · média geral ${percentText(gapOverall(gapItems))}` : ""}</>}>
+              <GapToWinner items={gapItems} />
+            </Panel>
           </div>
         </section>
 
-        <section className="rating-chart-grid">
-        <article className="panel large-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="section-kicker">IRATING EVOLUTION</span>
-              <h2>Evolução semanal</h2>
-              <p>iRating absoluto por semana, comparando a Season atual com a anterior.</p>
-            </div>
-            <div className="segmented-control">
-              <button className={chartCategory === "formula" ? "active" : ""} onClick={() => { setChartCategory("formula"); setChartSeries("all"); }}>Formula Car</button>
-              <button className={chartCategory === "sports" ? "active" : ""} onClick={() => { setChartCategory("sports"); setChartSeries("all"); }}>Sports Car</button>
-            </div>
-          </div>
-          <SeasonChart current={weekly.current} previous={weekly.previous} currentName={currentLabel} previousName={previousLabel} category={chartCategory} />
-        </article>
-        <article className="panel large-panel">
-          <div className="panel-heading">
-            <div><span className="section-kicker">RACE SURVIVAL</span><h2>Duração × Δ iRating</h2><p>Somente corridas da season atual. Duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</p></div>
-            {seriesOptions.length > 1 && (
-              <div className="series-filter">
-                <select value={chartSeries} onChange={(event) => setChartSeries(event.target.value)} aria-label="Filtrar por série">
-                  <option value="all">Todas as séries ({categoryRaces.length})</option>
-                  {seriesOptions.map(([series, count]) => <option key={series} value={series}>{series} ({count})</option>)}
-                </select>
-              </div>
-            )}
-          </div>
-          <RaceScatterPlot points={scatter} />
-        </article>
-        </section>
-
-
-        <section className="section-block historical-section">
-          <div className="section-title-row">
-            <div>
-              <span className="section-kicker">HISTORICAL PERFORMANCE</span>
-              <h2>Performance por contexto</h2>
-              <p>Todo o período com dados detalhados disponíveis.</p>
-            </div>
-          </div>
-
-          <div className="performance-grid">
-            <article className="panel ranking-panel">
-              <div className="panel-heading compact">
-                <div><span className="section-kicker">SUPER FORMULA 23</span><h3>Média de Δ iRating por pista</h3></div>
-              </div>
-              <PerformanceRanking items={rankings.tracks} kind="track" />
-            </article>
-
-            <article className="panel ranking-panel">
-              <div className="panel-heading compact">
-                <div><span className="section-kicker">GT3</span><h3>Performance GT3</h3></div>
-                <div className="segmented-control small">
-                  <button className={gt3Mode === "car" ? "active" : ""} onClick={() => setGt3Mode("car")}>Carro</button>
-                  <button className={gt3Mode === "track" ? "active" : ""} onClick={() => setGt3Mode("track")}>Pista</button>
-                </div>
-              </div>
-              <PerformanceRanking items={rankings.gt3} kind={gt3Mode} />
-            </article>
-
-            <article className="panel ranking-panel">
-              <div className="panel-heading compact">
-                <div><span className="section-kicker">IMSA</span><h3>GTP / LMP2</h3></div>
-                <div className="segmented-control small">
-                  <button className={imsaMode === "car" ? "active" : ""} onClick={() => setImsaMode("car")}>Carro</button>
-                  <button className={imsaMode === "track" ? "active" : ""} onClick={() => setImsaMode("track")}>Pista</button>
-                </div>
-              </div>
-              {imsaMode === "track" && <div className="segmented-control small ranking-subfilter">
-                <button className={imsaClass === "all" ? "active" : ""} onClick={() => setImsaClass("all")}>Todos</button>
-                <button className={imsaClass === "GTP" ? "active" : ""} onClick={() => setImsaClass("GTP")}>GTP</button>
-                <button className={imsaClass === "LMP2" ? "active" : ""} onClick={() => setImsaClass("LMP2")}>LMP2</button>
-              </div>}
-              <PerformanceRanking items={rankings.imsa} kind={imsaMode} />
-            </article>
-          </div>
-
-          <article className="panel ranking-panel winner-gap-panel">
-            <div className="panel-heading compact">
-              <div>
-                <span className="section-kicker">GAP PARA O VENCEDOR</span>
-                <h3>Sua melhor volta vs. a do vencedor da sua classe, por pista</h3>
-                <p>Ordenado do menor para o maior gap percentual (compara pistas de tamanhos diferentes).</p>
-              </div>
-            </div>
-            <WinnerGapRanking items={data.winnerGapByTrack ?? []} />
-          </article>
-        </section>
-
-        <section className="panel season-races-panel">
-          <div className="panel-heading"><div><span className="section-kicker">SEASON RACES</span><h2>Todas as corridas da temporada</h2><p>Melhor volta e delta vêm do Garage61; grid e chegada aparecem quando a fonte oficial disponibilizar o resultado.</p></div></div>
-          <RaceTable races={data.races} />
-        </section>
-
-        <footer>
-          Racing Analytics • dados pessoais sincronizados via Garage61
-        </footer>
-      </div>
-    </main>
+        <Panel title="Últimas corridas" titleSize="md" className="ngo-races-panel" subtitle={undefined}>
+          <LatestRaces races={data.races} />
+        </Panel>
+      </main>
+    </div>
   );
+}
+
+function percentText(value: number) {
+  return `${value > 0 ? "+" : ""}${value.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`;
 }
