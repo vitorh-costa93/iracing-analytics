@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Telemetry Lab popup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#080B14;font-family:'IBM Plex Sans',sans-serif;color:#E8EEFF;font-variant-numeric:tabular-nums}
+a{color:#E8EEFF;text-decoration:none}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width:1440px;height:1500px;box-sizing:border-box;background:#080B14;display:flex;flex-direction:column;position:relative;font-family:'IBM Plex Sans',sans-serif;color:#E8EEFF">
+
+<header style="height:60px;flex-shrink:0;display:flex;align-items:center;gap:32px;padding:0 32px;background:#0E1322;border-bottom:1px solid #222C50">
+<div style="display:flex;align-items:center;gap:10px"><div style="width:28px;height:28px;background:#FF2D3C;clip-path:polygon(0 0,100% 0,72% 100%,0 100%)"></div><div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase">Racing<span style="color:#FF2D3C"> Analytics</span></div></div>
+<nav style="display:flex;gap:4px;height:100%">
+<a href="B.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:15px;color:#9DAAD0">Visão Geral</a>
+<a href="Telemetry.dc.html" style="display:flex;align-items:center;padding:0 16px;font-weight:600;font-size:15px;border-bottom:3px solid #FF2D3C;margin-top:3px">Telemetry Lab</a>
+<a href="DebriefSeason.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:15px;color:#9DAAD0">Debriefs</a>
+<a href="Setup.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:15px;color:#9DAAD0">Setup Lab</a>
+</nav>
+<div style="flex-grow:1"></div>
+<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#9DAAD0"><span style="width:8px;height:8px;border-radius:50%;background:#3DD68C"></span>iRStats há 2 h · Garage61 há 9 h</div>
+<button style="height:36px;padding:0 16px;background:#FF2D3C;color:#fff;border:0;border-radius:6px;font-weight:600;font-size:14px;cursor:pointer">Atualizar dados</button>
+<div style="display:flex;align-items:center;gap:10px;padding-left:20px;border-left:1px solid #222C50"><div style="text-align:right;line-height:1.15"><div style="font-weight:600;font-size:14px">Vitor Costa</div><div style="font-size:12px;color:#9DAAD0">ID 412089</div></div><div style="width:36px;height:36px;border-radius:50%;background:#171F3B;display:flex;align-items:center;justify-content:center;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:15px">VC</div></div>
+</header>
+
+<main style="flex-grow:1;padding:20px 32px 28px;display:flex;flex-direction:column;gap:16px;min-height:0">
+
+<div style="display:flex;align-items:flex-end;gap:24px">
+<div>
+<div style="font-size:12px;color:#9DAAD0;letter-spacing:.1em;text-transform:uppercase">Telemetry Lab · semana ativa</div>
+<h1 style="margin:2px 0 0;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:30px;letter-spacing:.02em;text-transform:uppercase">Telemetria da semana</h1>
+</div>
+<div style="flex-grow:1"></div>
+<div style="display:flex;gap:4px;padding:3px;background:#0E1322;border:1px solid #222C50;border-radius:8px">
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:#222C50;color:#E8EEFF;font-weight:600;font-size:13px;cursor:pointer">Semana ativa</button>
+<a href="Debrief.dc.html" style="height:28px;padding:0 12px;display:flex;align-items:center;font-size:13px;color:#9DAAD0">Race Debrief</a>
+<a href="Compare.dc.html" style="height:28px;padding:0 12px;display:flex;align-items:center;font-size:13px;color:#9DAAD0">Comparação de carros</a>
+</div>
+</div>
+
+<!-- contextos clicáveis -->
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px">
+<sc-for list="{{ctxs}}" as="c" hint-placeholder-count="3">
+<button onClick="{{c.pick}}" style="text-align:left;cursor:pointer;color:#E8EEFF;background:#111830;border:{{c.border}};border-radius:10px;padding:12px 16px;display:flex;align-items:center;gap:12px">
+<div style="width:6px;align-self:stretch;border-radius:3px;background:{{c.color}}"></div>
+<div style="flex-grow:1"><div style="font-weight:600;font-size:15px">{{c.track}}</div><div style="font-size:13px;color:#9DAAD0">{{c.car}} · {{c.laps}} voltas</div></div>
+<div style="text-align:right"><div style="font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:20px">{{c.best}}</div><div style="font-size:12px;color:{{c.gapColor}}">{{c.gap}} vs. ref.</div></div>
+</button>
+</sc-for>
+</div>
+
+<!-- volta representativa + mapa -->
+<div style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px">
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:16px 20px;height:470px;box-sizing:border-box;display:flex;flex-direction:column;gap:4px">
+<div style="display:flex;align-items:flex-start;gap:12px">
+<div><div style="font-size:11px;letter-spacing:.14em;color:#FF2D3C;font-weight:600">VOLTA REPRESENTATIVA</div>
+<h2 style="margin:0;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:18px;letter-spacing:.03em;text-transform:uppercase">Tempo perdido e o que você fez nos pedais</h2>
+<div style="font-size:12px;color:#8593BE;margin-top:2px">Volta elegível, sem P2P ativo e com o traçado completo no GPS · passe o mouse para comparar</div></div>
+<div style="flex-grow:1"></div>
+<div style="display:flex;gap:14px;font-size:12px;color:#9DAAD0;padding-top:4px"><span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#E8EEFF"></span>Sua volta</span><span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#2DE2E6"></span>Referência</span></div>
+</div>
+<svg viewBox="0 0 900 372" style="width:100%;flex-grow:1">
+<sc-for list="{{bands}}" as="b" hint-placeholder-count="8"><rect x="{{b.x}}" y="6" width="{{b.w}}" height="326" fill="{{b.fill}}" fill-opacity="0.07"/></sc-for>
+<text x="8" y="16" font-size="11" fill="#8593BE">TEMPO PERDIDO (s)</text>
+<sc-for list="{{dGrid}}" as="g" hint-placeholder-count="3"><line x1="44" x2="884" y1="{{g.y}}" y2="{{g.y}}" stroke="{{g.s}}"/><text x="38" y="{{g.ty}}" text-anchor="end" font-size="11" fill="#8593BE">{{g.l}}</text></sc-for>
+<polyline points="{{deltaLine}}" fill="none" stroke="#FF6B6B" stroke-width="2.2" stroke-linejoin="round"/>
+<text x="8" y="146" font-size="11" fill="#8593BE">ACELERADOR</text>
+<line x1="44" x2="884" y1="152" y2="152" stroke="#1B2444"/><line x1="44" x2="884" y1="212" y2="212" stroke="#1B2444"/>
+<polyline points="{{thrRef}}" fill="none" stroke="#2DE2E6" stroke-width="1.8"/>
+<polyline points="{{thrOwn}}" fill="none" stroke="#E8EEFF" stroke-width="1.8"/>
+<text x="8" y="232" font-size="11" fill="#8593BE">FREIO</text>
+<line x1="44" x2="884" y1="238" y2="238" stroke="#1B2444"/><line x1="44" x2="884" y1="298" y2="298" stroke="#1B2444"/>
+<polyline points="{{brkRef}}" fill="none" stroke="#2DE2E6" stroke-width="1.8"/>
+<polyline points="{{brkOwn}}" fill="none" stroke="#E8EEFF" stroke-width="1.8"/>
+<sc-for list="{{xTicks}}" as="t" hint-placeholder-count="6"><text x="{{t.x}}" y="356" text-anchor="middle" font-size="11" fill="#8593BE">{{t.l}}</text></sc-for>
+<line x1="{{cur.x}}" x2="{{cur.x}}" y1="6" y2="332" stroke="#8593BE" stroke-dasharray="3 3"/>
+<circle cx="{{cur.x}}" cy="{{cur.yd}}" r="4.5" fill="#FF6B6B" stroke="#111830" stroke-width="2"/>
+<circle cx="{{cur.x}}" cy="{{cur.ytO}}" r="4" fill="#E8EEFF"/><circle cx="{{cur.x}}" cy="{{cur.ytR}}" r="4" fill="#2DE2E6"/>
+<circle cx="{{cur.x}}" cy="{{cur.ybO}}" r="4" fill="#E8EEFF"/><circle cx="{{cur.x}}" cy="{{cur.ybR}}" r="4" fill="#2DE2E6"/>
+<g>
+<rect x="{{pop.x}}" y="24" width="250" height="122" rx="8" fill="#0E1322" stroke="#3A4A82"/>
+<text x="{{pop.tx}}" y="46" font-size="12" font-weight="600" fill="#E8EEFF">{{pop.title}}</text>
+<text x="{{pop.c2}}" y="64" font-size="11" fill="#E8EEFF" text-anchor="end">Você</text><text x="{{pop.c3}}" y="64" font-size="11" fill="#2DE2E6" text-anchor="end">Referência</text>
+<text x="{{pop.tx}}" y="84" font-size="12" fill="#9DAAD0">Acelerador</text><text x="{{pop.c2}}" y="84" font-size="12" font-weight="600" fill="#E8EEFF" text-anchor="end">{{pop.thrO}}</text><text x="{{pop.c3}}" y="84" font-size="12" font-weight="600" fill="#2DE2E6" text-anchor="end">{{pop.thrR}}</text>
+<text x="{{pop.tx}}" y="102" font-size="12" fill="#9DAAD0">Freio</text><text x="{{pop.c2}}" y="102" font-size="12" font-weight="600" fill="#E8EEFF" text-anchor="end">{{pop.brkO}}</text><text x="{{pop.c3}}" y="102" font-size="12" font-weight="600" fill="#2DE2E6" text-anchor="end">{{pop.brkR}}</text>
+<text x="{{pop.tx}}" y="120" font-size="12" fill="#9DAAD0">Velocidade</text><text x="{{pop.c2}}" y="120" font-size="12" font-weight="600" fill="#E8EEFF" text-anchor="end">{{pop.spdO}}</text><text x="{{pop.c3}}" y="120" font-size="12" font-weight="600" fill="#2DE2E6" text-anchor="end">{{pop.spdR}}</text>
+<text x="{{pop.tx}}" y="138" font-size="12" fill="#9DAAD0">Marcha</text><text x="{{pop.c2}}" y="138" font-size="12" font-weight="600" fill="#E8EEFF" text-anchor="end">3ª</text><text x="{{pop.c3}}" y="138" font-size="12" font-weight="600" fill="#2DE2E6" text-anchor="end">3ª</text>
+</g>
+</svg>
+</div>
+
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:16px 20px;height:470px;box-sizing:border-box;display:flex;flex-direction:column;gap:4px">
+<div><div style="font-size:11px;letter-spacing:.14em;color:#FF2D3C;font-weight:600">TRACK POSITION</div>
+<h2 style="margin:0;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:18px;letter-spacing:.03em;text-transform:uppercase">{{sel.track}}</h2>
+<div style="font-size:12px;color:#8593BE;margin-top:2px">A bolinha segue o ponto do gráfico · gire para ampliar, arraste para mover</div></div>
+<svg viewBox="0 0 380 330" style="width:100%;flex-grow:1">
+<polyline points="{{mapBase}}" fill="none" stroke="#2A3562" stroke-width="12" stroke-linejoin="round"/>
+<polyline points="{{mapRef}}" fill="none" stroke="#2DE2E6" stroke-width="1.8"/>
+<polyline points="{{mapOwn}}" fill="none" stroke="#E8EEFF" stroke-width="1.8"/>
+<sc-for list="{{mapMarks}}" as="m" hint-placeholder-count="8"><circle cx="{{m.x}}" cy="{{m.y}}" r="10" fill="{{m.fill}}" stroke="#5C6A9E"/><text x="{{m.x}}" y="{{m.ty}}" text-anchor="middle" font-size="10" font-weight="600" fill="#E8EEFF">{{m.n}}</text></sc-for>
+<circle cx="{{ball.x}}" cy="{{ball.y}}" r="9" fill="#FF6B6B" fill-opacity="0.25"/><circle cx="{{ball.x}}" cy="{{ball.y}}" r="5" fill="#FF6B6B" stroke="#fff" stroke-width="1.5"/>
+</svg>
+</div>
+</div>
+
+<!-- curva a curva -->
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:16px 20px;display:flex;flex-direction:column;gap:6px">
+<div style="display:flex;align-items:flex-start;gap:12px">
+<div><div style="font-size:11px;letter-spacing:.14em;color:#FF2D3C;font-weight:600">CURVA A CURVA</div>
+<h2 style="margin:0;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:18px;letter-spacing:.03em;text-transform:uppercase">Onde você perde e onde você é forte</h2>
+<div style="font-size:12px;color:#8593BE;margin-top:2px">Curvas coladas viram uma sequência só: uma não vale sozinha, porque você pode sacrificar a entrada de uma para sair melhor da outra. Clique para ver o detalhe.</div></div>
+<div style="flex-grow:1"></div>
+<div style="display:flex;gap:4px;padding:3px;background:#0E1322;border:1px solid #222C50;border-radius:8px;height:28px">
+<sc-for list="{{filters}}" as="f" hint-placeholder-count="3"><button onClick="{{f.pick}}" style="height:28px;padding:0 12px;border:0;border-radius:5px;background:{{f.bg}};color:{{f.col}};font-weight:{{f.fw}};font-size:13px;cursor:pointer">{{f.label}}</button></sc-for>
+</div>
+</div>
+<div style="display:flex;gap:24px;margin:6px 0 4px">
+<div style="background:#171F3B;border-radius:8px;padding:10px 16px;display:flex;align-items:baseline;gap:10px"><span style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:24px;color:#FF6B6B">{{sum.loss}}</span><span style="font-size:13px;color:#9DAAD0">perdidos em {{sum.nLoss}} trechos</span></div>
+<div style="background:#171F3B;border-radius:8px;padding:10px 16px;display:flex;align-items:baseline;gap:10px"><span style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:24px;color:#3DD68C">{{sum.gain}}</span><span style="font-size:13px;color:#9DAAD0">ganhos em {{sum.nGain}} trechos</span></div>
+<div style="background:#171F3B;border-radius:8px;padding:10px 16px;display:flex;align-items:baseline;gap:10px"><span style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:24px">{{sum.net}}</span><span style="font-size:13px;color:#9DAAD0">saldo contra a referência (o resto está nas retas)</span></div>
+</div>
+<div style="display:grid;grid-template-columns:220px minmax(0,1fr) 90px minmax(0,1.5fr) 90px;gap:14px;padding:4px 10px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8593BE"><span>Trecho</span><span style="display:flex;justify-content:space-between"><span>Perde</span><span>Ganha</span></span><span style="text-align:right">Tempo</span><span>Em uma frase</span><span></span></div>
+<sc-for list="{{rows}}" as="r" hint-placeholder-count="8">
+<button onClick="{{r.open}}" style="display:grid;grid-template-columns:220px minmax(0,1fr) 90px minmax(0,1.5fr) 90px;gap:14px;align-items:center;min-height:52px;padding:0 10px;text-align:left;background:transparent;color:#E8EEFF;border:0;border-top:1px solid #1B2444;cursor:pointer">
+<div><div style="font-weight:600;font-size:14px">{{r.name}}</div><div style="font-size:12px;color:#8593BE">{{r.range}}</div></div>
+<div style="position:relative;height:14px"><div style="position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:#5C6A9E"></div><div style="position:absolute;top:2px;height:10px;border-radius:2px;background:{{r.color}};left:{{r.left}};width:{{r.w}}"></div></div>
+<div style="text-align:right;font-weight:600;font-size:14px;color:{{r.color}}">{{r.dt}}</div>
+<div style="font-size:13px;color:#C5D0F0;line-height:1.35;padding:6px 0">{{r.note}}</div>
+<div style="text-align:right"><span style="height:22px;padding:0 8px;border-radius:5px;background:{{r.tagBg}};color:{{r.color}};font-size:12px;font-weight:600;display:inline-flex;align-items:center">{{r.tag}}</span></div>
+</button>
+</sc-for>
+</div>
+</main>
+
+<!-- popup da curva / sequência -->
+<sc-if value="{{pv.open}}" hint-placeholder-val="{{false}}">
+<div style="position:absolute;left:0;top:0;right:0;bottom:0;background:rgba(3,5,12,.8);display:flex;align-items:flex-start;justify-content:center;padding-top:70px;box-sizing:border-box">
+<div style="width:1000px;background:#0E1322;border:1px solid #3A4A82;border-radius:14px;padding:22px 26px;box-sizing:border-box;display:flex;flex-direction:column;gap:14px;box-shadow:0 30px 80px rgba(0,0,0,.6)">
+<div style="display:flex;align-items:flex-start;gap:12px">
+<div><div style="font-size:11px;letter-spacing:.14em;color:#4DA3FF;font-weight:600">{{pv.kicker}}</div>
+<h3 style="margin:2px 0 0;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:24px;letter-spacing:.02em;text-transform:uppercase">{{pv.title}}</h3>
+<div style="font-size:12px;color:#8593BE;margin-top:2px">{{pv.range}}</div></div>
+<div style="flex-grow:1"></div>
+<button onClick="{{prev}}" style="height:34px;padding:0 14px;background:#171F3B;color:#E8EEFF;border:1px solid #222C50;border-radius:8px;font-size:13px;cursor:pointer">← Anterior</button>
+<button onClick="{{next}}" style="height:34px;padding:0 14px;background:#171F3B;color:#E8EEFF;border:1px solid #222C50;border-radius:8px;font-size:13px;cursor:pointer">Próxima →</button>
+<button onClick="{{close}}" style="height:34px;padding:0 14px;background:#171F3B;color:#E8EEFF;border:1px solid #3A4A82;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Fechar ✕</button>
+</div>
+<div style="font-size:15px;line-height:1.55;color:#C5D0F0">{{pv.detail}}</div>
+<sc-if value="{{pv.isSeq}}" hint-placeholder-val="{{false}}">
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:12px 16px;display:flex;flex-direction:column;gap:8px">
+<div style="font-size:12px;letter-spacing:.1em;color:#9DAAD0;font-weight:600">SEQUÊNCIA: NÃO SE ANALISA CURVA A CURVA. QUEM PAGA E QUEM GANHA:</div>
+<div style="display:flex;gap:12px">
+<sc-for list="{{pv.parts}}" as="p" hint-placeholder-count="2">
+<div style="flex:1;background:#0B0F1E;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between"><span style="font-weight:600">{{p.name}}</span><span style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:18px;color:{{p.color}}">{{p.dt}}</span></div>
+</sc-for>
+<div style="flex:1;background:#0B0F1E;border:1px solid #3A4A82;border-radius:8px;padding:10px 14px;display:flex;align-items:center;justify-content:space-between"><span style="font-weight:600">Sequência inteira</span><span style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:18px;color:{{pv.color}}">{{pv.dt}}</span></div>
+</div>
+</div>
+</sc-if>
+
+<!-- painel de inputs no estilo da telemetria do iRacing: pedais + mostradores sincronizados -->
+<div style="display:grid;grid-template-columns:minmax(0,1fr) 300px;border:1px solid #222C50;border-radius:8px;overflow:hidden;background:#0A0E18">
+<div style="position:relative;border-right:1px solid #222C50">
+<svg viewBox="0 0 640 250" style="width:100%;display:block">
+<text x="12" y="18" font-size="11" fill="#8593BE" letter-spacing="1.5">INPUTS</text>
+<line x1="150" x2="176" y1="14" y2="14" stroke="#E8EEFF" stroke-width="2"/><text x="182" y="18" font-size="11" fill="#E8EEFF">VOCÊ (contínua)</text>
+<line x1="300" x2="326" y1="14" y2="14" stroke="#B48CFF" stroke-width="2" stroke-dasharray="5 3"/><text x="332" y="18" font-size="11" fill="#B48CFF">REFERÊNCIA (tracejada)</text>
+<line x1="0" x2="640" y1="40" y2="40" stroke="#141B30"/><line x1="0" x2="640" y1="120" y2="120" stroke="#141B30"/><line x1="0" x2="640" y1="200" y2="200" stroke="#141B30"/>
+<polyline points="{{pv.brkRef}}" fill="none" stroke="#FF6B6B" stroke-opacity=".75" stroke-width="2" stroke-dasharray="5 3"/>
+<polyline points="{{pv.thrRef}}" fill="none" stroke="#3DD68C" stroke-opacity=".75" stroke-width="2" stroke-dasharray="5 3"/>
+<polyline points="{{pv.brkOwn}}" fill="none" stroke="#FF6B6B" stroke-width="2.2"/>
+<polyline points="{{pv.thrOwn}}" fill="none" stroke="#3DD68C" stroke-width="2.2"/>
+<line x1="{{pv.cx}}" x2="{{pv.cx}}" y1="30" y2="215" stroke="#9DAAD0" stroke-dasharray="2 4"/>
+<text x="12" y="240" font-size="10" fill="#8593BE">{{pv.x0}}</text><text x="628" y="240" text-anchor="end" font-size="10" fill="#8593BE">{{pv.x1}}</text>
+</svg>
+</div>
+<div style="display:flex;flex-direction:column">
+<div style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 14px;border-bottom:1px solid #222C50">
+<div style="display:flex;gap:4px;height:64px;align-items:flex-end"><div style="width:9px;height:100%;background:#1E2748;position:relative"><div style="position:absolute;bottom:0;left:0;right:0;height:{{pv.g.thrO}}%;background:#3DD68C"></div></div><div style="width:9px;height:100%;background:#1E2748;position:relative"><div style="position:absolute;bottom:0;left:0;right:0;height:{{pv.g.brkO}}%;background:#FF6B6B"></div></div></div>
+<div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:30px;color:#F2C230">{{pv.g.gear}}</div>
+<div style="flex:1;text-align:right"><div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:22px">{{pv.g.spdO}}</div><div style="font-size:11px;letter-spacing:.14em;color:#E8EEFF;font-weight:600">VOCÊ</div></div>
+<svg width="44" height="44" viewBox="0 0 44 44"><g transform="rotate({{pv.g.angO}} 22 22)"><circle cx="22" cy="22" r="17" fill="none" stroke="#9DAAD0" stroke-width="4"/><line x1="8" x2="36" y1="24" y2="24" stroke="#9DAAD0" stroke-width="4"/><line x1="22" x2="22" y1="24" y2="38" stroke="#9DAAD0" stroke-width="4"/><circle cx="22" cy="5" r="2.5" fill="#FF6B6B"/></g></svg>
+</div>
+<div style="flex:1;display:flex;align-items:center;gap:12px;padding:12px 14px">
+<div style="display:flex;gap:4px;height:64px;align-items:flex-end"><div style="width:9px;height:100%;background:#1E2748;position:relative"><div style="position:absolute;bottom:0;left:0;right:0;height:{{pv.g.thrR}}%;background:#3DD68C"></div></div><div style="width:9px;height:100%;background:#1E2748;position:relative"><div style="position:absolute;bottom:0;left:0;right:0;height:{{pv.g.brkR}}%;background:#FF6B6B"></div></div></div>
+<div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:30px;color:#F2C230">{{pv.g.gear}}</div>
+<div style="flex:1;text-align:right"><div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:22px">{{pv.g.spdR}}</div><div style="font-size:11px;letter-spacing:.14em;color:#B48CFF;font-weight:600">REFERÊNCIA</div></div>
+<svg width="44" height="44" viewBox="0 0 44 44"><g transform="rotate({{pv.g.angR}} 22 22)"><circle cx="22" cy="22" r="17" fill="none" stroke="#9DAAD0" stroke-width="4"/><line x1="8" x2="36" y1="24" y2="24" stroke="#9DAAD0" stroke-width="4"/><line x1="22" x2="22" y1="24" y2="38" stroke="#9DAAD0" stroke-width="4"/><circle cx="22" cy="5" r="2.5" fill="#B48CFF"/></g></svg>
+</div>
+</div>
+</div>
+
+<div style="display:flex;align-items:center;gap:10px"><span style="font-size:11px;letter-spacing:.1em;color:#8593BE;width:76px">MAIS LENTO</span><div style="flex:1;height:10px;background:#1E2748;border-radius:5px;position:relative"><div style="position:absolute;left:50%;top:-2px;bottom:-2px;width:1px;background:#5C6A9E"></div><div style="position:absolute;top:0;height:10px;border-radius:5px;background:{{pv.color}};left:{{pv.left}};width:{{pv.w}}"></div></div><span style="font-size:11px;letter-spacing:.1em;color:#8593BE;width:76px;text-align:right">MAIS RÁPIDO</span></div>
+<div style="text-align:center;font-size:13px;color:#9DAAD0;margin-top:-6px">{{pv.dt}} na sequência toda</div>
+
+<div style="background:#0A0E18;border:1px solid #222C50;border-radius:8px;padding:12px 14px;display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:center">
+<div><span style="font-size:11px;letter-spacing:.14em;color:#4DA3FF;font-weight:600">TRAÇADO</span>
+<svg viewBox="0 0 380 330" style="width:100%;height:230px">
+<polyline points="{{mapBase}}" fill="none" stroke="#1E2748" stroke-width="10" stroke-linejoin="round"/>
+<polyline points="{{pv.seg}}" fill="none" stroke="#2A3562" stroke-width="14" stroke-linejoin="round" stroke-linecap="round"/>
+<polyline points="{{pv.segRef}}" fill="none" stroke="#B48CFF" stroke-width="2"/><polyline points="{{pv.segOwn}}" fill="none" stroke="#E8EEFF" stroke-width="2"/>
+<circle cx="{{pv.ball.x}}" cy="{{pv.ball.y}}" r="6" fill="#0A0E18" stroke="#fff" stroke-width="2.5"/>
+</svg></div>
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;gap:14px;font-size:12px;color:#9DAAD0"><span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#E8EEFF"></span>Sua volta</span><span style="display:flex;align-items:center;gap:6px"><span style="width:14px;height:3px;background:#B48CFF"></span>Referência</span></div>
+<div style="font-size:12px;color:#8593BE">{{pv.pct}} da volta · passe o mouse no gráfico para localizar o ponto no mapa</div>
+<sc-for list="{{pv.chips}}" as="c" hint-placeholder-count="3"><div style="background:#171F3B;border-radius:8px;padding:8px 12px"><div style="font-size:12px;color:#8593BE">{{c.k}}</div><div style="font-weight:600;font-size:14px;color:{{c.color}}">{{c.v}}</div></div></sc-for>
+</div>
+</div>
+</div>
+</div>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startOpen":{"editor":"int","default":1,"min":-1,"max":7,"section":"Popup"},"$preview":{"width":1440,"height":1500}}'>
+class Component extends DCLogic {
+renderVals() {
+const up = '#3DD68C', dn = '#FF6B6B', S = '#4DA3FF', F = '#FFB020';
+const S0 = this.state || {}; const so = this.props.startOpen; const st = { ctx: S0.ctx ?? 0, filter: S0.filter ?? 0, open: S0.open === undefined ? (so != null && so >= 0 ? so : null) : S0.open };
+const CT = [
+{ track: 'Daytona Road Course', car: 'BMW M Hybrid V8 · GTP', laps: 34, best: '1:35.412', k: 1, color: S },
+{ track: 'Spa-Francorchamps', car: 'Ferrari 296 GT3 · GT3', laps: 41, best: '2:17.906', k: 0.38, color: S },
+{ track: 'Suzuka Grand Prix', car: 'Super Formula SF23 · SF23', laps: 22, best: '1:33.284', k: 1.6, color: F }
+];
+const cx = CT[st.ctx];
+const fmt = (v, d) => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(d == null ? 3 : d).replace('.', ',') + ' s';
+const IT = [
+{ name: 'Curva 1', a: .05, b: .09, dt: -.048, parts: null,
+note: 'Você entra um pouco devagar e o volante gira mais que o da referência.',
+detail: 'Aqui você perde uns 5 centésimos. Passa cerca de 3 km/h mais devagar no meio da curva e gira mais o volante do que a referência. Tente abrir a entrada um pouco mais, assim você não precisa corrigir no meio.', chips: [['Velocidade no meio', '3 km/h mais devagar', dn], ['Acelerador na saída', 'igual', '#E8EEFF'], ['Freio', '4% a mais', dn]] },
+{ name: 'Curvas 3–4', a: .20, b: .30, dt: -.172, parts: [['Curva 3', -.061], ['Curva 4', -.111]],
+note: 'É uma sequência só: você freia cedo demais na 3 e chega devagar na 4.',
+detail: 'A 3 e a 4 são uma coisa só: o que você faz na entrada da 3 decide como você sai da 4. Você freia uns 12 metros antes da referência, chega na 4 sem velocidade e só volta ao acelerador meio segundo depois. É a maior oportunidade da volta, perto de 1,7 décimo. Vá adiando a freada aos poucos, de 2 em 2 metros.', chips: [['Ponto de freio', '12 m mais cedo', dn], ['Acelerador na saída', '0,5 s mais tarde', dn], ['Velocidade no meio', '9 km/h mais devagar', dn]] },
+{ name: 'Curva 5', a: .36, b: .41, dt: -.131, parts: null,
+note: 'O acelerador entra tarde na saída.',
+detail: 'Você perde cerca de 1,3 décimo aqui, quase tudo na saída. O volante ainda está bem virado quando você acelera, então o carro não deixa você pisar. Tente abrir o volante um pouco antes de pisar fundo.', chips: [['Acelerador na saída', '0,4 s mais tarde', dn], ['Volante na saída', '18° mais fechado', dn], ['Velocidade no meio', 'igual', '#E8EEFF']] },
+{ name: 'Curvas 6–7', a: .46, b: .56, dt: .093, parts: [['Curva 6', -.022], ['Curva 7', .115]],
+note: 'Ponto forte. Você sacrifica a entrada da 6 pra sair forte da 7, e a troca compensa.',
+detail: 'Aqui você faz a coisa certa. Entra um pouco devagar na 6 (perde 2 centésimos), só que isso deixa o carro alinhado e você sai da 7 mais rápido que a referência, e ganha mais de 1 décimo. No total sobra quase 1 décimo a seu favor. Não mexa nisso.', chips: [['Velocidade na saída da 7', '6 km/h mais rápido', up], ['Entrada da 6', '2 km/h mais devagar', '#E8EEFF'], ['Acelerador', '0,2 s mais cedo', up]] },
+{ name: 'Curva 8', a: .62, b: .66, dt: .041, parts: null,
+note: 'Ponto forte. Você está freando mais tarde e segura a velocidade.',
+detail: 'Você ganha 4 centésimos aqui. Freia uns 5 metros depois da referência e ainda mantém o carro na linha. Continue assim.', chips: [['Ponto de freio', '5 m mais tarde', up], ['Velocidade no meio', '2 km/h mais rápido', up], ['Freio', '6% a menos', up]] },
+{ name: 'Curvas 9–10', a: .70, b: .78, dt: .027, parts: [['Curva 9', .004], ['Curva 10', .023]],
+note: 'Ponto forte. A 9 fica igual e a saída da 10 é boa.',
+detail: 'Nessa sequência você fica empatado na 9 e ganha 2 centésimos na saída da 10. Nada a corrigir.', chips: [['Curva 9', 'igual à referência', '#E8EEFF'], ['Saída da 10', '3 km/h mais rápido', up], ['Acelerador', '0,1 s mais cedo', up]] },
+{ name: 'Curva 11', a: .82, b: .86, dt: -.033, parts: null,
+note: 'Você levanta o pé um pouco cedo.',
+detail: 'Perda pequena, uns 3 centésimos. Você tira o pé do acelerador antes da referência e volta a pisar mais devagar. Mantenha o pé um pouco mais tempo.', chips: [['Acelerador', '7% a menos', dn], ['Freio', 'igual', '#E8EEFF'], ['Velocidade no meio', '2 km/h mais devagar', dn]] },
+{ name: 'Curva 12', a: .90, b: .95, dt: .058, parts: null,
+note: 'Ponto forte. Boa saída, com o carro já reto.',
+detail: 'Ganho de quase 6 centésimos. Você sai da última curva com o carro mais reto e acelera antes. Isso ajuda até a reta principal.', chips: [['Acelerador na saída', '0,3 s mais cedo', up], ['Velocidade na saída', '4 km/h mais rápido', up], ['Volante', '10° mais aberto', up]] }
+];
+const K = cx.k;
+IT.forEach((it, i) => { it.dt = +(it.dt * K).toFixed(3); if (it.parts) it.parts = it.parts.map(p => [p[0], +(p[1] * K).toFixed(3)]); it.id = i; });
+const STRAIGHT = -.153 * K;
+const total = IT.reduce((a, b) => a + b.dt, 0) + STRAIGHT;
+// contextos
+const ctxs = CT.map((c, i) => {
+const t = CT[i].k, tot = -(IT.reduce((a, b) => a + b.dt / K * t, 0) - .153 * t);
+return { track: c.track, car: c.car, laps: c.laps, best: c.best, color: c.color, gap: fmt(-total * 0 + (i === st.ctx ? -total : 0.318 * t)), gapColor: dn, border: i === st.ctx ? '1px solid #FF2D3C' : '1px solid #222C50', pick: () => this.setState({ ctx: i, open: null }) };
+});
+// curvas de tráfego
+const gauss = (x, m, s) => Math.exp(-Math.pow((x - m) / s, 2));
+const N = 240;
+const X0 = 44, X1 = 884;
+const cum = x => { let v = -STRAIGHT * x; IT.forEach(it => { const t = Math.min(1, Math.max(0, (x - it.a) / (it.b - it.a))); v += -it.dt * (t * t * (3 - 2 * t)); }); return v; };
+const yD = v => 108 - (v + .15) / .6 * 96;
+const own = [], ref = [], thO = [], thR = [], bkO = [], bkR = [], dl = [];
+const brake = (x, off) => IT.reduce((a, it) => a + gauss(x, it.a + off, .012) * 100, 0);
+const thr = (x, off) => 100 - Math.min(100, IT.reduce((a, it) => a + gauss(x, (it.a + it.b) / 2 + off * 1.5, .022) * 100, 0));
+const offO = it => it.dt < 0 ? -.006 : .004;
+const brakeO = x => Math.min(100, IT.reduce((a, it) => a + gauss(x, it.a + offO(it), .012) * 100, 0));
+const thrO = x => 100 - Math.min(100, IT.reduce((a, it) => a + gauss(x, (it.a + it.b) / 2 + (it.dt < 0 ? .01 : -.006), .022) * 100, 0));
+const brakeR = x => Math.min(100, brake(x, 0));
+const thrR = x => thr(x, 0);
+for (let i = 0; i <= N; i++) {
+const x = i / N, X = X0 + x * (X1 - X0);
+dl.push([X, yD(cum(x))]);
+thO.push([X, 212 - thrO(x) * .6]); thR.push([X, 212 - thrR(x) * .6]);
+bkO.push([X, 298 - brakeO(x) * .6]); bkR.push([X, 298 - brakeR(x) * .6]);
+}
+const pl = a => a.map(p => p[0].toFixed(1) + ',' + p[1].toFixed(1)).join(' ');
+const bands = IT.map(it => ({ x: X0 + it.a * (X1 - X0), w: (it.b - it.a) * (X1 - X0), fill: it.dt < 0 ? dn : up }));
+const dGrid = [0, .2, .4].map(v => ({ y: yD(v), ty: yD(v) + 4, l: v === 0 ? '0' : '+' + String(v).replace('.', ','), s: v === 0 ? '#5C6A9E' : '#1B2444' }));
+const xTicks = [0, 1, 2, 3, 4, 5].map(k => ({ x: X0 + k / 5 * (X1 - X0), l: k * 1140 + ' m' }));
+// cursor (hover simulado no meio da 3–4)
+const hx = .245;
+const cur = { x: X0 + hx * (X1 - X0), yd: yD(cum(hx)), ytO: 212 - thrO(hx) * .6, ytR: 212 - thrR(hx) * .6, ybO: 298 - brakeO(hx) * .6, ybR: 298 - brakeR(hx) * .6 };
+const pop = { x: cur.x + 14, tx: cur.x + 26, c2: cur.x + 170, c3: cur.x + 240, title: 'Curvas 3–4 · ' + Math.round(hx * 5700) + ' m',
+thrO: Math.round(thrO(hx)) + '%', thrR: Math.round(thrR(hx)) + '%', brkO: Math.round(brakeO(hx)) + '%', brkR: Math.round(brakeR(hx)) + '%', spdO: '121 km/h', spdR: '129 km/h' };
+// mapa
+const W = 380, H = 330, mx = W / 2, my = H / 2;
+const base = [], mo = [], mr = [];
+for (let i = 0; i <= 240; i++) {
+const t = i / 240 * 2 * Math.PI;
+const r = Math.min(W, H) * .38 * (1 + .28 * Math.cos(2 * t + .4) + .14 * Math.sin(3 * t + 1));
+const x = mx + r * Math.cos(t) * 1.15, y = my + r * Math.sin(t) * .8;
+base.push([x, y]); mo.push([x + 2.2 * Math.cos(t + 1), y + 2.2 * Math.sin(t + 1)]); mr.push([x - 2.2 * Math.cos(t + 1), y - 2.2 * Math.sin(t + 1)]);
+}
+const at = f => base[Math.min(240, Math.max(0, Math.round(f * 240)))];
+const marks = IT.map(it => { const p = at((it.a + it.b) / 2); return { x: p[0], y: p[1], ty: p[1] + 3.5, n: it.name.replace('Curvas ', '').replace('Curva ', ''), fill: it.dt < 0 ? '#3A1219' : '#0F2A1F' }; });
+const ball = { x: at(hx)[0], y: at(hx)[1] };
+// filtros e linhas
+const FL = ['Todos', 'Onde eu perco', 'Meus pontos fortes'];
+const filters = FL.map((l, i) => ({ label: l, bg: st.filter === i ? '#222C50' : 'transparent', col: st.filter === i ? '#E8EEFF' : '#9DAAD0', fw: st.filter === i ? 600 : 400, pick: () => this.setState({ filter: i }) }));
+const maxAbs = Math.max(...IT.map(i => Math.abs(i.dt)), .01);
+const visible = IT.filter(it => st.filter === 0 || (st.filter === 1 && it.dt < 0) || (st.filter === 2 && it.dt >= 0));
+const rows = visible.map(it => { const w = Math.max(Math.abs(it.dt) / maxAbs * 48, 2); const loss = it.dt < 0; return {
+name: it.name + (it.parts ? ' · sequência' : ''), range: Math.round(it.a * 100) + '%–' + Math.round(it.b * 100) + '% da volta', color: loss ? dn : up, tagBg: loss ? '#3A1219' : '#0F2A1F', tag: loss ? 'Onde perde' : 'Ponto forte',
+dt: fmt(it.dt), left: loss ? (50 - w) + '%' : '50%', w: w + '%', note: it.note, open: () => this.setState({ open: it.id }) }; });
+const loss = IT.filter(i => i.dt < 0), gain = IT.filter(i => i.dt >= 0);
+const sum = { loss: fmt(-loss.reduce((a, b) => a + b.dt, 0)).replace('−', '').replace('+', ''), nLoss: loss.length, gain: fmt(gain.reduce((a, b) => a + b.dt, 0)).replace('+', ''), nGain: gain.length, net: fmt(total) };
+// popup
+let pv = { open: false };
+if (st.open != null) {
+const it = IT[st.open];
+const a = Math.max(0, it.a - .02), b = Math.min(1, it.b + .02);
+const Xs = x => 12 + (x - a) / (b - a) * 616;
+const trc = f => { const o = []; for (let i = 0; i <= 100; i++) { const x = a + (b - a) * i / 100; o.push([Xs(x), 200 - f(x) * 1.6]); } return o; };
+const xc = it.a + (it.b - it.a) * .35;
+const l = it.dt < 0;
+const dd = Math.min(48, Math.abs(it.dt) / maxAbs * 48);
+const pt = k => { const o = []; for (let i = 0; i <= 40; i++) { const x = it.a + (it.b - it.a) * i / 40; const p = at(x); o.push([p[0] + k, p[1] + k]); } return o; };
+const ref = 150 + (it.id * 7) % 40, own = ref + (l ? -6 : 5);
+const g = { thrO: Math.round(thrO(xc)), thrR: Math.round(thrR(xc)), brkO: Math.round(brakeO(xc)), brkR: Math.round(brakeR(xc)), gear: 4, spdO: own + ' km/h', spdR: ref + ' km/h', angO: (it.id % 2 ? 24 : -30), angR: (it.id % 2 ? 18 : -22) };
+pv = { open: true, kicker: it.parts ? 'SEQUÊNCIA DE CURVAS' : it.name.toUpperCase(), title: it.name + (it.parts ? ' · analisadas juntas' : ''), range: Math.round(it.a * 5700) + '–' + Math.round(it.b * 5700) + ' m · ' + Math.round(it.a * 100) + '%–' + Math.round(it.b * 100) + '% da volta',
+detail: it.detail, isSeq: !!it.parts, parts: (it.parts || []).map(p => ({ name: p[0], dt: fmt(p[1]), color: p[1] < 0 ? dn : up })), dt: fmt(it.dt), color: l ? dn : up, left: l ? (50 - dd) + '%' : '50%', w: dd + '%',
+thrOwn: pl(trc(thrO)), thrRef: pl(trc(thrR)), brkOwn: pl(trc(brakeO)), brkRef: pl(trc(brakeR)),
+cx: Xs(xc), g, x0: Math.round(a * 5700) + ' m', x1: Math.round(b * 5700) + ' m',
+seg: pl(pt(0)), segOwn: pl(pt(2.2)), segRef: pl(pt(-2.2)), ball: { x: at(xc)[0], y: at(xc)[1] }, pct: (Math.round(xc * 1000) / 10).toString().replace('.', ',') + '%',
+chips: it.chips.map(c => ({ k: c[0], v: c[1], color: c[2] })) };
+}
+return { ctxs, sel: { track: cx.track }, bands, dGrid, xTicks, deltaLine: pl(dl), thrOwn: pl(thO), thrRef: pl(thR), brkOwn: pl(bkO), brkRef: pl(bkR), cur, pop,
+mapBase: pl(base), mapOwn: pl(mo), mapRef: pl(mr), mapMarks: marks, ball, filters, rows, sum, pv,
+prev: () => this.setState({ open: Math.max(0, (st.open ?? 0) - 1) }), next: () => this.setState({ open: Math.min(IT.length - 1, (st.open ?? 0) + 1) }), close: () => this.setState({ open: null }) };
+}
+}
+</script>
+</body>
+</html>

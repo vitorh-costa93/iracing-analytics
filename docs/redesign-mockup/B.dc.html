@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Visão Geral B</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=Chakra+Petch:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#080B14;font-family:'IBM Plex Sans',sans-serif;color:#E8EEFF;font-variant-numeric:tabular-nums}
+a{color:#E8EEFF;text-decoration:none}
+button{font-family:inherit}
+</style>
+</helmet>
+<div style="width:1440px;height:1620px;box-sizing:border-box;background:#080B14;display:flex;flex-direction:column;font-family:'IBM Plex Sans',sans-serif;color:#E8EEFF">
+
+<header style="height:60px;flex-shrink:0;display:flex;align-items:center;gap:32px;padding:0 32px;background:#0E1322;border-bottom:1px solid #222C50">
+<div style="display:flex;align-items:center;gap:10px">
+<div style="width:28px;height:28px;background:#FF2D3C;clip-path:polygon(0 0,100% 0,72% 100%,0 100%)"></div>
+<div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:20px;letter-spacing:.06em;text-transform:uppercase">Racing<span style="color:#FF2D3C"> Analytics</span></div>
+</div>
+<nav style="display:flex;gap:4px;height:100%">
+<a href="B.dc.html" style="display:flex;align-items:center;padding:0 16px;font-weight:600;font-size:15px;border-bottom:3px solid #FF2D3C;margin-top:3px">Visão Geral</a>
+<a href="Telemetry.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:15px;color:#9DAAD0">Telemetry Lab</a>
+<a href="DebriefSeason.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:15px;color:#9DAAD0">Debriefs</a>
+<a href="Setup.dc.html" style="display:flex;align-items:center;padding:0 16px;font-size:15px;color:#9DAAD0">Setup Lab</a>
+</nav>
+<div style="flex-grow:1"></div>
+<div style="display:flex;align-items:center;gap:8px;font-size:13px;color:#9DAAD0">
+<span style="width:8px;height:8px;border-radius:50%;background:#3DD68C"></span>iRStats há 2 h · Garage61 há 9 h
+</div>
+<button style="height:36px;padding:0 16px;background:#FF2D3C;color:#fff;border:0;border-radius:6px;font-weight:600;font-size:14px;cursor:pointer">Atualizar dados</button>
+<div style="display:flex;align-items:center;gap:10px;padding-left:20px;border-left:1px solid #222C50">
+<div style="text-align:right;line-height:1.15"><div style="font-weight:600;font-size:14px">Vitor Costa</div><div style="font-size:12px;color:#9DAAD0">ID 412089</div></div>
+<div style="width:36px;height:36px;border-radius:50%;background:#171F3B;display:flex;align-items:center;justify-content:center;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:15px">VC</div>
+</div>
+</header>
+
+<main style="flex-grow:1;padding:20px 32px 24px;display:flex;flex-direction:column;gap:16px;min-height:0">
+
+<div style="display:flex;align-items:flex-end;gap:24px">
+<div>
+<div style="font-size:12px;color:#9DAAD0;letter-spacing:.1em;text-transform:uppercase">2026 Season 3 · Semana 11 · vs. 2026 Season 2</div>
+<h1 style="margin:2px 0 0;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:30px;letter-spacing:.02em;text-transform:uppercase">Visão Geral da Temporada</h1>
+</div>
+<div style="flex-grow:1"></div>
+<div style="font-size:14px;color:#9DAAD0"><strong style="color:#E8EEFF;font-weight:600">47</strong> corridas <span>·</span> <strong style="color:#E8EEFF;font-weight:600">1.312</strong> voltas</div>
+</div>
+
+<!-- KPIs: 2 grupos de categoria x 3 indicadores (os mesmos de produção) -->
+<section style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px">
+<sc-for list="{{groups}}" as="g" hint-placeholder-count="2">
+<div style="display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;align-items:center;gap:8px;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:14px;letter-spacing:.1em;text-transform:uppercase"><span style="width:10px;height:10px;border-radius:2px;background:{{g.color}}"></span>{{g.name}}</div>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">
+<sc-for list="{{g.cards}}" as="k" hint-placeholder-count="3">
+<div style="background:#111830;border:1px solid #222C50;border-top:3px solid {{g.color}};border-radius:10px;padding:14px 16px;box-sizing:border-box;height:168px;display:flex;flex-direction:column;gap:6px">
+<div style="font-size:12px;letter-spacing:.1em;text-transform:uppercase;color:#9DAAD0">{{k.label}}</div>
+<div style="display:flex;align-items:center;gap:10px">
+<div style="font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:30px;line-height:1">{{k.value}}</div>
+<sc-if value="{{k.sr}}" hint-placeholder-val="{{true}}"><span style="height:22px;padding:0 8px;border-radius:5px;background:#0153DB;color:#fff;font-size:12px;font-weight:600;display:flex;align-items:center">{{k.sr}}</span></sc-if>
+</div>
+<div style="font-size:13px;font-weight:500;color:{{k.tColor}}">{{k.trend}}</div>
+<svg viewBox="0 0 200 34" preserveAspectRatio="none" style="width:100%;height:34px;margin-top:2px"><sc-for list="{{k.rects}}" as="b" hint-placeholder-count="0"><rect x="{{b.x}}" y="{{b.y}}" width="12" height="{{b.h}}" rx="1.5" fill="{{b.fill}}"/></sc-for><sc-for list="{{k.paths}}" as="p" hint-placeholder-count="0"><path d="{{p.d}}" fill="none" stroke="{{p.col}}" stroke-width="2" vector-effect="non-scaling-stroke"/></sc-for><sc-for list="{{k.lines}}" as="l" hint-placeholder-count="0"><polyline points="{{l.pts}}" fill="none" stroke="{{l.col}}" stroke-width="2" stroke-linejoin="round" stroke-dasharray="{{l.dash}}" vector-effect="non-scaling-stroke"/></sc-for></svg>
+<div style="font-size:12px;color:#8593BE">{{k.desc}}</div>
+</div>
+</sc-for>
+</div>
+</div>
+</sc-for>
+</section>
+
+<!-- Dispersão + contextos da semana -->
+<section style="display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px">
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:16px 20px;height:340px;box-sizing:border-box;display:flex;flex-direction:column">
+<div style="display:flex;align-items:center;gap:12px">
+<div>
+<div style="font-size:11px;letter-spacing:.14em;color:#FF2D3C;font-weight:600">RACE SURVIVAL</div>
+<h2 style="margin:0;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:19px;letter-spacing:.03em;text-transform:uppercase">Duração × Δ iRating</h2>
+</div>
+<div style="flex-grow:1"></div>
+<div style="display:flex;gap:4px;padding:3px;background:#0E1322;border:1px solid #222C50;border-radius:8px">
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:#222C50;color:#E8EEFF;font-weight:600;font-size:13px;cursor:pointer">Sports Car</button>
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:transparent;color:#9DAAD0;font-size:13px;cursor:pointer">Formula Car</button>
+</div>
+<div style="height:34px;padding:0 12px;display:flex;align-items:center;gap:8px;background:#0E1322;border:1px solid #222C50;border-radius:8px;font-size:13px">Todas as séries (31) <span style="color:#9DAAD0">▾</span></div>
+</div>
+<div style="font-size:12px;color:#8593BE;margin-top:2px">Só a season atual · duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</div>
+<svg viewBox="0 0 860 240" style="width:100%;flex-grow:1;margin-top:4px">
+<sc-for list="{{yGrid}}" as="g" hint-placeholder-count="5">
+<line x1="56" x2="850" y1="{{g.y}}" y2="{{g.y}}" stroke="{{g.stroke}}" stroke-width="1"/>
+<text x="46" y="{{g.ty}}" text-anchor="end" font-size="12" fill="#8593BE" font-family="IBM Plex Sans">{{g.label}}</text>
+</sc-for>
+<sc-for list="{{xGrid}}" as="g" hint-placeholder-count="5">
+<line x1="{{g.x}}" x2="{{g.x}}" y1="14" y2="200" stroke="#1B2444" stroke-width="1"/>
+<text x="{{g.x}}" y="222" text-anchor="middle" font-size="12" fill="#8593BE" font-family="IBM Plex Sans">{{g.label}}</text>
+</sc-for>
+<sc-for list="{{dots}}" as="d" hint-placeholder-count="30">
+<circle cx="{{d.x}}" cy="{{d.y}}" r="{{d.r}}" fill="{{d.fill}}" fill-opacity="0.9" stroke="{{d.stroke}}" stroke-width="{{d.sw}}"/>
+</sc-for>
+<g>
+<rect x="{{tip.x}}" y="{{tip.y}}" width="196" height="50" rx="6" fill="#0E1322" stroke="#3A4A82"/>
+<text x="{{tip.tx}}" y="{{tip.t1}}" font-size="13" font-weight="600" fill="#3DD68C" font-family="IBM Plex Sans">+41 iRating</text>
+<text x="{{tip.tx}}" y="{{tip.t2}}" font-size="11.5" fill="#C5D0F0" font-family="IBM Plex Sans">72,4 min · BMW M Hybrid V8</text>
+<text x="{{tip.tx}}" y="{{tip.t3}}" font-size="11.5" fill="#9DAAD0" font-family="IBM Plex Sans">Daytona Road Course · 24/09</text>
+</g>
+<text x="14" y="107" font-size="12" fill="#8593BE" font-family="IBM Plex Sans" transform="rotate(-90 14 107)" text-anchor="middle">Δ iRating</text>
+</svg>
+</div>
+
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:16px 20px;height:340px;box-sizing:border-box;display:flex;flex-direction:column;gap:10px">
+<div style="display:flex;align-items:center">
+<h2 style="margin:0;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:19px;letter-spacing:.03em;text-transform:uppercase">Contextos da semana</h2>
+<div style="flex-grow:1"></div>
+<a href="B.dc.html" style="font-size:13px;color:#9DAAD0">Telemetry Lab →</a>
+</div>
+<sc-for list="{{contexts}}" as="c" hint-placeholder-count="3">
+<div style="display:flex;align-items:center;gap:12px;padding:10px 12px;background:#171F3B;border-radius:8px">
+<div style="width:6px;align-self:stretch;border-radius:3px;background:{{c.color}}"></div>
+<div style="flex-grow:1;min-width:0">
+<div style="font-weight:600;font-size:15px">{{c.track}}</div>
+<div style="font-size:13px;color:#9DAAD0">{{c.car}} · {{c.races}} corridas no contexto</div>
+</div>
+<div style="text-align:right">
+<div style="font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:20px;color:{{c.aColor}}">{{c.avg}}</div>
+<div style="font-size:12px;color:#9DAAD0">Δ médio</div>
+</div>
+</div>
+</sc-for>
+</div>
+</section>
+
+<section style="display:flex;flex-direction:column;gap:12px">
+<div style="display:flex;align-items:flex-end;gap:16px">
+<div>
+<div style="font-size:11px;letter-spacing:.14em;color:#FF2D3C;font-weight:600">HISTORICAL PERFORMANCE</div>
+<h2 style="margin:0;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:22px;letter-spacing:.03em;text-transform:uppercase">Performance por contexto</h2>
+<div style="font-size:12px;color:#8593BE;margin-top:2px">Todo o período com dados detalhados disponíveis · onde você rende melhor e pior, por duas medidas.</div>
+</div>
+<div style="flex-grow:1"></div>
+<div style="display:flex;gap:4px;padding:3px;background:#0E1322;border:1px solid #222C50;border-radius:8px">
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:transparent;color:#9DAAD0;font-size:13px;cursor:pointer">Super Formula</button>
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:#222C50;color:#E8EEFF;font-weight:600;font-size:13px;cursor:pointer">GT3</button>
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:transparent;color:#9DAAD0;font-size:13px;cursor:pointer">IMSA GTP / LMP2</button>
+</div>
+<div style="display:flex;gap:4px;padding:3px;background:#0E1322;border:1px solid #222C50;border-radius:8px">
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:#222C50;color:#E8EEFF;font-weight:600;font-size:13px;cursor:pointer">Pista</button>
+<button style="height:28px;padding:0 12px;border:0;border-radius:5px;background:transparent;color:#9DAAD0;font-size:13px;cursor:pointer">Carro</button>
+</div>
+</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px">
+
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:16px 20px;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:11px;letter-spacing:.14em;color:#8593BE;font-weight:600">MEDIDA 1 · GT3</div>
+<h3 style="margin:0 0 6px;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:17px;letter-spacing:.03em;text-transform:uppercase">Média de Δ iRating por pista</h3>
+<div style="display:grid;grid-template-columns:200px minmax(0,1fr) 96px;gap:12px;font-size:11px;letter-spacing:.12em;color:#8593BE"><span></span><span style="display:flex;justify-content:space-between"><span>PERDAS</span><span>GANHOS</span></span><span></span></div>
+<sc-for list="{{delta}}" as="d" hint-placeholder-count="9">
+<div style="display:grid;grid-template-columns:200px minmax(0,1fr) 96px;gap:12px;align-items:center;height:38px;border-top:1px solid #1B2444">
+<div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="width:24px;height:18px;border-radius:3px;background:#1E2748;color:#9DAAD0;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{d.cc}}</span><div style="min-width:0"><div style="font-weight:600;font-size:14px;line-height:1.15">{{d.track}}</div><div style="font-size:11.5px;color:#8593BE">{{d.races}} corridas · {{d.conf}}</div></div></div>
+<div style="position:relative;height:14px"><div style="position:absolute;left:50%;top:-3px;bottom:-3px;width:1px;background:#5C6A9E"></div><div style="position:absolute;top:2px;height:10px;border-radius:2px;background:{{d.color}};left:{{d.left}};width:{{d.w}}"></div></div>
+<div style="text-align:right;font-weight:600;font-size:14px;color:{{d.color}}">{{d.avg}}<span style="font-weight:400;font-size:11px;color:#8593BE">/corrida</span></div>
+</div>
+</sc-for>
+</div>
+
+<div style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:16px 20px;display:flex;flex-direction:column;gap:4px">
+<div style="font-size:11px;letter-spacing:.14em;color:#8593BE;font-weight:600">MEDIDA 2 · GT3 · GAP PARA O VENCEDOR</div>
+<h3 style="margin:0 0 2px;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:17px;letter-spacing:.03em;text-transform:uppercase">Sua melhor volta vs. a do vencedor</h3>
+<div style="font-size:12px;color:#8593BE;margin-bottom:4px">Vencedor da sua classe, por pista · do menor para o maior gap percentual · média geral {{overall}}</div>
+<div style="display:grid;grid-template-columns:200px minmax(0,1fr) 96px;gap:12px;font-size:11px;letter-spacing:.12em;color:#8593BE"><span></span><span style="display:flex;justify-content:space-between"><span>MAIS PERTO</span><span>MAIS LONGE</span></span><span></span></div>
+<sc-for list="{{gap}}" as="g" hint-placeholder-count="9">
+<div style="display:grid;grid-template-columns:200px minmax(0,1fr) 96px;gap:12px;align-items:center;height:38px;border-top:1px solid #1B2444">
+<div style="display:flex;align-items:center;gap:8px;min-width:0"><span style="width:24px;height:18px;border-radius:3px;background:#1E2748;color:#9DAAD0;font-size:10px;font-weight:600;display:flex;align-items:center;justify-content:center;flex-shrink:0">{{g.cc}}</span><div style="min-width:0"><div style="font-weight:600;font-size:14px;line-height:1.15">{{g.track}}</div><div style="font-size:11.5px;color:#8593BE">{{g.races}} corr. · melhor {{g.best}} · pior {{g.worst}}</div></div></div>
+<div style="position:relative;height:14px"><div style="position:absolute;top:2px;left:0;height:10px;border-radius:2px;background:{{g.color}};width:{{g.w}}"></div></div>
+<div style="text-align:right;line-height:1.15"><div style="font-weight:600;font-size:14px;color:{{g.color}}">{{g.pct}}</div><div style="font-size:11px;color:#8593BE">{{g.avg}}</div></div>
+</div>
+</sc-for>
+</div>
+</div>
+</section>
+
+<section style="background:#111830;border:1px solid #222C50;border-radius:10px;padding:14px 20px;display:flex;flex-direction:column;gap:2px">
+<h2 style="margin:0 0 4px;font-family:'Chakra Petch',sans-serif;font-weight:600;font-size:19px;letter-spacing:.03em;text-transform:uppercase">Últimas corridas</h2>
+<div style="display:grid;grid-template-columns:70px minmax(0,1.6fr) minmax(0,1.3fr) 60px 60px 60px 80px;gap:12px;padding:4px 8px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:#8593BE;border-bottom:1px solid #222C50">
+<div>Data</div><div>Pista</div><div>Carro</div><div style="text-align:right">Grid</div><div style="text-align:right">Pos.</div><div style="text-align:right">Inc.</div><div style="text-align:right">iRating</div>
+</div>
+<sc-for list="{{races}}" as="r" hint-placeholder-count="6">
+<div style="display:grid;grid-template-columns:70px minmax(0,1.6fr) minmax(0,1.3fr) 60px 60px 60px 80px;gap:12px;padding:0 8px;height:34px;align-items:center;font-size:14px;border-bottom:1px solid #1B2444">
+<div style="color:#9DAAD0">{{r.date}}</div>
+<div style="font-weight:500;display:flex;align-items:center;gap:8px;min-width:0"><span style="width:8px;height:8px;border-radius:2px;background:{{r.color}};flex-shrink:0"></span>{{r.track}}</div>
+<div style="color:#C5D0F0">{{r.car}}</div>
+<div style="text-align:right;color:#9DAAD0">{{r.grid}}</div>
+<div style="text-align:right;font-weight:600">{{r.pos}}</div>
+<div style="text-align:right;color:#9DAAD0">{{r.inc}}</div>
+<div style="text-align:right;font-weight:600;color:{{r.dColor}}">{{r.delta}}</div>
+</div>
+</sc-for>
+</section>
+
+</main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":1620}}'>
+class Component extends DCLogic {
+renderVals() {
+const up = '#3DD68C', dn = '#FF6B6B', mu = '#9DAAD0';
+const S = '#4DA3FF', F = '#FFB020', R = '#B48CFF';
+const norm = (a, lo, hi, h, pad) => a.map(v => (h - pad - ((v - lo) / (hi - lo || 1)) * (h - 2 * pad)));
+const line = (a, lo, hi, col, dash) => {
+const ys = norm(a, lo, hi, 34, 3);
+return { pts: ys.map((y, i) => (i * 200 / (a.length - 1)).toFixed(1) + ',' + y.toFixed(1)).join(' '), col, dash: dash ? '4 3' : 'none' };
+};
+const steps = (a, col) => {
+const mx = Math.max(...a, 1); const ys = norm(a, 0, mx, 34, 3);
+let d = '';
+a.forEach((v, i) => { const x = i * 200 / (a.length - 1); d += (i ? 'L' : 'M') + x.toFixed(1) + ',' + ys[i].toFixed(1); if (i < a.length - 1) d += 'L' + ((i + 1) * 200 / (a.length - 1)).toFixed(1) + ',' + ys[i].toFixed(1); });
+return { d, col };
+};
+const bars = a => a.map((v, i) => { const h = Math.max(2, Math.min(15, Math.abs(v) / 3)); return { x: i * 16.6 + 2, y: v >= 0 ? 17 - h : 17, h: h.toFixed(1), fill: v >= 0 ? up : dn }; });
+const sportsCur = [2610,2640,2600,2690,2720,2700,2760,2740,2785,2810,2830,2847];
+const sportsPrev = [2540,2580,2610,2570,2620,2660,2650,2700,2690,2720,2740,2785];
+const formCur = [2200,2230,2260,2290,2270,2300,2330,2350,2340,2330,2330,2312];
+const formPrev = [2180,2210,2200,2250,2280,2310,2300,2340,2360,2350,2340,2330];
+const both = (c, p, lo, hi, col) => [line(p, lo, hi, '#5C6A9E', true), line(c, lo, hi, col, false)];
+const groups = [
+{ name: 'Formula Car', color: F, cards: [
+{ label: 'iRating', value: '2.312', sr: 'B 2.87', trend: '↘ −18 vs. S2 W11', tColor: dn, lines: both(formCur, formPrev, 2170, 2370, F), desc: 'Tracejado: Season 2' },
+{ label: 'Vitórias', value: '1', sr: '', trend: '↗ +1 vs. S2', tColor: up, paths: [steps([0,0,0,0,0,1,1,1,1,1,1,1], F)], desc: 'Vitórias registradas · S2: 0' },
+{ label: 'Sequência', value: '0', sr: '', trend: 'Última corrida perdeu iRating', tColor: mu, rects: bars([-12,18,22,-30,-8,14,-20,9,-16,26,-14,-18]), desc: 'Recorde all-time · 6 seguidas' } ] },
+{ name: 'Sports Car', color: S, cards: [
+{ label: 'iRating', value: '2.847', sr: 'A 3.41', trend: '↗ +62 vs. S2 W11', tColor: up, lines: both(sportsCur, sportsPrev, 2520, 2860, S), desc: 'Tracejado: Season 2' },
+{ label: 'Vitórias', value: '3', sr: '', trend: '↗ +2 vs. S2', tColor: up, paths: [steps([0,0,0,1,1,1,1,2,2,2,3,3], S)], desc: 'Vitórias registradas · S2: 1' },
+{ label: 'Sequência', value: '3', sr: '', trend: '3 corridas seguidas ganhando iRating', tColor: up, rects: bars([-22,14,-9,31,-14,-18,12,25,38,41,-6,41].slice(0,9).concat([18,30,41])), desc: 'Recorde all-time · 7 seguidas' } ] }
+];
+groups.forEach(g => g.cards.forEach(k => { k.sr = k.sr || ''; k.lines = k.lines || []; k.paths = k.paths || []; k.rects = k.rects || []; }));
+// Dispersão: x = duração (min), y = Δ iRating
+const X0 = 60, X1 = 840, xmax = 90, ymax = 100, Y0 = 14, Y1 = 200;
+const X = m => X0 + m / xmax * (X1 - X0);
+const Y = d => (Y0 + Y1) / 2 - d / ymax * ((Y1 - Y0) / 2);
+const raw = [[6,-38],[9,-71],[14,-24],[22,12],[25,-18],[31,26],[34,-45],[38,8],[40,33],[44,-12],[45,19],[48,-31],[50,44],[52,-9],[55,28],[57,-52],[58,15],[60,37],[61,-20],[63,9],[64,52],[66,-14],[67,23],[69,-33],[70,17],[72.4,41],[73,-8],[74,29],[76,-27],[78,12],[80,-63],[82,21],[84,35],[86,-15]];
+const dots = raw.map((p, i) => ({ x: X(p[0]).toFixed(1), y: Y(p[1]).toFixed(1), r: p[0] === 72.4 ? 6.5 : 5, fill: p[1] >= 0 ? up : dn, stroke: p[0] === 72.4 ? '#FFFFFF' : 'none', sw: p[0] === 72.4 ? 2 : 0 }));
+const yGrid = [-100, -50, 0, 50, 100].map(v => ({ y: Y(v), ty: Y(v) + 4, label: (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v), stroke: v === 0 ? '#5C6A9E' : '#1B2444' }));
+const xGrid = [0, 22.5, 45, 67.5, 90].map(m => ({ x: X(m), label: Math.round(m) + ' min' }));
+const tx = X(72.4) - 210, ty = Y(41) - 24;
+const tip = { x: tx, y: ty, tx: tx + 12, t1: ty + 18, t2: ty + 33, t3: ty + 46 };
+const contexts = [
+{ track: 'Daytona Road Course', car: 'Sports Car · GTP', races: 5, avg: '+18,4', aColor: up, color: S },
+{ track: 'Spa-Francorchamps', car: 'Sports Car · GT3', races: 4, avg: '+6,2', aColor: up, color: S },
+{ track: 'Suzuka Grand Prix', car: 'Formula · SF23', races: 3, avg: '−11,7', aColor: dn, color: F }
+];
+const races = [
+['24/09','Daytona Road Course','BMW M Hybrid V8','6','3','2','+41',S],
+['23/09','Spa-Francorchamps','Ferrari 296 GT3','9','7','4','+12',S],
+['21/09','Suzuka Grand Prix','Super Formula SF23','4','5','0','−18',F],
+['20/09','Le Mans','Cadillac V-Series.R','11','8','6','−9',S],
+['18/09','Road America','Mazda MX-5 Cup','7','2','2','+27',R],
+['16/09','Motegi GP','Super Formula SF23','8','6','2','+5',F]
+].map(a => ({ date: a[0], track: a[1], car: a[2], grid: a[3], pos: 'P' + a[4], inc: a[5], delta: a[6], dColor: a[6][0] === '+' ? up : dn, color: a[7] }));
+const ranking = [['Sports Car · GTP',14,3.9,S],['Sports Car · GT3',18,5.2,S],['Formula · SF23',9,6.1,F],['Road · MX-5 Cup',6,4.8,R]]
+.map(a => ({ name: a[0], starts: a[1], avg: a[2].toFixed(1).replace('.', ','), color: a[3], w: Math.round((1 - a[2] / 12) * 100) + '%' }));
+const fmt1 = v => (v > 0 ? '+' : v < 0 ? '−' : '') + Math.abs(v).toFixed(1).replace('.', ',');
+const sig = n => n >= 8 ? 'evidência consistente' : n >= 4 ? 'evidência moderada' : 'sinal inicial';
+const dRaw = [['Spa-Francorchamps','BE',6,21.4],['Watkins Glen','US',5,14.8],['Road America','US',4,11.2],['Monza','IT',5,6.9],['Barcelona','ES',3,-4.1],['Imola','IT',4,-8.3],['Nürburgring','DE',6,-17.6],['Suzuka','JP',3,-22.9],['Sebring','US',5,-31.5]];
+const dMax = Math.max(...dRaw.map(r => Math.abs(r[3])));
+const delta = dRaw.map(r => { const w = Math.max(Math.abs(r[3]) / dMax * 48, 2); return { track: r[0], cc: r[1], races: r[2], conf: sig(r[2]), avg: fmt1(r[3]), color: r[3] > 0 ? up : dn, left: r[3] > 0 ? '50%' : (50 - w) + '%', w: w + '%' }; });
+const gRaw = [['Spa-Francorchamps','BE',6,0.62,0.86,0.31,1.42],['Monza','IT',5,0.71,0.72,0.28,1.10],['Watkins Glen','US',5,0.84,0.91,0.44,1.57],['Road America','US',4,0.93,1.13,0.52,1.61],['Barcelona','ES',3,1.08,1.06,0.71,1.49],['Imola','IT',4,1.24,1.02,0.65,1.58],['Nürburgring','DE',6,1.37,2.91,1.12,4.86],['Sebring','US',5,1.62,2.35,1.34,3.90],['Suzuka','JP',3,1.85,1.67,1.21,2.20]];
+const ovr = gRaw.reduce((a, r) => a + r[3] * r[2], 0) / gRaw.reduce((a, r) => a + r[2], 0);
+const gMax = Math.max(...gRaw.map(r => r[3]));
+const sec = v => '+' + v.toFixed(3).replace('.', ',') + 's';
+const gap = gRaw.map(r => ({ track: r[0], cc: r[1], races: r[2], pct: '+' + r[3].toFixed(2).replace('.', ',') + '%', avg: 'média ' + sec(r[4]), best: sec(r[5]), worst: sec(r[6]), color: r[3] <= ovr ? up : dn, w: Math.max(r[3] / gMax * 100, 2) + '%' }));
+const overall = '+' + ovr.toFixed(2).replace('.', ',') + '%';
+return { delta, gap, overall, groups, dots, yGrid, xGrid, tip, contexts, races, ranking };
+}
+}
+</script>
+</body>
+</html>
