@@ -1,17 +1,6 @@
 * { box-sizing: border-box; }
 
-/* Light mode (02/09/2026: "queria ver contigo a possibilidade de um light mode... hoje o aplicativo
- * está em Dark mode") -- manual toggle (components/ThemeToggle.tsx), not prefers-color-scheme: the
- * driver picks the theme explicitly and it's remembered (localStorage), rather than silently following
- * the OS. Dark stays the default/bare :root (unchanged values, so nothing shifts for an existing
- * visitor with no stored preference); :root[data-theme="light"] overrides every token below with a
- * light-safe equivalent. --surface-deep/--surface-map DO follow the theme like everything else here
- * (an earlier version of this pass pinned them permanently dark for a "floating dark panel" look, but
- * that silently broke every --text/--reference/--soft line or label drawn on top of them once light
- * mode made THOSE go dark-on-light too -- text and its background need to move together). The one
- * place that genuinely stays fixed-dark on purpose is the FocusedGaugeChart HUD widget itself (see
- * --gauge-bg below), because it replicates iRacing's own in-sim gauge cluster using literal calibrated
- * hex colors that were never theme tokens to begin with. */
+/* App somente escuro (decisão do piloto: "por ora não vamos ter tema"). O tema claro e o ThemeToggle foram removidos; o FocusedGaugeChart mantém o fundo fixo (--gauge-bg). */
 :root {
   color-scheme: dark;
   --bg: #0a0a0c;
@@ -106,45 +95,6 @@
 .data-freshness small { width: 100%; color: #b86f22; }
 .data-freshness.has-error { border-color: color-mix(in srgb, #b86f22 50%, var(--line)); }
 
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg: #f3f1ec;
-  --bg-top: #fbfaf7;
-  --surface: #ffffff;
-  --surface-muted: #ece8e0;
-  --surface-raised: #e1ddd2;
-  --surface-deep: #ffffff;
-  --surface-map: #e7e2d3;
-  --border: #ddd8cd;
-  --border-strong: #c3bcac;
-  --text: #18150f;
-  --muted: #5b5548;
-  --soft: #837b6a;
-  --brand: #1c4f9c;
-  --brand-dark: #133a75;
-  --brand-pale: #dde8f8;
-  --on-brand: #f8fafd;
-  --brand-red: #c81f16;
-  --brand-red-dark: #9c1810;
-  --blue: #0f7690;
-  --blue-dark: #0b5a6f;
-  --blue-pale: #dcf2f6;
-  --on-pale: #063542;
-  --green: #1a8f57;
-  --green-pale: #e1f5ea;
-  --red: #c93a3a;
-  --red-pale: #fae2df;
-  --amber: #a8650a;
-  --amber-dim: #e6c78f;
-  --amber-pale: #fbead2;
-  --on-dark: #04141a;
-  --reference: #7a4bc4;
-  --reference-dark: #5f3898;
-  --channel-steering: #a5691c;
-  --channel-rpm: var(--reference);
-  --channel-clutch: #93711f;
-  --channel-dynamics: #147c92;
-}
 
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 body { font-family: var(--body); font-weight: 400; letter-spacing: -.01em; }

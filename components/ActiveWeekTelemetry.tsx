@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { detectLapCorners } from "@/lib/lap-corners";
 import { trackUiEvent } from "@/lib/track-ui-event";
+import { weekLabel } from "@/lib/season-week";
 import { formatLapTime, hasCompleteGps, ibtToBestLapCsv, parseTelemetryCsv, traceUsesOvertake, type Trace, type TracePoint } from "@/lib/telemetry-trace";
 import { compareLaps } from "@/lib/lap-analysis";
 import { formatSignedSeconds } from "@/lib/engineer-talk";
@@ -267,7 +268,7 @@ export default function ActiveWeekTelemetry() {
     <div className="ngt-screen">
       {ranked.length > 3 && (
         <div className="ngt-more-contexts">
-          <span>{data?.week ? `${data.week.seasonName} · Week ${data.week.number} · ${ranked.length} contextos com atividade` : `${ranked.length} contextos com atividade`}</span>
+          <span>{data?.week ? `${data.week.seasonName} · ${weekLabel(data.week.number)} · ${ranked.length} contextos com atividade` : `${ranked.length} contextos com atividade`}</span>
           <SelectPill ariaLabel="Outros contextos da semana" value={selectedKey}
             options={ranked.map((item) => ({ value: item.key, label: `${item.track.name} · ${item.car.name}` }))}
             onChange={(key) => { const item = ranked.find((entry) => entry.key === key); if (item) selectContext(item); }} />

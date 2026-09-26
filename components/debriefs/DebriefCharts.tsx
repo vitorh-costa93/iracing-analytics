@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { weekShort } from "@/lib/season-week";
 import type { PaceChart } from "@/lib/debrief-charts";
 import { LOSS_BINS } from "@/lib/debrief-charts";
 import { dec, signedInt } from "@/lib/debrief-narrative";
@@ -63,9 +64,9 @@ export function WeekPressureBars({ weeks }: { weeks: Array<{ week: number; delta
       {weeks.map((item) => {
         const h = Math.max(2, Math.round((Math.abs(item.delta) / max) * 58));
         return (
-          <div className="ngd-weeks-col" key={item.week} title={"W" + item.week + ": " + signedInt(item.delta) + " em " + item.races + " corrida(s)" + (item.severeLosses ? " · " + item.severeLosses + " perda(s) grande(s)" : "")}>
+          <div className="ngd-weeks-col" key={item.week} title={weekShort(item.week) + ": " + signedInt(item.delta) + " em " + item.races + " corrida(s)" + (item.severeLosses ? " · " + item.severeLosses + " perda(s) grande(s)" : "")}>
             <div className="ngd-weeks-bar" data-tone={item.delta >= 0 ? "gain" : "loss"} style={item.delta >= 0 ? { top: 60 - h, height: h } : { top: 60, height: h }} />
-            <span>W{item.week}</span>
+            <span>{weekShort(item.week)}</span>
           </div>
         );
       })}

@@ -1,10 +1,11 @@
 import { MapPin } from "lucide-react";
 import { CarBrandIcon, hideBrokenImage } from "@/lib/car-brand";
 import { countryCode } from "@/components/PerformanceRanking";
-import type { WinnerGapItem } from "@/components/WinnerGapRanking";
+import { formatSignedSeconds } from "@/lib/engineer-talk";
 import { Chip } from "@/components/ui";
 import { signedNumber } from "./format";
 
+export type WinnerGapItem = { track: string; races: number; avgGapSeconds: number; avgGapPct: number; bestGapSeconds: number; worstGapSeconds: number };
 export type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
 
 function evidence(races: number) {
@@ -56,7 +57,29 @@ export function DeltaByContext({ items, kind, emptyText }: { items: RankingItem[
   );
 }
 
-function seconds(v: number) { return `${v > 0 ? "+" : ""}${v.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })}s`; }
+/** Tempo de diferença no formato único do app: "+0,318 s" / "−0,318 s" (sinal tipográfico, espaço antes do s). */
+/** Versão compacta do celular (Mobile.dc.html, "Por pista · Melhores e piores"): 4 linhas, barras divergentes. */
+export function BestWorstTracks({ items }: { items: RankingItem[] }) {
+  if (!items.length) return <div className="ngo-empty">Sem dados</div>;
+  const maxAbs = Math.max(...items.map((i) => Math.abs(i.avgDelta)), 1);
+  return (
+    <div className="ngo-bw">
+      {items.map((item) => {
+        const positive = item.avgDelta > 0;
+        const w = Math.max((Math.abs(item.avgDelta) / maxAbs) * 50, 2);
+        const tone = positive ? "var(--ng-gain)" : "var(--ng-loss)";
+        return (
+          <div className="ngo-bw-row" key={item.label}>
+            <div className="ngo-bw-line"><span>{item.label}</span><span style={{ color: tone }}>{signedNumber(item.avgDelta, 1)}</span></div>
+            <div className="ngo-bw-bar"><span style={{ background: tone, left: positive ? "50%" : `${50 - w}%`, width: `${w}%` }} /></div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function seconds(v: number) { return formatSignedSeconds(v); }
 function percent(v: number) { return `${v > 0 ? "+" : ""}${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`; }
 
 export function gapOverall(items: WinnerGapItem[]) {

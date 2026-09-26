@@ -5,6 +5,8 @@
  * ("Leitura:", "Recomendação:"). Elogia o que está bom e diz o que fazer. Funções puras, cobertas
  * por lib/debrief-narrative.test.ts. */
 
+import { weekShort } from "@/lib/season-week";
+
 export type Scope = "week" | "season";
 
 export const MINUS = "−";
@@ -140,7 +142,7 @@ export function weekPressureSubtitle(weeks: Array<{ week: number; delta: number 
   if (!withDelta.length) return "Saldo de cada week.";
   const worst = withDelta.reduce((a, b) => (b.delta < a.delta ? b : a));
   const best = withDelta.reduce((a, b) => (b.delta > a.delta ? b : a));
-  if (worst.delta >= 0) return "Saldo de cada week. Nenhuma fechou no vermelho; a melhor foi a W" + best.week + " (" + signedInt(best.delta) + ").";
+  if (worst.delta >= 0) return "Saldo de cada week. Nenhuma fechou no vermelho; a melhor foi a " + weekShort(best.week) + " (" + signedInt(best.delta) + ").";
   return "Saldo de cada week. A W" + worst.week + " foi a mais cara da season (" + signedInt(worst.delta) + ").";
 }
 

@@ -6,6 +6,7 @@ import { Chip, Panel, PageTitle, SegmentedControl } from "@/components/ui";
 import type { ChipTone } from "@/components/ui";
 import type { DebriefRaceRow, DebriefReport, DebriefSection, PedalSet } from "@/lib/debrief-types";
 import { dec, plural, signedInt } from "@/lib/debrief-narrative";
+import { weekLabel } from "@/lib/season-week";
 import { DivergingRow, LossTimingBars, PaceScatter, WeekPressureBars } from "./DebriefCharts";
 
 type Scope = "week" | "season";
@@ -82,7 +83,7 @@ export default function DebriefsView({ initialScope, initialSegment }: { initial
   const section = report?.sections.find((item) => item.segment === segment) ?? null;
   const eyebrow = scope === "season"
     ? "Race Engineer · " + (report ? report.seasonName + " vs. " + report.previousSeasonName : "season atual vs. anterior")
-    : "Race Engineer · " + (section?.week ? "Week " + section.week : "week atual") + " vs. demais weeks";
+    : "Race Engineer · " + (section?.week ? weekLabel(section.week) : "semana atual") + " vs. demais semanas";
 
   return (
     <div className="ng-page">

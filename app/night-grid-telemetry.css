@@ -14,18 +14,6 @@
   --ngt-gain-fill: #0F2A1F;
   --ngt-backdrop: rgba(3, 5, 12, .8);
 }
-:root[data-theme="light"] {
-  --ngt-deep: #F5F7FC;
-  --ngt-inset: #EEF1F9;
-  --ngt-grid: #E3E7F2;
-  --ngt-axis: #8D97BB;
-  --ngt-map-base: #C9D1E8;
-  --ngt-map-dim: #DDE3F3;
-  --ngt-gear: #B88A00;
-  --ngt-loss-fill: #FBE1E1;
-  --ngt-gain-fill: #DDF5E9;
-  --ngt-backdrop: rgba(14, 19, 34, .45);
-}
 
 .ngt-screen { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .ngt-state { padding: 18px 20px; background: var(--ng-card); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-card); color: var(--ng-muted); font-size: 14px; display: flex; align-items: center; gap: 12px; }

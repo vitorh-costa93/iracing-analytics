@@ -6,10 +6,7 @@
  * em app/globals.css, e trocar esses valores agora mudaria telas que só serão migradas nas etapas
  * 2 a 7. Quando a última tela antiga sair, os tokens antigos e este prefixo podem ser unificados.
  *
- * Tema claro: o ThemeToggle continua valendo (data-theme="light" em <html>). O mockup só define o
- * tema escuro; o bloco claro abaixo é uma tradução provisória da mesma identidade (mesma marca e
- * mesmas cores de categoria, superfícies claras) para o toggle não quebrar -- não foi desenhado nem
- * aprovado no mockup. */
+ * O app é somente escuro (sem toggle de tema). */
 :root {
   --ng-bg: #080B14;
   --ng-header: #0E1322;
@@ -50,30 +47,6 @@
   --ng-font-body: var(--font-plex), "IBM Plex Sans", "Segoe UI", sans-serif;
 }
 
-:root[data-theme="light"] {
-  --ng-bg: #F2F4FA;
-  --ng-header: #FFFFFF;
-  --ng-card: #FFFFFF;
-  --ng-card-2: #EEF1F9;
-  --ng-border: #D5DBEC;
-  --ng-line: #E3E7F2;
-  --ng-text: #0E1322;
-  --ng-text-2: #26304F;
-  --ng-muted: #4A5680;
-  --ng-soft: #5E6A93;
-  --ng-brand: #E0202E;
-  --ng-gain: #13985A;
-  --ng-loss: #D93636;
-  --ng-reference: #0B9DA1;
-  --ng-reference-popup: #7F52D6;
-  --ng-sports: #1F74D8;
-  --ng-formula: #B87500;
-  --ng-road: #7F52D6;
-  --ng-selected: #DDE3F3;
-  --ng-code-bg: #E3E8F5;
-  --ng-tooltip-border: #B9C3E0;
-  --ng-caution: #B87500;
-}
 
 /* Números tabulares por padrão em todo o app (decisão fixa do plano). */
 body { font-variant-numeric: tabular-nums; }

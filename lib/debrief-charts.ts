@@ -1,4 +1,5 @@
 import type { RaceInput } from "@/lib/race-engineer-analysis";
+import { weekShort } from "@/lib/season-week";
 import { parseLapTimeSeconds } from "@/lib/winner-gap";
 
 /** Cálculos puros dos gráficos novos dos Debriefs de season/week (redesign etapa 5,
@@ -102,7 +103,7 @@ export function buildPaceChart(scope: "week" | "season", selected: RaceInput[], 
       const gap = avg(gaps);
       if (gap === null) { missing++; continue; }
       const incidents = avg(rows.map((row) => row.incidents).filter((value): value is number => typeof value === "number"));
-      points.push({ key: "W" + week, label: "W" + week, gapPct: round(gap), delta: rows.reduce((total, row) => total + delta(row), 0), incidents: incidents === null ? null : round(incidents, 1), races: rows.length });
+      points.push({ key: weekShort(week), label: weekShort(week), gapPct: round(gap), delta: rows.reduce((total, row) => total + delta(row), 0), incidents: incidents === null ? null : round(incidents, 1), races: rows.length });
     }
   }
   const quadrants: Record<Quadrant, number> = { fastGain: 0, slowGain: 0, fastLoss: 0, slowLoss: 0 };

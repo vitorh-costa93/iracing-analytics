@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { buildEngineerSection, Category, RaceInput } from "@/lib/race-engineer-analysis";
+import { currentSeasonWeek } from "@/lib/season-week";
 import { retirementEvents } from "@/lib/race-retirement-events";
 import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
 import { paceVsResultInsight } from "@/lib/pace-vs-result-insight";
@@ -54,7 +55,7 @@ export async function GET(request:NextRequest){
   const[rows,history]=await Promise.all([racesFor(driver.id,previousStart,new Date(new Date(currentStart).getTime()+84*86400000).toISOString()),historyBefore(driver.id,previousStart)]);
   const currentRows=rows.filter(x=>new Date(x.raced_at)>=new Date(currentStart)),previousRows=rows.filter(x=>new Date(x.raced_at)<new Date(currentStart));
 
-  const now=currentRows.filter(row=>row.category===segment.category&&segment.match(row)),before=previousRows.filter(row=>row.category===segment.category&&segment.match(row)),latestWeek=now.reduce<number|null>((latest,row)=>row.season_week!==null&&(latest===null||row.season_week>latest)?row.season_week:latest,null),selected=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week===latestWeek):now,baseline=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week!==latestWeek):before;
+  const now=currentRows.filter(row=>row.category===segment.category&&segment.match(row)),before=previousRows.filter(row=>row.category===segment.category&&segment.match(row)),latestWeek=currentSeasonWeek(currentRows),selected=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week===latestWeek):now,baseline=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week!==latestWeek):before;
   const contextKey=(row:RaceInput)=>row.car_name+"|"+row.track_name,sharedContexts=new Set([...new Set(selected.map(contextKey))].filter(key=>baseline.some(row=>contextKey(row)===key)));
   const[survival,survivalReference,inputs,inputReference]=await Promise.all([retirementEvents(driver.id,selected,current.season_name),retirementEvents(driver.id,baseline,scope==="week"?current.season_name:previous.season_name),telemetryInputProfile(driver.id,segment.category,selected,current.season_name,scope==="week"?latestWeek:null,sharedContexts),telemetryInputProfile(driver.id,segment.category,baseline,scope==="week"?current.season_name:previous.season_name,null,sharedContexts)]);
   const base=buildEngineerSection(segment.category,selected,baseline,scope,scope==="week"?latestWeek:null,segment.label,segment.id),threshold=base.severity.threshold;

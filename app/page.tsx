@@ -3,16 +3,15 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./night-grid-overview.css";
 import Link from "next/link";
-import type { WinnerGapItem } from "@/components/WinnerGapRanking";
-import ThemeToggle from "@/components/ThemeToggle";
 import SeasonCalendarImportModal from "@/components/SeasonCalendarImportModal";
 import { CategoryHeading, KpiCard, Panel, PageTitle, SegmentedControl, SelectPill } from "@/components/ui";
 import type { KpiCategory, KpiTone } from "@/components/ui";
 import RaceScatter from "@/components/overview/RaceScatter";
 import LatestRaces from "@/components/overview/LatestRaces";
-import { DeltaByContext, GapToWinner, gapOverall } from "@/components/overview/PerformancePanels";
+import { BestWorstTracks, type WinnerGapItem, DeltaByContext, GapToWinner, gapOverall } from "@/components/overview/PerformancePanels";
 import { signedNumber } from "@/components/overview/format";
 import { trackUiEvent } from "@/lib/track-ui-event";
+import { weekLabel, weekShort } from "@/lib/season-week";
 import { DATA_SYNC_DONE_EVENT, DATA_SYNC_PROGRESS_EVENT, type DataSyncDetail } from "@/lib/data-sync-action";
 
 type Category = "formula" | "sports";
@@ -163,8 +162,9 @@ export default function Home() {
   // hardcoded taxonomy — the real list (GT3 Challenge Fixed, IMSA, GT Sprint, Prototype, LMP2...)
   // is messier than "GT3/IMSA x Open/Fixed" and a fixed set would silently exclude series outside it.
   const [chartSeries, setChartSeries] = useState<string>("all");
-  const [gt3Mode, setGt3Mode] = useState<RankingMode>("car");
-  const [imsaMode, setImsaMode] = useState<RankingMode>("car");
+  const [gt3Mode, setGt3Mode] = useState<RankingMode>("track");
+  const [imsaMode, setImsaMode] = useState<RankingMode>("track");
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [imsaClass, setImsaClass] = useState<"all" | "GTP" | "LMP2">("all");
 
   const loadDashboard = useCallback(async (force = false) => {
@@ -324,7 +324,7 @@ export default function Home() {
         <KpiCard key="ir" category={key} label="iRating"
           value={kpi.irating.current === null ? "—" : kpi.irating.current.toLocaleString("pt-BR")}
           badge={kpi.safetyRating.currentDisplay ?? undefined}
-          trend={iratingDiff === null ? "Sem comparação anterior" : `${arrow(iratingDiff)} ${signedNumber(iratingDiff)} vs. ${prevShort} W${kpi.irating.week}`}
+          trend={iratingDiff === null ? "Sem comparação anterior" : `${arrow(iratingDiff)} ${signedNumber(iratingDiff)} vs. ${prevShort} ${weekShort(kpi.irating.week)}`}
           trendTone={toneOf(iratingDiff)}
           sparkline={current.some((v) => v !== null) ? { kind: "lines", current, previous: previous.some((v) => v !== null) ? previous : undefined, count: Math.max(current.length, previous.length) } : undefined}
           description={`Tracejado: ${prevShort}`} />,
@@ -350,6 +350,12 @@ export default function Home() {
   const perfMode = perfTab === "gt3" ? gt3Mode : perfTab === "imsa" ? imsaMode : "track";
   const perfItems = perfTab === "sf" ? rankings.tracks : perfTab === "gt3" ? rankings.gt3 : rankings.imsa;
   const perfLabel = perfTab === "sf" ? "SUPER FORMULA 23" : perfTab === "gt3" ? "GT3" : "IMSA GTP / LMP2";
+  const mobileTracks = (() => {
+    const items = aggregateRows(data.historical, "track");
+    const gains = items.filter((i) => i.avgDelta > 0).sort((a, b) => b.avgDelta - a.avgDelta).slice(0, 2);
+    const drops = items.filter((i) => i.avgDelta < 0).sort((a, b) => a.avgDelta - b.avgDelta).slice(0, 2);
+    return [...gains, ...drops];
+  })();
   const gapItems = data.winnerGapByTrack ?? [];
   const seasonWeek = data.kpis.formula.irating.week;
 
@@ -359,20 +365,19 @@ export default function Home() {
         {message && <div className="ngo-banner" role="status">{message}</div>}
 
         <PageTitle
-          eyebrow={`${data.season.current.name} · Semana ${seasonWeek} · vs. ${data.season.previous.name}`}
-          title="Visão Geral da Temporada"
-          aside={<div className="ngo-counter"><strong>{data.season.current.races}</strong> corridas <span>·</span> <strong>{data.season.current.laps.toLocaleString("pt-BR")}</strong> voltas</div>}
+          eyebrow={<><span className="ngo-eb-full">{`${data.season.current.name} · ${weekLabel(seasonWeek)} · vs. ${data.season.previous.name}`}</span><span className="ngo-eb-short">{`${shortSeason(data.season.current.name)} · ${weekLabel(seasonWeek)}`}</span></>}
+          title={<><span className="ngo-eb-full">Visão Geral da Temporada</span><span className="ngo-eb-short">Visão Geral</span></>}
+          aside={<div className="ngo-aside"><div className="ngo-counter"><strong>{data.season.current.races}</strong> corridas <span>·</span> <strong>{data.season.current.laps.toLocaleString("pt-BR")}</strong> voltas</div><button type="button" className="ngo-tools-toggle" aria-label="Mais ações" aria-expanded={toolsOpen} onClick={() => setToolsOpen((open) => !open)}>⋯</button></div>}
         />
 
         {/* Ações que o mockup não redesenha e que continuam existindo: atalhos das fontes, calendário,
-         * debrief da semana/season e tema. Ficam numa linha discreta logo abaixo do título. */}
-        <div className="ngo-tools">
+         * debrief da semana/season. No celular ficam atrás do botão ⋯ do cabeçalho. Ficam numa linha discreta logo abaixo do título. */}
+        <div className="ngo-tools" data-open={toolsOpen ? "" : undefined}>
           <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
           <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
           <SeasonCalendarImportModal onImported={() => loadDashboard(true)} />
           <Link className="quick-open-button" href="/debriefs?scope=week">Debrief da semana</Link>
           <Link className="primary-button" href="/debriefs?scope=season">Debrief da season</Link>
-          <ThemeToggle />
         </div>
 
         <SegmentedControl className="ngo-mobile-filter" ariaLabel="Categoria dos indicadores" value={mobileKpiCategory} onChange={setMobileKpiCategory}
@@ -429,6 +434,10 @@ export default function Home() {
             )) : <p className="ngo-empty">Ainda não há corridas desta week para formar os contextos ativos.</p>}
           </Panel>
         </section>
+
+        <Panel className="ngo-perf-mobile" kicker="POR PISTA" title="Melhores e piores" titleSize="md">
+          <BestWorstTracks items={mobileTracks} />
+        </Panel>
 
         <section className="ngo-perf">
           <div className="ngo-perf-head">

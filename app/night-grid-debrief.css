@@ -3,7 +3,6 @@
  * Tokens em app/night-grid.css (--ng-) e app/night-grid-telemetry.css (--ngt-). Prefixos: .ngr- (Race
  * Debrief) e .ngc- (Comparação de carros). Não confundir com .ngd- (página /debriefs, etapa 5). */
 :root { --ngr-track: #1E2748; }
-:root[data-theme="light"] { --ngr-track: #DDE3F3; }
 
 .ngr-screen, .ngc-screen { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
 .ngr-screen[aria-busy="true"] { opacity: .75; transition: opacity .15s; }
@@ -43,7 +42,6 @@
 .ngr-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .ngr-bullets { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
 .ngr-bullet { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; color: #DCE4FF; }
-:root[data-theme="light"] .ngr-bullet { color: var(--ng-text-2); }
 .ngr-bullet > span:first-child { width: 8px; height: 8px; border-radius: 2px; margin-top: 7px; flex-shrink: 0; background: var(--ng-soft); }
 .ngr-bullet > span[data-tone="gain"] { background: var(--ng-gain); }
 .ngr-bullet > span[data-tone="loss"] { background: var(--ng-loss); }

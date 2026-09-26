@@ -80,7 +80,6 @@
 .ngs-ab-kicker[data-tone="reference"] { color: var(--ng-reference); }
 .ngs-ab-text { font-size: 14px; line-height: 1.55; color: var(--ng-text); }
 .ngs-ab-bullet { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; color: #DCE4FF; }
-:root[data-theme="light"] .ngs-ab-bullet { color: var(--ng-text-2); }
 .ngs-ab-bullet span { width: 8px; height: 8px; border-radius: 2px; background: var(--ng-reference); margin-top: 7px; flex-shrink: 0; }
 .ngs-ab-empty { margin: auto 0; padding: 24px 12px; color: var(--ng-soft); font-size: 14px; line-height: 1.55; text-align: center; }
 .ngs-ab-empty p { margin: 0 0 10px; }
