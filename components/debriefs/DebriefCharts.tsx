@@ -55,7 +55,7 @@ export function LossTimingBars({ current, reference, referenceLabel }: { current
   );
 }
 
-/** "Pressão por week": uma barra por week, para cima (ganho) ou para baixo (perda) de uma linha zero. */
+/** "Pressão por semana": uma barra por week, para cima (ganho) ou para baixo (perda) de uma linha zero. */
 export function WeekPressureBars({ weeks }: { weeks: Array<{ week: number; delta: number; races: number; severeLosses: number }> }) {
   const max = Math.max(1, ...weeks.map((item) => Math.abs(item.delta)));
   return (

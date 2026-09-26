@@ -52,8 +52,8 @@ describe("quick summary", () => {
 
   it("week compares per race and flags the best week", () => {
     const text = quickSummary(summary({ scope: "week", races: 9, net: 62, referenceRaces: 50, referenceNet: -200, wins: 2, weekRank: { best: true, worst: false, weeks: 12 } }));
-    expect(text).toContain("Nesta week você fez 9 corridas e o iRating subiu 62 pontos, bem acima das outras weeks (média de −4 por corrida).");
-    expect(text).toContain("Foi a sua melhor week da season, com 2 vitórias.");
+    expect(text).toContain("Nesta semana você fez 9 corridas e o iRating subiu 62 pontos, bem acima das outras semanas (média de −4 por corrida).");
+    expect(text).toContain("Foi a sua melhor semana da season, com 2 vitórias.");
     clean(text);
   });
 });
@@ -62,7 +62,7 @@ describe("pace vs result", () => {
   it("counts aligned weeks and calls out fast-but-losing ones with incidents", () => {
     const points = [point(0.2, 30), point(0.3, 20), point(0.9, -10), point(0.1, -40, 6), point(0.95, -5)];
     const text = paceVsResultInsight({ unit: "week", points, quadrants: { fastGain: 2, slowGain: 0, fastLoss: 1, slowLoss: 2 }, split: 0.5, netWorse: false, netBetter: true, gapDeltaSeconds: null });
-    expect(text).toBe("O ritmo acompanha o resultado em 4 de 5 weeks. Em uma, você foi rápido e mesmo assim perdeu iRating, com mais incidentes que o normal. O problema foi a corrida, não o carro.");
+    expect(text).toBe("O ritmo acompanha o resultado em 4 de 5 semanas. Em uma, você foi rápido e mesmo assim perdeu iRating, com mais incidentes que o normal. O problema foi a corrida, não o carro.");
     clean(text);
   });
 
@@ -115,17 +115,17 @@ describe("loss timing text", () => {
   });
 
   it("covers empty and tied cases", () => {
-    expect(lossTimingText({ scope: "week", severeCount: 0, bins: [0, 0, 0, 0], sample: 0, averagePct: null, referenceSample: 0, referenceAveragePct: null }).before).toBe("Sem perdas grandes nesta week. Nada para corrigir aqui.");
+    expect(lossTimingText({ scope: "week", severeCount: 0, bins: [0, 0, 0, 0], sample: 0, averagePct: null, referenceSample: 0, referenceAveragePct: null }).before).toBe("Sem perdas grandes nesta semana. Nada para corrigir aqui.");
     expect(lossTimingText({ scope: "season", severeCount: 2, bins: [1, 0, 0, 1], sample: 2, averagePct: 50, referenceSample: 0, referenceAveragePct: null }).before).toContain("espalhadas");
   });
 });
 
 describe("chart subtitles", () => {
   it("names the most expensive week", () => {
-    expect(weekPressureSubtitle([{ week: 1, delta: 40 }, { week: 5, delta: -58 }, { week: 6, delta: 12 }])).toBe("Saldo de cada week. A W5 foi a mais cara da season (−58).");
+    expect(weekPressureSubtitle([{ week: 1, delta: 40 }, { week: 5, delta: -58 }, { week: 6, delta: 12 }])).toBe("Saldo de cada semana. A W5 foi a mais cara da season (−58).");
     expect(weekPressureSubtitle([{ week: 1, delta: 40 }, { week: 2, delta: 12 }])).toContain("Nenhuma fechou no vermelho");
-    expect(weekRacesSubtitle(0, 9)).toBe("Sem perdas grandes nesta week");
-    expect(weekRacesSubtitle(2, 9)).toBe("Duas perdas grandes nesta week");
+    expect(weekRacesSubtitle(0, 9)).toBe("Sem perdas grandes nesta semana");
+    expect(weekRacesSubtitle(2, 9)).toBe("Duas perdas grandes nesta semana");
   });
 });
 

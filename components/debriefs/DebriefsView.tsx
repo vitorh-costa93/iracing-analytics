@@ -90,7 +90,7 @@ export default function DebriefsView({ initialScope, initialSegment }: { initial
       <main className="ng-main ngd-main">
         <PageTitle
           eyebrow={eyebrow}
-          title={scope === "season" ? "Debrief da season" : "Debrief da week"}
+          title={scope === "season" ? "Debrief da season" : "Debrief da semana"}
           aside={
             <div className="ngd-toggles">
               <SegmentedControl ariaLabel="Segmento" options={SEGMENTS} value={segment} onChange={(value) => change(scope, value)} />
@@ -108,7 +108,7 @@ export default function DebriefsView({ initialScope, initialSegment }: { initial
         {!section && !error && (
           <Panel><div className="ngd-empty">{slow ? "Ainda cruzando resultados e telemetria das duas seasons. A primeira análise pode levar alguns segundos." : "Montando o debrief…"}</div></Panel>
         )}
-        {section && <Debrief section={section} scope={scope} referenceLabel={scope === "season" ? report!.previousSeasonName : "demais weeks"} />}
+        {section && <Debrief section={section} scope={scope} referenceLabel={scope === "season" ? report!.previousSeasonName : "demais semanas"} />}
       </main>
     </div>
   );
@@ -120,7 +120,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
     return <Panel><div className="ngd-empty">{narrative.summary}</div></Panel>;
   }
   const confidence = CONFIDENCE[section.confidence];
-  const refLegend = scope === "season" ? "season anterior" : "demais weeks";
+  const refLegend = scope === "season" ? "season anterior" : "demais semanas";
   const impactMax = Math.max(1, ...section.impactRaces.map((race) => Math.abs(race.delta)));
   const raceMax = Math.max(1, ...section.raceList.map((race) => Math.abs(race.delta)));
   const contextRows = [...section.contexts.losses, ...section.contexts.gains];
@@ -143,7 +143,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
         <Kpi label="Saldo de iRating" value={signedInt(kpis.net)} tone={toneOf(kpis.net)}
           sub={kpis.referenceNet === null ? "sem referência" : scope === "season" ? "vs. " + referenceLabel + ": " + signedInt(kpis.referenceNet) : "média das outras: " + signedInt(kpis.referenceNet) + "/corrida"} />
         <Kpi label="Perdas grandes" value={String(kpis.severeCount)} tone={kpis.severeCount ? "loss" : "gain"} sub={"mais de " + kpis.severeThreshold + " pontos numa corrida"} />
-        <Kpi label="Abandonos" value={String(kpis.retirements)} tone="neutral" sub={kpis.retirements ? (kpis.retirementRate ?? 0) + "% das corridas" : scope === "week" ? "nenhum na week" : "nenhum na season"} />
+        <Kpi label="Abandonos" value={String(kpis.retirements)} tone="neutral" sub={kpis.retirements ? (kpis.retirementRate ?? 0) + "% das corridas" : scope === "week" ? "nenhum na semana" : "nenhum na season"} />
         <Kpi label="Incidentes" value={kpis.incidentsAvg === null ? "—" : dec(kpis.incidentsAvg) + " / corrida"} tone={incidentTone} sub={kpis.incidentsRef === null ? "sem referência" : "referência: " + dec(kpis.incidentsRef)} />
         <Kpi label="Sequência" value={streak.direction ? streak.length + (streak.direction === "gain" ? " ↑" : " ↓") : "0"} tone={streak.direction === "gain" ? "gain" : streak.direction === "loss" ? "loss" : "neutral"}
           sub={(streak.direction === "gain" ? "ganhando iRating" : streak.direction === "loss" ? "perdendo iRating" : "sem sequência aberta") + " · recorde " + streak.recordGain} />
@@ -151,7 +151,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
 
       <div className="ngd-row-2">
         <Panel kicker="NOVO · RITMO × RESULTADO" title="Você foi rápido, mas perdeu iRating?" className="ngd-h340"
-          subtitle={(scope === "season" ? "Cada ponto é uma week" : "Cada ponto é uma corrida") + ": quanto sua melhor volta ficou da referência, contra o iRating ganho"}>
+          subtitle={(scope === "season" ? "Cada ponto é uma semana" : "Cada ponto é uma corrida") + ": quanto sua melhor volta ficou da referência, contra o iRating ganho"}>
           {section.pace.points.length ? <PaceScatter pace={section.pace} /> : <div className="ngd-empty">Sem volta de corrida registrada para montar o gráfico.</div>}
         </Panel>
         <Panel kicker="NOVO · QUANDO AS PERDAS ACONTECEM" title="Em que ponto da corrida você perde" className="ngd-h340"
@@ -164,11 +164,11 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
 
       <div className="ngd-row-2 ngd-row-even">
         {scope === "season" ? (
-          <Panel kicker="PRESSÃO POR WEEK" title="Como cada week fechou o iRating" subtitle={narrative.trendSubtitle} className="ngd-h270">
+          <Panel kicker="PRESSÃO POR SEMANA" title="Como cada semana fechou o iRating" subtitle={narrative.trendSubtitle} className="ngd-h270">
             <WeekPressureBars weeks={section.weeks} />
           </Panel>
         ) : (
-          <Panel kicker="CORRIDAS DA WEEK" title="O que cada corrida rendeu" subtitle={narrative.trendSubtitle} className="ngd-h270">
+          <Panel kicker="CORRIDAS DA SEMANA" title="O que cada corrida rendeu" subtitle={narrative.trendSubtitle} className="ngd-h270">
             <div className="ngd-scroll">
               {section.raceList.map((race) => (
                 <DivergingRow key={race.date + race.track} title={shortDate(race.date) + " · " + race.track} subtitle={"largou P" + (race.grid ?? "—") + " · chegou P" + race.finish + (race.sof ? " · SoF " + race.sof : "")} value={race.delta} max={raceMax} valueText={signedInt(race.delta)} />
@@ -189,7 +189,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
             <DivergingRow key={row.track + row.car} title={row.track} subtitle={plural(row.races, "corrida", "corridas") + " · " + row.car} value={row.delta} max={contextMax} valueText={signedInt(row.delta)} />
           )) : <div className="ngd-empty">Sem contextos suficientes.</div>}
         </Panel>
-        <Evidence section={section} referenceLabel={scope === "season" ? "Season anterior" : "Demais weeks"} />
+        <Evidence section={section} referenceLabel={scope === "season" ? "Season anterior" : "Demais semanas"} />
       </div>
     </>
   );

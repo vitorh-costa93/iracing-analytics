@@ -62,7 +62,7 @@ export async function GET(request:NextRequest){
   const ordered=[...selected].sort((a,b)=>new Date(a.raced_at).getTime()-new Date(b.raced_at).getTime());
   const net=total(selected.map(delta)),referenceTotal=total(baseline.map(delta)),gainTotal=total(selected.map(delta).filter(v=>v>0)),lossTotal=Math.abs(total(selected.map(delta).filter(v=>v<0))),severeLossTotal=Math.abs(total(selected.map(delta).filter(v=>v<-threshold)));
   // Comparação justa: season contra a season anterior inteira (saldo total); week contra a média por
-  // corrida das demais weeks (regra de 09/09/2026: não comparar uma week com a soma de onze).
+  // corrida das demais semanas (regra de 09/09/2026: não comparar uma semana com a soma de onze).
   const netCompare=scope==="week"?(selected.length?net/selected.length:0):net,referenceCompare=scope==="week"?(baseline.length?referenceTotal/baseline.length:0):referenceTotal,netBetter=baseline.length>0&&netCompare>referenceCompare,netWorse=baseline.length>0&&netCompare<referenceCompare;
 
   // Ritmo × resultado: todas as corridas do segmento nas duas seasons definem a referência de volta.
@@ -79,7 +79,7 @@ export async function GET(request:NextRequest){
   const gapDeltaSeconds=inputs.averageGapToBestSeconds!==null&&inputReference.averageGapToBestSeconds!==null?inputs.averageGapToBestSeconds-inputReference.averageGapToBestSeconds:null,stdDeltaSeconds=inputs.lapStdDevSeconds!==null&&inputReference.lapStdDevSeconds!==null?inputs.lapStdDevSeconds-inputReference.lapStdDevSeconds:null;
   const MATERIAL_SECONDS=0.02,incidentsNow=base.incidentSummary.current.average,incidentsRef=base.incidentSummary.reference.average,incidentsWorse=incidentsNow!==null&&incidentsRef!==null&&incidentsNow-incidentsRef>=1;
 
-  // Week: saldo desta week comparado às demais weeks da season, para "melhor/pior week".
+  // Week: saldo desta semana comparado às demais semanas da season, para "melhor/pior semana".
   const weekTotals=new Map<number,number>();for(const row of now)if(row.season_week!==null)weekTotals.set(row.season_week,(weekTotals.get(row.season_week)??0)+delta(row));
   const weekValues=[...weekTotals.values()],weekRank=scope==="week"&&weekValues.length?{best:net>=Math.max(...weekValues),worst:net<=Math.min(...weekValues),weeks:weekValues.length}:undefined;
 
@@ -110,7 +110,7 @@ export async function GET(request:NextRequest){
     streaks:{gain:longestStreak(periodDeltas,"gain"),loss:longestStreak(periodDeltas,"loss"),referenceGain:longestStreak(baselineDeltas,"gain"),referenceLoss:longestStreak(baselineDeltas,"loss"),recordGain:longestStreak(allDeltas,"gain")},
     method:[
      "Só corridas oficiais importadas do iRStats. Treino e classificação não entram.",
-     scope==="week"?"Referência: as outras weeks desta season. O saldo delas é comparado por corrida, para ser justo com uma week só.":"Referência: a season anterior inteira, no mesmo segmento.",
+     scope==="week"?"Referência: as outras semanas desta season. O saldo delas é comparado por corrida, para ser justo com uma semana só.":"Referência: a season anterior inteira, no mesmo segmento.",
      "Perda grande: corrida em que você perdeu mais de "+threshold+" pontos de iRating.",
      "Ritmo: sua melhor volta em cada corrida, comparada à sua melhor volta de corrida no mesmo carro e pista (nesta season e na anterior). Corridas mais de "+PACE_OUTLIER_PCT+"% longe disso ficam de fora.",
      "Rápido ou devagar: comparado à sua distância típica nessas corridas."+splitText,

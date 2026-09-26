@@ -22,7 +22,7 @@ export type PaceVsResultInput = {
   gapDeltaSeconds: number | null;
 };
 
-const unitWord = (unit: "week" | "race", count: number) => (unit === "week" ? (count === 1 ? "week" : "weeks") : count === 1 ? "corrida" : "corridas");
+const unitWord = (unit: "week" | "race", count: number) => (unit === "week" ? (count === 1 ? "semana" : "semanas") : count === 1 ? "corrida" : "corridas");
 
 export function paceVsResultInsight(input: PaceVsResultInput): string {
   const { unit, points, quadrants, split, netWorse, netBetter, gapDeltaSeconds } = input;

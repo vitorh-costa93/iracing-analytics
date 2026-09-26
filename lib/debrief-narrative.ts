@@ -50,7 +50,7 @@ export type SummaryInput = {
   races: number;
   referenceRaces: number;
   net: number;
-  /** Season: saldo total da season anterior. Week: saldo total das demais weeks. */
+  /** Season: saldo total da season anterior. Week: saldo total das demais semanas. */
   referenceNet: number;
   wins: number;
   referenceWins: number;
@@ -60,14 +60,14 @@ export type SummaryInput = {
   lossTotal: number;
   incidentsNow: number | null;
   incidentsRef: number | null;
-  /** Só week: posição desta week entre as weeks da season (saldo). */
+  /** Só week: posição desta semana entre as semanas da season (saldo). */
   weekRank?: { best: boolean; worst: boolean; weeks: number };
 };
 
 /** Resumo da Leitura Rápida: resultado, o que pesou e (quando muda algo) incidentes. */
 export function quickSummary(input: SummaryInput): string {
   const { scope, races, referenceRaces, net, referenceNet, wins, referenceWins, severeCount, severeLossTotal, gainTotal, lossTotal, incidentsNow, incidentsRef, weekRank } = input;
-  if (!races) return scope === "week" ? "Nenhuma corrida nesta week ainda." : "Nenhuma corrida nesta season ainda.";
+  if (!races) return scope === "week" ? "Nenhuma corrida nesta semana ainda." : "Nenhuma corrida nesta season ainda.";
   const sentences: string[] = [];
   if (scope === "season") {
     const winsText = wins ? "Você teve " + plural(wins, "vitória", "vitórias") + " nesta season, contra " + String(referenceWins) + " na anterior, e " : referenceWins ? "Ainda sem vitória nesta season (na anterior, " + (referenceWins === 1 ? "foi uma" : "foram " + String(referenceWins)) + "), e " : "Em " + plural(races, "corrida", "corridas") + " nesta season, ";
@@ -78,12 +78,12 @@ export function quickSummary(input: SummaryInput): string {
     let compare = "";
     if (refPerRace !== null) {
       const gap = perRace - refPerRace, refText = "média de " + signedInt(refPerRace) + " por corrida";
-      compare = gap >= 3 ? ", bem acima das outras weeks (" + refText + ")" : gap <= -3 ? ", abaixo das outras weeks (" + refText + ")" : ", parecido com as outras weeks (" + refText + ")";
+      compare = gap >= 3 ? ", bem acima das outras semanas (" + refText + ")" : gap <= -3 ? ", abaixo das outras semanas (" + refText + ")" : ", parecido com as outras semanas (" + refText + ")";
     }
-    sentences.push("Nesta week você fez " + plural(races, "corrida", "corridas") + " e " + movement(net) + compare + ".");
+    sentences.push("Nesta semana você fez " + plural(races, "corrida", "corridas") + " e " + movement(net) + compare + ".");
     const winsTail = wins ? ", com " + plural(wins, "vitória", "vitórias") : "";
-    if (weekRank && weekRank.weeks >= 3 && weekRank.best && net > 0) sentences.push("Foi a sua melhor week da season" + winsTail + ".");
-    else if (weekRank && weekRank.weeks >= 3 && weekRank.worst && net < 0) sentences.push("Foi a week mais cara da season.");
+    if (weekRank && weekRank.weeks >= 3 && weekRank.best && net > 0) sentences.push("Foi a sua melhor semana da season" + winsTail + ".");
+    else if (weekRank && weekRank.weeks >= 3 && weekRank.worst && net < 0) sentences.push("Foi a semana mais cara da season.");
     else if (wins) sentences.push(wins === 1 ? "Teve uma vitória." : "Foram " + String(wins) + " vitórias.");
   }
   if (severeCount > 0) {
@@ -115,7 +115,7 @@ export type RichText = { before: string; strong?: string; after?: string };
 
 export function lossTimingText(input: { scope: Scope; severeCount: number; bins: number[]; sample: number; averagePct: number | null; referenceSample: number; referenceAveragePct: number | null }): RichText {
   const { scope, severeCount, bins, sample, averagePct, referenceSample, referenceAveragePct } = input;
-  const period = scope === "week" ? "nesta week" : "nesta season";
+  const period = scope === "week" ? "nesta semana" : "nesta season";
   if (!severeCount) return { before: "Sem perdas grandes " + period + ". Nada para corrigir aqui." };
   if (!sample) return { before: "As perdas grandes " + period + " não têm telemetria de tempo em pista, então não dá para dizer em que ponto da corrida aconteceram." };
   const top = bins.indexOf(Math.max(...bins));
@@ -136,21 +136,21 @@ function advice(bin: number): string {
   return " É no meio da corrida, no tráfego: escolha melhor onde disputar posição.";
 }
 
-/** Legenda do gráfico "Pressão por week". */
+/** Legenda do gráfico "Pressão por semana". */
 export function weekPressureSubtitle(weeks: Array<{ week: number; delta: number | null }>): string {
   const withDelta = weeks.filter((item): item is { week: number; delta: number } => item.delta !== null);
-  if (!withDelta.length) return "Saldo de cada week.";
+  if (!withDelta.length) return "Saldo de cada semana.";
   const worst = withDelta.reduce((a, b) => (b.delta < a.delta ? b : a));
   const best = withDelta.reduce((a, b) => (b.delta > a.delta ? b : a));
-  if (worst.delta >= 0) return "Saldo de cada week. Nenhuma fechou no vermelho; a melhor foi a " + weekShort(best.week) + " (" + signedInt(best.delta) + ").";
-  return "Saldo de cada week. A W" + worst.week + " foi a mais cara da season (" + signedInt(worst.delta) + ").";
+  if (worst.delta >= 0) return "Saldo de cada semana. Nenhuma fechou no vermelho; a melhor foi a " + weekShort(best.week) + " (" + signedInt(best.delta) + ").";
+  return "Saldo de cada semana. A W" + worst.week + " foi a mais cara da season (" + signedInt(worst.delta) + ").";
 }
 
-/** Legenda do gráfico "Corridas da week". */
+/** Legenda do gráfico "Corridas da semana". */
 export function weekRacesSubtitle(severeCount: number, races: number): string {
-  if (!races) return "Nenhuma corrida nesta week.";
-  if (!severeCount) return "Sem perdas grandes nesta week";
-  return capitalize(feminine(severeCount)) + " " + (severeCount === 1 ? "perda grande" : "perdas grandes") + " nesta week";
+  if (!races) return "Nenhuma corrida nesta semana.";
+  if (!severeCount) return "Sem perdas grandes nesta semana";
+  return capitalize(feminine(severeCount)) + " " + (severeCount === 1 ? "perda grande" : "perdas grandes") + " nesta semana";
 }
 
 export { LOSS_FOCUS };

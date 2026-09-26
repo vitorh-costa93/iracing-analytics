@@ -66,9 +66,9 @@
   --gauge-own: #f2f1ee;
   --gauge-reference: #a97ee0;
   --shadow: none;
-  --display: var(--font-display), "Arial Narrow", sans-serif;
-  --body: var(--font-body), "Segoe UI", sans-serif;
-  --mono: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --display: var(--font-chakra), "Chakra Petch", "Arial Narrow", sans-serif;
+  --body: var(--font-plex), "IBM Plex Sans", "Segoe UI", sans-serif;
+  --mono: var(--font-plex), "IBM Plex Sans", "Segoe UI", sans-serif;
 }
 
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }

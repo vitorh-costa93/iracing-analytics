@@ -1,15 +1,11 @@
-import { Big_Shoulders, Chakra_Petch, IBM_Plex_Sans, Inter, JetBrains_Mono } from "next/font/google";
+import { Chakra_Petch, IBM_Plex_Sans } from "next/font/google";
 import AppHeader from "@/components/AppHeader";
 import "./globals.css";
 import "./night-grid.css";
 import "./night-grid-mobile.css";
 
-const display = Big_Shoulders({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-display" });
-const body = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-body" });
-const mono = JetBrains_Mono({ subsets: ["latin"], weight: ["400", "500", "700"], variable: "--font-mono" });
 // Night Grid (redesign opção B): Chakra Petch para títulos e números, IBM Plex Sans para texto --
-// mesmos pesos que o mockup carrega (docs/redesign-mockup/*.dc.html). As três fontes acima continuam
-// até as telas antigas serem migradas.
+// mesmos pesos que o mockup carrega (docs/redesign-mockup/*.dc.html). Só estas duas fontes são carregadas.
 const chakra = Chakra_Petch({ subsets: ["latin"], weight: ["500", "600", "700"], variable: "--font-chakra" });
 const plex = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-plex" });
 
@@ -19,7 +15,7 @@ export const viewport = { width: "device-width", initialScale: 1, viewportFit: "
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${display.variable} ${body.variable} ${mono.variable} ${chakra.variable} ${plex.variable}`}>
+    <html lang="pt-BR" className={`${chakra.variable} ${plex.variable}`}>
       <body>
         <AppHeader />
         {children}
