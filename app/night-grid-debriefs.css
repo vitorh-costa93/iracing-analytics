@@ -27,10 +27,11 @@
 .ngd-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
 .ngd-kpi { background: var(--ng-card); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-card); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .ngd-kpi-label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-muted); }
-.ngd-kpi-value { font-family: var(--ng-font-display); font-weight: 700; font-size: 30px; line-height: 1; color: var(--ng-text); white-space: nowrap; }
+.ngd-kpi-value { font-family: var(--ng-font-display); font-weight: 700; font-size: 30px; line-height: 1; color: var(--ng-text); white-space: nowrap; display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow: hidden; }
+.ngd-kpi-unit { font-family: var(--ng-font-body); font-weight: 500; font-size: 13px; color: var(--ng-muted); }
 .ngd-kpi-value[data-tone="gain"] { color: var(--ng-gain); }
 .ngd-kpi-value[data-tone="loss"] { color: var(--ng-loss); }
-.ngd-kpi-sub { font-size: 12px; color: var(--ng-soft); }
+.ngd-kpi-sub { font-size: 12px; color: var(--ng-soft); overflow-wrap: anywhere; }
 
 /* Linhas de painéis */
 .ngd-row-2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; }
@@ -99,6 +100,9 @@
 .ngd-stat-value[data-tone="loss"] { color: var(--ng-loss); }
 .ngd-stat-value[data-tone="caution"] { color: var(--ng-caution); }
 
+@media (max-width: 1340px) {
+  .ngd-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
 @media (max-width: 1100px) {
   .ngd-toggles { min-width: 0; flex-wrap: wrap; }
   .ngd-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }

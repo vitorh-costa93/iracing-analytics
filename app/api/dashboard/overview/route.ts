@@ -582,7 +582,7 @@ export async function GET(request: Request) {
       for (let offset = 0; ; offset += pageSize) {
         const { data: page, error: pageError } = await supabaseAdmin
           .from("race_results")
-          .select("track_name,fastest_lap_time,winner_fastest_lap_time")
+          .select("track_name,car_name,fastest_lap_time,winner_fastest_lap_time")
           .eq("driver_id", driver.id)
           .not("winner_fastest_lap_time", "is", null)
           .order("raced_at", { ascending: true })
@@ -593,6 +593,15 @@ export async function GET(request: Request) {
       }
     }
     const winnerGapByTrack = aggregateWinnerGapByTrack(winnerGapRows);
+    // Mesmos recortes do "Performance por contexto" (Super Formula, GT3, IMSA GTP/LMP2): a classe de cada
+    // corrida vem do mesmo car_class do histórico, para as duas medidas falarem dos mesmos contextos.
+    const classByCar = new Map<string, string | null>();
+    for (const row of historical as Array<{ car: string; car_class: string | null }>) classByCar.set(row.car, row.car_class);
+    const winnerGapBySegment = {
+      sf: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => /super formula/i.test(row.car_name ?? ""))),
+      gt3: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => classByCar.get(row.car_name ?? "") === "GT3")),
+      imsa: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => ["GTP", "LMP2"].includes(classByCar.get(row.car_name ?? "") ?? ""))),
+    };
 
     function streakStats(rows: { irating_delta: number }[]) {
       let current = 0;
@@ -1045,6 +1054,7 @@ export async function GET(request: Request) {
       streaks,
 
       winnerGapByTrack,
+      winnerGapBySegment,
 
       featureAvailability: {
         wins: true,

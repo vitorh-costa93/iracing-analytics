@@ -123,10 +123,12 @@ body { font-variant-numeric: tabular-nums; }
 .ng-sync-toast button { flex-shrink: 0; border: 0; background: transparent; color: var(--ng-muted); cursor: pointer; font-size: 13px; padding: 0; }
 .ng-sync-toast button:hover { color: var(--ng-text); }
 
-@media (max-width: 1240px) {
-  .ng-header { gap: 20px; }
+@media (max-width: 1420px) {
   .ng-driver-text { display: none; }
   .ng-driver { padding-left: 14px; }
+}
+@media (max-width: 1240px) {
+  .ng-header { gap: 20px; }
   .ng-freshness-text { display: none; }
   .ng-nav a { padding: 0 12px; }
 }

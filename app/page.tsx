@@ -89,6 +89,7 @@ type DashboardData = {
     sports_car: { current: number; best: number };
   };
   winnerGapByTrack?: WinnerGapItem[];
+  winnerGapBySegment?: { sf: WinnerGapItem[]; gt3: WinnerGapItem[]; imsa: WinnerGapItem[] };
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
@@ -350,13 +351,17 @@ export default function Home() {
   const perfMode = perfTab === "gt3" ? gt3Mode : perfTab === "imsa" ? imsaMode : "track";
   const perfItems = perfTab === "sf" ? rankings.tracks : perfTab === "gt3" ? rankings.gt3 : rankings.imsa;
   const perfLabel = perfTab === "sf" ? "SUPER FORMULA 23" : perfTab === "gt3" ? "GT3" : "IMSA GTP / LMP2";
+  // Celular: mesmo recorte e mesma regra do desktop (aba ativa, pista, mínimo de 2 corridas), só que compacto.
   const mobileTracks = (() => {
-    const items = aggregateRows(data.historical, "track");
+    const tabRows = perfTab === "sf" ? data.historical.filter((row) => /super formula/i.test(row.car))
+      : perfTab === "gt3" ? data.historical.filter((row) => row.carClass === "GT3")
+      : data.historical.filter((row) => (row.carClass === "GTP" || row.carClass === "LMP2") && (imsaClass === "all" || row.carClass === imsaClass));
+    const items = aggregateRows(tabRows, "track", perfTab === "imsa");
     const gains = items.filter((i) => i.avgDelta > 0).sort((a, b) => b.avgDelta - a.avgDelta).slice(0, 2);
     const drops = items.filter((i) => i.avgDelta < 0).sort((a, b) => a.avgDelta - b.avgDelta).slice(0, 2);
     return [...gains, ...drops];
   })();
-  const gapItems = data.winnerGapByTrack ?? [];
+  const gapItems = data.winnerGapBySegment ? data.winnerGapBySegment[perfTab] : data.winnerGapByTrack ?? [];
   const seasonWeek = data.kpis.formula.irating.week;
 
   return (
@@ -435,7 +440,9 @@ export default function Home() {
           </Panel>
         </section>
 
-        <Panel className="ngo-perf-mobile" kicker="POR PISTA" title="Melhores e piores" titleSize="md">
+        <Panel className="ngo-perf-mobile" kicker={`POR PISTA · ${perfLabel}`} title="Melhores e piores" titleSize="md"
+          actions={<SegmentedControl ariaLabel="Categoria de performance" value={perfTab} onChange={setPerfTab}
+            options={[{ value: "sf", label: "SF" }, { value: "gt3", label: "GT3" }, { value: "imsa", label: "IMSA" }]} />}>
           <BestWorstTracks items={mobileTracks} />
         </Panel>
 
@@ -464,7 +471,7 @@ export default function Home() {
               ) : undefined}>
               <DeltaByContext items={perfItems} kind={perfMode as RankingMode} />
             </Panel>
-            <Panel kicker="MEDIDA 2 · GAP PARA O VENCEDOR" title="Sua melhor volta vs. a do vencedor" titleSize="sm" as="article"
+            <Panel kicker={`MEDIDA 2 · ${perfLabel} · GAP PARA O VENCEDOR`} title="Sua melhor volta vs. a do vencedor" titleSize="sm" as="article"
               subtitle={<>Vencedor da sua classe, por pista · do menor para o maior gap percentual{gapItems.length ? ` · média geral ${percentText(gapOverall(gapItems))}` : ""}</>}>
               <GapToWinner items={gapItems} />
             </Panel>

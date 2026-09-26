@@ -42,7 +42,7 @@ export function DeltaByContext({ items, kind, emptyText }: { items: RankingItem[
               {item.group && <Chip variant="code">{item.group}</Chip>}
               <div className="ngo-rank-text">
                 <div className="ngo-rank-name">{item.label}</div>
-                <div className="ngo-rank-sub">{item.races} corridas · {evidence(item.races)}</div>
+                <div className="ngo-rank-sub">{item.races} corridas · saldo total {signedNumber(item.delta, 0)} · {evidence(item.races)}</div>
               </div>
             </div>
             <div className="ngo-rank-bar">

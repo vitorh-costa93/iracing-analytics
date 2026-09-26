@@ -1,5 +1,6 @@
 "use client";
 
+import { signedNumber } from "@/components/overview/format";
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { Chip, Panel, PageTitle, SegmentedControl } from "@/components/ui";
@@ -124,7 +125,8 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
   const impactMax = Math.max(1, ...section.impactRaces.map((race) => Math.abs(race.delta)));
   const raceMax = Math.max(1, ...section.raceList.map((race) => Math.abs(race.delta)));
   const contextRows = [...section.contexts.losses, ...section.contexts.gains];
-  const contextMax = Math.max(1, ...contextRows.map((row) => Math.abs(row.delta)));
+  const contextAvg = (row: { delta: number; races: number }) => (row.races > 0 ? row.delta / row.races : 0);
+  const contextMax = Math.max(1, ...contextRows.map((row) => Math.abs(contextAvg(row))));
   const incidentTone = kpis.incidentsAvg === null || kpis.incidentsRef === null ? "neutral" : kpis.incidentsAvg <= kpis.incidentsRef ? "gain" : kpis.incidentsAvg - kpis.incidentsRef >= 0.5 ? "loss" : "neutral";
   const streak = kpis.streak;
   return (
@@ -144,7 +146,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
           sub={kpis.referenceNet === null ? "sem referência" : scope === "season" ? "vs. " + referenceLabel + ": " + signedInt(kpis.referenceNet) : "média das outras: " + signedInt(kpis.referenceNet) + "/corrida"} />
         <Kpi label="Perdas grandes" value={String(kpis.severeCount)} tone={kpis.severeCount ? "loss" : "gain"} sub={"mais de " + kpis.severeThreshold + " pontos numa corrida"} />
         <Kpi label="Abandonos" value={String(kpis.retirements)} tone="neutral" sub={kpis.retirements ? (kpis.retirementRate ?? 0) + "% das corridas" : scope === "week" ? "nenhum na semana" : "nenhum na season"} />
-        <Kpi label="Incidentes" value={kpis.incidentsAvg === null ? "—" : dec(kpis.incidentsAvg) + " / corrida"} tone={incidentTone} sub={kpis.incidentsRef === null ? "sem referência" : "referência: " + dec(kpis.incidentsRef)} />
+        <Kpi label="Incidentes" value={kpis.incidentsAvg === null ? "—" : dec(kpis.incidentsAvg)} unit={kpis.incidentsAvg === null ? undefined : "/ corrida"} tone={incidentTone} sub={kpis.incidentsRef === null ? "sem referência" : "referência: " + dec(kpis.incidentsRef)} />
         <Kpi label="Sequência" value={streak.direction ? streak.length + (streak.direction === "gain" ? " ↑" : " ↓") : "0"} tone={streak.direction === "gain" ? "gain" : streak.direction === "loss" ? "loss" : "neutral"}
           sub={(streak.direction === "gain" ? "ganhando iRating" : streak.direction === "loss" ? "perdendo iRating" : "sem sequência aberta") + " · recorde " + streak.recordGain} />
       </section>
@@ -186,7 +188,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
       <div className="ngd-row-2 ngd-row-even">
         <Panel kicker="CONTEXTOS" title="Onde você perde e onde você sustenta ganhos">
           {contextRows.length ? contextRows.map((row) => (
-            <DivergingRow key={row.track + row.car} title={row.track} subtitle={plural(row.races, "corrida", "corridas") + " · " + row.car} value={row.delta} max={contextMax} valueText={signedInt(row.delta)} />
+            <DivergingRow key={row.track + row.car} title={row.track} subtitle={row.car + " · " + plural(row.races, "corrida", "corridas") + " · saldo total " + signedInt(row.delta)} value={contextAvg(row)} max={contextMax} valueText={signedNumber(contextAvg(row), 1) + "/corrida"} />
           )) : <div className="ngd-empty">Sem contextos suficientes.</div>}
         </Panel>
         <Evidence section={section} referenceLabel={scope === "season" ? "Season anterior" : "Demais semanas"} />
@@ -199,11 +201,11 @@ function impactSubtitle(race: DebriefRaceRow) {
   return "P" + (race.grid ?? "—") + " → P" + race.finish + (race.sof ? " · SoF " + race.sof : "") + (race.lossShare ? " · " + race.lossShare + "% das perdas" : "");
 }
 
-function Kpi({ label, value, sub, tone }: { label: string; value: string; sub: string; tone: "gain" | "loss" | "neutral" }) {
+function Kpi({ label, value, unit, sub, tone }: { label: string; value: string; unit?: string; sub: string; tone: "gain" | "loss" | "neutral" }) {
   return (
     <div className="ngd-kpi">
       <div className="ngd-kpi-label">{label}</div>
-      <div className="ngd-kpi-value" data-tone={tone}>{value}</div>
+      <div className="ngd-kpi-value" data-tone={tone}>{value}{unit && <span className="ngd-kpi-unit">{unit}</span>}</div>
       <div className="ngd-kpi-sub">{sub}</div>
     </div>
   );

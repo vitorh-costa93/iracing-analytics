@@ -43,6 +43,7 @@ export function classWinnerFastestLap(
 
 export type WinnerGapRace = {
   track_name: string;
+  car_name?: string | null;
   fastest_lap_time: string | null;
   winner_fastest_lap_time: string | null;
 };
