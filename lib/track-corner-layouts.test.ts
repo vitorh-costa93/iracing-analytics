@@ -47,15 +47,24 @@ describe("traçados canônicos gerados das voltas reais", () => {
     const corners = detectLapCorners([], "Road Atlanta", "Full Course"); // sem GPS: só o traçado canônico
     expect(corners.map((corner) => corner.number)).toEqual(Array.from({ length: 13 }, (_, index) => index + 1));
   });
-  it("Interlagos: o Senna S e a Curva do Sol ficam nas curvas 1 a 3 e a subida na última", async () => {
+  it("Interlagos: mantém as 11 curvas dos nomes verificados (Senna S e Curva do Sol nas curvas 1 a 3, subida na última)", async () => {
     const { detectLapCorners } = await import("./lap-corners");
     const corners = detectLapCorners([], "Autódromo José Carlos Pace", "Grand Prix");
-    expect(corners).toHaveLength(12);
+    expect(corners).toHaveLength(11);
     expect(corners[0].name).toBe("Senna S");
     expect(corners[1].name).toBeNull();
     expect(corners[2].name).toBe("Curva do Sol");
-    expect(corners[11].name).toBe("Subida dos Boxes");
-    expect(corners[11].distance).toBeGreaterThan(80);
+    expect(corners[10].name).toBe("Subida dos Boxes");
+    expect(corners[10].distance).toBeGreaterThan(80);
+  });
+  it("pistas com nomes verificados só ganham traçado fixo com a contagem exata dos nomes", async () => {
+    const { verifiedCornerNameCount } = await import("./track-corners");
+    for (const [name, variant] of [["Autódromo José Carlos Pace", "Grand Prix"], ["Circuit Zandvoort", "Grand Prix"], ["Silverstone Circuit", "Grand Prix"], ["Watkins Glen International", "Boot"]]) {
+      expect(lookupCornerLayout(name, variant)?.corners).toHaveLength(verifiedCornerNameCount(name, variant) as number);
+    }
+    // Le Mans e Algarve não têm volta compatível: seguem com a detecção revisada
+    expect(lookupCornerLayout("Circuit des 24 Heures du Mans", "24 Heures du Mans")).toBeNull();
+    expect(lookupCornerLayout("Algarve International Circuit", "Grand Prix")).toBeNull();
   });
   it("pista sem traçado canônico segue com a detecção da volta", async () => {
     const { detectLapCorners } = await import("./lap-corners");

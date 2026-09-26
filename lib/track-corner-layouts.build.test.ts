@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import { ibtToBestLapCsv, parseTelemetryCsv } from "./telemetry-trace";
 import { detectCornersFromLap } from "./lap-corners";
-import { lookupCornerNames } from "./track-corners";
+import { verifiedCornerNameCount } from "./track-corners";
 import { pickCanonicalLayout, trackLayoutKey, type CornerLayout, type LayoutCorner } from "./track-corner-layouts";
 
 const enabled = process.env.BUILD_CORNER_LAYOUTS === "1";
@@ -59,12 +59,12 @@ describe.skipIf(!enabled)("gera lib/track-corner-layouts.json", () => {
         const buffer = readFileSync(file);
         const track = trackOf(buffer);
         if (!track.name) { semNome += 1; continue; }
-        const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
-        const trace = parseTelemetryCsv((ibtToBestLapCsv(arrayBuffer) as unknown as { csv: string }).csv);
-        const corners = detectCornersFromLap(trace.points);
         const alias = ALIASES[trackLayoutKey(track.name, track.variant)];
         const trackName = alias?.name ?? track.name; const variant = alias?.variant ?? track.variant;
         const key = trackLayoutKey(trackName, variant);
+        const arrayBuffer = buffer.buffer.slice(buffer.byteOffset, buffer.byteOffset + buffer.byteLength) as ArrayBuffer;
+        const trace = parseTelemetryCsv((ibtToBestLapCsv(arrayBuffer) as unknown as { csv: string }).csv);
+        const corners = detectCornersFromLap(trace.points, { splitLong: verifiedCornerNameCount(trackName, variant) === null });
         const entry = byTrack.get(key) ?? { trackName, variant, lists: [] };
         entry.lists.push(corners);
         byTrack.set(key, entry);
@@ -74,15 +74,16 @@ describe.skipIf(!enabled)("gera lib/track-corner-layouts.json", () => {
     const result: Record<string, CornerLayout> = {};
     const linhas: string[] = [];
     for (const [key, entry] of [...byTrack.entries()].sort()) {
-      const hasVerifiedNames = Array.from({ length: 60 }, (_, n) => n + 1).some((n) => lookupCornerNames(entry.trackName, entry.variant, n));
-      const picked = pickCanonicalLayout(entry.lists);
-      const votos = picked ? JSON.stringify(picked.votes) : "{}";
-      if (!picked) { linhas.push(`- ${entry.trackName} (${entry.variant}): sem traçado usável | ${entry.lists.length} voltas`); continue; }
-      if (entry.lists.length < 2) { linhas.push(`- ${entry.trackName} (${entry.variant}): só 1 volta, mantém a detecção por volta`); continue; }
+      const expected = verifiedCornerNameCount(entry.trackName, entry.variant);
+      // Pista com nomes verificados: só valem as voltas com EXATAMENTE a contagem que os nomes esperam.
+      const lists = expected === null ? entry.lists : entry.lists.filter((list) => list.length === expected);
+      const picked = pickCanonicalLayout(lists);
+      const votos = JSON.stringify(Object.fromEntries(Object.entries(entry.lists.reduce<Record<string, number>>((acc, list) => { acc[String(list.length)] = (acc[String(list.length)] ?? 0) + 1; return acc; }, {}))));
+      if (!picked) { linhas.push(`- ${entry.trackName} (${entry.variant}): nenhuma volta com as ${expected} curvas dos nomes verificados, mantém a detecção por volta | votos ${votos}`); continue; }
+      if (lists.length < 2) { linhas.push(`- ${entry.trackName} (${entry.variant}): só ${lists.length} volta compatível, mantém a detecção por volta | votos ${votos}`); continue; }
       if (picked.corners.length < 6) { linhas.push(`- ${entry.trackName} (${entry.variant}): ${picked.corners.length} curvas é pouco, mantém a detecção por volta | votos ${votos}`); continue; }
-      if (hasVerifiedNames && !lookupCornerNames(entry.trackName, entry.variant, picked.corners.length)) { linhas.push(`- ${entry.trackName} (${entry.variant}): ${picked.corners.length} curvas não bate com os nomes verificados, mantém a detecção por volta | votos ${votos}`); continue; }
-      result[key] = { trackName: entry.trackName, variant: entry.variant, laps: entry.lists.length, votes: picked.votes, corners: picked.corners };
-      linhas.push(`OK ${entry.trackName} (${entry.variant}): ${picked.corners.length} curvas | ${entry.lists.length} voltas | votos ${votos}${hasVerifiedNames ? " | nomes verificados" : ""}`);
+      result[key] = { trackName: entry.trackName, variant: entry.variant, laps: lists.length, votes: picked.votes, corners: picked.corners };
+      linhas.push(`OK ${entry.trackName} (${entry.variant}): ${picked.corners.length} curvas | ${lists.length} voltas | votos ${votos}${expected !== null ? " | nomes verificados" : ""}`);
     }
     writeFileSync("C:/Users/Vitor/Documents/iracing-analytics/lib/track-corner-layouts.json", JSON.stringify(result, null, 1) + "\n");
     writeFileSync("C:/Users/Vitor/Documents/iracing-analytics/.zz-out.txt", `arquivos lidos: ${lidos}, sem volta completa: ${semVolta}\n` + linhas.join("\n"));

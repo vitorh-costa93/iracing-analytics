@@ -74,10 +74,7 @@ const ENTRIES: TrackCornerEntry[] = [
     // laps, which put the corners at the same positions (11 and 12 detected). The 12-corner lap only
     // adds Descida do Lago's second apex (T5 @35.7%). 2 of the 3 laps with usable GPS found 11.
     match: (t) => /jos[eé] carlos pace|interlagos/i.test(t),
-    // 26/09/2026: o traçado canônico de Interlagos (lib/track-corner-layouts.json, o que mais se repete em 8
-    // voltas reais: 12 curvas) tem um ápice a mais em ~78,6% da volta, entre a Junção (~75,5%) e a subida
-    // (~84,3%). Ele fica sem nome (null) e a "Subida dos Boxes" continua na última curva.
-    names: ["Senna S", null, "Curva do Sol", "Descida do Lago", "Ferradura", "Laranjinha", "Pinheirinho", "Bico de Pato", "Mergulho", "Junção", null, "Subida dos Boxes"],
+    names: ["Senna S", null, "Curva do Sol", "Descida do Lago", "Ferradura", "Laranjinha", "Pinheirinho", "Bico de Pato", "Mergulho", "Junção", "Subida dos Boxes"],
   },
   {
     // 31/08/2026 sweep: was 12 entries (conflating Casanova/Savelli and Biondetti 1/2 into one each)
@@ -390,6 +387,14 @@ const ENTRIES: TrackCornerEntry[] = [
  * = a real corner we know is there but don't have a confident name for), or null if there's no
  * research for this track or the detected count is too far from the known corner count to trust an
  * index match. */
+/** Quantas curvas a lista de nomes verificados da pista espera (null se a pista não tem lista). Serve para
+ * o traçado canônico (lib/track-corner-layouts.ts) só valer quando bate EXATAMENTE com essa contagem:
+ * as listas foram alinhadas uma a uma com a detecção e uma curva a mais ou a menos desloca os nomes. */
+export function verifiedCornerNameCount(trackName: string, variant: string): number | null {
+  const entry = ENTRIES.find((item) => item.match(trackName, variant));
+  return entry ? entry.names.length : null;
+}
+
 export function lookupCornerNames(trackName: string, variant: string, detectedCount: number): (string | null)[] | null {
   const entry = ENTRIES.find((item) => item.match(trackName, variant));
   if (!entry) return null;
