@@ -58,3 +58,42 @@
   /* KPIs sao 4 numeros; botoes de 44px ficam para acoes, nao para pilulas compactas */
   .ng-segmented button, .ng-chip, .ngo-pager button { min-height: 0; }
 }
+
+/* ---- Telemetry Lab */
+@media (max-width: 720px) {
+  .ng-panel { padding: 14px 16px; }
+  .ng-panel-head { flex-wrap: wrap; }
+  .ng-panel-head-actions { margin-left: 0; flex-shrink: 1; flex-wrap: wrap; }
+  html body .ngt-tall { height: auto; }
+  html body .ngt-tall .ngt-chart { min-height: 0; height: auto; flex-grow: 0; touch-action: pan-y; }
+  .ngt-axis-label { font-size: 22px; }
+  html body .ngt-tall .ngt-map-wrap { height: 340px; }
+  .ngt-refline { flex-wrap: wrap; }
+  .ngt-refline span { white-space: normal; }
+}
+
+/* Popup da curva: tela cheia, com Anterior/Proxima/Fechar fixos no rodape (alvos de 44 px). */
+@media (max-width: 720px) {
+  html body .ngt-backdrop { padding: 0; align-items: stretch; background: var(--ng-header); }
+  html body .ngt-popup { width: 100%; border: 0; border-radius: 0; box-shadow: none; min-height: 100%; padding: 16px 16px calc(84px + env(safe-area-inset-bottom)); }
+  html body .ngt-popup-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 61; width: auto; gap: 8px; margin: 0;
+    padding: 10px 16px calc(10px + env(safe-area-inset-bottom)); background: var(--ng-header); border-top: 1px solid var(--ng-border);
+  }
+  html body .ngt-popup-nav button { flex: 1; min-height: 44px; padding: 0 8px; }
+  html body .ngt-popup-nav button.ngt-close { flex: 1.2; background: var(--ng-brand); border-color: var(--ng-brand); color: var(--ng-on-brand); }
+  .ngt-trace-map { height: 260px; }
+}
+
+/* ---- Base compartilhada: titulo com seletor, segmentados, selects */
+@media (max-width: 720px) {
+  .ng-page-title { width: 100%; }
+  .ng-page-title-aside { width: 100%; max-width: 100%; min-width: 0; margin-left: 0; }
+  .ng-segmented { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .ng-segmented button { flex-shrink: 0; white-space: nowrap; }
+  .ng-select { max-width: 100%; min-width: 0; }
+  .ng-select select { max-width: 100%; }
+  .ngt-more-contexts { flex-direction: column; align-items: stretch; gap: 8px; }
+  .ngt-more-contexts .ng-select { margin-left: 0; width: 100%; }
+  .ngt-more-contexts .ng-select select { width: 100%; }
+}

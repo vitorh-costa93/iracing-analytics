@@ -48,7 +48,7 @@ function shortLap(seconds: number) {
 async function loadTrace(lapId: string) {
   const response = await fetch(`/api/garage61/laps/${encodeURIComponent(lapId)}/telemetry`, { cache: "no-store" });
   const text = await response.text();
-  if (!response.ok) throw new Error("Não foi possível baixar a telemetria da volta mais rápida de um dos carros.");
+  if (!response.ok) throw new Error("A telemetria da volta mais rápida de um dos carros ainda não foi trazida para o app. Use \"Atualizar dados\" no cabeçalho para buscá-la.");
   return parseTelemetryCsv(text);
 }
 

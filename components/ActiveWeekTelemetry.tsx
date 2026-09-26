@@ -123,7 +123,7 @@ export default function ActiveWeekTelemetry() {
     fetch(selected.bestLap.telemetryUrl, { cache: "no-store" })
       .then(async (response) => {
         const text = await response.text();
-        if (!response.ok) throw new Error("Não foi possível baixar a telemetria da volta representativa");
+        if (!response.ok) throw new Error("A telemetria dessa volta ainda não foi trazida para o app. Use \"Atualizar dados\" no cabeçalho para buscá-la e depois toque em Tentar novamente.");
         if (active) setTrace(parseTelemetryCsv(text));
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
