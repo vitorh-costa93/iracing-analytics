@@ -49,3 +49,14 @@ export function sparkBars(values: ReadonlyArray<number>): SparkBar[] {
     return { x: index * 16.6 + 2, y: value >= 0 ? 17 - h : 17, h: Number(h.toFixed(1)), positive: value >= 0 };
   });
 }
+
+/** Série semanal de iRating dos minigráficos: só o valor final da semana (iratingEnd); semana sem
+ * valor repete o último conhecido (regra do CLAUDE.md), nunca usa o primeiro/anterior da semana como
+ * se fosse final. Antes do primeiro valor conhecido fica null (não há o que repetir). */
+export function carryForwardSeries(values: ReadonlyArray<number | null>): Array<number | null> {
+  let last: number | null = null;
+  return values.map((value) => {
+    if (value !== null && Number.isFinite(value)) last = value;
+    return last;
+  });
+}

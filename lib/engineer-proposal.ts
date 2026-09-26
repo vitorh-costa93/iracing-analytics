@@ -19,7 +19,7 @@ export const PROPOSAL_OPEN = "<proposta>";
 export const PROPOSAL_CLOSE = "</proposta>";
 const MAX_PROMPT_ROWS = 150; // mesmo teto de linhas do prompt de antes (custo por turno)
 const MAX_CHANGES = 4;
-const MAX_STEPS = 5;
+const MAX_STEPS = 3; // igual ao "1 a 3" do prompt do engenheiro (lib/engineer-prompt.ts)
 const MAX_TEXT = 500;
 
 export type IndexedRow = { id: string; key: string; tab: string; section: string; label: string; value: string; category: string; name: string };

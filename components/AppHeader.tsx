@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { DATA_SYNC_DONE_EVENT, DATA_SYNC_PROGRESS_EVENT, runDataSync, type DataSyncDetail } from "@/lib/data-sync-action";
-import { freshnessState, initials, relativeAge } from "@/lib/freshness";
+import { initials, relativeAge } from "@/lib/freshness";
 import { refreshSyncStatus, useSyncStatus } from "@/lib/use-sync-status";
 
 /** Cabeçalho fixo do Night Grid (docs/redesign-mockup/B.dc.html): marca, navegação principal,
@@ -52,9 +52,6 @@ export default function AppHeader() {
   }, []);
 
   const sources = status?.sources;
-  const state = sources && now !== null
-    ? freshnessState({ garage61LastSuccessAt: sources.garage61.lastSuccessAt, garage61LatestStatus: sources.garage61.latestStatus, irstatsLastImportAt: sources.irstats.lastImportAt }, now)
-    : "unknown";
   const freshnessText = sources && now !== null
     ? `iRStats ${relativeAge(sources.irstats.lastImportAt, now)} · Garage61 ${relativeAge(sources.garage61.lastSuccessAt, now)}`
     : status === null ? "Fontes indisponíveis" : "Verificando fontes…";
@@ -63,8 +60,7 @@ export default function AppHeader() {
         `iRStats: resultados importados em ${fullDate(sources.irstats.lastImportAt)}`,
         `Garage61: última sincronização útil em ${fullDate(sources.garage61.lastSuccessAt)}`,
         `Setups do Garage61: última importação em ${fullDate(sources.setups.lastImportAt)}`,
-        state === "error" ? "A última tentativa do Garage61 falhou; o painel usa o último sync válido." : null,
-      ].filter(Boolean).join("\n")
+      ].join("\n")
     : undefined;
   const driver = status?.driver ?? null;
 
@@ -82,7 +78,7 @@ export default function AppHeader() {
         </nav>
         <div className="ng-header-spacer" />
         <div className="ng-freshness" title={freshnessTitle} aria-live="polite">
-          <span className="ng-freshness-dot" data-state={state} aria-hidden />
+          <span className="ng-freshness-dot" aria-hidden />
           <span className="ng-freshness-text">{freshnessText}</span>
         </div>
         <button type="button" className="ng-button" disabled={syncing} onClick={() => void runDataSync()}>

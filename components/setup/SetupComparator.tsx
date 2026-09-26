@@ -38,6 +38,23 @@ export function SetupComparator({ setups, baseId, comparisonId, onBase, onCompar
       )}
       {result && (
         <>
+          <p className="ngs-note ngs-verified">
+            {result.totalParameters} {result.totalParameters === 1 ? "parâmetro mapeado foi verificado" : "parâmetros mapeados foram verificados"}
+            {result.skippedCount > 0 ? `; ${result.skippedCount} sem regra de efeito específica ficaram de fora da lista.` : "."}
+          </p>
+          {(result.analysis?.topCategories.length ?? 0) > 0 && (
+            <div className="ngs-glossary" aria-label="Onde estão as diferenças">
+              <span className="ngs-glossary-label">ONDE MAIS MUDOU:</span>
+              {result.analysis!.topCategories.map((item) => <span key={item.category} className="ngs-glossary-chip">{item.label}: {item.count}</span>)}
+            </div>
+          )}
+          {(result.analysis?.topContributors.length ?? 0) > 0 && (
+            <div className="ngs-contributors">
+              <span className="ngs-glossary-label">MAIORES DIFERENÇAS</span>
+              <ul>{result.analysis!.topContributors.map((item) => <li key={item.label}><strong>{item.label}</strong> <span>{item.before}</span> → <span>{item.after}</span></li>)}</ul>
+            </div>
+          )}
+          <p className="ngs-note ngs-orientation" role="note">Orientação, não medição: "como você vai sentir" e "quando usar" são uma leitura estimada a partir das diferenças entre os setups. Nada aqui foi medido em pista; confirme no simulador.</p>
           <div className="ngs-compare-cards">
             <div className="ngs-ab-card">
               <div className="ngs-ab-kicker" data-tone="gain">A DIFERENÇA EM UMA FRASE</div>

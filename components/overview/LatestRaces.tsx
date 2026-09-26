@@ -3,12 +3,12 @@
 import { useEffect, useState } from "react";
 import { signedNumber } from "./format";
 
-export type OverviewRace = { id: number; startedAt: string; series: string | null; car: string; track: string; startPosition: number | null; finishPosition: number | null; delta: number | null; ratingCategory?: "formula_car" | "sports_car" | "road" | null };
+export type OverviewRace = { id: number; startedAt: string; series: string | null; car: string; track: string; bestLap?: string | null; startPosition: number | null; finishPosition: number | null; delta: number | null; ratingCategory?: "formula_car" | "sports_car" | "road" | null };
 
 const PAGE_SIZE = 10;
 const CATEGORY_COLOR: Record<string, string> = { sports_car: "var(--ng-sports)", formula_car: "var(--ng-formula)", road: "var(--ng-road)" };
 
-/** "Últimas corridas" do mockup: colunas Data, Pista, Carro, Grid, Pos., iRating. A coluna Inc. do
+/** "Últimas corridas" do mockup: colunas Data (com ano), Série, Pista, Carro, Melhor volta, Grid, Pos., iRating. A coluna Inc. do
  * mockup fica de fora porque o payload do overview não traz incidentes. Mantém a paginação da tabela
  * anterior para a temporada inteira continuar acessível. */
 export default function LatestRaces({ races }: { races: OverviewRace[] }) {
@@ -21,17 +21,20 @@ export default function LatestRaces({ races }: { races: OverviewRace[] }) {
     <>
       <div className="ngo-races" role="table" aria-label="Últimas corridas">
         <div className="ngo-races-row ngo-races-head" role="row">
-          <div>Data</div><div>Pista</div><div>Carro</div><div className="r">Grid</div><div className="r">Pos.</div><div className="r">iRating</div>
+          <div>Data</div><div>Série</div><div>Pista</div><div>Carro</div><div className="r">Melhor volta</div><div className="r">Grid</div><div className="r">Pos.</div><div className="r">iRating</div>
         </div>
         {rows.map((r) => (
           <div className="ngo-races-row" role="row" key={r.id}>
-            <div className="ngo-races-date">{new Date(r.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</div>
+            <div className="ngo-races-date">{new Date(r.startedAt).toLocaleDateString("pt-BR")}</div>
+            <div className="ngo-races-series" title={r.series ?? undefined}>{r.series ?? "Série não informada"}</div>
             <div className="ngo-races-track"><span style={{ background: CATEGORY_COLOR[r.ratingCategory ?? ""] ?? "var(--ng-soft)" }} />{r.track}</div>
-            <div className="ngo-races-car" title={r.series ?? undefined}>{r.car}</div>
+            <div className="ngo-races-car">{r.car}</div>
+            {/* bestLap já vem formatado do iRStats (ex.: 1:27.305): exibido como está. */}
+            <div className="r ngo-races-best">{r.bestLap ?? "—"}</div>
             <div className="r ngo-races-grid">{r.startPosition ?? "—"}</div>
             <div className="r ngo-races-pos">{r.finishPosition !== null ? `P${r.finishPosition}` : "—"}</div>
             <div className="r ngo-races-delta" style={{ color: r.delta === null ? "var(--ng-muted)" : r.delta >= 0 ? "var(--ng-gain)" : "var(--ng-loss)" }}>{r.delta === null ? "—" : signedNumber(r.delta)}</div>
-            <div className="ngo-races-mobile-sub">{r.car}{r.finishPosition !== null ? ` · P${r.finishPosition}` : ""}</div>
+            <div className="ngo-races-mobile-sub">{[new Date(r.startedAt).toLocaleDateString("pt-BR"), r.series, r.car, r.bestLap, r.finishPosition !== null ? `P${r.finishPosition}` : null].filter(Boolean).join(" · ")}</div>
           </div>
         ))}
       </div>

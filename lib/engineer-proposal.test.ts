@@ -52,10 +52,10 @@ describe("parseProposalBlock", () => {
     expect(parseProposalBlock('{"mudancas":[{"id":"p1","direcao":"mexer"}]}')).toBeNull();
     expect(parseProposalBlock(null)).toBeNull();
   });
-  it("aceita cerca de código e limita passos a 5 e mudanças a 4", () => {
+  it("aceita cerca de código e limita passos a 3 e mudanças a 4", () => {
     const parsed = parseProposalBlock('```json\n{"mudancas":[{"id":"p1","direcao":"aumentar","passos":9},{"id":"p2","direcao":"diminuir"},{"id":"p3","direcao":"diminuir"},{"id":"p4","direcao":"diminuir"},{"id":"p5","direcao":"diminuir"}]}\n```')!;
     expect(parsed.changes).toHaveLength(4);
-    expect(parsed.changes[0].steps).toBe(5);
+    expect(parsed.changes[0].steps).toBe(3);
     expect(parsed.changes[1].steps).toBe(-1);
   });
 });

@@ -291,6 +291,7 @@ export default function SetupLabView() {
           <div className="ngs-extras-body">
             <div>
               <div className="ngs-extras-title">Biblioteca local privada</div>
+              <p className="ngs-note">Arquivos comerciais ficam no bucket privado e nunca são expostos nem enviados a serviços externos; aqui só aparecem nomes e metadados.</p>
               <p>{library.total} arquivos da season atual · {libraryCars.length} carros · última importação {library.importedAt ? new Date(library.importedAt).toLocaleString("pt-BR") : "pendente"}</p>
               <ul className="ngs-library">
                 {libraryCars.map((car) => {

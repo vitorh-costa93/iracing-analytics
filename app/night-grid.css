@@ -89,10 +89,7 @@ body { font-variant-numeric: tabular-nums; }
 
 .ng-header-spacer { flex-grow: 1; }
 .ng-freshness { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--ng-muted); white-space: nowrap; }
-.ng-freshness-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ng-gain); flex-shrink: 0; }
-.ng-freshness-dot[data-state="stale"] { background: var(--ng-caution); }
-.ng-freshness-dot[data-state="error"] { background: var(--ng-loss); }
-.ng-freshness-dot[data-state="unknown"] { background: var(--ng-soft); }
+.ng-freshness-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ng-soft); flex-shrink: 0; }
 
 .ng-driver { display: flex; align-items: center; gap: 10px; padding-left: 20px; border-left: 1px solid var(--ng-border); flex-shrink: 0; }
 .ng-driver-text { text-align: right; line-height: 1.15; }

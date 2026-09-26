@@ -27,3 +27,10 @@ describe("sparkline geometry (mockup B.dc.html)", () => {
     expect(tiny.h).toBe(2);
   });
 });
+
+import { carryForwardSeries } from "./sparkline";
+describe("carryForwardSeries", () => {
+  it("repete o último valor conhecido e não inventa antes do primeiro", () => {
+    expect(carryForwardSeries([null, 1500, null, null, 1520, null])).toEqual([null, 1500, 1500, 1500, 1520, 1520]);
+  });
+});

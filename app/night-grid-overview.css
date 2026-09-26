@@ -76,13 +76,13 @@
 /* Últimas corridas */
 .ngo-races-panel { padding: 14px 20px; gap: 2px; }
 .ngo-races { display: flex; flex-direction: column; }
-.ngo-races-row { display: grid; grid-template-columns: 70px minmax(0, 1.6fr) minmax(0, 1.3fr) 60px 60px 80px; gap: 12px; padding: 0 8px; min-height: 34px; align-items: center; font-size: 14px; border-bottom: 1px solid var(--ng-line); }
+.ngo-races-row { display: grid; grid-template-columns: 88px minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.1fr) 92px 44px 44px 64px; gap: 10px; padding: 0 8px; min-height: 34px; align-items: center; font-size: 14px; border-bottom: 1px solid var(--ng-line); }
 .ngo-races-head { min-height: 0; padding-top: 4px; padding-bottom: 4px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); border-bottom-color: var(--ng-border); }
 .ngo-races-row .r { text-align: right; }
 .ngo-races-date { color: var(--ng-muted); }
 .ngo-races-track { font-weight: 500; display: flex; align-items: center; gap: 8px; min-width: 0; }
 .ngo-races-track span { width: 8px; height: 8px; border-radius: 2px; flex-shrink: 0; }
-.ngo-races-car { color: var(--ng-text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngo-races-series, .ngo-races-car { color: var(--ng-text-2); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ngo-races-grid { color: var(--ng-muted); }
 .ngo-races-pos, .ngo-races-delta { font-weight: 600; }
 .ngo-races-mobile-sub { display: none; }
@@ -128,7 +128,7 @@
   .ngo-races-panel { padding: 14px 16px; }
   .ngo-races-head { display: none; }
   .ngo-races-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "track delta" "sub sub"; min-height: 48px; padding: 6px 0; row-gap: 0; gap: 0 10px; }
-  .ngo-races-date, .ngo-races-car, .ngo-races-grid, .ngo-races-pos { display: none; }
+  .ngo-races-date, .ngo-races-series, .ngo-races-car, .ngo-races-best, .ngo-races-grid, .ngo-races-pos { display: none; }
   .ngo-races-track { grid-area: track; font-weight: 600; }
   .ngo-races-delta { grid-area: delta; }
   .ngo-races-mobile-sub { display: block; grid-area: sub; font-size: 12px; color: var(--ng-soft); padding-left: 16px; }
