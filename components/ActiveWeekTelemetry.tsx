@@ -7,7 +7,7 @@ import { weekLabel } from "@/lib/season-week";
 import { formatLapTime, hasCompleteGps, ibtToBestLapCsv, parseTelemetryCsv, traceUsesOvertake, type Trace, type TracePoint } from "@/lib/telemetry-trace";
 import { compareLaps } from "@/lib/lap-analysis";
 import { formatSignedSeconds } from "@/lib/engineer-talk";
-import type { LapCorner } from "@/lib/corner-sequences";
+import { sectionMarkerLabel, type LapCorner } from "@/lib/corner-sequences";
 import { Panel, SelectPill } from "@/components/ui";
 import LapMap, { type LapMapMarker } from "@/components/telemetry/LapMap";
 import RepresentativeLapChart, { sectionNameAt } from "@/components/telemetry/RepresentativeLapChart";
@@ -260,7 +260,7 @@ export default function ActiveWeekTelemetry() {
   const markers: LapMapMarker[] = (comparison?.sections ?? []).map((section) => ({
     id: section.id,
     distance: (section.start + section.end) / 2,
-    label: section.corners.length > 1 ? `${section.corners[0].number}–${section.corners[section.corners.length - 1].number}` : String(section.corners[0].number),
+    label: sectionMarkerLabel(section.corners),
     tone: isLossSection(section) ? "loss" : "gain",
   }));
 

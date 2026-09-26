@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildLapSections, groupCornerSequences, sectionLabel, sequenceGapPct, unwrapIntoWindow, SEQUENCE_GAP_METERS, type LapCorner } from "./corner-sequences";
+import { buildLapSections, groupCornerSequences, sectionLabel, sectionMarkerLabel, sequenceGapPct, unwrapIntoWindow, SEQUENCE_GAP_METERS, type LapCorner } from "./corner-sequences";
 import { ABSOLUTE_MERGE_GAP_METERS } from "./corner-detection";
 
 const corner = (number: number, startDistance: number, endDistance: number, name: string | null = null): LapCorner => ({
@@ -81,6 +81,21 @@ describe("unwrapIntoWindow", () => {
   });
 });
 
+describe("sectionLabel: sempre com todas as curvas da sequência", () => {
+  it("lista cada curva de uma sequência de três ou mais", () => {
+    expect(sectionLabel([corner(2, 1, 2), corner(3, 2, 3), corner(4, 3, 4)])).toBe("Curvas 2–3–4");
+    expect(sectionLabel([corner(6, 1, 2), corner(7, 2, 3), corner(8, 3, 4), corner(9, 4, 5)])).toBe("Curvas 6–7–8–9");
+  });
+  it("Interlagos: o Senna S (duas curvas) e a Curva do Sol viram um trecho só, com os números e os nomes", () => {
+    expect(sectionLabel([corner(1, 1, 2, "Senna S"), corner(2, 2, 3, null), corner(3, 3, 4, "Curva do Sol")])).toBe("Curvas 1–2–3 (Senna S – Curva do Sol)");
+  });
+  it("marcador do mapa mostra os números", () => {
+    expect(sectionMarkerLabel([corner(2, 1, 2), corner(3, 2, 3), corner(4, 3, 4)])).toBe("2–3–4");
+    expect(sectionMarkerLabel([corner(5, 1, 2)])).toBe("5");
+    expect(sectionMarkerLabel([corner(1, 1, 2), corner(2, 2, 3), corner(3, 3, 4), corner(4, 4, 5), corner(5, 5, 6)])).toBe("1–5");
+  });
+});
+
 describe("sectionLabel", () => {
   it("usa números sem inventar nomes", () => {
     expect(sectionLabel([corner(5, 1, 2)])).toBe("Curva 5");
@@ -88,8 +103,8 @@ describe("sectionLabel", () => {
     expect(sectionLabel([corner(15, 1, 2), corner(1, 2, 3)])).toBe("Curvas 15 e 1");
   });
   it("usa nomes verificados só quando todas têm nome", () => {
-    expect(sectionLabel([corner(2, 1, 2, "Eau Rouge"), corner(3, 2, 3, "Raidillon")])).toBe("Eau Rouge–Raidillon");
-    expect(sectionLabel([corner(2, 1, 2, "Eau Rouge"), corner(3, 2, 3, null)])).toBe("Curvas 2–3");
+    expect(sectionLabel([corner(2, 1, 2, "Eau Rouge"), corner(3, 2, 3, "Raidillon")])).toBe("Curvas 2–3 (Eau Rouge – Raidillon)");
+    expect(sectionLabel([corner(2, 1, 2, "Eau Rouge"), corner(3, 2, 3, null)])).toBe("Curvas 2–3 (Eau Rouge)");
     expect(sectionLabel([corner(1, 1, 2, "La Source")])).toBe("La Source");
   });
 });

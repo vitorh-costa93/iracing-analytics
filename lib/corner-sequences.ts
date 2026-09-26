@@ -152,12 +152,26 @@ function joinWithE(items: string[]) {
   return `${items.slice(0, -1).join(", ")} e ${items[items.length - 1]}`;
 }
 
-/** "Curva 5", "La Source", "Curvas 3–4", "Curvas 14, 15 e 1", "Eau Rouge–Raidillon". Nomes reais só
- * quando TODAS as curvas da sequência têm nome verificado (lib/track-corners.ts); senão, números. */
+/** Nome do trecho, sempre com TODAS as curvas dele:
+ *  - uma curva: "Curva 5" ou o nome verificado ("La Source");
+ *  - sequência consecutiva: "Curvas 2–3–4";
+ *  - sequência que passa pela linha de chegada: "Curvas 14, 15 e 1";
+ *  - se alguma curva da sequência tem nome verificado (lib/track-corners.ts), ele vem entre parênteses:
+ *    "Curvas 1–2–3 (Senna S – Curva do Sol)". O nome nunca substitui os números, porque uma curva sem
+ *    nome no meio da sequência (o segundo ápice do Senna S) continua fazendo parte dela. */
 export function sectionLabel(corners: LapCorner[]) {
   if (corners.length === 1) return cornerLabel(corners[0]);
-  if (corners.every((corner) => corner.name)) return Array.from(new Set(corners.map((corner) => corner.name as string))).join("–");
   const numbers = corners.map((corner) => corner.number);
   const consecutive = numbers.every((value, index) => index === 0 || value === numbers[index - 1] + 1);
-  return consecutive ? `Curvas ${numbers[0]}–${numbers[numbers.length - 1]}` : `Curvas ${joinWithE(numbers.map(String))}`;
+  const numbersText = consecutive ? `Curvas ${numbers.join("–")}` : `Curvas ${joinWithE(numbers.map(String))}`;
+  const names = Array.from(new Set(corners.map((corner) => corner.name).filter((name): name is string => Boolean(name))));
+  return names.length ? `${numbersText} (${names.join(" – ")})` : numbersText;
+}
+
+/** Rótulo curto para o marcador do mapa: "5" ou "2–3–4". */
+export function sectionMarkerLabel(corners: LapCorner[]) {
+  if (corners.length === 1) return String(corners[0].number);
+  const numbers = corners.map((corner) => corner.number);
+  const consecutive = numbers.every((value, index) => index === 0 || value === numbers[index - 1] + 1);
+  return consecutive && numbers.length <= 4 ? numbers.join("–") : `${numbers[0]}–${numbers[numbers.length - 1]}`;
 }
