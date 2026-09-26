@@ -1,9 +1,19 @@
 import { describe, expect, it } from "vitest";
-import { classifyRaceLaps, lapSetKey, parseLapTimeText, type RaceLapRow } from "./race-debrief-laps";
+import { classifyRaceLaps, isDebriefRace, lapSetKey, MIN_RACE_LAPS, parseLapTimeText, type RaceLapRow } from "./race-debrief-laps";
 
 const row = (lap_number: number, lap_time: number, extra: Partial<RaceLapRow> = {}): RaceLapRow => ({
   id: `l${lap_number}-${lap_time}`, lap_number, lap_time, clean: true, off_track: false, pit_in: false, pit_out: false, pit_lane: false,
   incomplete: false, missing: false, telemetry_path: null, ...extra,
+});
+
+describe("piso de voltas da corrida (auditoria B8: volta a 5, como em 94c4d8d)", () => {
+  it("corrida com menos de 5 voltas completadas não entra no debrief", () => {
+    expect(MIN_RACE_LAPS).toBe(5);
+    expect(isDebriefRace(4)).toBe(false);
+    expect(isDebriefRace(3)).toBe(false);
+    expect(isDebriefRace(5)).toBe(true);
+    expect(isDebriefRace(null)).toBe(false);
+  });
 });
 
 describe("classifyRaceLaps", () => {

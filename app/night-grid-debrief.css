@@ -81,6 +81,22 @@
 .ngr-var-value { text-align: right; color: var(--ng-text); white-space: nowrap; }
 .ngr-fast { font-size: 13px; color: var(--ng-text-2); line-height: 1.5; }
 .ngr-if { font-size: 13px; color: var(--ng-muted); line-height: 1.5; }
+.ngr-sector-key { font-size: 12px; color: var(--ng-soft); margin-top: 4px; }
+
+/* melhor passagem do trecho (auditoria B7): texto, freio/acelerador e mapa local, na linha do trecho */
+.ngr-best-cell { grid-column: 1 / -1; min-width: 0; }
+.ngr-best { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr) 300px; gap: 16px; align-items: center; background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 12px 14px; }
+.ngr-best-title { font-size: 11px; letter-spacing: .14em; font-weight: 600; text-transform: uppercase; color: var(--ng-gain); }
+.ngr-best-text p { margin: 4px 0 8px; font-size: 13px; line-height: 1.5; color: var(--ng-text-2); }
+.ngr-best-legend { display: flex; gap: 14px; font-size: 12px; color: var(--ng-muted); }
+.ngr-best-legend span { display: flex; align-items: center; gap: 6px; }
+.ngr-best-legend i { width: 14px; height: 3px; display: inline-block; background: var(--ng-loss); }
+.ngr-best-legend i[data-line="throttle"] { background: var(--ng-gain); }
+.ngr-best-chart { width: 100%; height: auto; display: block; cursor: crosshair; touch-action: pan-y; }
+.ngr-best-axis { font-size: 10px; fill: var(--ng-soft); font-family: var(--ng-font-body); }
+.ngr-best-brake { fill: none; stroke: var(--ng-loss); stroke-width: 1.8; stroke-linejoin: round; }
+.ngr-best-throttle { fill: none; stroke: var(--ng-gain); stroke-width: 1.8; stroke-linejoin: round; }
+.ngr-best-map { height: 170px; display: flex; min-width: 0; }
 
 /* voltas descartadas */
 .ngr-discard { display: flex; justify-content: space-between; gap: 12px; min-height: 38px; align-items: center; border-top: 1px solid var(--ng-line); font-size: 14px; }
@@ -158,6 +174,8 @@
   .ngr-two, .ngr-pace-row, .ngr-boxes { grid-template-columns: minmax(0, 1fr); }
   .ngr-table-head { display: none; }
   .ngr-table-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ngr-best { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ngr-best-text { grid-column: 1 / -1; }
   .ngc-cars-head { display: none; }
   .ngc-car { grid-template-columns: 20px minmax(0, 1fr) 76px 70px; height: auto; min-height: 48px; padding: 8px 10px; row-gap: 6px; }
   .ngc-car .ngc-car-avg { display: none; }
@@ -171,4 +189,6 @@
   .ngr-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .ngr-table-row { grid-template-columns: minmax(0, 1fr); }
   .ngr-kpi-value { font-size: 26px; }
+  .ngr-best { grid-template-columns: minmax(0, 1fr); }
+  .ngr-best-map { height: 200px; }
 }

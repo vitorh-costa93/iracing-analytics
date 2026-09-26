@@ -6,6 +6,9 @@ import { formatLapTime } from "@/lib/telemetry-trace";
 import { formatVariation, type SelfSectionTalk } from "@/lib/debrief-talk";
 import { trackUiEvent } from "@/lib/track-ui-event";
 import type { Variation } from "@/lib/self-consistency";
+import type { BestPass } from "@/lib/debrief-best-pass";
+import { consistencyTone, SECTOR_CONSISTENCY_LIMITS, type SectorConsistency } from "@/lib/sector-consistency";
+import BestPassDetail from "@/components/telemetry/BestPassDetail";
 
 /**
  * Race Debrief no Night Grid (redesign etapa 4, 26/09/2026; mockup docs/redesign-mockup/Debrief.dc.html).
@@ -31,7 +34,8 @@ type Debrief = {
   strengths: string[]; improvements: string[]; right: string[]; wrong: string[];
   selfNote: string | null;
   sections: SectionPayload[];
-  sectors: { lapsAnalyzed: number; idealLap: number; bestLap: number; gap: number; worstSector: number; rows: { sector: number; best: number; stddev: number; mean: number }[] } | null;
+  bestPasses?: BestPass[];
+  sectors: { lapsAnalyzed: number; idealLap: number; bestLap: number; gap: number; worstSector: number; rows: { sector: number; best: number; stddev: number; mean: number; consistency: SectorConsistency; ratio: number }[] } | null;
   sectorsMessage: string | null;
   discarded: { lapNumber: number | null; lapTime: number; reason: string }[];
 };
@@ -110,6 +114,7 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
   if (!debrief) return <div className="ngt-state">{message ?? "Nenhuma corrida encontrada."}</div>;
 
   const { race, pace, micro, sample } = debrief;
+  const bestPassBySection = new Map((debrief.bestPasses ?? []).map((pass) => [pass.sectionId, pass]));
   const gained = race.grid !== null && race.finish !== null ? race.grid - race.finish : null;
   const resultTone = gained === null || gained === 0 ? undefined : gained > 0 ? "gain" : "loss";
   const iratingTone = race.iratingDelta === null || race.iratingDelta === 0 ? undefined : race.iratingDelta > 0 ? "gain" : "loss";
@@ -157,7 +162,7 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
         <div className="ngr-kpi">
           <div className="ngr-kpi-label">Microcorreções</div>
           <div className="ngr-kpi-value" data-tone={microTone}>{micro ? `${Math.round(micro.perMinute)}/min` : "—"}</div>
-          <div className="ngr-kpi-sub">{!micro ? "precisa de telemetria da corrida" : micro.reference !== null ? `referência da classe: ${Math.round(micro.reference)}/min` : `${decimal(micro.perLap, 0)} por volta · sem referência`}</div>
+          <div className="ngr-kpi-sub">{!micro ? "precisa de telemetria da corrida" : micro.reference !== null ? `sua volta de referência: ${Math.round(micro.reference)}/min` : `${decimal(micro.perLap, 0)} por volta · sem referência`}</div>
         </div>
       </div>
 
@@ -184,9 +189,9 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
               )}
               {pace.reference && (
                 <div className="ngr-pace-item">
-                  <div className="ngr-pace-head"><span>{pace.reference.kind === "reference" ? "Referência da classe" : "Vencedor da classe"}</span><span>{signed(pace.reference.gap, 3)}</span></div>
+                  <div className="ngr-pace-head"><span>{pace.reference.kind === "reference" ? "Sua volta de referência" : "Vencedor da classe"}</span><span>{signed(pace.reference.gap, 3)}</span></div>
                   <div className="ngr-track ngr-track-lg"><div className="ngr-fill" data-tone="reference" style={{ width: `${barWidth(pace.reference.gap, bestLap)}%` }} /></div>
-                  <div className="ngr-note">{pace.reference.kind === "reference" ? "Melhor volta de referência do mesmo carro e pista" : "Melhor volta de quem venceu a sua classe (iRStats)"}</div>
+                  <div className="ngr-note">{pace.reference.kind === "reference" ? "Tempo estimado da volta que você enviou como referência para este carro e pista" : "Melhor volta de quem venceu a sua classe (iRStats)"}</div>
                 </div>
               )}
             </div>
@@ -198,18 +203,21 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
             return (
               <div className="ngr-sectors">
                 {sectors.rows.map((row) => {
-                  const tone = row.stddev <= 0.15 ? "ok" : row.stddev <= 0.3 ? "warn" : "bad";
+                  // Critério relativo de 94c4d8d: desvio ÷ tempo médio do setor (0,3% / 0,8% / 1,6%).
+                  const tone = consistencyTone(row.consistency);
+                  const pct = decimal(row.ratio * 100, 2);
                   return (
-                    <div key={row.sector} className="ngr-sector">
+                    <div key={row.sector} className="ngr-sector" title={`S${row.sector}: ${row.consistency} (varia ${pct}% do tempo do setor)`}>
                       <span className="ngr-sector-name">S{row.sector}</span>
-                      <div className="ngr-track ngr-track-lg"><div className="ngr-fill" data-tone={tone} style={{ width: `${Math.max(6, Math.min(95, (row.stddev / 0.25) * 100))}%` }} /></div>
+                      <div className="ngr-track ngr-track-lg"><div className="ngr-fill" data-tone={tone} style={{ width: `${Math.max(6, Math.min(95, (row.ratio / SECTOR_CONSISTENCY_LIMITS.variable) * 90))}%` }} /></div>
                       <span className="ngr-sector-best">{row.best >= 60 ? formatLapTime(row.best) : row.best.toFixed(3)}</span>
-                      <span className="ngr-sector-sd" data-tone={tone}>±{decimal(row.stddev, 2)} s</span>
+                      <span className="ngr-sector-sd" data-tone={tone} aria-label={`mais ou menos ${decimal(row.stddev, 2)} segundo, ${row.consistency}`}>±{decimal(row.stddev, 2)} s</span>
                     </div>
                   );
                 })}
                 <div className="ngr-sector-foot">
                   Volta ideal <strong>{formatLapTime(sectors.bestLap)} → {formatLapTime(sectors.idealLap)}</strong>: {sectors.gap > 0.0005 ? `dá para tirar ${decimal(sectors.gap, 3)} s sem mudar nada, só repetindo o melhor de cada setor.` : "sua melhor volta já junta o melhor de cada setor."} O S{sectors.worstSector} é onde você mais varia.
+                  <div className="ngr-sector-key">A cor compara a variação com o tempo do próprio setor: verde até 0,8% (muito consistente até 0,3%), amarelo até 1,6%, vermelho acima disso.</div>
                 </div>
               </div>
             );
@@ -240,6 +248,9 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
                 </div>
                 <div role="cell" className="ngr-fast">{section.talk.fastLaps}</div>
                 <div role="cell" className="ngr-if">{section.talk.ifAlways}</div>
+                {bestPassBySection.get(section.id) && (
+                  <div role="cell" className="ngr-best-cell"><BestPassDetail pass={bestPassBySection.get(section.id)!} label={section.label} trackId={race.trackId} /></div>
+                )}
               </div>
             ))}
           </div>

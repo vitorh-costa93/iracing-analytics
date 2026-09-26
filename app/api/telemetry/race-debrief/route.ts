@@ -9,7 +9,9 @@ import { analyzeSelfConsistency, type SelfSection } from "@/lib/self-consistency
 import { describeSelfSection, rightAndWrong, strengthsAndImprovements } from "@/lib/debrief-talk";
 import { buildSectorReport } from "@/lib/sector-report";
 import { raceWinnerGap } from "@/lib/winner-gap";
-import { classifyRaceLaps, lapSetKey, parseLapTimeText, type RaceLapRow } from "@/lib/race-debrief-laps";
+import { classifyRaceLaps, lapSetKey, MIN_RACE_LAPS, parseLapTimeText, type RaceLapRow } from "@/lib/race-debrief-laps";
+import { buildBestPasses } from "@/lib/debrief-best-pass";
+import { sectorSpreadRatio } from "@/lib/sector-consistency";
 
 /**
  * Race Debrief do Night Grid (redesign etapa 4, 26/09/2026; mockup docs/redesign-mockup/Debrief.dc.html).
@@ -24,15 +26,16 @@ import { classifyRaceLaps, lapSetKey, parseLapTimeText, type RaceLapRow } from "
  * CACHE_VERSION e invalidado quando o conjunto de voltas com telemetria muda (telemetria chegou
  * depois). No máximo MAX_CACHED_RACES linhas "race:"; as mais antigas saem. Fora de produção o cache
  * não é gravado (só lido), para testes locais não escreverem no banco de produção; um cache em
- * memória evita recalcular a cada abertura.
+ * memória evita recalcular a cada abertura. O cache guarda só a análise de voltas e telemetria;
+ * race_results e iRating entram fora dele, em composeDebrief (auditoria B, 26/09/2026).
+ * Piso: corridas com pelo menos MIN_RACE_LAPS (5) voltas completadas, como no Meu Debrief antigo.
  */
 export const maxDuration = 120;
 
-const CACHE_VERSION = 2;
+const CACHE_VERSION = 3; // 3: sem race_results/iRating no payload, melhor passagem por trecho, setores relativos
 const CACHE_PREFIX = "race:";
 const MAX_CACHED_RACES = 30;
 const LIST_LIMIT = 40; // ~6 semanas de corridas: o seletor alcança corridas que já têm telemetria armazenada
-const MIN_RACE_LAPS = 3;
 const MAX_ANALYZED_LAPS = 15;
 const ANALYSIS_POINTS = 1500;
 const SESSION_MATCH_WINDOW_MS = 3 * 3600_000;
@@ -152,16 +155,18 @@ async function loadReference(driverId: string, carId: number, trackId: number): 
   try { return parseTelemetryCsv(csv, { maxPoints: Infinity }); } catch { return null; }
 }
 
-async function buildPayload(driverId: string, race: RaceRow, session: SessionRow | undefined, raceLaps: RaceLapRow[]) {
-  const [ratingRow, trackRow] = await Promise.all([
-    supabaseAdmin.from("v_race_results_irating").select("irating_before,irating_after").eq("id", race.id).maybeSingle(),
-    race.track_id ? supabaseAdmin.from("tracks").select("name,variant").eq("id", race.track_id).maybeSingle() : Promise.resolve({ data: null }),
-  ]);
+/**
+ * Parte do debrief que depende só das voltas e da telemetria (vai para o cache race_debriefs).
+ * Nada de race_results/iRating aqui (auditoria B, 26/09/2026): posição, incidentes, Δ iRating, melhor
+ * volta oficial, vencedor e os pontos fortes/melhoria que usam esses números são montados a cada
+ * abertura em composeDebrief, como o `winnerGap` da versão anterior (94c4d8d), para um reimport do
+ * iRStats ou a correção de 2 dias da âncora de iRating aparecerem sem esperar o cache mudar.
+ */
+async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRow | undefined, raceLaps: RaceLapRow[]) {
+  const trackRow = race.track_id ? await supabaseAdmin.from("tracks").select("name,variant").eq("id", race.track_id).maybeSingle() : { data: null };
   const classified = classifyRaceLaps(raceLaps);
   const clean = classified.kept;
   const bestFromLaps = clean.length ? Math.min(...clean.map((lap) => lap.lapTime)) : null;
-  const officialBest = parseLapTimeText(race.fastest_lap_time);
-  const bestLap = officialBest ?? bestFromLaps;
   const cleanAverage = clean.length ? clean.reduce((sum, lap) => sum + lap.lapTime, 0) / clean.length : null;
   const chronological = [...clean].sort((a, b) => (a.lapNumber ?? 0) - (b.lapNumber ?? 0));
   const half = Math.floor(chronological.length / 2);
@@ -188,7 +193,8 @@ async function buildPayload(driverId: string, race: RaceRow, session: SessionRow
   const corners = fastest && race.track_id ? detectLapCorners(fastest.trace.points, trackRow.data?.name ?? race.track_name ?? "", trackRow.data?.variant ?? "") : [];
   const self = analyzeSelfConsistency(traces.map((item) => ({ lapNumber: item.lap.lapNumber, lapTime: item.lap.lapTime, trace: item.trace, microDistances: item.micro.distances })), corners);
 
-  // Referência do carro/pista (volta enviada pelo piloto): tempo estimado e microcorreções dela.
+  // Referência do carro/pista: a volta que o PILOTO enviou (telemetry_references), não uma volta
+  // "da classe". Tempo estimado e microcorreções dela.
   let reference: { gap: number; microPerMinute: number | null } | null = null;
   if (fastest && race.car_id && race.track_id) {
     const refFull = await loadReference(driverId, race.car_id, race.track_id);
@@ -200,26 +206,16 @@ async function buildPayload(driverId: string, race: RaceRow, session: SessionRow
       }
     }
   }
-  const winner = raceWinnerGap(race.fastest_lap_time, race.winner_fastest_lap_time);
 
   const sectorResult = session?.garage61_event_id && race.car_id && race.track_id
     ? await buildSectorReport(driverId, race.car_id, race.track_id, session.garage61_event_id).catch(() => null)
     : null;
   const sectorReport = sectorResult?.report ?? null;
-  const worstSector = sectorReport ? sectorReport.sectors.reduce((a, b) => (b.stddev > a.stddev ? b : a)) : null;
+  // Pior setor pelo mesmo critério relativo (desvio ÷ média) do relatório de setores, para a frase de
+  // melhoria e o rodapé do painel apontarem o MESMO setor.
+  const worstSector = sectorReport ? sectorReport.sectors.find((sector) => sector.sector === sectorReport.worstSector) ?? null : null;
 
   const sections = self?.sections ?? [];
-  const facts = {
-    gridPosition: race.grid_position, finishPosition: race.finish_position, incidents: race.incidents, laps: race.laps,
-    bestLap, cleanAverage, paceTrend,
-    microPerMinute: micro?.perMinute ?? null, referenceMicroPerMinute: reference?.microPerMinute ?? null,
-    brakeRepeatShare: self ? brakeRepeatShare(sections, self.trackLengthMeters) : null,
-    worstSector: worstSector ? { label: `S${worstSector.sector}`, spread: worstSector.stddev } : null,
-    sections,
-  };
-  const { strengths, improvements } = strengthsAndImprovements(facts);
-  const boxes = rightAndWrong(sections);
-
   const telemetryLaps = traces.length;
   let selfNote: string | null = null;
   if (!session) selfNote = "Não achei a sessão desta corrida no Garage61, então não há voltas nem telemetria para comparar você com você mesmo.";
@@ -228,33 +224,70 @@ async function buildPayload(driverId: string, race: RaceRow, session: SessionRow
   else if (!self.canCompareFastSlow) selfNote = `Com ${telemetryLaps} voltas com telemetria dá para medir quanto você varia, mas ainda não para separar as voltas rápidas das lentas (preciso de 5).`;
   else if (lapsWithoutTelemetry) selfNote = `${telemetryLaps} voltas com telemetria analisadas; ${lapsWithoutTelemetry} voltas limpas ainda estão sem telemetria armazenada.`;
 
+  const boxes = rightAndWrong(sections);
   return {
     version: CACHE_VERSION,
+    laps: { bestFromLaps, cleanAverage, cleanLaps: clean.length, paceTrend },
+    referenceGap: reference ? Number(reference.gap.toFixed(3)) : null,
+    micro: micro ? { perMinute: micro.perMinute, perLap: micro.perLap, laps: micro.laps, reference: reference?.microPerMinute ?? null } : null,
+    sample: { telemetryLaps, lapsWithoutTelemetry, robust: telemetryLaps >= 10 },
+    brakeRepeatShare: self ? brakeRepeatShare(sections, self.trackLengthMeters) : null,
+    worstSector: worstSector ? { label: `S${worstSector.sector}`, spread: worstSector.stddev } : null,
+    right: boxes.right, wrong: boxes.wrong,
+    selfNote,
+    sections: sections.map((section, index) => ({
+      id: section.id, label: section.label, isSequence: section.isSequence, laps: section.laps, corners: section.corners,
+      variation: section.variation, lever: section.lever, gainIfRepeat: section.gainIfRepeat,
+      talk: describeSelfSection(section, index, self?.canCompareFastSlow ?? false),
+    })),
+    // Melhor passagem (mapa local + freio/acelerador) nos trechos com mais ganho (auditoria B7).
+    bestPasses: buildBestPasses(sections, traces.map((item) => ({ lapNumber: item.lap.lapNumber, trace: item.trace }))),
+    sectors: sectorReport
+      ? {
+        lapsAnalyzed: sectorReport.lapsAnalyzed, idealLap: sectorReport.idealLapSeconds, bestLap: sectorReport.actualBestLapSeconds, gap: sectorReport.gapToIdealSeconds, worstSector: sectorReport.worstSector,
+        rows: sectorReport.sectors.map((sector) => ({ sector: sector.sector, best: sector.best, stddev: sector.stddev, mean: sector.mean, consistency: sector.consistency, ratio: Number(sectorSpreadRatio(sector.stddev, sector.mean).toFixed(5)) })),
+      }
+      : null,
+    sectorsMessage: sectorReport ? null : sectorResult?.message ?? (session ? "Sem tempos de setor registrados para esta corrida." : "Sem a sessão do Garage61 não há tempos de setor."),
+    discarded: classified.discarded,
+  };
+}
+
+type Analysis = Awaited<ReturnType<typeof buildAnalysis>> & { lapSetKey?: string };
+
+/** Junta a análise (em cache) com os dados de race_results/iRating lidos agora. */
+async function composeDebrief(race: RaceRow, analysis: Analysis) {
+  const { data: rating } = await supabaseAdmin.from("v_race_results_irating").select("irating_before,irating_after").eq("id", race.id).maybeSingle();
+  const officialBest = parseLapTimeText(race.fastest_lap_time);
+  const bestLap = officialBest ?? analysis.laps.bestFromLaps;
+  const winner = raceWinnerGap(race.fastest_lap_time, race.winner_fastest_lap_time);
+  const { strengths, improvements } = strengthsAndImprovements({
+    gridPosition: race.grid_position, finishPosition: race.finish_position, incidents: race.incidents, laps: race.laps,
+    bestLap, cleanAverage: analysis.laps.cleanAverage, paceTrend: analysis.laps.paceTrend,
+    microPerMinute: analysis.micro?.perMinute ?? null, referenceMicroPerMinute: analysis.micro?.reference ?? null,
+    brakeRepeatShare: analysis.brakeRepeatShare, worstSector: analysis.worstSector, sections: analysis.sections,
+  });
+  return {
     race: {
       id: race.id, racedAt: race.raced_at, label: raceLabel(race), series: race.series_name,
       car: race.car_name, track: race.track_name, carId: race.car_id, trackId: race.track_id, category: race.category,
       grid: race.grid_position, finish: race.finish_position, incidents: race.incidents, laps: race.laps,
-      iratingDelta: race.irating_delta, iratingBefore: ratingRow.data?.irating_before ?? null, iratingAfter: ratingRow.data?.irating_after ?? null,
+      iratingDelta: race.irating_delta, iratingBefore: rating?.irating_before ?? null, iratingAfter: rating?.irating_after ?? null,
     },
     pace: {
-      bestLap, cleanAverage, cleanLaps: clean.length,
-      reference: reference ? { kind: "reference" as const, gap: Number(reference.gap.toFixed(3)) }
+      bestLap, cleanAverage: analysis.laps.cleanAverage, cleanLaps: analysis.laps.cleanLaps,
+      reference: analysis.referenceGap !== null ? { kind: "reference" as const, gap: analysis.referenceGap }
         : winner ? { kind: "winner" as const, gap: Number((-winner.seconds).toFixed(3)) } : null,
     },
-    micro: micro ? { perMinute: micro.perMinute, perLap: micro.perLap, laps: micro.laps, reference: reference?.microPerMinute ?? null } : null,
-    sample: { telemetryLaps, lapsWithoutTelemetry, robust: telemetryLaps >= 10 },
-    strengths, improvements, right: boxes.right, wrong: boxes.wrong,
-    selfNote,
-    sections: sections.map((section, index) => ({
-      id: section.id, label: section.label, isSequence: section.isSequence, laps: section.laps,
-      variation: section.variation, lever: section.lever, gainIfRepeat: section.gainIfRepeat,
-      talk: describeSelfSection(section, index, self?.canCompareFastSlow ?? false),
-    })),
-    sectors: sectorReport
-      ? { lapsAnalyzed: sectorReport.lapsAnalyzed, idealLap: sectorReport.idealLapSeconds, bestLap: sectorReport.actualBestLapSeconds, gap: sectorReport.gapToIdealSeconds, worstSector: sectorReport.worstSector, rows: sectorReport.sectors.map((sector) => ({ sector: sector.sector, best: sector.best, stddev: sector.stddev, mean: sector.mean })) }
-      : null,
-    sectorsMessage: sectorReport ? null : sectorResult?.message ?? (session ? "Sem tempos de setor registrados para esta corrida." : "Sem a sessão do Garage61 não há tempos de setor."),
-    discarded: classified.discarded,
+    micro: analysis.micro,
+    sample: analysis.sample,
+    strengths, improvements, right: analysis.right, wrong: analysis.wrong,
+    selfNote: analysis.selfNote,
+    sections: analysis.sections,
+    bestPasses: analysis.bestPasses,
+    sectors: analysis.sectors,
+    sectorsMessage: analysis.sectorsMessage,
+    discarded: analysis.discarded,
   };
 }
 
@@ -281,15 +314,15 @@ export async function GET(request: Request) {
     const setKey = lapSetKey(raceLaps);
 
     const memoryKey = `${key}|${CACHE_VERSION}|${setKey}`;
-    let debrief = memoryCache.get(memoryKey) ?? null;
-    if (!debrief) {
+    let analysis = (memoryCache.get(memoryKey) as Analysis | undefined) ?? null;
+    if (!analysis) {
       const { data: cached } = await supabaseAdmin.from("race_debriefs").select("session_id,payload").eq("driver_id", driverId).eq("rating_category", key).maybeSingle();
-      const payload = cached?.payload as { version?: number; lapSetKey?: string } | undefined;
-      if (payload && payload.version === CACHE_VERSION && payload.lapSetKey === setKey && Number(cached?.session_id ?? 0) === Number(session?.id ?? 0)) debrief = payload;
+      const payload = cached?.payload as Analysis | undefined;
+      if (payload && payload.version === CACHE_VERSION && payload.lapSetKey === setKey && Number(cached?.session_id ?? 0) === Number(session?.id ?? 0)) analysis = payload;
     }
-    if (!debrief) {
-      const payload = { ...(await buildPayload(driverId, selected, session, raceLaps)), lapSetKey: setKey };
-      debrief = payload;
+    if (!analysis) {
+      const payload: Analysis = { ...(await buildAnalysis(driverId, selected, session, raceLaps)), lapSetKey: setKey };
+      analysis = payload;
       if (process.env.NODE_ENV === "production" && session) {
         await supabaseAdmin.from("race_debriefs").upsert({ driver_id: driverId, rating_category: key, session_id: session.id, payload, computed_at: new Date().toISOString() }, { onConflict: "driver_id,rating_category" });
         const { data: rows } = await supabaseAdmin.from("race_debriefs").select("id").eq("driver_id", driverId).like("rating_category", `${CACHE_PREFIX}%`).order("computed_at", { ascending: false });
@@ -297,9 +330,10 @@ export async function GET(request: Request) {
         if (stale.length) await supabaseAdmin.from("race_debriefs").delete().in("id", stale);
       }
     }
-    memoryCache.set(memoryKey, debrief);
+    memoryCache.set(memoryKey, analysis);
     if (memoryCache.size > 40) memoryCache.delete(memoryCache.keys().next().value!);
 
+    const debrief = await composeDebrief(selected, analysis);
     return NextResponse.json({ status: "ok", races: list, selectedId: selected.id, debrief });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
