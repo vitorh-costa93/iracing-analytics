@@ -13,6 +13,7 @@ import { useIsMobile } from "@/lib/use-is-mobile";
 import { signedNumber } from "@/components/overview/format";
 import { trackUiEvent } from "@/lib/track-ui-event";
 import { weekLabel, weekShort } from "@/lib/season-week";
+import { carryForwardSeries } from "@/lib/sparkline";
 import { DATA_SYNC_DONE_EVENT, DATA_SYNC_PROGRESS_EVENT, type DataSyncDetail } from "@/lib/data-sync-action";
 
 type Category = "formula" | "sports";
@@ -173,7 +174,7 @@ export default function Home() {
   const [imsaClass, setImsaClass] = useState<"all" | "GTP" | "LMP2">("all");
 
   const loadDashboard = useCallback(async (force = false) => {
-    const cacheKey = "iracing-dashboard-overview-v1";
+    const cacheKey = "iracing-dashboard-overview-v2";
     if (!force) {
       try {
         const cached = window.localStorage.getItem(cacheKey);
@@ -309,7 +310,7 @@ export default function Home() {
   // ---- Night Grid: dados dos KPIs (mesmas fontes de antes: data.kpis, data.streaks, data.weekly, data.races)
   const prevShort = previousLabel.replace(/^\d{4}\s*/, "");
   const currentRaceRows = (category: "formula_car" | "sports_car") => data.races.filter((race) => race.ratingCategory === category);
-  const weekSeries = (points: WeekPoint[]) => points.map((point) => point.iratingEnd ?? point.iratingFirst ?? point.iratingBeforeWeek);
+  const weekSeries = (points: WeekPoint[]) => carryForwardSeries(points.map((point) => point.iratingEnd));
   const kpiGroups = (["formula", "sports"] as const).map((key) => {
     const kpi = data.kpis[key];
     const category = key === "formula" ? "formula_car" : "sports_car";
@@ -335,7 +336,7 @@ export default function Home() {
           trend={iratingDiff === null ? "Sem comparação anterior" : `${arrow(iratingDiff)} ${signedNumber(iratingDiff)} vs. ${prevShort} ${weekShort(kpi.irating.week)}`}
           trendTone={toneOf(iratingDiff)}
           sparkline={current.some((v) => v !== null) ? { kind: "lines", current, previous: previous.some((v) => v !== null) ? previous : undefined, count: Math.max(current.length, previous.length) } : undefined}
-          description={`Tracejado: ${prevShort}`} />,
+          description={`Tracejado: ${prevShort}${kpi.irating.previousSameWeek === null ? "" : ` · ${prevShort} na mesma week: ${kpi.irating.previousSameWeek.toLocaleString("pt-BR")}`}`} />,
         /* Só aparece no celular (Mobile.dc.html tem Safety Rating como cartão próprio); no desktop o selo do iRating cobre. */
         <div key="sr" className="ngo-kpi-sr-wrap"><KpiCard category={key} label="Safety Rating" value={kpi.safetyRating.currentDisplay ?? "—"} /></div>,
         <KpiCard key="w" category={key} label="Vitórias"
@@ -361,7 +362,7 @@ export default function Home() {
   const perfItems = activePerfTab === "sf" ? rankings.tracks : activePerfTab === "gt3" ? rankings.gt3 : rankings.imsa;
   const perfLabel = activePerfTab === "sf" ? "SUPER FORMULA 23" : activePerfTab === "gt3" ? "GT3" : "IMSA GTP / LMP2";
   const perfTabOptions = ([{ value: "sf", label: "Super Formula" }, { value: "gt3", label: "GT3" }, { value: "imsa", label: "IMSA GTP / LMP2" }] as const).filter((option) => perfTabsAvailable.includes(option.value));
-  const gapItems = data.winnerGapBySegment ? data.winnerGapBySegment[activePerfTab] : data.winnerGapByTrack ?? [];
+  const gapItems = data.winnerGapBySegment?.[activePerfTab] ?? [];
   const seasonWeek = data.kpis.formula.irating.week;
 
   return (
@@ -424,6 +425,7 @@ export default function Home() {
             className="ngo-context-panel"
             title="Contextos da semana"
             titleSize="md"
+            subtitle="Média de iRating por corrida no contexto, só com pelo menos 2 corridas. Cada card abre a volta elegível para análise no Telemetry Lab."
             actions={<a className="ngo-link" href="/telemetry">Telemetry Lab →</a>}
           >
             {weeklyContexts.length ? weeklyContexts.map((item) => (
@@ -435,7 +437,7 @@ export default function Home() {
                 </span>
                 <span className="ngo-context-avg">
                   <span style={{ color: item.avg === null ? "var(--ng-muted)" : item.avg >= 0 ? "var(--ng-gain)" : "var(--ng-loss)" }}>{item.avg === null ? "—" : signedNumber(item.avg, 1)}</span>
-                  <small>Δ médio</small>
+                  <small>iRating médio</small>
                 </span>
               </a>
             )) : <p className="ngo-empty">Ainda não há corridas desta week para formar os contextos ativos.</p>}
@@ -469,7 +471,7 @@ export default function Home() {
               <DeltaByContext items={perfItems} kind={perfMode as RankingMode} />
             </Panel>
             <Panel kicker={`MEDIDA 2 · ${perfLabel} · GAP PARA O VENCEDOR`} title="Sua melhor volta vs. a do vencedor" titleSize="sm" as="article"
-              subtitle={<>Vencedor da sua classe, por pista · do menor para o maior gap percentual{gapItems.length ? ` · média geral ${percentText(gapOverall(gapItems))}` : ""}</>}>
+              subtitle={<>Vencedor da sua classe, por pista · do menor para o maior gap percentual{gapItems.length ? ` · média do segmento ${percentText(gapOverall(gapItems))}` : ""}</>}>
               <GapToWinner items={gapItems} />
             </Panel>
           </div>
