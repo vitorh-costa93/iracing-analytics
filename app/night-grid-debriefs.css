@@ -1,0 +1,111 @@
+/* Night Grid -- Debriefs de season e week (redesign etapa 5, 25/09/2026). Só o que é específico de
+ * /debriefs; tokens e componentes base ficam em night-grid.css. Referências: docs/redesign-mockup/
+ * DebriefSeason.dc.html e DebriefWeek.dc.html (1440 px). Prefixo ngd- = "night grid debriefs". */
+
+.ngd-main { padding-bottom: 28px; }
+.ngd-main .ng-page-title { justify-content: space-between; }
+.ngd-toggles { display: flex; gap: 10px; align-items: center; min-width: 560px; }
+.ngd-spacer { flex-grow: 1; }
+.ngd-toggles .ng-segmented button { padding: 0 12px; font-size: 13px; }
+.ngd-banner { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border: 1px solid var(--ng-tooltip-border); border-radius: var(--ng-radius-control); background: var(--ng-card); color: var(--ng-text-2); font-size: 13px; }
+.ngd-banner button { height: 28px; padding: 0 12px; border: 1px solid var(--ng-border); border-radius: var(--ng-radius-segment); background: transparent; color: var(--ng-text); font-family: inherit; cursor: pointer; }
+.ngd-empty { padding: 24px 0; color: var(--ng-soft); font-size: 14px; text-align: center; }
+
+/* Leitura rápida */
+.ngd-quick { padding: 18px 22px; gap: 6px; }
+.ngd-quick-head { display: flex; align-items: center; gap: 10px; }
+.ngd-quick-kicker { font-size: 11px; letter-spacing: .14em; color: var(--ng-reference); font-weight: 600; }
+.ngd-quick-head .ng-chip { font-size: 12px; font-weight: 600; white-space: nowrap; }
+.ngd-quick-summary { margin: 0; font-size: 16px; line-height: 1.55; color: var(--ng-text); max-width: 1180px; }
+.ngd-quick-pace { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ng-muted); max-width: 1180px; }
+.ngd-quick-pace strong { color: var(--ng-text); }
+.ngd-quick-action { display: flex; gap: 10px; align-items: flex-start; background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 12px 14px; margin-top: 4px; }
+.ngd-quick-action span { font-family: var(--ng-font-display); font-weight: 700; color: var(--ng-brand); letter-spacing: .08em; font-size: 13px; margin-top: 1px; white-space: nowrap; }
+.ngd-quick-action p { margin: 0; font-size: 14px; line-height: 1.5; color: var(--ng-text); }
+
+/* KPIs */
+.ngd-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.ngd-kpi { background: var(--ng-card); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-card); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ngd-kpi-label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-muted); }
+.ngd-kpi-value { font-family: var(--ng-font-display); font-weight: 700; font-size: 30px; line-height: 1; color: var(--ng-text); white-space: nowrap; }
+.ngd-kpi-value[data-tone="gain"] { color: var(--ng-gain); }
+.ngd-kpi-value[data-tone="loss"] { color: var(--ng-loss); }
+.ngd-kpi-sub { font-size: 12px; color: var(--ng-soft); }
+
+/* Linhas de painéis */
+.ngd-row-2 { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; }
+.ngd-row-2.ngd-row-even { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; }
+.ngd-h340 { height: 340px; }
+.ngd-h270 { height: 270px; }
+.ngd-scatter { width: 100%; height: 250px; display: block; overflow: visible; }
+.ngd-scatter text { font-family: var(--ng-font-body); }
+.ngd-scroll { overflow-y: auto; min-height: 0; flex: 1 1 0; }
+.ngd-legend { display: flex; gap: 12px; font-size: 12px; color: var(--ng-muted); white-space: nowrap; }
+.ngd-legend [data-kind="now"] { color: var(--ng-loss); }
+.ngd-legend [data-kind="ref"] { color: var(--ng-soft); }
+.ngd-note { margin: 8px 0 0; font-size: 13px; line-height: 1.45; color: var(--ng-muted); }
+.ngd-note strong { color: var(--ng-text); }
+
+/* Histograma de perdas */
+.ngd-hist { display: flex; gap: 6px; align-items: flex-end; margin-top: 14px; }
+.ngd-hist-col { display: flex; flex-direction: column; align-items: center; gap: 6px; flex: 1; }
+.ngd-hist-col span { font-size: 12px; color: var(--ng-muted); }
+.ngd-hist-bars { display: flex; gap: 4px; align-items: flex-end; height: 110px; }
+.ngd-hist-bar { width: 22px; border-radius: 3px 3px 0 0; }
+.ngd-hist-bar[data-kind="now"] { background: var(--ng-loss); }
+.ngd-hist-bar[data-kind="ref"] { background: #5C6A9E; }
+
+/* Pressão por week */
+.ngd-weeks { position: relative; display: flex; gap: 4px; margin-top: 8px; }
+.ngd-weeks-zero { position: absolute; left: 0; right: 0; top: 60px; height: 1px; background: #5C6A9E; }
+.ngd-weeks-col { flex: 1; position: relative; height: 130px; }
+.ngd-weeks-bar { position: absolute; left: 50%; transform: translateX(-50%); width: 64%; max-width: 40px; border-radius: 3px; }
+.ngd-weeks-bar[data-tone="gain"] { background: var(--ng-gain); }
+.ngd-weeks-bar[data-tone="loss"] { background: var(--ng-loss); }
+.ngd-weeks-col span { position: absolute; bottom: 0; left: 0; right: 0; text-align: center; font-size: 11px; color: var(--ng-soft); }
+
+/* Barras divergentes (corridas, contextos) */
+.ngd-row { display: grid; grid-template-columns: 200px minmax(0, 1fr) 84px; gap: 12px; align-items: center; min-height: 38px; border-top: 1px solid var(--ng-line); }
+.ngd-row-text { min-width: 0; }
+.ngd-row-title { font-weight: 600; font-size: 14px; line-height: 1.15; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ngd-row-sub { font-size: 11.5px; line-height: 1.3; color: var(--ng-soft); }
+.ngd-row-track { position: relative; height: 14px; }
+.ngd-row-axis { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: #5C6A9E; }
+.ngd-row-bar { position: absolute; top: 2px; height: 10px; border-radius: 2px; background: var(--ng-soft); }
+.ngd-row-bar[data-tone="gain"] { background: var(--ng-gain); }
+.ngd-row-bar[data-tone="loss"] { background: var(--ng-loss); }
+.ngd-row-value { text-align: right; font-weight: 600; font-size: 14px; }
+.ngd-row-value[data-tone="gain"] { color: var(--ng-gain); }
+.ngd-row-value[data-tone="loss"] { color: var(--ng-loss); }
+
+/* Evidência recolhível */
+.ngd-ev-head { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; height: 44px; padding: 0; border: 0; border-top: 1px solid var(--ng-line); background: transparent; color: var(--ng-text); font-family: inherit; font-size: 14px; text-align: left; cursor: pointer; }
+.ngd-ev-head:focus-visible { outline: 2px solid var(--ng-reference); outline-offset: 2px; }
+.ngd-ev-title { font-weight: 500; }
+.ngd-ev-summary { color: var(--ng-muted); font-size: 13px; text-align: right; }
+.ngd-ev-toggle { color: var(--ng-reference); white-space: nowrap; }
+.ngd-ev-body { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 12px 14px; margin: 0 0 8px; }
+.ngd-ev-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.ngd-ev-list { display: flex; flex-direction: column; gap: 8px; }
+.ngd-ev-line { font-size: 13px; line-height: 1.45; color: var(--ng-text-2); }
+.ngd-ev-item { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; color: var(--ng-text-2); }
+.ngd-ev-item [data-tone="gain"] { color: var(--ng-gain); font-weight: 600; }
+.ngd-ev-item [data-tone="loss"] { color: var(--ng-loss); font-weight: 600; }
+.ngd-ev-method { margin: 0; padding-left: 18px; display: flex; flex-direction: column; gap: 6px; font-size: 13px; line-height: 1.45; color: var(--ng-text-2); }
+.ngd-stat-label { font-size: 12px; color: var(--ng-soft); }
+.ngd-stat-value { font-family: var(--ng-font-display); font-weight: 700; font-size: 22px; color: var(--ng-text); }
+.ngd-stat-value[data-small] { font-family: var(--ng-font-body); font-weight: 600; font-size: 14px; line-height: 1.4; }
+.ngd-stat-value[data-tone="gain"] { color: var(--ng-gain); }
+.ngd-stat-value[data-tone="loss"] { color: var(--ng-loss); }
+.ngd-stat-value[data-tone="caution"] { color: var(--ng-caution); }
+
+@media (max-width: 1100px) {
+  .ngd-toggles { min-width: 0; flex-wrap: wrap; }
+  .ngd-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ngd-row-2, .ngd-row-2.ngd-row-even { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 640px) {
+  .ngd-row { grid-template-columns: 130px minmax(0, 1fr) 56px; }
+  .ngd-ev-grid { grid-template-columns: minmax(0, 1fr); }
+  .ngd-h340, .ngd-h270 { height: auto; }
+}

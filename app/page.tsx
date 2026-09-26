@@ -2,9 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "./night-grid-overview.css";
+import Link from "next/link";
 import type { WinnerGapItem } from "@/components/WinnerGapRanking";
 import ThemeToggle from "@/components/ThemeToggle";
-import DmaicReportModal from "@/components/DmaicReportModal";
 import SeasonCalendarImportModal from "@/components/SeasonCalendarImportModal";
 import { CategoryHeading, KpiCard, Panel, PageTitle, SegmentedControl, SelectPill } from "@/components/ui";
 import type { KpiCategory, KpiTone } from "@/components/ui";
@@ -366,7 +366,8 @@ export default function Home() {
           <a className="quick-open-button" href="https://irstats.com/driver/958741" target="_blank" rel="noopener noreferrer" title="Abre o iRStats numa aba nova — clique no favorito lá pra importar">🔖 iRStats ↗</a>
           <a className="quick-open-button" href="https://garage61.net/app" target="_blank" rel="noopener noreferrer" title="Abre o Garage61 numa aba nova — clique no favorito lá pra importar">🔖 Garage61 ↗</a>
           <SeasonCalendarImportModal onImported={() => loadDashboard(true)} />
-          <DmaicReportModal />
+          <Link className="quick-open-button" href="/debriefs?scope=week">Debrief da semana</Link>
+          <Link className="primary-button" href="/debriefs?scope=season">Debrief da season</Link>
           <ThemeToggle />
         </div>
 

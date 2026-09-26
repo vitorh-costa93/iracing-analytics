@@ -1,23 +1,26 @@
-/** 09/09/2026: "qual a diferença entre essas duas análises, não tá clara pra mim" -- distância até a
- * melhor volta e desvio-padrão entre voltas medem coisas diferentes (ritmo absoluto vs. repetibilidade)
- * e podem divergir -- exatamente o caso que o piloto viu: ficou mais consistente (desvio-padrão menor)
- * só que numa marcha mais lenta (mais distante da própria melhor volta). Isso é uma leitura real, não
- * ruído, e merece frase própria em vez de deixar o piloto reconciliar dois números sozinho.
+/** Frase curta que reconcilia as duas medidas de ritmo da telemetria (distância média até a melhor
+ * volta e variação entre voltas), mostrada no item "Consistência dos pedais" da Evidência dos
+ * Debriefs. Reescrita na etapa 5 do redesign (25/09/2026) em linguagem de pista: "constante" em vez
+ * de "repetibilidade"/"desvio-padrão". Elas podem divergir (09/09/2026: mais constante, só que mais
+ * lento), e isso merece ser dito em vez de deixar o piloto reconciliar dois números.
  */
 
 const MATERIAL_SECONDS = 0.02;
 
 export function paceConsistencyNote(gapDeltaSeconds: number | null, stdDeltaSeconds: number | null): string | null {
+  if (gapDeltaSeconds === null && stdDeltaSeconds === null) return null;
   const gapImproved = gapDeltaSeconds !== null && gapDeltaSeconds < -MATERIAL_SECONDS;
   const gapWorsened = gapDeltaSeconds !== null && gapDeltaSeconds > MATERIAL_SECONDS;
   const stdImproved = stdDeltaSeconds !== null && stdDeltaSeconds < -MATERIAL_SECONDS;
   const stdWorsened = stdDeltaSeconds !== null && stdDeltaSeconds > MATERIAL_SECONDS;
 
-  if (gapImproved && stdImproved) return "Ritmo e repetibilidade melhoraram juntos, sem contrapartida aparente entre os dois.";
-  if (gapWorsened && stdImproved) return "Você ficou mais consistente, mas essa consistência veio numa marcha mais lenta: repetiu o mesmo ritmo sem errar, só que abaixo do seu potencial nessa combinação. Recuperar velocidade sem perder essa repetibilidade é o próximo passo, não o contrário.";
-  if (gapImproved && stdWorsened) return "Sua volta média ficou mais rápida, mas menos repetível — sinal de que você buscou mais do carro sem ainda reproduzir esse ritmo com precisão de volta a volta.";
-  if (gapWorsened && stdWorsened) return "Ritmo e repetibilidade pioraram juntos. Antes de tentar recuperar velocidade, vale confirmar uma sequência de voltas repetíveis de novo.";
-  if (gapImproved || stdImproved) return "Uma das duas melhorou; a outra ficou parecida com a referência.";
-  if (gapWorsened || stdWorsened) return "Uma das duas piorou; a outra ficou parecida com a referência.";
-  return null;
+  if (gapImproved && stdImproved) return "Mais rápido e mais constante que na referência. É isso que sustenta o resultado.";
+  if (gapWorsened && stdImproved) return "Você ficou mais constante, só que num ritmo mais lento. Agora é buscar velocidade sem perder essa constância.";
+  if (gapImproved && stdWorsened) return "Suas voltas ficaram mais rápidas, mas variaram mais. Falta repetir esse ritmo volta após volta.";
+  if (gapWorsened && stdWorsened) return "Ritmo e constância caíram. Antes de buscar tempo, volte a fazer voltas limpas e parecidas.";
+  if (gapImproved) return "Suas voltas ficaram mais perto da sua melhor volta; a constância ficou igual. Bom sinal.";
+  if (stdImproved) return "Você ficou mais constante volta a volta; o ritmo ficou igual. Bom sinal.";
+  if (gapWorsened) return "Suas voltas ficaram mais longe da sua melhor volta; a constância ficou igual.";
+  if (stdWorsened) return "Suas voltas variaram mais que na referência; o ritmo médio ficou igual.";
+  return "Ritmo e constância parecidos com a referência.";
 }

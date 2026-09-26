@@ -1,51 +1,58 @@
-/** 09/09/2026: "apesar de ter piorado meu iRating, eu fui mais rápido... meu desvio padrão foi
- * menor, então fui mais consistente, só que cometi erros de tomada de decisão e me envolvi em
- * muitas confusões" -- o piloto validou essa leitura olhando os números; isso cruza os dois lados
- * que hoje vivem em painéis separados (resultado vs. ritmo/consistência) numa frase só, direto na
- * Leitura Rápida, em vez de deixar o piloto somar sozinho. Só dispara quando ritmo e resultado
- * discordam de verdade (ritmo melhora e resultado piora, ou o oposto) -- quando os dois andam juntos
- * não há nada de contraintuitivo pra apontar.
+/** "Ritmo e resultado" da Leitura Rápida dos Debriefs (reescrito na etapa 5 do redesign, 25/09/2026).
+ * Antes era uma frase só para o caso "ritmo melhorou, resultado piorou". Agora lê a dispersão ritmo ×
+ * resultado (lib/debrief-charts.ts): em quantas weeks/corridas o resultado acompanhou o ritmo e o que
+ * aconteceu nas que não acompanharam. A telemetria (distância média até a melhor volta, Garage61)
+ * entra como confirmação quando ela contradiz o resultado -- o caso que o piloto pediu para ver em
+ * 09/09/2026 ("fui mais rápido, só que cometi erros de tomada de decisão").
  */
+import type { PacePoint, Quadrant } from "@/lib/debrief-charts";
+import { dec, plural } from "@/lib/debrief-narrative";
 
 const MATERIAL_SECONDS = 0.02;
 
-export function paceVsResultInsight(opts: {
+export type PaceVsResultInput = {
+  unit: "week" | "race";
+  points: PacePoint[];
+  quadrants: Record<Quadrant, number>;
+  split: number | null;
+  /** Saldo pior/melhor que a referência. */
   netWorse: boolean;
   netBetter: boolean;
-  // 09/09/2026: "se o saldo da semana for negativo, não foi bom" -- a frase de "melhorou/piorou"
-  // vem pronta de netClause() (lib/race-engineer-analysis.ts) em vez de ser montada aqui, pra nunca
-  // chamar uma perda menor de "saldo melhor" -- o mesmo erro de tom que a Leitura Rápida tinha.
-  netPhrase: string;
+  /** Variação da distância média até a melhor volta (telemetria), em segundos; negativo = mais perto. */
   gapDeltaSeconds: number | null;
-  stdDeltaSeconds: number | null;
-  incidentsNow: number | null;
-  incidentsBefore: number | null;
-}): string | null {
-  const { netWorse, netBetter, netPhrase, gapDeltaSeconds, stdDeltaSeconds, incidentsNow, incidentsBefore } = opts;
-  const paceImproved = gapDeltaSeconds !== null && gapDeltaSeconds < -MATERIAL_SECONDS;
-  const paceWorsened = gapDeltaSeconds !== null && gapDeltaSeconds > MATERIAL_SECONDS;
-  const consistencyImproved = stdDeltaSeconds !== null && stdDeltaSeconds < -MATERIAL_SECONDS;
-  const consistencyWorsened = stdDeltaSeconds !== null && stdDeltaSeconds > MATERIAL_SECONDS;
-  const incidentDelta = incidentsNow !== null && incidentsBefore !== null ? incidentsNow - incidentsBefore : null;
+};
 
-  const parts: string[] = [];
-  if (paceImproved) parts.push("ficou " + Math.abs(gapDeltaSeconds!).toFixed(3) + "s mais perto da sua melhor volta");
-  if (consistencyImproved) parts.push("ficou mais consistente (desvio-padrão " + Math.abs(stdDeltaSeconds!).toFixed(3) + "s menor)");
-  const improvedParts = parts.length ? parts.join(" e ") : null;
+const unitWord = (unit: "week" | "race", count: number) => (unit === "week" ? (count === 1 ? "week" : "weeks") : count === 1 ? "corrida" : "corridas");
 
-  const worsenedParts: string[] = [];
-  if (paceWorsened) worsenedParts.push("ficou " + Math.abs(gapDeltaSeconds!).toFixed(3) + "s mais distante da sua melhor volta");
-  if (consistencyWorsened) worsenedParts.push("ficou menos consistente (desvio-padrão " + Math.abs(stdDeltaSeconds!).toFixed(3) + "s maior)");
-  const worsenedText = worsenedParts.length ? worsenedParts.join(" e ") : null;
-
-  if (netWorse && improvedParts) {
-    const incidentNote = incidentDelta !== null && incidentDelta >= 1
-      ? " Os incidentes por corrida também subiram (" + incidentsNow!.toFixed(1) + " contra " + incidentsBefore!.toFixed(1) + ") -- é o que mais aponta pra decisão de corrida, não pro carro."
-      : " O carro e o setup não parecem ser o problema; vale revisar decisões em corrida (largadas, ultrapassagens, gestão de risco em tráfego).";
-    return "Seu ritmo " + improvedParts + " em relação à referência, mas " + netPhrase + " mesmo assim." + incidentNote;
+export function paceVsResultInsight(input: PaceVsResultInput): string {
+  const { unit, points, quadrants, split, netWorse, netBetter, gapDeltaSeconds } = input;
+  const total = points.length;
+  if (!total || split === null) return "Ainda não há volta de corrida registrada para cruzar ritmo e resultado.";
+  const sentences: string[] = [];
+  if (unit === "race") {
+    const average = points.reduce((sum, point) => sum + point.gapPct, 0) / total;
+    sentences.push("Sua melhor volta ficou, em média, a " + dec(average, 1) + "% da sua referência em cada pista.");
   }
-  if (netBetter && worsenedText) {
-    return "Seu ritmo " + worsenedText + " em relação à referência, mesmo assim " + netPhrase + " -- o resultado veio apesar do carro, não por causa dele.";
+  if (total < 3) {
+    sentences.push("Ainda são poucas " + unitWord(unit, 2) + " com volta registrada para tirar conclusão.");
+    return sentences.join(" ");
   }
-  return null;
+  const aligned = quadrants.fastGain + quadrants.slowLoss;
+  if (aligned === total) {
+    sentences.push("O resultado acompanhou o ritmo em todas as " + String(total) + " " + unitWord(unit, total) + ", sem surpresa.");
+  } else {
+    sentences.push("O ritmo acompanha o resultado em " + String(aligned) + " de " + plural(total, unitWord(unit, 1), unitWord(unit, 2)) + ".");
+    if (quadrants.fastLoss > 0) {
+      const fastLossPoints = points.filter((point) => point.gapPct <= split && point.delta <= 0);
+      const others = points.filter((point) => !(point.gapPct <= split && point.delta <= 0));
+      const incidentsOf = (list: PacePoint[]) => { const values = list.map((point) => point.incidents).filter((value): value is number => value !== null); return values.length ? values.reduce((a, b) => a + b, 0) / values.length : null; };
+      const lossIncidents = incidentsOf(fastLossPoints), otherIncidents = incidentsOf(others);
+      const incidentNote = lossIncidents !== null && otherIncidents !== null && lossIncidents - otherIncidents >= 1 ? ", com mais incidentes que o normal. O problema foi a corrida, não o carro" : "";
+      sentences.push((quadrants.fastLoss === 1 ? "Em uma" : "Em " + String(quadrants.fastLoss)) + ", você foi rápido e mesmo assim perdeu iRating" + incidentNote + ".");
+    }
+    if (quadrants.slowGain > 0) sentences.push((quadrants.slowGain === 1 ? "Em uma" : "Em " + String(quadrants.slowGain)) + ", ganhou mesmo sem o melhor ritmo: boa leitura de corrida.");
+  }
+  if (gapDeltaSeconds !== null && netWorse && gapDeltaSeconds < -MATERIAL_SECONDS) sentences.push("A telemetria confirma: suas voltas ficaram " + dec(Math.abs(gapDeltaSeconds), 2) + " s mais perto da sua melhor volta do que na referência.");
+  else if (gapDeltaSeconds !== null && netBetter && gapDeltaSeconds > MATERIAL_SECONDS) sentences.push("Atenção: na telemetria suas voltas ficaram " + dec(gapDeltaSeconds, 2) + " s mais longe da sua melhor volta. O resultado veio antes do ritmo.");
+  return sentences.join(" ");
 }
