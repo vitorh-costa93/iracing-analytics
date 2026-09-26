@@ -136,18 +136,11 @@
 
 /* Cabeçalho: variante curta e menu de ações (⋯) só no celular; bloco compacto "Por pista" idem. */
 .ngo-aside { display: flex; align-items: center; gap: 12px; }
-.ngo-eb-short, .ngo-tools-toggle, .ngo-perf-mobile { display: none; }
-.ngo-bw { display: flex; flex-direction: column; }
-.ngo-bw-row { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
-.ngo-bw-line { display: flex; justify-content: space-between; font-size: 13px; }
-.ngo-bw-line span { font-weight: 600; }
-.ngo-bw-bar { height: 6px; background: var(--ng-code-bg); border-radius: 3px; position: relative; }
-.ngo-bw-bar > span { position: absolute; top: 0; height: 6px; border-radius: 3px; }
+.ngo-eb-short, .ngo-tools-toggle { display: none; }
 @media (max-width: 720px) {
-  .ngo-eb-full, .ngo-counter, .ngo-perf { display: none; }
+  .ngo-eb-full, .ngo-counter { display: none; }
   .ngo-eb-short { display: inline; }
   .ng-h1 .ngo-eb-short { text-transform: uppercase; }
-  .ngo-perf-mobile { display: flex; }
   .ngo-page-title-wrap { position: relative; }
   .ng-page-title { position: relative; }
   .ngo-aside { position: absolute; top: 0; right: 0; }

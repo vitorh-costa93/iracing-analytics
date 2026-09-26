@@ -8,7 +8,8 @@ import { CategoryHeading, KpiCard, Panel, PageTitle, SegmentedControl, SelectPil
 import type { KpiCategory, KpiTone } from "@/components/ui";
 import RaceScatter from "@/components/overview/RaceScatter";
 import LatestRaces from "@/components/overview/LatestRaces";
-import { BestWorstTracks, type WinnerGapItem, DeltaByContext, GapToWinner, gapOverall } from "@/components/overview/PerformancePanels";
+import { type WinnerGapItem, DeltaByContext, GapToWinner, gapOverall } from "@/components/overview/PerformancePanels";
+import { useIsMobile } from "@/lib/use-is-mobile";
 import { signedNumber } from "@/components/overview/format";
 import { trackUiEvent } from "@/lib/track-ui-event";
 import { weekLabel, weekShort } from "@/lib/season-week";
@@ -157,7 +158,10 @@ export default function Home() {
   const [message, setMessage] = useState<string | null>(null);
   const [chartCategory, setChartCategory] = useState<Category>("sports");
   // Celular (etapa 7, Mobile.dc.html): mostra uma categoria de KPIs por vez; no desktop as duas aparecem.
-  const [mobileKpiCategory, setMobileKpiCategory] = useState<Category>("sports");
+  const [mobileFilter, setMobileFilter] = useState<"all" | Category>("sports");
+  const isMobile = useIsMobile();
+  // No celular o filtro do topo vale para a página inteira (KPIs, gráfico, performance, corridas e contextos).
+  const pageFilter: "all" | Category = isMobile ? mobileFilter : "all";
   const [perfTab, setPerfTab] = useState<"sf" | "gt3" | "imsa">("gt3");
   // Options depend on which series this driver actually raced in that category this season, not a
   // hardcoded taxonomy — the real list (GT3 Challenge Fixed, IMSA, GT Sprint, Prototype, LMP2...)
@@ -251,7 +255,9 @@ export default function Home() {
   }
 
   const previousLabel = shortSeason(data.season.previous.name);
-  const categoryRaces = data.races.filter((race) => race.ratingCategory === (chartCategory === "formula" ? "formula_car" : "sports_car") && race.delta !== null);
+  const activeChartCategory: Category = pageFilter === "all" ? chartCategory : pageFilter;
+  const categoryRaces = data.races.filter((race) => race.ratingCategory === (activeChartCategory === "formula" ? "formula_car" : "sports_car") && race.delta !== null);
+  const racesShown = pageFilter === "all" ? data.races : data.races.filter((race) => race.ratingCategory === (pageFilter === "formula" ? "formula_car" : "sports_car"));
   // Sorted by how many races each series has this season — the driver's most-raced series leads
   // the dropdown instead of alphabetical order burying it.
   const seriesOptions = Array.from(categoryRaces.reduce((counts, race) => {
@@ -289,15 +295,16 @@ export default function Home() {
       track: race.track,
       matches: (row: HistoricalRow) => row.track === race.track && (carClass ? row.carClass === carClass : row.car === race.car),
     };
-  })).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number }>>((items, context) => {
+  })).reduce<Array<{ key: string; series: string; track: string; avg: number | null; races: number; isFormula: boolean }>>((items, context) => {
     const key = `${context.series}::${context.track}`;
     if (items.some((item) => item.key === key)) return items;
     const contextRows = data.historical.filter(context.matches);
+    const isFormula = contextRows.length > 0 ? contextRows.every((row) => /super formula/i.test(row.car)) : /super formula|formula/i.test(context.series);
     const races = contextRows.reduce((sum, row) => sum + row.races, 0);
     const avg = races >= 2 ? contextRows.reduce((sum, row) => sum + row.delta, 0) / races : null;
-    items.push({ key, series: context.series, track: context.track, avg, races });
+    items.push({ key, series: context.series, track: context.track, avg, races, isFormula });
     return items;
-  }, []).slice(0, 3);
+  }, []).filter((item) => pageFilter === "all" || (pageFilter === "formula") === item.isFormula).slice(0, 3);
 
   // ---- Night Grid: dados dos KPIs (mesmas fontes de antes: data.kpis, data.streaks, data.weekly, data.races)
   const prevShort = previousLabel.replace(/^\d{4}\s*/, "");
@@ -348,20 +355,13 @@ export default function Home() {
     };
   });
 
-  const perfMode = perfTab === "gt3" ? gt3Mode : perfTab === "imsa" ? imsaMode : "track";
-  const perfItems = perfTab === "sf" ? rankings.tracks : perfTab === "gt3" ? rankings.gt3 : rankings.imsa;
-  const perfLabel = perfTab === "sf" ? "SUPER FORMULA 23" : perfTab === "gt3" ? "GT3" : "IMSA GTP / LMP2";
-  // Celular: mesmo recorte e mesma regra do desktop (aba ativa, pista, mínimo de 2 corridas), só que compacto.
-  const mobileTracks = (() => {
-    const tabRows = perfTab === "sf" ? data.historical.filter((row) => /super formula/i.test(row.car))
-      : perfTab === "gt3" ? data.historical.filter((row) => row.carClass === "GT3")
-      : data.historical.filter((row) => (row.carClass === "GTP" || row.carClass === "LMP2") && (imsaClass === "all" || row.carClass === imsaClass));
-    const items = aggregateRows(tabRows, "track", perfTab === "imsa");
-    const gains = items.filter((i) => i.avgDelta > 0).sort((a, b) => b.avgDelta - a.avgDelta).slice(0, 2);
-    const drops = items.filter((i) => i.avgDelta < 0).sort((a, b) => a.avgDelta - b.avgDelta).slice(0, 2);
-    return [...gains, ...drops];
-  })();
-  const gapItems = data.winnerGapBySegment ? data.winnerGapBySegment[perfTab] : data.winnerGapByTrack ?? [];
+  const perfTabsAvailable: Array<"sf" | "gt3" | "imsa"> = pageFilter === "formula" ? ["sf"] : pageFilter === "sports" ? ["gt3", "imsa"] : ["sf", "gt3", "imsa"];
+  const activePerfTab = perfTabsAvailable.includes(perfTab) ? perfTab : perfTabsAvailable[0];
+  const perfMode = activePerfTab === "gt3" ? gt3Mode : activePerfTab === "imsa" ? imsaMode : "track";
+  const perfItems = activePerfTab === "sf" ? rankings.tracks : activePerfTab === "gt3" ? rankings.gt3 : rankings.imsa;
+  const perfLabel = activePerfTab === "sf" ? "SUPER FORMULA 23" : activePerfTab === "gt3" ? "GT3" : "IMSA GTP / LMP2";
+  const perfTabOptions = ([{ value: "sf", label: "Super Formula" }, { value: "gt3", label: "GT3" }, { value: "imsa", label: "IMSA GTP / LMP2" }] as const).filter((option) => perfTabsAvailable.includes(option.value));
+  const gapItems = data.winnerGapBySegment ? data.winnerGapBySegment[activePerfTab] : data.winnerGapByTrack ?? [];
   const seasonWeek = data.kpis.formula.irating.week;
 
   return (
@@ -385,12 +385,12 @@ export default function Home() {
           <Link className="primary-button" href="/debriefs?scope=season">Debrief da season</Link>
         </div>
 
-        <SegmentedControl className="ngo-mobile-filter" ariaLabel="Categoria dos indicadores" value={mobileKpiCategory} onChange={setMobileKpiCategory}
-          options={[{ value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
+        <SegmentedControl className="ngo-mobile-filter" ariaLabel="Categoria da página" value={mobileFilter} onChange={(value) => { setMobileFilter(value); setChartSeries("all"); }}
+          options={[{ value: "all", label: "Todas" }, { value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
 
         <section className="ngo-kpis" aria-label="Indicadores da temporada">
           {kpiGroups.map((group) => (
-            <div className="ngo-kpi-group" key={group.key} data-mobile-active={group.key === mobileKpiCategory ? "" : undefined}>
+            <div className="ngo-kpi-group" key={group.key} data-mobile-active={mobileFilter === "all" || group.key === mobileFilter ? "" : undefined}>
               <CategoryHeading category={group.category}>{group.name}</CategoryHeading>
               <div className="ngo-kpi-grid">{group.cards}</div>
             </div>
@@ -405,8 +405,10 @@ export default function Home() {
             titleSize="md"
             actions={
               <>
-                <SegmentedControl ariaLabel="Categoria do gráfico" value={chartCategory} onChange={(value) => { setChartCategory(value); setChartSeries("all"); }}
-                  options={[{ value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
+                {pageFilter === "all" && (
+                  <SegmentedControl ariaLabel="Categoria do gráfico" value={chartCategory} onChange={(value) => { setChartCategory(value); setChartSeries("all"); }}
+                    options={[{ value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
+                )}
                 {seriesOptions.length > 1 && (
                   <SelectPill ariaLabel="Filtrar por série" value={chartSeries} onChange={setChartSeries}
                     options={[{ value: "all", label: `Todas as séries (${categoryRaces.length})` }, ...seriesOptions.map(([series, count]) => ({ value: series, label: `${series} (${count})` }))]} />
@@ -440,12 +442,6 @@ export default function Home() {
           </Panel>
         </section>
 
-        <Panel className="ngo-perf-mobile" kicker={`POR PISTA · ${perfLabel}`} title="Melhores e piores" titleSize="md"
-          actions={<SegmentedControl ariaLabel="Categoria de performance" value={perfTab} onChange={setPerfTab}
-            options={[{ value: "sf", label: "SF" }, { value: "gt3", label: "GT3" }, { value: "imsa", label: "IMSA" }]} />}>
-          <BestWorstTracks items={mobileTracks} />
-        </Panel>
-
         <section className="ngo-perf">
           <div className="ngo-perf-head">
             <div>
@@ -454,18 +450,19 @@ export default function Home() {
               <div className="ng-panel-subtitle">Todo o período com dados detalhados disponíveis · onde você rende melhor e pior, por duas medidas.</div>
             </div>
             <div className="ngo-perf-controls">
-              <SegmentedControl ariaLabel="Categoria de performance" value={perfTab} onChange={setPerfTab}
-                options={[{ value: "sf", label: "Super Formula" }, { value: "gt3", label: "GT3" }, { value: "imsa", label: "IMSA GTP / LMP2" }]} />
-              {perfTab !== "sf" && (
+              {perfTabOptions.length > 1 && (
+                <SegmentedControl ariaLabel="Categoria de performance" value={activePerfTab} onChange={setPerfTab} options={perfTabOptions} />
+              )}
+              {activePerfTab !== "sf" && (
                 <SegmentedControl ariaLabel="Agrupar por" value={perfMode as RankingMode}
-                  onChange={(mode) => (perfTab === "gt3" ? setGt3Mode(mode) : setImsaMode(mode))}
+                  onChange={(mode) => (activePerfTab === "gt3" ? setGt3Mode(mode) : setImsaMode(mode))}
                   options={[{ value: "track", label: "Pista" }, { value: "car", label: "Carro" }]} />
               )}
             </div>
           </div>
           <div className="ngo-perf-grid">
             <Panel kicker={`MEDIDA 1 · ${perfLabel}`} title={`Média de Δ iRating por ${perfMode === "car" ? "carro" : "pista"}`} titleSize="sm" as="article"
-              actions={perfTab === "imsa" && imsaMode === "track" ? (
+              actions={activePerfTab === "imsa" && imsaMode === "track" ? (
                 <SegmentedControl ariaLabel="Classe IMSA" value={imsaClass} onChange={setImsaClass}
                   options={[{ value: "all", label: "Todos" }, { value: "GTP", label: "GTP" }, { value: "LMP2", label: "LMP2" }]} />
               ) : undefined}>
@@ -479,7 +476,7 @@ export default function Home() {
         </section>
 
         <Panel title="Últimas corridas" titleSize="md" className="ngo-races-panel" subtitle={undefined}>
-          <LatestRaces races={data.races} />
+          <LatestRaces races={racesShown} />
         </Panel>
       </main>
     </div>
