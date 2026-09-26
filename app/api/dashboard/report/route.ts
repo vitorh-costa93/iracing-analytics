@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { buildEngineerSection, Category, RaceInput } from "@/lib/race-engineer-analysis";
+import { compareSeasons } from "@/lib/season-comparison";
+import { buildContexts } from "@/lib/debrief-contexts";
 import { currentSeasonWeek } from "@/lib/season-week";
 import { retirementEvents } from "@/lib/race-retirement-events";
 import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
@@ -9,7 +11,7 @@ import { buildRecommendation } from "@/lib/recommendation";
 import { paceConsistencyNote } from "@/lib/pace-consistency-note";
 import { buildPaceChart, currentStreak, inputConsistencyPct, longestStreak, lossTimingBins, PACE_OUTLIER_PCT } from "@/lib/debrief-charts";
 import { dec, lossTimingText, quickSummary, weekPressureSubtitle, weekRacesSubtitle } from "@/lib/debrief-narrative";
-import type { DebriefContextRow, DebriefRaceRow, DebriefReport, DebriefSection } from "@/lib/debrief-types";
+import type { DebriefRaceRow, DebriefReport, DebriefSection, SeasonCompareRow } from "@/lib/debrief-types";
 
 export const dynamic="force-dynamic";
 export const maxDuration=300;
@@ -42,7 +44,6 @@ async function racesFor(driverId:string,start:string,end:string){const all:RaceI
 function historyBefore(driverId:string,before:string){const key=driverId+"|"+before,cached=historyCache.get(key);if(cached&&cached.expiresAt>Date.now())return cached.promise;const promise=(async()=>{const all:HistoryRow[]=[];for(let from=0;;from+=1000){const{data,error}=await supabaseAdmin.from("race_results").select("raced_at,category,series_name,irating_delta").eq("driver_id",driverId).lt("raced_at",before).in("category",CATEGORIES).order("raced_at",{ascending:true}).range(from,from+999);if(error)fail("race_results",error);all.push(...((data??[])as HistoryRow[]));if(!data||data.length<1000)return all}})();historyCache.set(key,{expiresAt:Date.now()+REPORT_CACHE_TTL_MS,promise});promise.catch(()=>historyCache.delete(key));return promise}
 
 const raceRow=(row:RaceInput,lossTotal:number,threshold:number):DebriefRaceRow=>({date:row.raced_at,track:row.track_name,car:row.car_name,grid:row.grid_position,finish:row.finish_position,sof:row.sof,delta:delta(row),lossShare:delta(row)<0&&lossTotal?Math.round(Math.abs(delta(row))/lossTotal*100):null,severe:delta(row)<-threshold});
-function contexts(rows:RaceInput[]){const groups=new Map<string,RaceInput[]>();for(const row of rows){const key=row.track_name+"|"+row.car_name;groups.set(key,[...(groups.get(key)??[]),row])}const list:DebriefContextRow[]=[...groups.values()].map(items=>({track:items[0].track_name,car:items[0].car_name,races:items.length,delta:total(items.map(delta))}));return{losses:list.filter(item=>item.delta<0).sort((a,b)=>a.delta-b.delta).slice(0,3),gains:list.filter(item=>item.delta>0).sort((a,b)=>b.delta-a.delta).slice(0,3)}}
 
 export async function GET(request:NextRequest){
  try{
@@ -92,21 +93,35 @@ export async function GET(request:NextRequest){
   const confidenceLabel=base.confidence as DebriefSection["confidence"];
   const incidentStats=(value:typeof base.incidentSummary.current)=>({races:value.races,average:value.average,highCount:value.highCount,highRate:value.highRate});
   const pedal=(profile:typeof inputs)=>({brake:inputConsistencyPct(profile.brakeRepeatabilityPct),throttle:inputConsistencyPct(profile.throttleRepeatabilityPct),steering:inputConsistencyPct(profile.steeringRepeatabilityPct)});
+  const weekAverage=baseline.length?referenceTotal/baseline.length:null;
+  const referenceLine=scope==="week"&&weekAverage!==null?"Referência: média das outras semanas desta season = "+(weekAverage>0?"+":weekAverage<0?"−":"")+Math.abs(weekAverage).toFixed(1).replace(".",",")+" de iRating por corrida em "+baseline.length+(baseline.length===1?" corrida.":" corridas."):null;
+  // Restaurado de 94c4d8d: tabela melhorou / piorou / estável (só season) com as linhas extras de ritmo e constância.
+  let seasonComparison:DebriefSection["evidence"]["seasonComparison"]=null;
+  if(scope==="season"){const cmp=compareSeasons(now,before),extra:SeasonCompareRow[]=[];
+   const dir=(value:number):SeasonCompareRow["direction"]=>value<-MATERIAL_SECONDS?"improved":value>MATERIAL_SECONDS?"worsened":"stable";
+   if(gapDeltaSeconds!==null)extra.push({metric:"Distância até a sua melhor volta",unit:"s",now:round(inputs.averageGapToBestSeconds,2),before:round(inputReference.averageGapToBestSeconds,2),change:round(gapDeltaSeconds,2),direction:dir(gapDeltaSeconds)});
+   if(stdDeltaSeconds!==null)extra.push({metric:"Variação entre voltas (desvio-padrão)",unit:"s",now:round(inputs.lapStdDevSeconds,2),before:round(inputReference.lapStdDevSeconds,2),change:round(stdDeltaSeconds,2),direction:dir(stdDeltaSeconds)});
+   const pick=(list:Array<{metric:string;unit:SeasonCompareRow["unit"];now:number|null;before:number|null;change:number|null}>,direction:SeasonCompareRow["direction"]):SeasonCompareRow[]=>list.map(item=>({metric:item.metric,unit:item.unit,now:item.now,before:item.before,change:item.change,direction}));
+   seasonComparison={improved:[...pick(cmp.improved,"improved"),...extra.filter(x=>x.direction==="improved")],worsened:[...pick(cmp.worsened,"worsened"),...extra.filter(x=>x.direction==="worsened")],stable:[...pick(cmp.stable,"stable"),...extra.filter(x=>x.direction==="stable")]};
+  }
+  const sev=base.severity;
   const splitText=pace.split===null?"":" Hoje o seu normal é "+dec(pace.split,2)+"%.";
   const section:DebriefSection={
    segment:segment.id,label:segment.label,week:scope==="week"?latestWeek:null,confidence:confidenceLabel,races:selected.length,referenceRaces:baseline.length,
-   narrative:{summary:summaryText,paceVsResult:paceText,action,lossTiming,trendSubtitle},
+   narrative:{summary:summaryText,referenceLine,paceVsResult:paceText,action,lossTiming,trendSubtitle},
    kpis:{net,referenceNet:baseline.length?round(referenceCompare,1):null,severeCount:base.severity.count,severeThreshold:threshold,retirements:survival.events.length,retirementRate:selected.length?Math.round(survival.events.length/selected.length*100):null,incidentsAvg:incidentsNow,incidentsRef,streak:{length:streak.length,direction:streak.direction,recordGain:longestStreak(allDeltas,"gain"),recordLoss:longestStreak(allDeltas,"loss")}},
    pace,
    lossTiming:{current:timing.bins,reference:timingReference.bins,currentSample:timing.sample,referenceSample:timingReference.sample},
    weeks,
    raceList:scope==="week"?[...ordered].reverse().map(row=>raceRow(row,lossTotal,threshold)):[],
    impactRaces:[...selected].sort((a,b)=>Math.abs(delta(b))-Math.abs(delta(a))).slice(0,4).map(row=>raceRow(row,lossTotal,threshold)),
-   contexts:contexts(selected),
+   contexts:buildContexts(selected,lossTotal),
    evidence:{
+    severity:{threshold:sev.threshold,count:sev.count,rate:sev.rate,referenceCount:sev.referenceCount,referenceRate:sev.referenceRate,lossTotal:sev.lossTotal,referenceLossTotal:sev.referenceLossTotal,shareOfLosses:sev.shareOfLosses,referenceShareOfLosses:sev.referenceShareOfLosses,worstRunLength:sev.worstRunLength,worstRunDelta:sev.worstRunDelta,referenceWorstRunLength:sev.referenceWorstRunLength,referenceWorstRunDelta:sev.referenceWorstRunDelta},
+    seasonComparison,
     incidents:{current:incidentStats(base.incidentSummary.current),reference:incidentStats(base.incidentSummary.reference)},
-    retirements:{items:survival.events.slice(0,12).map(event=>{const[car,track]=event.context.split(" • ");return{date:event.racedAt,track:track??event.context,car:car??"",type:event.confidence==="probable"?"Provável abandono (saiu antes de 80% da corrida)":event.type,confidence:event.confidence,completedLaps:event.completedLaps,delta:event.delta}}),currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Math.round(survival.events.length/selected.length*100):null,referenceRate:baseline.length?Math.round(survivalReference.events.length/baseline.length*100):null},
-    pedals:{current:pedal(inputs),reference:pedal(inputReference),laps:inputs.laps,referenceLaps:inputReference.laps,gapDeltaSeconds:round(gapDeltaSeconds,3),stdDeltaSeconds:round(stdDeltaSeconds,3),note:paceConsistencyNote(gapDeltaSeconds,stdDeltaSeconds)},
+    retirements:{items:survival.events.slice(0,12).map(event=>{const[car,track]=event.context.split(" • ");return{date:event.racedAt,track:track??event.context,car:car??"",type:event.confidence==="probable"?"Provável abandono (saiu antes de 80% da corrida)":event.type,confidence:event.confidence,completedLaps:event.completedLaps,delta:event.delta,timeOnTrackSeconds:event.timeOnTrackSeconds,progressPct:event.progressPct}}),currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Math.round(survival.events.length/selected.length*100):null,referenceRate:baseline.length?Math.round(survivalReference.events.length/baseline.length*100):null},
+    pedals:{current:pedal(inputs),reference:pedal(inputReference),laps:inputs.laps,referenceLaps:inputReference.laps,gapSeconds:round(inputs.averageGapToBestSeconds,2),referenceGapSeconds:round(inputReference.averageGapToBestSeconds,2),stdSeconds:round(inputs.lapStdDevSeconds,2),referenceStdSeconds:round(inputReference.lapStdDevSeconds,2),gapDeltaSeconds:round(gapDeltaSeconds,3),stdDeltaSeconds:round(stdDeltaSeconds,3),note:paceConsistencyNote(gapDeltaSeconds,stdDeltaSeconds)},
     streaks:{gain:longestStreak(periodDeltas,"gain"),loss:longestStreak(periodDeltas,"loss"),referenceGain:longestStreak(baselineDeltas,"gain"),referenceLoss:longestStreak(baselineDeltas,"loss"),recordGain:longestStreak(allDeltas,"gain")},
     method:[
      "Só corridas oficiais importadas do iRStats. Treino e classificação não entram.",
