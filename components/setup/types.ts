@@ -23,5 +23,9 @@ export type CompareResult = {
   summary: string;
   changes: CompareChange[];
   explanation: SetupExplanation;
+  analysis?: {
+    topCategories: Array<{ category: string; label: string; count: number }>;
+    topContributors: Array<{ label: string; before: string; after: string; category: string }>;
+  };
 };
 export type LibraryItem = { carFolder: string; filename: string; provider: string; kind: string; condition: string; track: string; week: number | null; size: number; modifiedAt: string };

@@ -15,6 +15,7 @@ describe("buildSystemPrompt", () => {
     expect(prompt).toContain("aumente");
     expect(prompt).toContain("diminua");
     expect(prompt).toContain(".sto original NÃO é reescrito");
+    expect(prompt).toMatch(/TODA resposta que trouxer um bloco de proposta/);
     expect(prompt).toMatch(/pergunte isso primeiro/);
     expect(prompt).toMatch(/Nunca invente um valor contínuo/);
     expect(prompt).toMatch(/nunca "Setup A" ou "Setup B"/);

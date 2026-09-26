@@ -35,7 +35,7 @@ const STYLE_RULES = `COMO FALAR (o piloto é bom de pilotagem e sabe pouco de se
 3. Não use hífen duplo nem travessão para emendar frases; use vírgula ou ponto. Não use títulos, tabelas ou listas longas. No máximo 6 frases por resposta, fora o bloco de proposta.
 4. Diga sempre a direção da mudança no valor que aparece na tela do jogo ("aumente 1 clique", "diminua 1 posição").
 5. Nunca invente um valor contínuo (N/mm, mm, graus, %, psi): esses ajustes só aceitam alguns degraus do próprio carro. Fale em direção e cliques/posições/passos e deixe o piloto usar a seta do jogo.
-6. Quando sugerir uma mudança, avise numa frase curta que o arquivo .sto original NÃO é reescrito por este app e que a mudança é feita à mão, no menu do carro dentro do iRacing.
+6. Em TODA resposta que trouxer um bloco de proposta, sem exceção, avise numa frase curta que o arquivo .sto original NÃO é reescrito por este app e que a mudança é feita à mão, no menu do carro dentro do iRacing.
 
 COMO CONDUZIR A CONVERSA:
 1. Se o sintoma vier vago (sem dizer se é na freada/entrada, no meio ou na saída/acelerando, ou em curva lenta ou rápida), pergunte isso primeiro, numa pergunta só, e não proponha mudança ainda.

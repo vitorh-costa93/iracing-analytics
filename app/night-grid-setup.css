@@ -104,6 +104,11 @@
 .ngs-glossary { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 8px; align-items: center; }
 .ngs-glossary-label { font-size: 12px; color: var(--ng-soft); }
 .ngs-glossary-chip { min-height: 28px; padding: 4px 12px; box-sizing: border-box; border: 1px solid var(--ng-border); border-radius: var(--ng-radius-pill); background: var(--ng-header); font-size: 12.5px; display: inline-flex; align-items: center; }
+.ngs-orientation { border-left: 2px solid var(--ng-caution); padding-left: 10px; max-width: 900px; }
+.ngs-contributors { margin-top: 8px; }
+.ngs-contributors ul { list-style: none; margin: 4px 0 0; padding: 0; display: grid; gap: 4px; font-size: 13px; color: var(--ng-muted); }
+.ngs-contributors li { overflow-wrap: anywhere; }
+.ngs-contributors strong { color: var(--ng-text); font-weight: 600; }
 .ngs-compare-details { margin-top: 10px; border-top: 1px solid var(--ng-line); padding-top: 8px; }
 .ngs-compare-details > summary { cursor: pointer; font-size: 13px; color: var(--ng-muted); list-style: none; display: inline-flex; gap: 6px; align-items: center; }
 .ngs-compare-details > summary::before { content: "▸"; font-size: 11px; transition: transform .15s ease; }
