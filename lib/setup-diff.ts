@@ -35,7 +35,7 @@ export function effect(label: string, before: string, after: string, section?: s
   // Não é ajuste: é o desgaste observado depois da sessão. Fica na lista porque ajuda a ler pressão e cambagem.
   if (/wear|tread|desgaste|remaining/.test(key)) return { text: `Isso não se ajusta: é o desgaste que o pneu mostrou no fim da sessão (${change}). Se um lado gastou bem mais que o outro, olhe a pressão e a cambagem daquele eixo.`, actionable: true, settable: false };
   if (/last.*(hot|temp)|hot.*pressure/.test(key)) return { text: `Isso não se ajusta: é a pressão/temperatura que o pneu mostrou no fim da sessão (${change}). Serve para acertar a pressão fria, não para copiar.`, actionable: true, settable: false };
-  if (/gap|defl/.test(key)) return { text: `Isso é uma leitura da garagem (${change}), consequência da mola e da altura; não se ajusta direto.`, actionable: true, settable: false };
+  if (/\bgap\b|defl/.test(key)) return { text: `Isso é uma leitura da garagem (${change}), consequência da mola e da altura; não se ajusta direto.`, actionable: true, settable: false };
 
   if (/display|dash|page|shift light|led|alert/.test(key)) return { text: `Só muda o que aparece no painel (${change}); o carro anda igual.`, actionable: false, settable: true };
 

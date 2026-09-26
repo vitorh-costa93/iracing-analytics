@@ -104,7 +104,7 @@ describe("shortPairNames e leituras da sessão", () => {
       [{ tab: "Tires", section: "Left Front", label: "Last Hot Pressure", metric_value: "131 kPa" }, { tab: "Chassis", section: "Front", label: "Heave Spring Gap", metric_value: "11.3 mm" }],
       [{ tab: "Tires", section: "Left Front", label: "Last Hot Pressure", metric_value: "138 kPa" }, { tab: "Chassis", section: "Front", label: "Heave Spring Gap", metric_value: "10.5 mm" }],
     );
-    expect(changes.every((change) => !change.settable)).toBe(true);
+    expect(changes.map((change) => [change.label, change.settable])).toEqual([["Last Hot Pressure", false], ["Heave Spring Gap", false]]);
     expect(plainParameterName("Heave Spring Gap", "Front")).toBe("Folga da mola central dianteira");
     expect(explainComparison(changes, "A1", "B1").glossary).toEqual([]);
   });

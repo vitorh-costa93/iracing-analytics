@@ -93,8 +93,8 @@ export function plainParameterName(label: string, section?: string): string {
  * ("TS 26S4 SF23 W01 Interlagos Quali" × "... Race" vira "Quali" × "Race") e o código de season/week
  * (26S4, W01). Se sobrar nada ou os dois ficarem iguais, devolve os nomes inteiros. */
 export function shortPairNames(a: string, b: string): [string, string] {
-  const words = (value: string) => value.split(/s+/).filter(Boolean);
-  const noise = (word: string) => /^d{2}Sd$/i.test(word) || /^Wd{1,2}$/i.test(word);
+  const words = (value: string) => value.split(/\s+/).filter(Boolean);
+  const noise = (word: string) => /^\d{2}S\d$/i.test(word) || /^W\d{1,2}$/i.test(word);
   const setA = new Set(words(a).map((word) => word.toLowerCase()));
   const setB = new Set(words(b).map((word) => word.toLowerCase()));
   const keep = (value: string, other: Set<string>) => words(value).filter((word) => !other.has(word.toLowerCase()) && !noise(word)).join(" ");
