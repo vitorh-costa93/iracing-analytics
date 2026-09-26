@@ -32,4 +32,5 @@ Objetivo: fidelidade 100% ao mockup, análises novas, tudo funcionando. Substitu
 - [x] Etapa 4 (26/09/2026: Race Debrief e Comparação de carros, microcorreções)
 - [x] Etapa 5 (26/09/2026: página /debriefs com season e week, modal removido)
 - [x] Etapa 6 (26/09/2026: Setup Lab, chat com proposta estruturada, comparador de dois setups; chat com OpenAI ainda sem teste real local)
-- [ ] Etapa 7 (Mobile) · [ ] Revisão de fidelidade e limpeza final · [ ] Publicação em produção
+- [x] Etapa 7 (26/09/2026: mobile, barra inferior, popup em tela cheia)
+- [ ] Revisão de fidelidade e limpeza final · [ ] Publicação em produção
