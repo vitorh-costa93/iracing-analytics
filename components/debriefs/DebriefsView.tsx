@@ -13,7 +13,7 @@ import { DivergingRow, LossTimingBars, PaceScatter, WeekPressureBars } from "./D
 type Scope = "week" | "season";
 type Segment = "formula" | "gt3" | "imsa";
 
-// Versão do cache local: v8 (contextos da week com mínimo de 1 corrida; v7: contextos por média, (contextos por média, evidência completa; contrato em lib/debrief-types.ts). Suba ao mudar a
+// Versão do cache local: v8 (contextos da week com mínimo de 1 corrida; v7: contextos por média, evidência completa; contrato em lib/debrief-types.ts). Suba ao mudar a
 // forma do payload, para nenhum navegador carregar um payload antigo direto no estado (bug de 08/09).
 const CACHE_VERSION = "iracing-debrief-v8-";
 const SEGMENTS: Array<{ value: Segment; label: string }> = [

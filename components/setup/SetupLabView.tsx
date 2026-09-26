@@ -93,7 +93,8 @@ export default function SetupLabView() {
     let cancelled = false;
     setCompareResult(null); setCompareError(null); setNotice(null);
     if (!selected) { setConversation([]); setActiveValue(""); return; }
-    const preferred = selected.uploads.find((item) => item.setup_kind === "fixed")?.id ?? selected.uploads[0]?.id ?? "";
+    // Critério da versão anterior (94c4d8d): o nome do arquivo com "fixed" manda; o tipo gravado só entra em segundo lugar.
+    const preferred = selected.uploads.find((item) => /fixed/i.test(item.filename))?.id ?? selected.uploads.find((item) => item.setup_kind === "fixed")?.id ?? selected.uploads[0]?.id ?? "";
     setActiveValue(preferred);
     setBaseId(preferred);
     setComparisonId(selected.uploads.find((item) => item.id !== preferred)?.id ?? "");
