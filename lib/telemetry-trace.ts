@@ -58,7 +58,10 @@ function despikeChannel(points: TracePoint[], field: ChannelKey, window = 5) {
   });
 }
 
-export function parseTelemetryCsv(csv: string): Trace {
+/** `maxPoints` (padrão 900, o que o navegador desenha) limita as amostras por decimação; o servidor
+ * passa `Infinity` quando precisa da resolução cheia (microcorreções, lib/microcorrections.ts). */
+export function parseTelemetryCsv(csv: string, options: { maxPoints?: number } = {}): Trace {
+  const maxPoints = options.maxPoints ?? 900;
   const lines = csv.replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.trim());
   if (lines.length < 2) throw new Error("CSV de telemetria vazio ou incompleto");
   const delimiter = (lines[0].match(/;/g)?.length ?? 0) > (lines[0].match(/,/g)?.length ?? 0) ? ";" : ",";
@@ -129,7 +132,7 @@ export function parseTelemetryCsv(csv: string): Trace {
   // span (e.g. a file that's already a single, slightly-trimmed lap) -- same result as before this
   // fix for the common single-lap case, just routed through the same lap-detection path.
   const points = bestLap ?? [...chronological].sort((a, b) => a.distance - b.distance);
-  const stride = Math.max(1, Math.ceil(points.length / 900));
+  const stride = Number.isFinite(maxPoints) ? Math.max(1, Math.ceil(points.length / maxPoints)) : 1;
   let trackLengthMeters = 0;
   for (let index = 1; index < points.length; index += 1) {
     const a = points[index - 1], b = points[index];

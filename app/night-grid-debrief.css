@@ -1,0 +1,175 @@
+/* Night Grid · Telemetry Lab, Race Debrief e Comparação de carros (redesign etapa 4, 26/09/2026).
+ * Fonte da verdade visual: docs/redesign-mockup/Debrief.dc.html e Compare.dc.html (1440 px).
+ * Tokens em app/night-grid.css (--ng-) e app/night-grid-telemetry.css (--ngt-). Prefixos: .ngr- (Race
+ * Debrief) e .ngc- (Comparação de carros). Não confundir com .ngd- (página /debriefs, etapa 5). */
+:root { --ngr-track: #1E2748; }
+:root[data-theme="light"] { --ngr-track: #DDE3F3; }
+
+.ngr-screen, .ngc-screen { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ngr-screen[aria-busy="true"] { opacity: .75; transition: opacity .15s; }
+.ngr-spacer { flex-grow: 1; }
+.ngr-empty { color: var(--ng-muted); font-size: 13px; padding: 10px 0; line-height: 1.5; }
+.ngr-note { font-size: 12px; color: var(--ng-soft); }
+.ngr-link { border: 0; background: transparent; color: var(--ng-reference); font: inherit; font-size: 13px; cursor: pointer; padding: 0; white-space: nowrap; }
+.ngr-link:hover { text-decoration: underline; }
+.ngr-link:focus-visible { outline: 2px solid var(--ng-text); outline-offset: 2px; }
+
+/* barras (trilho #1E2748) */
+.ngr-track { height: 6px; background: var(--ngr-track); border-radius: 3px; width: 100%; }
+.ngr-track-lg { height: 8px; border-radius: 4px; }
+.ngr-fill { height: 100%; border-radius: inherit; background: var(--ng-soft); }
+.ngr-fill[data-tone="ok"] { background: var(--ng-gain); }
+.ngr-fill[data-tone="warn"] { background: var(--ng-caution); }
+.ngr-fill[data-tone="bad"] { background: var(--ng-loss); }
+.ngr-fill[data-tone="reference"] { background: var(--ng-reference); }
+
+/* ------------------------------------------------------------------ Race Debrief: seletor */
+.ngr-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ngr-race-select select { max-width: min(520px, 70vw); }
+.ngr-hint { font-size: 12px; color: var(--ng-soft); }
+.ngr-loading { font-size: 12px; color: var(--ng-soft); }
+
+/* KPIs (sem a barrinha de categoria do KpiCard: o mockup do debrief não tem) */
+.ngr-kpis { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 16px; }
+.ngr-kpi { background: var(--ng-card); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-card); padding: 14px 16px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ngr-kpi-label { font-size: 12px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-muted); }
+.ngr-kpi-value { font-family: var(--ng-font-display); font-weight: 700; font-size: 30px; line-height: 1; color: var(--ng-text); white-space: nowrap; }
+.ngr-kpi-value[data-tone="gain"] { color: var(--ng-gain); }
+.ngr-kpi-value[data-tone="loss"] { color: var(--ng-loss); }
+.ngr-kpi-value[data-tone="caution"] { color: var(--ng-caution); }
+.ngr-kpi-sub { font-size: 12px; color: var(--ng-soft); }
+
+/* pontos fortes / melhoria */
+.ngr-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.ngr-bullets { display: flex; flex-direction: column; gap: 10px; margin-top: 6px; }
+.ngr-bullet { display: flex; gap: 10px; align-items: flex-start; font-size: 14px; line-height: 1.5; color: #DCE4FF; }
+:root[data-theme="light"] .ngr-bullet { color: var(--ng-text-2); }
+.ngr-bullet > span:first-child { width: 8px; height: 8px; border-radius: 2px; margin-top: 7px; flex-shrink: 0; background: var(--ng-soft); }
+.ngr-bullet > span[data-tone="gain"] { background: var(--ng-gain); }
+.ngr-bullet > span[data-tone="loss"] { background: var(--ng-loss); }
+
+/* ritmo + setores */
+.ngr-pace-row { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; }
+.ngr-pace { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; }
+.ngr-pace-item { display: flex; flex-direction: column; gap: 4px; }
+.ngr-pace-head { display: flex; justify-content: space-between; font-size: 14px; }
+.ngr-pace-head span:first-child { font-weight: 500; }
+.ngr-pace-head span:last-child { color: var(--ng-muted); }
+.ngr-sectors { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
+.ngr-sector { display: grid; grid-template-columns: 34px 1fr 90px 90px; gap: 12px; align-items: center; height: 36px; }
+.ngr-sector-name { font-weight: 600; }
+.ngr-sector-best { text-align: right; color: var(--ng-muted); font-size: 13px; }
+.ngr-sector-sd { text-align: right; font-size: 13px; font-weight: 600; color: var(--ng-gain); }
+.ngr-sector-sd[data-tone="warn"] { color: var(--ng-caution); }
+.ngr-sector-sd[data-tone="bad"] { color: var(--ng-loss); }
+.ngr-sector-foot { font-size: 13px; color: var(--ng-muted); border-top: 1px solid var(--ng-line); padding-top: 8px; line-height: 1.5; }
+.ngr-sector-foot strong { color: var(--ng-text); }
+
+/* curva a curva × consistência */
+.ngr-self-note { font-size: 13px; color: var(--ng-text-2); background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 10px 14px; margin-top: 8px; line-height: 1.5; }
+.ngr-boxes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 8px; }
+.ngr-box { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 12px 14px; }
+.ngr-box .ngr-bullets { margin-top: 0; }
+.ngr-box-title { font-size: 11px; letter-spacing: .14em; font-weight: 600; margin-bottom: 6px; text-transform: uppercase; }
+.ngr-box-title[data-tone="gain"] { color: var(--ng-gain); }
+.ngr-box-title[data-tone="loss"] { color: var(--ng-loss); }
+.ngr-table-head, .ngr-table-row { display: grid; grid-template-columns: 150px 200px minmax(0, 1.1fr) minmax(0, 1.3fr); gap: 16px; }
+.ngr-table-head { padding: 14px 8px 4px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); }
+.ngr-table-row { align-items: start; padding: 12px 8px; border-top: 1px solid var(--ng-line); }
+.ngr-row-name { font-weight: 600; font-size: 14px; }
+.ngr-row-kind { font-size: 12px; color: var(--ng-soft); }
+.ngr-vars { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--ng-muted); }
+.ngr-var { display: grid; grid-template-columns: 62px 1fr 56px; gap: 8px; align-items: center; }
+.ngr-var-value { text-align: right; color: var(--ng-text); white-space: nowrap; }
+.ngr-fast { font-size: 13px; color: var(--ng-text-2); line-height: 1.5; }
+.ngr-if { font-size: 13px; color: var(--ng-muted); line-height: 1.5; }
+
+/* voltas descartadas */
+.ngr-discard { display: flex; justify-content: space-between; gap: 12px; min-height: 38px; align-items: center; border-top: 1px solid var(--ng-line); font-size: 14px; }
+.ngr-discard em { font-style: normal; color: var(--ng-soft); font-size: 12px; margin-left: 8px; }
+.ngr-discard span:last-child { color: var(--ng-muted); text-align: right; }
+
+/* ------------------------------------------------------------------ Comparação de carros */
+.ngc-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.ngc-toolbar .ngr-spacer { min-width: 12px; }
+.ngc-top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
+.ngc-h430 { min-height: 430px; }
+.ngc-cars-head, .ngc-car { display: grid; grid-template-columns: 24px minmax(0, 1.5fr) 80px 70px 110px minmax(0, 1.2fr) 70px; gap: 12px; }
+.ngc-cars-head { padding: 6px 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); }
+.ngc-cars-head span:nth-child(3), .ngc-cars-head span:nth-child(4) { text-align: right; }
+.ngc-cars-list { display: flex; flex-direction: column; max-height: 300px; overflow-y: auto; }
+.ngc-car {
+  align-items: center; height: 48px; padding: 0 10px; border-radius: var(--ng-radius-control); border: 1px solid transparent;
+  border-bottom-color: var(--ng-line); font-size: 14px; background: transparent; color: var(--ng-text); text-align: left;
+  font-family: var(--ng-font-body); width: 100%; cursor: pointer; flex-shrink: 0;
+}
+.ngc-car:hover { background: color-mix(in srgb, var(--ng-card-2) 55%, transparent); }
+.ngc-car:focus-visible { outline: 2px solid var(--ng-text); outline-offset: -2px; }
+.ngc-car[data-own] { border-color: var(--ng-brand); background: var(--ng-card-2); }
+.ngc-car[aria-pressed="true"]:not([data-own]) { border-color: var(--ng-reference); }
+.ngc-car-rank { color: var(--ng-soft); }
+.ngc-car-name { font-weight: 600; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ngc-car-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngc-car-best { text-align: right; font-weight: 600; }
+.ngc-car-avg { text-align: right; color: var(--ng-muted); }
+.ngc-micro { display: flex; align-items: center; gap: 8px; }
+.ngc-micro .ngr-track { flex: 1; }
+.ngc-micro b { width: 26px; text-align: right; font-weight: 600; color: var(--ng-gain); }
+.ngc-micro b[data-tone="warn"] { color: var(--ng-caution); }
+.ngc-micro b[data-tone="bad"] { color: var(--ng-loss); }
+.ngc-micro b[data-tone="none"] { color: var(--ng-soft); }
+.ngc-lead { height: 10px; background: var(--ngr-track); border-radius: 5px; }
+.ngc-lead > div { height: 10px; border-radius: 5px; background: var(--ng-sports); }
+.ngc-lead > div[data-leader] { background: var(--ng-gain); }
+.ngc-car-gap { text-align: right; font-size: 13px; color: var(--ng-muted); white-space: nowrap; }
+.ngc-foot { font-size: 12px; color: var(--ng-soft); padding: 8px 10px; }
+.ngc-map { height: 250px; display: flex; }
+.ngc-map .ngt-map[data-variant="popup"] .ngt-map-ref { stroke: var(--ng-reference); }
+.ngc-map .ngt-map[data-variant="popup"] .ngt-ball-ref { fill: var(--ng-reference); }
+.ngc-legend { display: flex; gap: 12px; font-size: 12px; color: var(--ng-muted); }
+.ngc-legend span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ngc-legend i { width: 14px; height: 3px; background: var(--ng-text); display: inline-block; }
+.ngc-legend i[data-line="rival"] { background: var(--ng-reference); }
+
+.ngc-rows-head, .ngc-row { display: grid; grid-template-columns: 150px minmax(0, 1fr) 84px 130px 100px 120px minmax(0, 1.4fr); gap: 14px; }
+.ngc-rows-head { padding: 6px 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); }
+.ngc-rows-head > span:nth-child(2) { display: flex; justify-content: space-between; }
+.ngc-rows-head > span:nth-child(3) { text-align: right; }
+.ngc-row {
+  align-items: center; min-height: 52px; padding: 0 10px; border: 0; border-top: 1px solid var(--ng-line); font-size: 13px;
+  background: transparent; color: var(--ng-text); text-align: left; font-family: var(--ng-font-body); width: 100%; cursor: pointer;
+}
+.ngc-row:hover, .ngc-row[aria-current="true"] { background: color-mix(in srgb, var(--ng-card-2) 55%, transparent); }
+.ngc-row:focus-visible { outline: 2px solid var(--ng-text); outline-offset: -2px; }
+.ngc-row .ngt-row-dt { font-size: 14px; }
+.ngc-row[data-tone="loss"] .ngt-row-dt { color: var(--ng-loss); }
+.ngc-row[data-tone="gain"] .ngt-row-dt { color: var(--ng-gain); }
+.ngc-row[data-tone="loss"] .ngt-bar-fill { background: var(--ng-loss); }
+.ngc-row[data-tone="gain"] .ngt-bar-fill { background: var(--ng-gain); }
+.ngc-cell { color: var(--ng-muted); white-space: nowrap; }
+.ngc-phrase { color: var(--ng-text-2); line-height: 1.35; padding: 6px 0; }
+
+/* ------------------------------------------------------------------ larguras menores */
+@media (max-width: 1200px) {
+  .ngr-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .ngc-top { grid-template-columns: minmax(0, 1fr); }
+  .ngc-rows-head, .ngc-row { grid-template-columns: 130px minmax(0, 1fr) 76px 110px 90px 110px minmax(0, 1.2fr); gap: 10px; }
+}
+@media (max-width: 980px) {
+  .ngr-two, .ngr-pace-row, .ngr-boxes { grid-template-columns: minmax(0, 1fr); }
+  .ngr-table-head { display: none; }
+  .ngr-table-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .ngc-cars-head { display: none; }
+  .ngc-car { grid-template-columns: 20px minmax(0, 1fr) 76px 70px; height: auto; min-height: 48px; padding: 8px 10px; row-gap: 6px; }
+  .ngc-car .ngc-car-avg { display: none; }
+  .ngc-car .ngc-micro, .ngc-car .ngc-lead { grid-column: 2 / span 2; }
+  .ngc-rows-head { display: none; }
+  .ngc-row { grid-template-columns: minmax(0, 1fr) 84px; row-gap: 4px; padding: 10px; }
+  .ngc-row .ngt-bar { grid-column: 1 / -1; order: 3; }
+  .ngc-row .ngc-phrase { grid-column: 1 / -1; order: 4; padding: 0; }
+}
+@media (max-width: 640px) {
+  .ngr-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ngr-table-row { grid-template-columns: minmax(0, 1fr); }
+  .ngr-kpi-value { font-size: 26px; }
+}

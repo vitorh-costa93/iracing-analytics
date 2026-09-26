@@ -67,6 +67,14 @@ function chipDuration(seconds: number) {
   return `${decimal(Math.abs(seconds), 1)} s`;
 }
 
+/** Como falar do outro lado da comparação: a volta de referência (padrão) ou outro carro. */
+export type RefNoun = { sub: string; de: string; a: string };
+export const REFERENCE: RefNoun = { sub: "a referência", de: "da referência", a: "à referência" };
+/** "o Cadillac" / "do Cadillac" / "ao Cadillac" (carros são masculinos: o carro). */
+export function carNoun(shortName: string): RefNoun {
+  return { sub: `o ${shortName}`, de: `do ${shortName}`, a: `ao ${shortName}` };
+}
+
 type PartRef = { sub: string; de: string; em: string };
 
 /** Como falar de uma curva no meio da frase: "a 3" / "da 3" / "na 3", ou pelo nome verificado. */
@@ -92,7 +100,7 @@ type ClauseKind =
 
 type Clause = { kind: ClauseKind; bad: boolean; weight: number; long: string; short: string; chip: TalkChip };
 
-const ADVICE: Partial<Record<ClauseKind, string>> = {
+const adviceFor = (R: RefNoun): Partial<Record<ClauseKind, string>> => ({
   "brake-early": "Vá adiando a freada aos poucos, de 2 em 2 metros.",
   "brake-own": "Tente passar só tirando o pé, sem frear, e veja se o carro aguenta.",
   "min-slow": "Tente soltar o freio um pouco antes e levar mais velocidade até o ponto mais lento.",
@@ -101,13 +109,13 @@ const ADVICE: Partial<Record<ClauseKind, string>> = {
   "throttle-less": "Segure o pé no acelerador um pouco mais de tempo.",
   "brake-harder": "Tente pisar um pouco mais leve no freio e soltar de forma mais suave.",
   "steer-more": "Tente virar uma vez só, sem corrigir no meio da curva.",
-  "gear": "Teste a marcha da referência no treino antes de levar para a corrida.",
-  "line": "Confira no mapa o traçado da referência e tente passar pelo mesmo ponto.",
+  "gear": `Teste a marcha ${R.de} no treino antes de levar para a corrida.`,
+  "line": `Confira no mapa o traçado ${R.de} e tente passar pelo mesmo ponto.`,
   "brake-late": "Você freia mais tarde, mas perde no resto da curva: tente frear um pouco antes e soltar o freio mais cedo.",
-};
+});
 
 /** Achados do trecho, na voz "você" (sem o sujeito, que vem da frase anterior). */
-export function sectionClauses(metrics: SectionMetrics, isSequence: boolean): Clause[] {
+export function sectionClauses(metrics: SectionMetrics, isSequence: boolean, R: RefNoun = REFERENCE): Clause[] {
   const clauses: Clause[] = [];
   const m = metrics;
   const apex = isSequence && m.apexCorner ? ` ${partRef(m.apexCorner).em}` : " no meio da curva";
@@ -117,14 +125,14 @@ export function sectionClauses(metrics: SectionMetrics, isSequence: boolean): Cl
     const early = m.brakeDeltaMeters < 0;
     clauses.push({
       kind: early ? "brake-early" : "brake-late", bad: early, weight: meters * 1.5,
-      long: early ? `freia uns ${meters} metros antes da referência` : `freia uns ${meters} metros depois da referência`,
+      long: early ? `freia uns ${meters} metros antes ${R.de}` : `freia uns ${meters} metros depois ${R.de}`,
       short: early ? "freia cedo demais" : "freia mais tarde",
       chip: { k: "Ponto de freio", v: `${meters} m mais ${early ? "cedo" : "tarde"}`, tone: early ? "loss" : "gain" },
     });
   } else if (m.brakeUse === "own") {
-    clauses.push({ kind: "brake-own", bad: true, weight: 14, long: "pisa no freio onde a referência passa sem frear", short: "freia onde a referência não freia", chip: { k: "Freio", v: "você freia, a referência não", tone: "loss" } });
+    clauses.push({ kind: "brake-own", bad: true, weight: 14, long: `pisa no freio onde ${R.sub} passa sem frear`, short: `freia onde ${R.sub} não freia`, chip: { k: "Freio", v: `você freia, ${R.sub} não`, tone: "loss" } });
   } else if (m.brakeUse === "ref") {
-    clauses.push({ kind: "brake-ref", bad: false, weight: 14, long: "passa sem frear onde a referência freia", short: "passa sem frear", chip: { k: "Freio", v: "a referência freia, você não", tone: "gain" } });
+    clauses.push({ kind: "brake-ref", bad: false, weight: 14, long: `passa sem frear onde ${R.sub} freia`, short: "passa sem frear", chip: { k: "Freio", v: `${R.sub} freia, você não`, tone: "gain" } });
   }
 
   if (m.minSpeedDeltaKmh !== null && Math.abs(m.minSpeedDeltaKmh) >= 2) {
@@ -186,7 +194,7 @@ export function sectionClauses(metrics: SectionMetrics, isSequence: boolean): Cl
     const more = m.steeringDeltaDeg > 0;
     clauses.push({
       kind: more ? "steer-more" : "steer-less", bad: more, weight: d * 0.8,
-      long: more ? `gira o volante ${d}° a mais que a referência` : `gira o volante ${d}° a menos que a referência`,
+      long: more ? `gira o volante ${d}° a mais que ${R.sub}` : `gira o volante ${d}° a menos que ${R.sub}`,
       short: more ? "gira mais o volante" : "vira menos o volante",
       chip: { k: "Volante", v: `${d}° ${more ? "mais fechado" : "mais aberto"}`, tone: more ? "loss" : "gain" },
     });
@@ -196,15 +204,15 @@ export function sectionClauses(metrics: SectionMetrics, isSequence: boolean): Cl
     const { own, ref } = m.gearAtApex;
     clauses.push({
       kind: "gear", bad: true, weight: 12,
-      long: `usa a ${own}ª onde a referência usa a ${ref}ª`,
+      long: `usa a ${own}ª onde ${R.sub} usa a ${ref}ª`,
       short: "usa outra marcha",
-      chip: { k: "Marcha no ponto mais lento", v: `${own}ª, a referência usa ${ref}ª`, tone: "neutral" },
+      chip: { k: "Marcha no ponto mais lento", v: `${own}ª, ${R.sub} usa ${ref}ª`, tone: "neutral" },
     });
   }
 
   if (m.lineOffsetMeters !== null && m.lineOffsetMeters >= 1.5) {
     const meters = Math.round(m.lineOffsetMeters);
-    const where = m.lineSide ? `mais à ${m.lineSide} que a referência` : "longe do traçado da referência";
+    const where = m.lineSide ? `mais à ${m.lineSide} que ${R.sub}` : `longe do traçado ${R.de}`;
     clauses.push({
       kind: "line", bad: true, weight: meters * 6,
       long: `passa uns ${meters} metros ${where}${apex}`,
@@ -286,11 +294,13 @@ function neutralChips(metrics: SectionMetrics): TalkChip[] {
 }
 
 /** Texto completo de um trecho (linha da lista + popup). */
-export function describeSection(section: SectionResult, options: { isBiggestLoss?: boolean } = {}): SectionTalk {
+export function describeSection(section: SectionResult, options: { isBiggestLoss?: boolean; ref?: RefNoun } = {}): SectionTalk {
+  const R = options.ref ?? REFERENCE;
+  const ADVICE = adviceFor(R);
   const gain = -section.lostSeconds;
   const loss = gain < -TIE_SECONDS;
   const tie = Math.abs(gain) <= TIE_SECONDS;
-  const clauses = sectionClauses(section.metrics, section.isSequence);
+  const clauses = sectionClauses(section.metrics, section.isSequence, R);
   const bad = clauses.filter((clause) => clause.bad);
   const good = clauses.filter((clause) => !clause.bad);
   const trade = tradeOff(section);
@@ -307,9 +317,9 @@ export function describeSection(section: SectionResult, options: { isBiggestLoss
 
   let note: string;
   if (tie) {
-    sentences.push(section.isSequence ? "No total você fica empatado com a referência na sequência." : "Aqui você fica empatado com a referência.");
+    sentences.push(section.isSequence ? `No total você fica empatado com ${R.sub} na sequência.` : `Aqui você fica empatado com ${R.sub}.`);
     sentences.push("Nada a corrigir.");
-    note = "Igual à referência.";
+    note = `Igual ${R.a}.`;
   } else if (loss) {
     const time = talkTime(gain);
     const where = section.isSequence ? "na sequência" : "aqui";

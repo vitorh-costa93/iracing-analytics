@@ -8,6 +8,7 @@ import { summarizeTractionEvents, type TractionSample, type TractionSummary } fr
 import { compareTractionAcrossCars } from "@/lib/traction-narrative";
 import { checkLapsGps, type LapGpsCheck } from "@/lib/lap-gps-check-cache";
 import { readTelemetryText, storeTelemetryCsv } from "@/lib/telemetry-storage";
+import { detectMicrocorrections, summarizeMicrocorrections } from "@/lib/microcorrections";
 
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
@@ -1015,7 +1016,7 @@ function weekNumberOf(lap: LapRow, seasonStartMs: number): number | null {
   return Math.floor((startedAt - seasonStartMs) / WEEK_MS) + 1;
 }
 
-async function buildComparison(driverId: string, trackId: number, category: Category, seasonParam: string | null, weekParam: string | null) {
+async function buildComparison(driverId: string, trackId: number, category: Category, seasonParam: string | null, weekParam: string | null, compact = false) {
   // Same silent-truncation bug fetchAllDriverLaps's own comment already documents (a plain
   // unranged .select() here caps at Supabase's own 1000-row default) -- this query was never given
   // the same .range() pagination when it was written, so a track with 1000+ total laps across every
@@ -1210,12 +1211,23 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     // telemetry fetch. Uses every sampled lap, not just the fastest one, so the rate reflects a habit
     // across several laps rather than one lap's luck.
     const tractionEvents = summarizeTractionEvents(traces.map(toTractionSamples));
+    // Redesign etapa 4 (26/09/2026): microcorreções por volta (lib/microcorrections.ts), sobre as MESMAS
+    // voltas verificadas já baixadas acima (resolução cheia do CSV), sem download novo. A lista de
+    // distâncias da volta mais rápida vai para o cliente contar por trecho no curva a curva.
+    const microPerLap = verified.slice(0, TELEMETRY_SAMPLE_LAPS).map((item) => ({
+      lapTimeSeconds: Number(item.lap.lap_time),
+      result: detectMicrocorrections(item.trace.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), Number(item.lap.lap_time)),
+    }));
+    const microcorrections = summarizeMicrocorrections(microPerLap);
+    const avgLapSeconds = timePool.length ? Number(mean(timePool).toFixed(3)) : null;
 
     return {
       carId, carName: carNames.get(carId) ?? `Carro ${carId}`,
       lapsAnalyzed: timePool.length,
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
       lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments, conditions, tractionEvents,
+      avgLapSeconds, microcorrections, plausibleLaps: laps.length,
+      fastestLap: { id: chosen.lap.id, lapSeconds: bestLapSeconds, microDistances: microPerLap[0]?.result.distances ?? [] },
       fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
       sampleTraces: traces, // same -- kept for per-corner consistency below, stripped before response
     };
@@ -1301,7 +1313,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       segment: index, name: cornerNames?.[index] ?? null, cornerNumber: corner.number, startPct: start, endPct: end,
       winnerCarId: winner?.carId ?? null,
       times: times.map((item) => ({ ...item, deltaSeconds: winner ? Number((item.seconds - winner.seconds).toFixed(3)) : 0 })).sort((a, b) => a.seconds - b.seconds),
-      curves, gps, consistency, trackUsage,
+      ...(compact ? {} : { curves, gps }), consistency, trackUsage,
     };
   });
 
@@ -1329,11 +1341,17 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
 
   const cars = ranked.map(({ fastestTrace: _fastestTrace, sampleTraces: _sampleTraces, ...car }) => ({ ...car, color: carColor.get(car.carId)! }));
 
+  // "Seu carro" (etapa 4): o carro da sua corrida mais recente nesta pista entre os comparados
+  // (race_results = só corridas, session_type 3); sem corrida, o carro com mais voltas plausíveis.
+  const { data: lastRace } = await supabaseAdmin.from("race_results").select("car_id").eq("driver_id", driverId).eq("track_id", trackId).in("car_id", cars.map((car) => car.carId)).order("raced_at", { ascending: false }).limit(1).maybeSingle();
+  const ownCarId = (lastRace?.car_id as number | undefined) ?? [...cars].sort((a, b) => b.plausibleLaps - a.plausibleLaps)[0]?.carId ?? null;
+  const plausibleLapCount = cars.reduce((sum, car) => sum + car.plausibleLaps, 0);
+
   return {
     status: "ok",
     track: trackResult.data ? { id: trackResult.data.id, name: trackResult.data.name, variant: trackResult.data.variant } : { id: trackId, name: `Pista ${trackId}`, variant: null },
     seasons, selectedSeasonId, weeks, selectedWeek,
-    cars, trackOutline, sectors, mapSegments,
+    cars, trackOutline, sectors, mapSegments, ownCarId, plausibleLapCount,
     narrative: buildCarComparisonNarrative(cars, sectors),
     conditionsNote: conditionsDivergence(cars),
   };
@@ -1357,7 +1375,7 @@ export async function GET(request: Request) {
     }
     const trackId = Number(trackIdParam);
     if (!Number.isFinite(trackId)) return NextResponse.json({ status: "error", message: "trackId inválido" }, { status: 400 });
-    const result = await buildComparison(driver.id, trackId, categoryParam, seasonParam, weekParam);
+    const result = await buildComparison(driver.id, trackId, categoryParam, seasonParam, weekParam, params.get("compact") === "1");
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });

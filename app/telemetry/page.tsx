@@ -1,5 +1,6 @@
 import TelemetryTabs from "@/components/TelemetryTabs";
 import "../night-grid-telemetry.css";
+import "../night-grid-debrief.css";
 
 export const metadata = { title: "Telemetry Lab • Racing Analytics" };
 

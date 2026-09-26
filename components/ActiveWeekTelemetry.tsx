@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "@/lib/corner-detection";
-import { lookupCornerNames } from "@/lib/track-corners";
+import { detectLapCorners } from "@/lib/lap-corners";
 import { trackUiEvent } from "@/lib/track-ui-event";
 import { formatLapTime, hasCompleteGps, ibtToBestLapCsv, parseTelemetryCsv, traceUsesOvertake, type Trace, type TracePoint } from "@/lib/telemetry-trace";
 import { compareLaps } from "@/lib/lap-analysis";
@@ -55,13 +54,9 @@ function writeGapCache(cache: GapCache) {
   try { window.localStorage.setItem(GAP_CACHE_KEY, JSON.stringify(cache)); } catch { /* conveniência local apenas */ }
 }
 
-/** Detecção de curvas igual à de antes: GPS primeiro, aceleração lateral só como reserva; nomes
- * verificados (lib/track-corners.ts) só quando a contagem bate, senão números. */
+/** Detecção de curvas compartilhada com o Race Debrief e a Comparação de carros (lib/lap-corners.ts). */
 function detectCorners(points: TracePoint[], trackName: string, trackVariant: string): LapCorner[] {
-  const gpsDetected = detectCornersFromGps(points.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null })));
-  const raw = gpsDetected.length >= 3 ? gpsDetected : detectCornersFromLatAccel(points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel })));
-  const names = lookupCornerNames(trackName, trackVariant, raw.length);
-  return raw.map((corner, index) => ({ number: corner.number, distance: corner.distance, name: names?.[index] ?? null, startDistance: corner.startDistance, endDistance: corner.endDistance }));
+  return detectLapCorners(points, trackName, trackVariant);
 }
 
 /** Contextos com corrida primeiro, depois os com mais sessões e voltas. */
