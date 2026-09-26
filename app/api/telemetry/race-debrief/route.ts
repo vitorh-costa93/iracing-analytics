@@ -28,7 +28,7 @@ import { classifyRaceLaps, lapSetKey, parseLapTimeText, type RaceLapRow } from "
  */
 export const maxDuration = 120;
 
-const CACHE_VERSION = 1;
+const CACHE_VERSION = 2;
 const CACHE_PREFIX = "race:";
 const MAX_CACHED_RACES = 30;
 const LIST_LIMIT = 40; // ~6 semanas de corridas: o seletor alcança corridas que já têm telemetria armazenada
@@ -223,7 +223,7 @@ async function buildPayload(driverId: string, race: RaceRow, session: SessionRow
   const telemetryLaps = traces.length;
   let selfNote: string | null = null;
   if (!session) selfNote = "Não achei a sessão desta corrida no Garage61, então não há voltas nem telemetria para comparar você com você mesmo.";
-  else if (telemetryLaps < 3) selfNote = `Só ${telemetryLaps === 0 ? "nenhuma volta" : telemetryLaps === 1 ? "1 volta" : `${telemetryLaps} voltas`} desta corrida ${telemetryLaps === 1 ? "tem" : "têm"} telemetria armazenada. Preciso de pelo menos 3 para comparar você com você mesmo.${lapsWithoutTelemetry ? ` ${lapsWithoutTelemetry} voltas limpas ainda estão sem telemetria no Storage.` : ""}`;
+  else if (telemetryLaps < 3) selfNote = `${telemetryLaps === 0 ? "Nenhuma volta limpa desta corrida tem" : telemetryLaps === 1 ? "Só 1 volta limpa desta corrida tem" : `Só ${telemetryLaps} voltas limpas desta corrida têm`} telemetria armazenada. Preciso de pelo menos 3 para comparar você com você mesmo.${lapsWithoutTelemetry ? ` ${lapsWithoutTelemetry} voltas limpas ainda estão sem telemetria no Storage.` : ""}`;
   else if (!self || !sections.length) selfNote = "Não consegui separar os trechos de curva desta pista com a telemetria disponível.";
   else if (!self.canCompareFastSlow) selfNote = `Com ${telemetryLaps} voltas com telemetria dá para medir quanto você varia, mas ainda não para separar as voltas rápidas das lentas (preciso de 5).`;
   else if (lapsWithoutTelemetry) selfNote = `${telemetryLaps} voltas com telemetria analisadas; ${lapsWithoutTelemetry} voltas limpas ainda estão sem telemetria armazenada.`;

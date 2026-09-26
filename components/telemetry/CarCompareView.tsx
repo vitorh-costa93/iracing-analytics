@@ -244,10 +244,10 @@ export default function CarCompareView() {
                         <div><strong>{formatSignedSeconds(gained - lost)}</strong><span>no total dos trechos · o resto está nas retas</span></div>
                       </div>
                       <div className="ngc-rows-head" aria-hidden><span>Trecho</span><span><span>Perde</span><span>Ganha</span></span><span>Tempo</span><span>Vel. mínima (você / ele)</span><span>Microcorr. (você / ele)</span><span>Ponto de freio</span><span>Em uma frase</span></div>
-                      {rows.map(({ section, speeds, microOwn, microRival, talk }) => {
+                      {rows.map(({ section, speeds, microOwn, microRival, talk }, rowIndex) => {
                         const loss = isLossSection(section);
                         const width = Math.max((Math.abs(section.lostSeconds) / maxAbs) * 48, 2);
-                        const phrase = comparePhrase(talk.note, microOwn, microRival);
+                        const phrase = comparePhrase(talk.note, microOwn, microRival, rowIndex);
                         return (
                           <button key={section.id} type="button" className="ngc-row" data-tone={loss ? "loss" : "gain"} aria-current={section.id === mapSection?.id ? "true" : undefined}
                             aria-label={`${section.label}: ${formatSignedSeconds(-section.lostSeconds)}. ${phrase} Abrir detalhe.`}

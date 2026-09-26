@@ -38,6 +38,8 @@ describe("textos contra outro carro", () => {
     expect(mapCaption("Curvas 3–4", { own: 96, rival: 105 }, ref, "x")).toBe("Curvas 3–4: o Cadillac mantém 9 km/h a mais no ponto mais lento.");
     expect(comparePhrase("Você entra devagar.", 6, 2)).toBe("Você entra devagar. Ele faz 4 microcorreções a menos: o carro fica mais assentado.");
     expect(comparePhrase("Boa saída.", 2, 2)).toBe("Boa saída.");
+    const generic = "Ponto forte, sem diferença clara nos pedais.";
+    expect(comparePhrase(generic, 1, 1, 0)).not.toBe(comparePhrase(generic, 1, 1, 1));
   });
 });
 

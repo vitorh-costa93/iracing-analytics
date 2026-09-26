@@ -125,7 +125,7 @@ function conditionsDivergence(cars: { carName: string; conditions: LapConditions
   if (withConditions.length < 2) return null;
   const wetnessValues = new Set(withConditions.map((car) => (car.conditions!.trackWetness ?? 0) > 0));
   if (wetnessValues.size > 1) {
-    return "As voltas mais rápidas dos carros não foram feitas nas mesmas condições: pelo menos um carro rodou com pista molhada e outro com pista seca -- a comparação de ritmo entre eles não é válida.";
+    return "As voltas mais rápidas dos carros não foram feitas nas mesmas condições: pelo menos um carro rodou com pista molhada e outro com pista seca: a comparação de ritmo entre eles não é válida.";
   }
   const spread = (values: (number | null)[]) => {
     const present = values.filter((value): value is number => value !== null);
@@ -139,7 +139,7 @@ function conditionsDivergence(cars: { carName: string; conditions: LapConditions
   if (usageSpread > CONDITIONS_USAGE_DELTA_PCT) parts.push(`borracha na pista variou ${usageSpread.toFixed(0)}%`);
   if (humiditySpread > CONDITIONS_HUMIDITY_DELTA_PCT) parts.push(`umidade relativa variou ${humiditySpread.toFixed(0)}%`);
   if (!parts.length) return null;
-  return `Condições não foram idênticas entre os testes: ${parts.join(", ")} entre os carros -- parte da diferença de ritmo pode vir daí, não só do carro.`;
+  return `Condições não foram idênticas entre os testes: ${parts.join(", ")} entre os carros; parte da diferença de ritmo pode vir daí, não só do carro.`;
 }
 
 type ChannelKey = "throttle" | "brake" | "steering" | "lat" | "lon" | "speed" | "gear" | "rpm" | "yawRate";
@@ -1236,7 +1236,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   if (perCar.length < 2) {
     return {
       status: "ok", track: null, cars: [], seasons, selectedSeasonId,
-      message: `Não encontrei voltas com telemetria completa e confiável de pelo menos 2 carros de ${CATEGORY_LABEL[category]} nessa pista. Os tempos registrados aqui parecem vir de voltas parciais/quebradas, não de voltas completas -- provavelmente precisa ressincronizar essas sessões.`,
+      message: `Não encontrei voltas com telemetria completa e confiável de pelo menos 2 carros de ${CATEGORY_LABEL[category]} nessa pista. Os tempos registrados aqui parecem vir de voltas parciais/quebradas, não de voltas completas. Provavelmente precisa ressincronizar essas sessões.`,
     };
   }
 

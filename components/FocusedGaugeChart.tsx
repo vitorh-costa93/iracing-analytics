@@ -244,7 +244,7 @@ export function FocusedGaugePanel({ sides, xDomain, hoverX, onHoverX, startLabel
           <text x="182" y="18" fontSize="11" fill="var(--ng-text)">VOCÊ (contínua)</text>
           {reference && <>
             <line x1="300" x2="326" y1="14" y2="14" stroke="var(--ng-reference-popup)" strokeWidth="2" strokeDasharray="5 3" />
-            <text x="332" y="18" fontSize="11" fill="var(--ng-reference-popup)">REFERÊNCIA (tracejada)</text>
+            <text x="332" y="18" fontSize="11" fill="var(--ng-reference-popup)">{reference.label} (tracejada)</text>
           </>}
           {[40, 120, 200].map((y) => <line key={y} x1="0" x2={NG_W} y1={y} y2={y} className="ngt-inputs-grid" />)}
           {reference && <>

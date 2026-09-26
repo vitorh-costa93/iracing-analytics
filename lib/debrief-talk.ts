@@ -62,6 +62,16 @@ function meters(value: number) {
 const STABLE_FAST = ["Você repete quase igual em todas as voltas.", "Estável nas voltas boas e nas ruins.", "Pouca diferença entre as voltas rápidas e as lentas."];
 const STABLE_IF = ["Ponto forte: pouca variação. Só mantenha.", "Nada a corrigir aqui.", "Continue fazendo igual."];
 
+const CARRY_BRAKE = [
+  (gain: string) => `Soltando o freio um pouco antes em toda volta, dá para buscar ${gain}.`,
+  (gain: string) => `Freie igual, mas alivie o pedal mais cedo para levar essa velocidade: vale ${gain} por volta.`,
+  (gain: string) => `Chegando no ponto mais lento com essa velocidade em toda passagem, sobram ${gain}.`,
+];
+const CARRY_FLAT = [
+  (gain: string) => `Levando essa velocidade até o meio da curva em toda volta, dá para buscar ${gain}.`,
+  (gain: string) => `Tirando menos o pé na entrada, como nas voltas boas, sobram ${gain}.`,
+];
+
 export type SelfSectionTalk = { fastLaps: string; ifAlways: string; tone: "gain" | "loss" | "neutral" };
 
 /** "O que muda nas suas voltas rápidas" e "Se você fizer sempre assim" de um trecho. */
@@ -121,9 +131,7 @@ export function describeSelfSection(section: SelfSection, index: number, canComp
     case "carry-speed":
       return {
         fastLaps: `Nas voltas rápidas você leva ${Math.round(diff.minSpeedGainKmh ?? 0)} km/h a mais no ponto mais lento${extraClause("present")}.`,
-        ifAlways: section.brakeZone
-          ? `Soltando o freio um pouco antes em toda volta, dá para buscar ${gainText ?? "um pouco"}.`
-          : `Levando essa velocidade até o meio da curva em toda volta, dá para buscar ${gainText ?? "um pouco"}.`,
+        ifAlways: pick(section.brakeZone ? CARRY_BRAKE : CARRY_FLAT, index)(gainText ?? "um pouco"),
         tone: "loss",
       };
     case "less-steering":
@@ -236,7 +244,7 @@ export function strengthsAndImprovements(facts: DebriefFacts): { strengths: stri
   if (facts.bestLap && facts.cleanAverage && facts.cleanAverage - facts.bestLap > facts.bestLap * 0.01) improvements.push(`Sua média ficou ${talkTime(facts.cleanAverage - facts.bestLap)} acima da melhor volta: falta repetir a volta boa.`);
   if (facts.microPerMinute !== null && facts.referenceMicroPerMinute !== null && facts.microPerMinute >= facts.referenceMicroPerMinute * 1.15) improvements.push(`Você corrige mais o volante que a referência (${Math.round(facts.microPerMinute)} contra ${Math.round(facts.referenceMicroPerMinute)} por minuto). Menos correção costuma ser mais tempo.`);
 
-  if (!strengths.length) strengths.push("Você completou a corrida com voltas suficientes para a análise. Use os trechos abaixo para achar o que manter.");
+  if (!strengths.length) strengths.push("Nada se destacou como ponto forte nos dados desta corrida.");
   if (!improvements.length) improvements.push("Nenhum ponto fraco claro nesta corrida. Busque tempo nos trechos com mais diferença entre suas voltas.");
   return { strengths: strengths.slice(0, 3), improvements: improvements.slice(0, 3) };
 }

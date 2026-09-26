@@ -109,7 +109,8 @@
 .ngc-car[aria-pressed="true"]:not([data-own]) { border-color: var(--ng-reference); }
 .ngc-car-rank { color: var(--ng-soft); }
 .ngc-car-name { font-weight: 600; display: flex; align-items: center; gap: 8px; min-width: 0; }
-.ngc-car-name > span:first-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ngc-car-name > span:first-child { line-height: 1.2; }
+.ngc-car-name { flex-wrap: wrap; row-gap: 2px; }
 .ngc-car-best { text-align: right; font-weight: 600; }
 .ngc-car-avg { text-align: right; color: var(--ng-muted); }
 .ngc-micro { display: flex; align-items: center; gap: 8px; }

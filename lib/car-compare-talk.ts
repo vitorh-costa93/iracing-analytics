@@ -32,7 +32,14 @@ export function sectionMinSpeeds(own: Trace, rival: Trace, section: Pick<Section
 }
 
 /** A frase curta do trecho, com uma observação de microcorreções quando a diferença é clara. */
-export function comparePhrase(note: string, microOwn: number | null, microRival: number | null) {
+const GENERIC_GAIN = "Ponto forte, sem diferença clara nos pedais.";
+const GAIN_VARIANTS = [GENERIC_GAIN, "Mesmos comandos, e o seu carro anda mais aqui.", "Ganho que vem do carro, não da pilotagem.", "Pedais parecidos; o seu carro sai na frente neste trecho."];
+const GENERIC_LOSS = "Perde tempo sem um motivo claro nos pedais; confira o traçado.";
+const LOSS_VARIANTS = [GENERIC_LOSS, "Pedais parecidos: a perda deve vir do carro ou do traçado.", "Sem diferença clara nos comandos; olhe o traçado no mapa."];
+
+/** `index` varia as frases genéricas entre linhas vizinhas para a lista não repetir a mesma frase. */
+export function comparePhrase(rawNote: string, microOwn: number | null, microRival: number | null, index = 0) {
+  const note = rawNote === GENERIC_GAIN ? GAIN_VARIANTS[index % GAIN_VARIANTS.length] : rawNote === GENERIC_LOSS ? LOSS_VARIANTS[index % LOSS_VARIANTS.length] : rawNote;
   if (microOwn === null || microRival === null) return note;
   const diff = microOwn - microRival;
   if (diff >= 3) return `${note} Ele faz ${diff} microcorreções a menos: o carro fica mais assentado.`;
