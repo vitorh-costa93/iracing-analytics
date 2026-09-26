@@ -33,3 +33,27 @@ Debriefs (relatório C):
 
 ## INTOCÁVEIS
 lib/corner-detection.ts e lib/track-corners.ts (revisão do piloto); regra de session_type = 3; guard-rails de custo do plano gratuito.
+
+---
+# REVISÃO 2: respostas do piloto às 17 perguntas (26/09/2026). ESTA SEÇÃO PREVALECE sobre o bloco APLICAR acima.
+
+1. Evolução semanal: os MINIGRÁFICOS BASTAM. NÃO restaurar o SeasonChart nem drawer. (A regra de repetir o último valor semanal, do CLAUDE.md, segue valendo nos minigráficos; não plotar `iratingFirst`/`iratingBeforeWeek` como se fosse valor final.)
+2. Gap para o vencedor: SÓ POR SEGMENTO (aba). NÃO acrescentar linha de gap geral.
+3. Frescura das fontes: SÓ MOSTRA AS DATAS. Remover os limiares de "atrasado" (36 h / 7 dias) e as cores laranja/vermelha de estado; sem texto de falha recente; ponto neutro.
+4. Texto "como você vai sentir / quando usar" da comparação de setups: ACEITO, com aviso visível de que é orientação (não é medição).
+5. Semana ativa: VOLTAR microcorreções contra a referência (dado em lib/microcorrections.ts).
+6. Gráfico da volta: MANTÉM OS 3 CANAIS. NÃO criar seção "Mais canais".
+7. Race Debrief: VOLTAR mapa local e curvas de freio/acelerador da melhor passagem, nos trechos com MAIS GANHO (3).
+8. Race Debrief: VOLTAR A 5 VOLTAS e MANTER o descarte em duas pontas.
+9. Dispersão do ritmo por volta: NÃO voltar.
+10. Curva a curva do debrief (limiares e terço mais rápido): VÁLIDO. Manter.
+11. Comparação de carros: O PILOTO QUER de volta o "quem manda em cada pedaço" entre TODOS os carros, a consistência por carro e o uso de pista, além do aviso de condições diferentes (`conditionsNote`). Restaurar de 94c4d8d:components/CarComparison.tsx e da rota car-comparison (que já calcula), adaptando à UI Night Grid, sem tirar o foco atual você × rival.
+12. Ritmo × resultado: ACEITO (eixo "sua melhor volta"; título "Você foi perto do seu melhor, mas perdeu iRating?").
+13. Tabela melhorou/piorou/estável: VOLTA, em Evidência.
+14. Leitura do engenheiro: o resumo COBRE. Não restaurar os "watch".
+15. Correlação com o ritmo: NÃO PRECISA.
+16. Contextos: MÉDIA POR CORRIDA, nas duas telas.
+17. Recomendação (lib/recommendation.ts): a ORDEM NOVA está confirmada. NÃO alterar recommendation.ts nem pace-*; NÃO é preciso gerar comparativo-recomendacao.md.
+
+Continuam valendo da seção APLICAR: todas as linhas "Restaurar" de cada relatório que não conflitem com as respostas acima
+(ex.: colunas Melhor volta/Série e ano na data; A/B com topCategories/topContributors/skippedCount; cache v2 da Visão Geral; prompt do engenheiro; conditionsNote; selectionExplanation e legenda da volta; resíduo das retas; consistência por setor relativa; payload do debrief sem race_results/iRating; rótulo do KPI de microcorreções; severidade, gap/desvio, chips de abandono, avgPositionChange/shareOfLosses, frase de referência da week; DATA_ARCHITECTURE).
