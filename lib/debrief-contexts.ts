@@ -5,20 +5,23 @@ import type { DebriefContextRow } from "@/lib/debrief-types";
  * É o mesmo critério da Visão Geral (aggregateRows em app/page.tsx: `races >= 2`): uma corrida isolada
  * não é sinal de desempenho. Ranking e barra usam a MÉDIA por corrida, nunca a soma. */
 export const MIN_CONTEXT_RACES = 2;
+/** Na week o recorte é pequeno demais para exigir 2 corridas na mesma combinação carro+pista (a lista ficaria
+ * quase sempre vazia): lá vale 1 corrida, e a linha mostra quantas foram. Decisão do piloto, 26/09/2026. */
+export const MIN_CONTEXT_RACES_WEEK = 1;
 
 const delta = (row: RaceInput) => row.irating_after - row.irating_before;
 const sum = (values: number[]) => values.reduce((a, b) => a + b, 0);
 const round1 = (value: number) => Number(value.toFixed(1));
 
 /** `lossTotal`: soma (positiva) do iRating perdido em todas as corridas do recorte; base do `shareOfLosses`. */
-export function buildContexts(rows: RaceInput[], lossTotal: number): { losses: DebriefContextRow[]; gains: DebriefContextRow[] } {
+export function buildContexts(rows: RaceInput[], lossTotal: number, scope: "week" | "season" = "season"): { losses: DebriefContextRow[]; gains: DebriefContextRow[] } {
   const groups = new Map<string, RaceInput[]>();
   for (const row of rows) {
     const key = row.track_name + "|" + row.car_name;
     groups.set(key, [...(groups.get(key) ?? []), row]);
   }
   const list: DebriefContextRow[] = [...groups.values()]
-    .filter((items) => items.length >= MIN_CONTEXT_RACES)
+    .filter((items) => items.length >= (scope === "week" ? MIN_CONTEXT_RACES_WEEK : MIN_CONTEXT_RACES))
     .map((items) => {
       const total = sum(items.map(delta));
       const positions = items.map((item) => item.position_change).filter((value): value is number => typeof value === "number");

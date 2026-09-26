@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildContexts, MIN_CONTEXT_RACES } from "@/lib/debrief-contexts";
+import { buildContexts, MIN_CONTEXT_RACES, MIN_CONTEXT_RACES_WEEK } from "@/lib/debrief-contexts";
 import type { RaceInput } from "@/lib/race-engineer-analysis";
 
 const race = (track: string, car: string, before: number, after: number, positionChange = 0): RaceInput =>
@@ -24,5 +24,14 @@ describe("buildContexts", () => {
     const { gains, losses } = buildContexts(rows, 0);
     expect(losses).toEqual([]);
     expect(gains[0]).toMatchObject({ avgDelta: 25, avgPositionChange: 2, shareOfLosses: null });
+  });
+});
+
+describe("buildContexts na week", () => {
+  it("aceita 1 corrida por combinação na week e continua exigindo 2 na season", () => {
+    expect(MIN_CONTEXT_RACES_WEEK).toBe(1);
+    const rows = [race("Monza", "A", 2000, 1900)];
+    expect(buildContexts(rows, 100, "week").losses).toHaveLength(1);
+    expect(buildContexts(rows, 100, "season").losses).toHaveLength(0);
   });
 });

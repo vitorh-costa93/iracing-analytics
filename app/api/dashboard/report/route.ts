@@ -115,7 +115,7 @@ export async function GET(request:NextRequest){
    weeks,
    raceList:scope==="week"?[...ordered].reverse().map(row=>raceRow(row,lossTotal,threshold)):[],
    impactRaces:[...selected].sort((a,b)=>Math.abs(delta(b))-Math.abs(delta(a))).slice(0,4).map(row=>raceRow(row,lossTotal,threshold)),
-   contexts:buildContexts(selected,lossTotal),
+   contexts:buildContexts(selected,lossTotal,scope),
    evidence:{
     severity:{threshold:sev.threshold,count:sev.count,rate:sev.rate,referenceCount:sev.referenceCount,referenceRate:sev.referenceRate,lossTotal:sev.lossTotal,referenceLossTotal:sev.referenceLossTotal,shareOfLosses:sev.shareOfLosses,referenceShareOfLosses:sev.referenceShareOfLosses,worstRunLength:sev.worstRunLength,worstRunDelta:sev.worstRunDelta,referenceWorstRunLength:sev.referenceWorstRunLength,referenceWorstRunDelta:sev.referenceWorstRunDelta},
     seasonComparison,
