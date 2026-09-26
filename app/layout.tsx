@@ -2,6 +2,7 @@ import { Big_Shoulders, Chakra_Petch, IBM_Plex_Sans, Inter, JetBrains_Mono } fro
 import AppHeader from "@/components/AppHeader";
 import "./globals.css";
 import "./night-grid.css";
+import "./night-grid-mobile.css";
 
 const display = Big_Shoulders({ subsets: ["latin"], weight: ["600", "700", "800"], variable: "--font-display" });
 const body = Inter({ subsets: ["latin"], weight: ["400", "500", "600", "700"], variable: "--font-body" });
@@ -13,6 +14,8 @@ const chakra = Chakra_Petch({ subsets: ["latin"], weight: ["500", "600", "700"],
 const plex = IBM_Plex_Sans({ subsets: ["latin"], weight: ["400", "500", "600"], variable: "--font-plex" });
 
 export const metadata = { title: "Racing Analytics" };
+// viewport-fit=cover libera env(safe-area-inset-*) para a barra inferior do celular (night-grid-mobile.css).
+export const viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" as const };
 
 // Anti-flash theme init (02/09/2026, light mode toggle): runs before first paint so a returning
 // visitor who picked "light" doesn't see a flash of the dark default while React hydrates. Reads

@@ -11,10 +11,10 @@ import { refreshSyncStatus, useSyncStatus } from "@/lib/use-sync-status";
  * frescura das fontes (a mesma /api/sync/status do DataFreshness, uma requisição por página),
  * "Atualizar dados" (lib/data-sync-action.ts, mesma ação de antes) e identidade do piloto. */
 const NAV = [
-  { href: "/", label: "Visão Geral", match: (path: string) => path === "/" },
-  { href: "/telemetry", label: "Telemetry Lab", match: (path: string) => path.startsWith("/telemetry") },
-  { href: "/debriefs", label: "Debriefs", match: (path: string) => path.startsWith("/debriefs") },
-  { href: "/setup", label: "Setup Lab", match: (path: string) => path.startsWith("/setup") },
+  { href: "/", short: "Visão", label: "Visão Geral", match: (path: string) => path === "/" },
+  { href: "/telemetry", short: "Telemetria", label: "Telemetry Lab", match: (path: string) => path.startsWith("/telemetry") },
+  { href: "/debriefs", short: "Debriefs", label: "Debriefs", match: (path: string) => path.startsWith("/debriefs") },
+  { href: "/setup", short: "Setup", label: "Setup Lab", match: (path: string) => path.startsWith("/setup") },
 ];
 
 const fullDate = (iso: string | null) => (iso ? new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short" }).format(new Date(iso)) : "sem registro");
@@ -86,7 +86,7 @@ export default function AppHeader() {
           <span className="ng-freshness-text">{freshnessText}</span>
         </div>
         <button type="button" className="ng-button" disabled={syncing} onClick={() => void runDataSync()}>
-          {syncing ? "Atualizando…" : "Atualizar dados"}
+          {syncing ? <>Atualizando<span className="ng-btn-long">…</span></> : <>Atualizar<span className="ng-btn-long"> dados</span></>}
         </button>
         {driver && (
           <div className="ng-driver">
@@ -98,6 +98,14 @@ export default function AppHeader() {
           </div>
         )}
       </header>
+      <nav className="ng-bottom-nav" aria-label="Navegação principal">
+        {NAV.map((item) => (
+          <Link key={item.href} href={item.href} aria-current={item.match(pathname) ? "page" : undefined}>
+            <span className="ng-bottom-nav-icon" aria-hidden />
+            {item.short}
+          </Link>
+        ))}
+      </nav>
       {/* Na Visão Geral o aviso já aparece no banner da própria tela (até a etapa 2 migrá-la). */}
       {toast && pathname !== "/" && (
         <div className="ng-sync-toast" role="status">

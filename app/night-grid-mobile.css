@@ -1,0 +1,60 @@
+/* Night Grid, etapa 7: versao mobile (Mobile.dc.html, 390 px). Tudo sob max-width: 720px; o desktop
+ * nao muda. Carregado por ultimo em app/layout.tsx para vencer as regras de 760px das etapas
+ * anteriores sem editar os CSS delas. */
+.ng-bottom-nav { display: none; }
+
+@media (max-width: 720px) {
+  html, body { overflow-x: clip; }
+  body { padding-bottom: calc(68px + env(safe-area-inset-bottom)); }
+
+  /* Cabecalho compacto: marca, atualizar, avatar. A navegacao vai para a barra inferior. */
+  .ng-nav, .ng-freshness-text, .ng-driver-text { display: none; }
+  .ng-header { gap: 10px; padding: 0 16px; }
+  .ng-header-spacer { display: block; flex-grow: 1; }
+  .ng-brand { flex-grow: 1; gap: 10px; }
+  .ng-brand-name { display: block; font-size: 15px; }
+  .ng-brand-mark { width: 22px; height: 22px; }
+  .ng-btn-long { display: none; }
+  .ng-header-spacer { display: none; }
+  .ng-freshness { gap: 0; }
+  .ng-header .ng-button { min-height: 44px; padding: 0 12px; font-size: 13px; white-space: nowrap; }
+  .ng-header { gap: 8px; }
+  .ng-driver { padding: 0; border: 0; }
+  .ng-sync-toast { left: 16px; right: 16px; max-width: none; }
+
+  .ng-bottom-nav {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 50;
+    display: flex; padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+    background: var(--ng-header); border-top: 1px solid var(--ng-border);
+    font-family: var(--ng-font-body);
+  }
+  .ng-bottom-nav a {
+    flex: 1; min-height: 52px; min-width: 44px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+    font-size: 11px; color: var(--ng-muted); text-decoration: none; font-weight: 400;
+  }
+  .ng-bottom-nav-icon { width: 22px; height: 22px; border-radius: 6px; border: 1.5px solid #5C6A9E; box-sizing: border-box; }
+  .ng-bottom-nav a[aria-current="page"] { color: var(--ng-brand); font-weight: 600; }
+  .ng-bottom-nav a[aria-current="page"] .ng-bottom-nav-icon { background: #3A1219; border-color: var(--ng-brand); }
+  :root[data-theme="light"] .ng-bottom-nav a[aria-current="page"] .ng-bottom-nav-icon { background: #FBD9DC; }
+
+  /* Alvos de toque e campos: 16px evita o zoom automatico do iOS ao focar. */
+  select, input, textarea { font-size: 16px; }
+  button, select { min-height: 44px; }
+}
+
+/* ---- Visao Geral (Mobile.dc.html) */
+.ngo-mobile-filter, .ngo-kpi-sr-wrap { display: none; }
+@media (max-width: 720px) {
+  .ngo-mobile-filter { display: inline-flex; align-self: flex-start; }
+  .ngo-mobile-filter button { min-height: 36px; padding: 0 14px; font-size: 13px; }
+  .ngo-kpi-group:not([data-mobile-active]) { display: none; }
+  .ngo-kpi-group .ng-category-heading { display: none; }
+  .ngo-kpi-sr-wrap { display: block; }
+  .ngo-kpi-grid .ng-chip, .ngo-kpi-grid .ng-kpi-value-row > :not(.ng-kpi-value) { display: none; }
+  .ngo-main .ngo-kpi-grid > :nth-child(3) { grid-column: auto; }
+  .ngo-kpi-grid > :last-child .ng-kpi-trend { display: none; }
+  .ngo-kpi-grid > :last-child .ng-kpi-desc { display: block; color: var(--ng-muted); }
+  .ngo-kpi-sr-wrap .ng-kpi { height: 100%; box-sizing: border-box; }
+  /* KPIs sao 4 numeros; botoes de 44px ficam para acoes, nao para pilulas compactas */
+  .ng-segmented button, .ng-chip, .ngo-pager button { min-height: 0; }
+}

@@ -156,6 +156,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [chartCategory, setChartCategory] = useState<Category>("sports");
+  // Celular (etapa 7, Mobile.dc.html): mostra uma categoria de KPIs por vez; no desktop as duas aparecem.
+  const [mobileKpiCategory, setMobileKpiCategory] = useState<Category>("sports");
   const [perfTab, setPerfTab] = useState<"sf" | "gt3" | "imsa">("gt3");
   // Options depend on which series this driver actually raced in that category this season, not a
   // hardcoded taxonomy — the real list (GT3 Challenge Fixed, IMSA, GT Sprint, Prototype, LMP2...)
@@ -326,6 +328,8 @@ export default function Home() {
           trendTone={toneOf(iratingDiff)}
           sparkline={current.some((v) => v !== null) ? { kind: "lines", current, previous: previous.some((v) => v !== null) ? previous : undefined, count: Math.max(current.length, previous.length) } : undefined}
           description={`Tracejado: ${prevShort}`} />,
+        /* Só aparece no celular (Mobile.dc.html tem Safety Rating como cartão próprio); no desktop o selo do iRating cobre. */
+        <div key="sr" className="ngo-kpi-sr-wrap"><KpiCard category={key} label="Safety Rating" value={kpi.safetyRating.currentDisplay ?? "—"} /></div>,
         <KpiCard key="w" category={key} label="Vitórias"
           value={kpi.wins.current === null ? "—" : kpi.wins.current.toLocaleString("pt-BR")}
           trend={winsDiff === null ? "Sem comparação anterior" : `${arrow(winsDiff)} ${signedNumber(winsDiff)} vs. ${prevShort}`}
@@ -371,9 +375,12 @@ export default function Home() {
           <ThemeToggle />
         </div>
 
+        <SegmentedControl className="ngo-mobile-filter" ariaLabel="Categoria dos indicadores" value={mobileKpiCategory} onChange={setMobileKpiCategory}
+          options={[{ value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
+
         <section className="ngo-kpis" aria-label="Indicadores da temporada">
           {kpiGroups.map((group) => (
-            <div className="ngo-kpi-group" key={group.key}>
+            <div className="ngo-kpi-group" key={group.key} data-mobile-active={group.key === mobileKpiCategory ? "" : undefined}>
               <CategoryHeading category={group.category}>{group.name}</CategoryHeading>
               <div className="ngo-kpi-grid">{group.cards}</div>
             </div>
