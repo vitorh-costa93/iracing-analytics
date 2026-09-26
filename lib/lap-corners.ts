@@ -1,5 +1,6 @@
 import { detectCorners as detectCornersFromLatAccel, detectCornersFromGps } from "./corner-detection";
 import { lookupCornerNames } from "./track-corners";
+import { lookupCornerLayout } from "./track-corner-layouts";
 import type { LapCorner } from "./corner-sequences";
 import type { TracePoint } from "./telemetry-trace";
 
@@ -71,14 +72,25 @@ export function splitLongCorners<T extends { startDistance: number; endDistance:
   return out;
 }
 
-export function detectLapCorners(points: TracePoint[], trackName: string, trackVariant: string): LapCorner[] {
+/** Detecção de curvas de UMA volta (GPS e velocidade), sem o traçado canônico. Usada para montar os
+ * traçados canônicos (lib/track-corner-layouts.json) e como reserva para pistas que ainda não têm um. */
+export function detectCornersFromLap(points: TracePoint[]): Array<{ startDistance: number; endDistance: number; distance: number }> {
   const gpsDetected = detectCornersFromGps(points.map((point) => ({ distance: point.distance, lat: point.lat ?? null, lon: point.lon ?? null })));
   const raw = gpsDetected.length >= 3 ? gpsDetected : detectCornersFromLatAccel(points.map((point) => ({ distance: point.distance, lateralAccel: point.latAccel })));
   const lapMeters = estimateLapMeters(points);
   const anchors = speedAnchors(points.map((point) => ({ distance: point.distance, speed: point.speed })), lapMeters);
-  const split = splitLongCorners(raw, anchors, lapMeters, (source, piece) => ({ ...source, startDistance: Number(piece.start.toFixed(1)), endDistance: Number(piece.end.toFixed(1)), distance: Number(piece.peak.toFixed(1)) }));
-  const names = lookupCornerNames(trackName, trackVariant, split.length);
-  return split.map((corner, index) => ({ number: index + 1, distance: corner.distance, name: names?.[index] ?? null, startDistance: corner.startDistance, endDistance: corner.endDistance }));
+  return splitLongCorners(raw, anchors, lapMeters, (source, piece) => ({ ...source, startDistance: Number(piece.start.toFixed(1)), endDistance: Number(piece.end.toFixed(1)), distance: Number(piece.peak.toFixed(1)) }))
+    .map((corner) => ({ startDistance: corner.startDistance, endDistance: corner.endDistance, distance: corner.distance }));
+}
+
+/** Curvas da pista para esta volta. Numeração IDÊNTICA em todas as telas e sessões: se a pista tem um
+ * traçado canônico (o que mais se repete nas voltas reais, lib/track-corner-layouts.json), ele manda;
+ * senão, detecta na volta. Nomes verificados (lib/track-corners.ts) só quando a contagem bate. */
+export function detectLapCorners(points: TracePoint[], trackName: string, trackVariant: string): LapCorner[] {
+  const layout = lookupCornerLayout(trackName, trackVariant);
+  const base = layout ? layout.corners : detectCornersFromLap(points);
+  const names = lookupCornerNames(trackName, trackVariant, base.length);
+  return base.map((corner, index) => ({ number: index + 1, distance: corner.distance, name: names?.[index] ?? null, startDistance: corner.startDistance, endDistance: corner.endDistance }));
 }
 
 /** Comprimento da volta em metros a partir do traço (o CSV já traz a pista; sem isso, ~5 km). */

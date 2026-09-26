@@ -74,7 +74,10 @@ const ENTRIES: TrackCornerEntry[] = [
     // laps, which put the corners at the same positions (11 and 12 detected). The 12-corner lap only
     // adds Descida do Lago's second apex (T5 @35.7%). 2 of the 3 laps with usable GPS found 11.
     match: (t) => /jos[eé] carlos pace|interlagos/i.test(t),
-    names: ["Senna S", null, "Curva do Sol", "Descida do Lago", "Ferradura", "Laranjinha", "Pinheirinho", "Bico de Pato", "Mergulho", "Junção", "Subida dos Boxes"],
+    // 26/09/2026: o traçado canônico de Interlagos (lib/track-corner-layouts.json, o que mais se repete em 8
+    // voltas reais: 12 curvas) tem um ápice a mais em ~78,6% da volta, entre a Junção (~75,5%) e a subida
+    // (~84,3%). Ele fica sem nome (null) e a "Subida dos Boxes" continua na última curva.
+    names: ["Senna S", null, "Curva do Sol", "Descida do Lago", "Ferradura", "Laranjinha", "Pinheirinho", "Bico de Pato", "Mergulho", "Junção", null, "Subida dos Boxes"],
   },
   {
     // 31/08/2026 sweep: was 12 entries (conflating Casanova/Savelli and Biondetti 1/2 into one each)

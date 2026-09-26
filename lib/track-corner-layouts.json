@@ -1,0 +1,574 @@
+{
+ "autodromojosecarlospace|grandprix": {
+  "trackName": "Autódromo José Carlos Pace",
+  "variant": "Grand Prix",
+  "laps": 8,
+  "votes": {
+   "7": 1,
+   "8": 1,
+   "9": 1,
+   "11": 2,
+   "12": 3
+  },
+  "corners": [
+   {
+    "startDistance": 6.3,
+    "endDistance": 9.4,
+    "distance": 8.3
+   },
+   {
+    "startDistance": 9.4,
+    "endDistance": 11.8,
+    "distance": 10.3
+   },
+   {
+    "startDistance": 11.8,
+    "endDistance": 17.3,
+    "distance": 14.5
+   },
+   {
+    "startDistance": 31.2,
+    "endDistance": 39.6,
+    "distance": 33
+   },
+   {
+    "startDistance": 45.6,
+    "endDistance": 52.4,
+    "distance": 48.3
+   },
+   {
+    "startDistance": 52.4,
+    "endDistance": 55.8,
+    "distance": 54.6
+   },
+   {
+    "startDistance": 55.8,
+    "endDistance": 59.8,
+    "distance": 57.3
+   },
+   {
+    "startDistance": 60.9,
+    "endDistance": 65.8,
+    "distance": 64
+   },
+   {
+    "startDistance": 65.8,
+    "endDistance": 71.7,
+    "distance": 68.7
+   },
+   {
+    "startDistance": 74,
+    "endDistance": 78.3,
+    "distance": 75.5
+   },
+   {
+    "startDistance": 78.3,
+    "endDistance": 78.9,
+    "distance": 78.6
+   },
+   {
+    "startDistance": 83.3,
+    "endDistance": 86.4,
+    "distance": 84.3
+   }
+  ]
+ },
+ "circuitdes24heuresdumans|24heuresdumans": {
+  "trackName": "Circuit des 24 Heures du Mans",
+  "variant": "24 Heures du Mans",
+  "laps": 3,
+  "votes": {
+   "31": 2,
+   "32": 1
+  },
+  "corners": [
+   {
+    "startDistance": 2.9,
+    "endDistance": 5.3,
+    "distance": 4.6
+   },
+   {
+    "startDistance": 5.3,
+    "endDistance": 6.5,
+    "distance": 5.8
+   },
+   {
+    "startDistance": 6.5,
+    "endDistance": 7.5,
+    "distance": 6.9
+   },
+   {
+    "startDistance": 7.5,
+    "endDistance": 8.4,
+    "distance": 7.9
+   },
+   {
+    "startDistance": 8.4,
+    "endDistance": 9.9,
+    "distance": 9.3
+   },
+   {
+    "startDistance": 9.9,
+    "endDistance": 11.4,
+    "distance": 10.7
+   },
+   {
+    "startDistance": 11.4,
+    "endDistance": 12.9,
+    "distance": 12
+   },
+   {
+    "startDistance": 12.9,
+    "endDistance": 16.5,
+    "distance": 14.3
+   },
+   {
+    "startDistance": 18.4,
+    "endDistance": 19.6,
+    "distance": 18.9
+   },
+   {
+    "startDistance": 28.8,
+    "endDistance": 29.8,
+    "distance": 29.3
+   },
+   {
+    "startDistance": 29.8,
+    "endDistance": 31,
+    "distance": 30.4
+   },
+   {
+    "startDistance": 31,
+    "endDistance": 32.1,
+    "distance": 31.5
+   },
+   {
+    "startDistance": 43.2,
+    "endDistance": 44.3,
+    "distance": 43.8
+   },
+   {
+    "startDistance": 44.3,
+    "endDistance": 45.4,
+    "distance": 44.9
+   },
+   {
+    "startDistance": 45.4,
+    "endDistance": 46.5,
+    "distance": 45.9
+   },
+   {
+    "startDistance": 47.1,
+    "endDistance": 48.4,
+    "distance": 47.5
+   },
+   {
+    "startDistance": 55,
+    "endDistance": 57.8,
+    "distance": 56.7
+   },
+   {
+    "startDistance": 61.8,
+    "endDistance": 62.7,
+    "distance": 62.3
+   },
+   {
+    "startDistance": 69.9,
+    "endDistance": 71.4,
+    "distance": 70.8
+   },
+   {
+    "startDistance": 71.4,
+    "endDistance": 73.5,
+    "distance": 72.3
+   },
+   {
+    "startDistance": 73.5,
+    "endDistance": 75.6,
+    "distance": 74.5
+   },
+   {
+    "startDistance": 78.3,
+    "endDistance": 79.3,
+    "distance": 78.9
+   },
+   {
+    "startDistance": 81.9,
+    "endDistance": 82.6,
+    "distance": 82.3
+   },
+   {
+    "startDistance": 83.3,
+    "endDistance": 85.8,
+    "distance": 84.6
+   },
+   {
+    "startDistance": 85.8,
+    "endDistance": 88.5,
+    "distance": 86.7
+   },
+   {
+    "startDistance": 88.5,
+    "endDistance": 90.6,
+    "distance": 89.7
+   },
+   {
+    "startDistance": 90.6,
+    "endDistance": 92.5,
+    "distance": 91.5
+   },
+   {
+    "startDistance": 92.5,
+    "endDistance": 93.1,
+    "distance": 93
+   },
+   {
+    "startDistance": 93.8,
+    "endDistance": 94.6,
+    "distance": 94
+   },
+   {
+    "startDistance": 96.5,
+    "endDistance": 97.2,
+    "distance": 96.8
+   },
+   {
+    "startDistance": 97.8,
+    "endDistance": 99.6,
+    "distance": 99
+   }
+  ]
+ },
+ "circuitzandvoort|grandprix": {
+  "trackName": "Circuit Zandvoort",
+  "variant": "Grand Prix",
+  "laps": 3,
+  "votes": {
+   "15": 3
+  },
+  "corners": [
+   {
+    "startDistance": 6.9,
+    "endDistance": 11.5,
+    "distance": 8.8
+   },
+   {
+    "startDistance": 11.5,
+    "endDistance": 13.5,
+    "distance": 12.6
+   },
+   {
+    "startDistance": 15.3,
+    "endDistance": 18,
+    "distance": 16.6
+   },
+   {
+    "startDistance": 18,
+    "endDistance": 21.8,
+    "distance": 20.1
+   },
+   {
+    "startDistance": 24.4,
+    "endDistance": 25.5,
+    "distance": 25.1
+   },
+   {
+    "startDistance": 28.3,
+    "endDistance": 31.2,
+    "distance": 29.1
+   },
+   {
+    "startDistance": 32.9,
+    "endDistance": 34.5,
+    "distance": 33.8
+   },
+   {
+    "startDistance": 37.6,
+    "endDistance": 43.2,
+    "distance": 40.6
+   },
+   {
+    "startDistance": 46.6,
+    "endDistance": 51.3,
+    "distance": 47.9
+   },
+   {
+    "startDistance": 51.3,
+    "endDistance": 55.9,
+    "distance": 53.4
+   },
+   {
+    "startDistance": 55.9,
+    "endDistance": 61.9,
+    "distance": 58.9
+   },
+   {
+    "startDistance": 71.8,
+    "endDistance": 73.6,
+    "distance": 73
+   },
+   {
+    "startDistance": 73.6,
+    "endDistance": 76.5,
+    "distance": 74.8
+   },
+   {
+    "startDistance": 80.8,
+    "endDistance": 84.3,
+    "distance": 82.6
+   },
+   {
+    "startDistance": 85.3,
+    "endDistance": 91.6,
+    "distance": 87.8
+   }
+  ]
+ },
+ "roadatlanta|fullcourse": {
+  "trackName": "Road Atlanta",
+  "variant": "Full Course",
+  "laps": 28,
+  "votes": {
+   "8": 3,
+   "9": 1,
+   "13": 13,
+   "14": 6,
+   "15": 3,
+   "16": 2
+  },
+  "corners": [
+   {
+    "startDistance": 7.9,
+    "endDistance": 15.4,
+    "distance": 11.4
+   },
+   {
+    "startDistance": 16.5,
+    "endDistance": 19.1,
+    "distance": 18.3
+   },
+   {
+    "startDistance": 19.1,
+    "endDistance": 21.8,
+    "distance": 20.7
+   },
+   {
+    "startDistance": 21.8,
+    "endDistance": 25.5,
+    "distance": 23.3
+   },
+   {
+    "startDistance": 25.5,
+    "endDistance": 29.8,
+    "distance": 28.8
+   },
+   {
+    "startDistance": 29.8,
+    "endDistance": 31.5,
+    "distance": 30.6
+   },
+   {
+    "startDistance": 31.5,
+    "endDistance": 33.1,
+    "distance": 32.3
+   },
+   {
+    "startDistance": 33.1,
+    "endDistance": 36.6,
+    "distance": 34.6
+   },
+   {
+    "startDistance": 46.5,
+    "endDistance": 50.7,
+    "distance": 48.9
+   },
+   {
+    "startDistance": 50.7,
+    "endDistance": 54.6,
+    "distance": 52.6
+   },
+   {
+    "startDistance": 84.5,
+    "endDistance": 86.8,
+    "distance": 86
+   },
+   {
+    "startDistance": 86.8,
+    "endDistance": 92.1,
+    "distance": 87.8
+   },
+   {
+    "startDistance": 92.1,
+    "endDistance": 99.9,
+    "distance": 96.5
+   }
+  ]
+ },
+ "silverstonecircuit|grandprix": {
+  "trackName": "Silverstone Circuit",
+  "variant": "Grand Prix",
+  "laps": 10,
+  "votes": {
+   "15": 1,
+   "16": 8,
+   "17": 1
+  },
+  "corners": [
+   {
+    "startDistance": 6,
+    "endDistance": 9.6,
+    "distance": 7.6
+   },
+   {
+    "startDistance": 9.6,
+    "endDistance": 12.9,
+    "distance": 10.7
+   },
+   {
+    "startDistance": 14.3,
+    "endDistance": 16.8,
+    "distance": 15.6
+   },
+   {
+    "startDistance": 16.8,
+    "endDistance": 19.8,
+    "distance": 18
+   },
+   {
+    "startDistance": 19.8,
+    "endDistance": 22.6,
+    "distance": 21.3
+   },
+   {
+    "startDistance": 32.1,
+    "endDistance": 35.5,
+    "distance": 34.2
+   },
+   {
+    "startDistance": 35.5,
+    "endDistance": 40,
+    "distance": 37.4
+   },
+   {
+    "startDistance": 41.9,
+    "endDistance": 44.1,
+    "distance": 42.8
+   },
+   {
+    "startDistance": 51,
+    "endDistance": 55.2,
+    "distance": 52.2
+   },
+   {
+    "startDistance": 62.7,
+    "endDistance": 64.8,
+    "distance": 63.4
+   },
+   {
+    "startDistance": 64.8,
+    "endDistance": 67.2,
+    "distance": 66.1
+   },
+   {
+    "startDistance": 67.2,
+    "endDistance": 70.6,
+    "distance": 68.4
+   },
+   {
+    "startDistance": 70.6,
+    "endDistance": 72.5,
+    "distance": 71.4
+   },
+   {
+    "startDistance": 84,
+    "endDistance": 88.5,
+    "distance": 86
+   },
+   {
+    "startDistance": 93,
+    "endDistance": 94.8,
+    "distance": 94
+   },
+   {
+    "startDistance": 94.8,
+    "endDistance": 99.6,
+    "distance": 95.5
+   }
+  ]
+ },
+ "watkinsgleninternational|boot": {
+  "trackName": "Watkins Glen International",
+  "variant": "Boot",
+  "laps": 3,
+  "votes": {
+   "13": 3
+  },
+  "corners": [
+   {
+    "startDistance": 5.1,
+    "endDistance": 8.4,
+    "distance": 6.5
+   },
+   {
+    "startDistance": 11.5,
+    "endDistance": 15.1,
+    "distance": 13.2
+   },
+   {
+    "startDistance": 16.6,
+    "endDistance": 18.8,
+    "distance": 17.7
+   },
+   {
+    "startDistance": 21.1,
+    "endDistance": 23.7,
+    "distance": 22.6
+   },
+   {
+    "startDistance": 34,
+    "endDistance": 35.5,
+    "distance": 34.6
+   },
+   {
+    "startDistance": 35.5,
+    "endDistance": 38.3,
+    "distance": 36.8
+   },
+   {
+    "startDistance": 38.3,
+    "endDistance": 46,
+    "distance": 42
+   },
+   {
+    "startDistance": 49.2,
+    "endDistance": 54.1,
+    "distance": 51.3
+   },
+   {
+    "startDistance": 58.5,
+    "endDistance": 63.4,
+    "distance": 60.4
+   },
+   {
+    "startDistance": 72,
+    "endDistance": 75.6,
+    "distance": 73.5
+   },
+   {
+    "startDistance": 77.5,
+    "endDistance": 81.6,
+    "distance": 79.5
+   },
+   {
+    "startDistance": 85.2,
+    "endDistance": 89.3,
+    "distance": 86.7
+   },
+   {
+    "startDistance": 90.5,
+    "endDistance": 94.6,
+    "distance": 92.5
+   }
+  ]
+ }
+}
