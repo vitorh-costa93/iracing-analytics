@@ -26,4 +26,9 @@ Objetivo: fidelidade 100% ao mockup, análises novas, tudo funcionando. Substitu
 
 ## Estado
 - [x] Mockup aprovado e exportado para `docs/redesign-mockup/`.
-- [x] Etapa 1 (25/09/2026: tokens `--ng-`, fontes, cabeçalho global, `components/ui/`, `/debriefs` placeholder) · [ ] 2 · [ ] 3 · [ ] 4 · [x] 5 (26/09/2026: página /debriefs com season e week, modal removido) · [ ] 6 · [ ] 7 · [ ] Publicação em produção
+- [x] Etapa 1 (25/09/2026: tokens `--ng-`, fontes, cabeçalho global, `components/ui/`)
+- [x] Etapa 2 (26/09/2026: Visão Geral)
+- [x] Etapa 3 (26/09/2026: Telemetry Lab semana ativa, sequências de curvas, popup, textos humanizados)
+- [ ] Etapa 4 (Race Debrief e Comparação de carros)
+- [x] Etapa 5 (26/09/2026: página /debriefs com season e week, modal removido)
+- [ ] Etapa 6 (Setup Lab) · [ ] Etapa 7 (Mobile) · [ ] Revisão de fidelidade e limpeza final · [ ] Publicação em produção

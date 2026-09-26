@@ -1,22 +1,16 @@
 import TelemetryTabs from "@/components/TelemetryTabs";
-import AppTabs from "@/components/AppTabs";
-import ThemeToggle from "@/components/ThemeToggle";
-import DataFreshness from "@/components/DataFreshness";
+import "../night-grid-telemetry.css";
 
 export const metadata = { title: "Telemetry Lab • Racing Analytics" };
 
+// Redesign etapa 3 (25/09/2026): superfície Night Grid (Telemetry.dc.html). A frescura das fontes
+// e o "Atualizar dados" ficam no cabeçalho global (components/AppHeader.tsx).
 export default function TelemetryPage() {
   return (
-    <main className="app-shell">
-      <div className="app-frame telemetry-page-frame">
-        <header className="app-header compact-header">
-          <div className="brand-block"><div className="brand-mark"><span /></div><div><div className="brand-kicker">RACING ANALYTICS</div><h1>Telemetry Lab</h1><p>Análise técnica da semana ativa</p></div></div>
-          <ThemeToggle />
-        </header>
-        <AppTabs />
-        <DataFreshness surface="telemetry" />
+    <div className="ng-page">
+      <main className="ng-main">
         <TelemetryTabs />
-      </div>
-    </main>
+      </main>
+    </div>
   );
 }

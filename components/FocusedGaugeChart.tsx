@@ -191,3 +191,89 @@ export default function FocusedGaugeChart({ sides, xDomain, hoverX, onHoverX, ar
     </svg>
   );
 }
+
+/**
+ * Variante Night Grid do mesmo widget (redesign etapa 3, TelemetryPopup.dc.html): mesmo contrato
+ * (FocusedSide, xDomain, hoverX/onHoverX) e mesma regra de cores (acelerador verde, freio vermelho,
+ * você contínua, referência tracejada), com o gráfico de inputs à esquerda (viewBox 640 x 250) e os
+ * mostradores sincronizados em HTML à direita: pedais, marcha, velocidade e volante de cada lado.
+ * O modo clássico acima continua sendo o usado por CarComparison.tsx.
+ */
+const NG_W = 640, NG_H = 250, NG_X0 = 12, NG_X1 = 628, NG_TOP = 40, NG_BOTTOM = 200;
+
+function NightWheel({ angleRad, tickColor }: { angleRad: number | null; tickColor: string }) {
+  const degrees = angleRad !== null ? -angleRad * 180 / Math.PI : 0;
+  return (
+    <svg className="ngt-wheel" width="44" height="44" viewBox="0 0 44 44" aria-hidden style={{ opacity: angleRad === null ? 0.35 : 1 }}>
+      <g transform={`rotate(${degrees.toFixed(1)} 22 22)`}>
+        <circle className="rim" cx="22" cy="22" r="17" />
+        <line x1="8" x2="36" y1="24" y2="24" />
+        <line x1="22" x2="22" y1="24" y2="38" />
+        <circle cx="22" cy="5" r="2.5" fill={tickColor} />
+      </g>
+    </svg>
+  );
+}
+
+export function FocusedGaugePanel({ sides, xDomain, hoverX, onHoverX, startLabel, endLabel, ariaLabel }: {
+  sides: FocusedSide[]; xDomain: [number, number]; hoverX: number | null; onHoverX: (x: number | null) => void;
+  startLabel: string; endLabel: string; ariaLabel: string;
+}) {
+  const [from, to] = xDomain;
+  const span = Math.max(0.0001, to - from);
+  const scaleX = (x: number) => NG_X0 + ((x - from) / span) * (NG_X1 - NG_X0);
+  const line = (points: FocusedSeriesPoint[]) => points
+    .map((point) => `${scaleX(point.x).toFixed(1)},${(NG_BOTTOM - Math.max(0, Math.min(1, point.value)) * (NG_BOTTOM - NG_TOP)).toFixed(1)}`)
+    .join(" ");
+  function toX(clientX: number, svg: SVGSVGElement) {
+    const rect = svg.getBoundingClientRect();
+    const local = ((clientX - rect.left) / rect.width) * NG_W;
+    return Math.max(from, Math.min(to, from + ((local - NG_X0) / (NG_X1 - NG_X0)) * span));
+  }
+  const own = sides[0], reference = sides[1];
+  return (
+    <div className="ngt-inputs">
+      <div className="ngt-inputs-chart">
+        <svg viewBox={`0 0 ${NG_W} ${NG_H}`} role="img" aria-label={ariaLabel}
+          onMouseMove={(event) => onHoverX(toX(event.clientX, event.currentTarget))}
+          onMouseLeave={() => onHoverX(null)}
+          onTouchStart={(event) => { if (event.touches[0]) onHoverX(toX(event.touches[0].clientX, event.currentTarget)); }}
+          onTouchMove={(event) => { if (event.touches[0]) onHoverX(toX(event.touches[0].clientX, event.currentTarget)); }}>
+          <text x="12" y="18" fontSize="11" letterSpacing="1.5" fill="var(--ng-soft)">INPUTS</text>
+          <line x1="150" x2="176" y1="14" y2="14" stroke="var(--ng-text)" strokeWidth="2" />
+          <text x="182" y="18" fontSize="11" fill="var(--ng-text)">VOCÊ (contínua)</text>
+          {reference && <>
+            <line x1="300" x2="326" y1="14" y2="14" stroke="var(--ng-reference-popup)" strokeWidth="2" strokeDasharray="5 3" />
+            <text x="332" y="18" fontSize="11" fill="var(--ng-reference-popup)">REFERÊNCIA (tracejada)</text>
+          </>}
+          {[40, 120, 200].map((y) => <line key={y} x1="0" x2={NG_W} y1={y} y2={y} className="ngt-inputs-grid" />)}
+          {reference && <>
+            <polyline points={line(reference.brake)} className="ngt-in-brake" data-ref="" />
+            <polyline points={line(reference.throttle)} className="ngt-in-throttle" data-ref="" />
+          </>}
+          <polyline points={line(own.brake)} className="ngt-in-brake" />
+          <polyline points={line(own.throttle)} className="ngt-in-throttle" />
+          {hoverX !== null && <line x1={scaleX(hoverX)} x2={scaleX(hoverX)} y1="30" y2="215" className="ngt-in-cursor" />}
+          <text x="12" y="240" fontSize="10" fill="var(--ng-soft)">{startLabel}</text>
+          <text x="628" y="240" fontSize="10" textAnchor="end" fill="var(--ng-soft)">{endLabel}</text>
+        </svg>
+      </div>
+      <div className="ngt-gauges">
+        {sides.map((side) => {
+          const fill = (value: number | null) => `${Math.round(Math.max(0, Math.min(1, value ?? 0)) * 100)}%`;
+          return (
+            <div key={side.key} className="ngt-gauge" data-side={side.key === "own" ? "own" : "reference"}>
+              <div className="ngt-pedals" aria-label={`Acelerador ${fill(side.throttleNow)}, freio ${fill(side.brakeNow)}`}>
+                <div className="ngt-pedal" data-channel="throttle"><i style={{ height: fill(side.throttleNow) }} /></div>
+                <div className="ngt-pedal" data-channel="brake"><i style={{ height: fill(side.brakeNow) }} /></div>
+              </div>
+              <div className="ngt-gear" aria-label="Marcha">{formatGear(side.gear)}</div>
+              <div className="ngt-speed"><strong>{side.speedMs !== null ? `${Math.round(side.speedMs * 3.6)} km/h` : "—"}</strong><span>{side.label}</span></div>
+              <NightWheel angleRad={side.angleRad} tickColor={side.key === "own" ? "var(--ng-loss)" : "var(--ng-reference-popup)"} />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

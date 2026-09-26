@@ -61,6 +61,47 @@ function isEligibleLap(lap: Garage61LapPayload, weekStart: Date, weekEnd: Date) 
   );
 }
 
+type CarContext = { category: "sports" | "formula" | null; carClass: string | null };
+
+/** Categoria (cor do cartão de contexto no Telemetry Lab, redesign etapa 3) e classe (GT3/GTP/LMP2)
+ * de cada carro da semana. Classe NÃO é série: vem só da participação em car_groups, com o mesmo
+ * reforço por nome para LMP2 da comparação de carros. Consultas pequenas (só os carros da semana) e
+ * não fatais: sem essa informação o cartão só não mostra a cor/classe. */
+async function resolveCarContext(carIds: number[], cars: CatalogRow[]): Promise<Map<number, CarContext>> {
+  const result = new Map<number, CarContext>();
+  if (!carIds.length) return result;
+  try {
+    const [ratingsResult, groupsResult] = await Promise.all([
+      supabaseAdmin.from("car_rating_categories").select("car_id,rating_category").in("car_id", carIds),
+      supabaseAdmin.from("car_groups").select("id,name").in("name", ["GTP", "LMP2", "GT3"]),
+    ]);
+    const groups = (groupsResult.data ?? []) as { id: number; name: string }[];
+    const membersResult = groups.length
+      ? await supabaseAdmin.from("car_group_members").select("car_group_id,car_id").in("car_group_id", groups.map((group) => group.id)).in("car_id", carIds)
+      : { data: [] };
+    const groupName = new Map(groups.map((group) => [group.id, group.name]));
+    const classesByCar = new Map<number, Set<string>>();
+    for (const row of (membersResult.data ?? []) as { car_group_id: number; car_id: number }[]) {
+      const name = groupName.get(row.car_group_id);
+      if (!name) continue;
+      if (!classesByCar.has(row.car_id)) classesByCar.set(row.car_id, new Set());
+      classesByCar.get(row.car_id)!.add(name);
+    }
+    const rating = new Map(((ratingsResult.data ?? []) as { car_id: number; rating_category: string }[]).map((row) => [row.car_id, row.rating_category]));
+    const lmp2ByName = /\bLMP2\b|Dallara P217|Oreca 07/i;
+    for (const carId of carIds) {
+      const classes = classesByCar.get(carId) ?? new Set<string>();
+      const name = cars.find((car) => car.id === carId)?.name ?? "";
+      const carClass = classes.has("GTP") ? "GTP" : classes.has("LMP2") || lmp2ByName.test(name) ? "LMP2" : classes.has("GT3") ? "GT3" : null;
+      const category = rating.get(carId) === "formula_car" ? "formula" : rating.get(carId) === "sports_car" || carClass ? "sports" : null;
+      result.set(carId, { category, carClass });
+    }
+  } catch {
+    // Informação só visual; nunca derruba a tela.
+  }
+  return result;
+}
+
 export async function GET() {
   try {
     const { data: driver, error: driverError } = await supabaseAdmin
@@ -137,6 +178,7 @@ export async function GET() {
     if (tracksResult.error) throw tracksResult.error;
 
     const cars = new Map(((carsResult.data ?? []) as CatalogRow[]).map((item) => [item.id, item]));
+    const carClasses = await resolveCarContext(carIds, [...cars.values()]);
     const tracks = new Map(((tracksResult.data ?? []) as CatalogRow[]).map((item) => [item.id, item]));
 
     // Reads the already-synced `laps` table (populated by app/api/sync/incremental) instead of
@@ -176,7 +218,7 @@ export async function GET() {
       return {
         key: `${pair.carId}:${pair.trackId}`,
         label: `${car?.name ?? `Carro ${pair.carId}`} — ${track?.name ?? `Pista ${pair.trackId}`}${track?.variant ? ` (${track.variant})` : ""}`,
-        car: { id: pair.carId, name: car?.name ?? `Carro ${pair.carId}`, variant: car?.variant ?? null },
+        car: { id: pair.carId, name: car?.name ?? `Carro ${pair.carId}`, variant: car?.variant ?? null, ...(carClasses.get(pair.carId) ?? { category: null, carClass: null }) },
         track: { id: pair.trackId, name: track?.name ?? `Pista ${pair.trackId}`, variant: track?.variant ?? null },
         sessions: pair.sessions,
         sessionTypes: [...pair.sessionTypes],
