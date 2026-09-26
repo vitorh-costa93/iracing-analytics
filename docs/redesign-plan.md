@@ -29,6 +29,7 @@ Objetivo: fidelidade 100% ao mockup, análises novas, tudo funcionando. Substitu
 - [x] Etapa 1 (25/09/2026: tokens `--ng-`, fontes, cabeçalho global, `components/ui/`)
 - [x] Etapa 2 (26/09/2026: Visão Geral)
 - [x] Etapa 3 (26/09/2026: Telemetry Lab semana ativa, sequências de curvas, popup, textos humanizados)
-- [x] Etapa 4 (26/09/2026: Race Debrief por corrida com "você contra você mesmo" por sequência, Comparação de carros com microcorreções e curva a curva contra o carro escolhido)
+- [x] Etapa 4 (26/09/2026: Race Debrief e Comparação de carros, microcorreções)
 - [x] Etapa 5 (26/09/2026: página /debriefs com season e week, modal removido)
-- [ ] Etapa 6 (Setup Lab) · [ ] Etapa 7 (Mobile) · [ ] Revisão de fidelidade e limpeza final · [ ] Publicação em produção
+- [x] Etapa 6 (26/09/2026: Setup Lab, chat com proposta estruturada, comparador de dois setups; chat com OpenAI ainda sem teste real local)
+- [ ] Etapa 7 (Mobile) · [ ] Revisão de fidelidade e limpeza final · [ ] Publicação em produção

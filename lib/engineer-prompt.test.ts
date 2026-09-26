@@ -1,50 +1,53 @@
 import { describe, expect, it } from "vitest";
 import { buildSystemPrompt } from "./engineer-prompt";
+import { indexRows, parseProposalBlock, resolveProposal } from "./engineer-proposal";
+
+const rows = indexRows([
+  { tab: "Chassis", section: "Front", label: "ARB Blades", metric_value: "5" },
+  { tab: "Chassis", section: "Rear", label: "Spring Rate", metric_value: "180 N/mm" },
+]);
 
 describe("buildSystemPrompt", () => {
-  it("always includes the car/track header and the non-negotiable framing rules", () => {
-    const prompt = buildSystemPrompt({ carName: "McLaren 720S GT3 EVO", trackName: "Spa-Francorchamps", primarySetup: null, diff: null });
+  it("sempre traz carro/pista e as regras inegociáveis (direção, cliques, .sto, fase da curva)", () => {
+    const prompt = buildSystemPrompt({ carName: "McLaren 720S GT3 EVO", trackName: "Spa-Francorchamps", activeSetup: null, appliedProposal: null, cited: [] });
     expect(prompt).toContain("McLaren 720S GT3 EVO");
     expect(prompt).toContain("Spa-Francorchamps");
     expect(prompt).toContain("aumente");
     expect(prompt).toContain("diminua");
-    expect(prompt).toContain(".sto");
+    expect(prompt).toContain(".sto original NÃO é reescrito");
+    expect(prompt).toMatch(/pergunte isso primeiro/);
+    expect(prompt).toMatch(/Nunca invente um valor contínuo/);
+    expect(prompt).toMatch(/nunca "Setup A" ou "Setup B"/);
   });
 
-  it("includes the primary setup's decoded parameters as a table when provided", () => {
-    const prompt = buildSystemPrompt({
-      carName: "McLaren 720S GT3 EVO",
-      trackName: "Spa-Francorchamps",
-      primarySetup: { filename: "race-setup.sto", rows: [{ tab: "Suspensão", section: "Rear", label: "Spring Rate", metric_value: "180 N/mm" }] },
-      diff: null,
-    });
-    expect(prompt).toContain("race-setup.sto");
-    expect(prompt).toContain("Spring Rate");
-    expect(prompt).toContain("180 N/mm");
+  it("não usa '--' nas instruções, para o modelo não copiar", () => {
+    const prompt = buildSystemPrompt({ carName: "Carro", trackName: "Pista", activeSetup: { name: "Baseline", rows }, appliedProposal: null, cited: [] });
+    expect(prompt).not.toContain("--");
   });
 
-  it("includes the structural diff narrative and changed parameters when two setups are compared, instead of the single-setup table", () => {
-    const prompt = buildSystemPrompt({
-      carName: "McLaren 720S GT3 EVO",
-      trackName: "Spa-Francorchamps",
-      primarySetup: { filename: "ignored-when-diff-present.sto", rows: [{ tab: "Suspensão", section: "Rear", label: "Spring Rate", metric_value: "180 N/mm" }] },
-      diff: {
-        baseLabel: "setup-a.sto",
-        comparisonLabel: "setup-b.sto",
-        summary: "O setup B é mais macio na traseira.",
-        changes: [{ tab: "Suspensão", section: "Rear", label: "Spring Rate", before: "180 N/mm", after: "160 N/mm", explanation: "Mais aderência mecânica.", category: "spring", actionable: true, settable: true, numericDelta: -20 }],
-      },
-    });
-    expect(prompt).toContain("setup-a.sto");
-    expect(prompt).toContain("setup-b.sto");
-    expect(prompt).toContain("O setup B é mais macio na traseira.");
-    expect(prompt).toContain("180 N/mm");
-    expect(prompt).toContain("160 N/mm");
-    expect(prompt).not.toContain("ignored-when-diff-present.sto");
+  it("inclui a tabela numerada do setup ativo e o protocolo do bloco de proposta", () => {
+    const prompt = buildSystemPrompt({ carName: "Carro", trackName: "Pista", activeSetup: { name: "Baseline", rows }, appliedProposal: null, cited: [] });
+    expect(prompt).toContain('SETUP ATIVO: "Baseline"');
+    expect(prompt).toContain("| p1 | Barra estabilizadora dianteira | ARB Blades (Front) | 5 |");
+    expect(prompt).toContain("| p2 | Mola traseira | Spring Rate (Rear) | 180 N/mm |");
+    expect(prompt).toContain("<proposta>");
+    expect(prompt).toContain("</proposta>");
   });
 
-  it("says explicitly when there is no decoded setup and no diff to ground answers in", () => {
-    const prompt = buildSystemPrompt({ carName: "McLaren 720S GT3 EVO", trackName: "Spa-Francorchamps", primarySetup: null, diff: null });
+  it("sem setup decodificado: diz isso e proíbe o bloco", () => {
+    const prompt = buildSystemPrompt({ carName: "Carro", trackName: "Pista", activeSetup: null, appliedProposal: null, cited: [] });
     expect(prompt.toLowerCase()).toContain("não há setup decodificado");
+    expect(prompt).toContain("Não escreva bloco de proposta");
+  });
+
+  it("descreve a proposta que o piloto está rodando e os setups citados", () => {
+    const applied = resolveProposal(parseProposalBlock('{"mudancas":[{"id":"p1","direcao":"diminuir"}]}'), rows, { id: "s1", name: "Baseline" });
+    const prompt = buildSystemPrompt({
+      carName: "Carro", trackName: "Pista", activeSetup: { name: "Baseline", rows }, appliedProposal: applied,
+      cited: [{ name: "Estável", summary: "Do Baseline para o Estável mudam 1 ajuste.", changes: [{ tab: "Chassis", section: "Rear", label: "Spring Rate", before: "180 N/mm", after: "160 N/mm", explanation: "", category: "springs", actionable: true, settable: true, numericDelta: -20 }] }],
+    });
+    expect(prompt).toContain("Barra estabilizadora dianteira: 5 → 4");
+    expect(prompt).toContain('O piloto citou o setup "Estável"');
+    expect(prompt).toContain("| Mola traseira | 180 N/mm | 160 N/mm |");
   });
 });

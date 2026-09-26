@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CATEGORY_LABELS, DecodedRow, comparativeSummary, diffSetups } from "@/lib/setup-diff";
+import { explainComparison } from "@/lib/setup-explain";
+import { PANEL_GROUPS, plainParameterName, setupDisplayName, shortPairNames } from "@/lib/setup-names";
 
 type SetupRow = { id: string; filename: string; storage_path: string; car_id: number; track_id: number; decoded_params: unknown; decoded_car_name: string | null };
 
 async function decode(setup: SetupRow) {
   if (Array.isArray(setup.decoded_params)) return { carName: setup.decoded_car_name, rows: setup.decoded_params as DecodedRow[] };
-  throw new Error(`${setup.filename} ainda não possui parâmetros capturados pelo Garage61. Use uma sessão registrada com esse setup antes de compará-lo.`);
+  throw new Error(`O ${setupDisplayName(setup.filename)} ainda não tem parâmetros lidos pelo Garage61. Rode uma sessão com ele antes de comparar.`);
 }
 
 export async function POST(request: NextRequest) {
@@ -33,21 +35,24 @@ export async function POST(request: NextRequest) {
 
     const numericChanges = actionable.filter((change) => change.numericDelta !== null && change.numericDelta !== 0);
     const topContributors = [...numericChanges].sort((a, b) => Math.abs(b.numericDelta as number) - Math.abs(a.numericDelta as number)).slice(0, 5)
-      .map((change) => ({ label: `${change.tab} • ${change.section} • ${change.label}`, before: change.before, after: change.after, category: change.category }));
+      .map((change) => ({ label: plainParameterName(change.label, change.section), before: change.before, after: change.after, category: change.category }));
 
-    // Filenames remain in the A/B header; prose deliberately uses stable labels so the causal
-    // explanation is readable even when provider filenames are long or opaque.
-    const summary = `${comparativeSummary(changes, "Setup A", "Setup B")}${skipped > 0 ? ` (${skipped} parâmetro(s) sem regra de efeito específica foram omitidos da lista abaixo.)` : ""}`;
+    // Redesign etapa 6: a fala usa o nome curto de cada setup (sem pasta nem extensão), não "Setup A/B".
+    const baseName = setupDisplayName(base.filename), comparisonName = setupDisplayName(comparison.filename);
+    const [spokenBase, spokenComparison] = shortPairNames(baseName, comparisonName);
+    const summary = comparativeSummary(changes, spokenBase, spokenComparison);
+    const explanation = explainComparison(actionable, spokenBase, spokenComparison);
 
     return NextResponse.json({
       status: "ok",
-      base: { id: base.id, filename: base.filename },
-      comparison: { id: comparison.id, filename: comparison.filename },
+      base: { id: base.id, name: baseName },
+      comparison: { id: comparison.id, name: comparisonName },
       carName: comparisonDecoded.carName ?? baseDecoded.carName,
       totalParameters: changes.length,
-      changes: actionable,
+      changes: actionable.map((change) => ({ ...change, name: plainParameterName(change.label, change.section), group: PANEL_GROUPS[change.category] ?? "Outros" })),
       skippedCount: skipped,
       summary,
+      explanation,
       analysis: { topCategories, topContributors },
     });
   } catch (error) {

@@ -2,11 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { comparativeSummary, diffSetups, type DecodedRow } from "@/lib/setup-diff";
 import { buildSystemPrompt } from "@/lib/engineer-prompt";
+import { indexRows, latestProposal, parseProposalBlock, resolveProposal, splitEngineerText, type ResolvedProposal } from "@/lib/engineer-proposal";
+import { setupDisplayName } from "@/lib/setup-names";
 
 export const maxDuration = 60; // Vercel Hobby ceiling -- a streamed gpt-4o reply routinely takes 15-40s
 export const dynamic = "force-dynamic";
 
-export type StoredMessage = { id: string; role: "user" | "assistant"; content: string; createdAt: string };
+export type StoredMessage = {
+  id: string; role: "user" | "assistant"; content: string; createdAt: string;
+  /** Turno do piloto: setup ativo, se rodava a proposta anterior e setups citados com "/". */
+  setupId?: string; setupName?: string; onProposal?: boolean; mentions?: Array<{ id: string; name: string }>;
+  /** Turno do engenheiro: proposta estruturada já resolvida contra o setup (lib/engineer-proposal.ts). */
+  proposal?: ResolvedProposal;
+};
 
 // Copied from app/api/setup/inventory/route.ts's own context() -- this codebase's established
 // convention is one small inline copy per route, not a shared lib helper (no existing route shares
@@ -54,6 +62,7 @@ const OPENAI_MODEL = "gpt-4o";
 const MAX_HISTORY_MESSAGES = 20; // mirrors dashboard-psi/api/post-content.js's own truncation
 const MAX_MESSAGE_LENGTH = 4000; // mirrors dashboard-psi/api/post-content.js's own per-message truncation length
 const MAX_COMPLETION_TOKENS = 1000; // CLAUDE.md rule 7 cost guard-rail -- caps spend on a single reply
+const MAX_MENTIONS = 2; // setups citados com "/" que entram no prompt (cada um soma uma tabela de diferenças)
 
 // Mirrors dashboard-psi/api/_openai-retry.js's fetchComRetentativa: retries on network error/timeout
 // or a 5xx/429 response (transient failures), never on other 4xx (our own request's problem, retrying
@@ -86,24 +95,22 @@ async function fetchWithRetry(
 
 type PostBody = {
   carId?: number; trackId?: number; carName?: string; trackName?: string;
-  setupId?: string; blendWithSetupId?: string; message?: string; regenerate?: boolean;
+  /** Setup ativo: a conversa é sempre sobre ele. */
+  setupId?: string;
+  /** O piloto está rodando a última proposta do engenheiro, aplicada à mão sobre o setup ativo. */
+  useProposal?: boolean;
+  /** Setups citados com "/" na mensagem (no máximo MAX_MENTIONS entram no prompt). */
+  mentionIds?: string[];
+  message?: string; regenerate?: boolean;
 };
 
-async function loadSetupRows(driverId: string, carId: number, trackId: number, setupId: string): Promise<{ filename: string; rows: DecodedRow[] } | null> {
-  const { data } = await supabaseAdmin.from("setup_files").select("filename,decoded_params").eq("id", setupId).eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).maybeSingle();
-  if (!data) return null;
-  return { filename: data.filename, rows: Array.isArray(data.decoded_params) ? (data.decoded_params as DecodedRow[]) : [] };
-}
+type SetupRecord = { id: string; filename: string; rows: DecodedRow[] };
 
-async function loadDiff(driverId: string, carId: number, trackId: number, setupIdA: string, setupIdB: string) {
-  const { data } = await supabaseAdmin.from("setup_files").select("id,filename,decoded_params").eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).in("id", [setupIdA, setupIdB]);
-  if (!data || data.length !== 2) return null;
-  const a = data.find((row) => row.id === setupIdA)!, b = data.find((row) => row.id === setupIdB)!;
-  const rowsA: DecodedRow[] = Array.isArray(a.decoded_params) ? (a.decoded_params as DecodedRow[]) : [];
-  const rowsB: DecodedRow[] = Array.isArray(b.decoded_params) ? (b.decoded_params as DecodedRow[]) : [];
-  if (!rowsA.length || !rowsB.length) return null;
-  const changes = diffSetups(rowsA, rowsB);
-  return { baseLabel: a.filename, comparisonLabel: b.filename, summary: comparativeSummary(changes, a.filename, b.filename), changes };
+async function loadSetups(driverId: string, carId: number, trackId: number, ids: string[]): Promise<Map<string, SetupRecord>> {
+  const unique = [...new Set(ids.filter((id) => typeof id === "string" && id.length > 0 && id.length <= 64))];
+  if (!unique.length) return new Map();
+  const { data } = await supabaseAdmin.from("setup_files").select("id,filename,decoded_params").eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).in("id", unique);
+  return new Map((data ?? []).map((row) => [String(row.id), { id: String(row.id), filename: String(row.filename), rows: Array.isArray(row.decoded_params) ? (row.decoded_params as DecodedRow[]) : [] }]));
 }
 
 export async function POST(request: NextRequest) {
@@ -126,21 +133,47 @@ export async function POST(request: NextRequest) {
       .maybeSingle();
     let messages: StoredMessage[] = (existingRow?.messages as StoredMessage[] | undefined) ?? [];
 
+    // Regenerar reaproveita o setup e as citações gravados no turno do piloto (sobrevive a recarregar a página).
+    let grounding: { setupId?: string; useProposal: boolean; mentionIds: string[] };
     if (body.regenerate) {
       if (messages.length === 0 || messages[messages.length - 1].role !== "assistant") throw new Error("Nada para regenerar ainda");
       messages = messages.slice(0, -1); // drop the last assistant turn; last remaining message is the user turn to re-answer
+      const lastUser = messages[messages.length - 1];
+      grounding = { setupId: lastUser?.setupId ?? body.setupId, useProposal: Boolean(lastUser?.onProposal), mentionIds: (lastUser?.mentions ?? []).map((item) => item.id) };
     } else {
-      messages = [...messages, { id: crypto.randomUUID(), role: "user", content: body.message!.trim(), createdAt: new Date().toISOString() }];
+      grounding = { setupId: body.setupId, useProposal: Boolean(body.useProposal), mentionIds: Array.isArray(body.mentionIds) ? body.mentionIds.slice(0, MAX_MENTIONS) : [] };
     }
 
-    const diff = body.blendWithSetupId && body.setupId && body.blendWithSetupId !== body.setupId
-      ? await loadDiff(driverId, carId, trackId, body.setupId, body.blendWithSetupId)
-      : null;
-    const primarySetup = !diff && body.setupId ? await loadSetupRows(driverId, carId, trackId, body.setupId) : null;
+    const setups = await loadSetups(driverId, carId, trackId, [grounding.setupId ?? "", ...grounding.mentionIds]);
+    const active = grounding.setupId ? setups.get(grounding.setupId) ?? null : null;
+    const activeName = active ? setupDisplayName(active.filename) : "";
+    const activeRows = active ? indexRows(active.rows) : [];
+    const previousProposal = active && grounding.useProposal ? latestProposal(messages) : null;
+    const appliedProposal = previousProposal && previousProposal.baseSetupId === active?.id ? previousProposal : null;
+    const mentions = grounding.mentionIds
+      .map((id) => setups.get(id))
+      .filter((item): item is SetupRecord => item !== undefined && item.id !== active?.id);
+    const cited = active && active.rows.length
+      ? mentions.filter((item) => item.rows.length).map((item) => {
+        const name = setupDisplayName(item.filename);
+        const changes = diffSetups(active.rows, item.rows);
+        return { name, summary: comparativeSummary(changes, activeName, name), changes };
+      })
+      : [];
+
+    if (!body.regenerate) {
+      const userTurn: StoredMessage = { id: crypto.randomUUID(), role: "user", content: body.message!.trim(), createdAt: new Date().toISOString() };
+      if (active) { userTurn.setupId = active.id; userTurn.setupName = activeName; }
+      if (appliedProposal) userTurn.onProposal = true;
+      if (mentions.length) userTurn.mentions = mentions.map((item) => ({ id: item.id, name: setupDisplayName(item.filename) }));
+      messages = [...messages, userTurn];
+    }
 
     const systemPrompt = buildSystemPrompt({
       carName: body.carName ?? "este carro", trackName: body.trackName ?? "esta pista",
-      primarySetup, diff: diff ? { baseLabel: diff.baseLabel, comparisonLabel: diff.comparisonLabel, summary: diff.summary, changes: diff.changes } : null,
+      activeSetup: active && activeRows.length ? { name: activeName, rows: activeRows } : null,
+      appliedProposal,
+      cited,
     });
     const openAiMessages = [
       { role: "system", content: systemPrompt },
@@ -208,7 +241,18 @@ export async function POST(request: NextRequest) {
         // controller.close() call below, or crash the whole handler.
         if (!streamFailed && assembled.trim()) {
           try {
-            const finalMessages = [...messages, { id: crypto.randomUUID(), role: "assistant" as const, content: assembled, createdAt: new Date().toISOString() }];
+            // O bloco <proposta> sai do texto guardado e vira a proposta resolvida (valores A → B).
+            // Bloco ausente ou inválido = turno sem proposta; nunca impede de salvar a resposta.
+            const { visible, block } = splitEngineerText(assembled);
+            let proposal: ResolvedProposal | null = null;
+            try {
+              proposal = active ? resolveProposal(parseProposalBlock(block), activeRows, { id: active.id, name: activeName }, appliedProposal) : null;
+            } catch (proposalError) {
+              console.error("Proposta do engenheiro ignorada:", proposalError);
+            }
+            const assistantTurn: StoredMessage = { id: crypto.randomUUID(), role: "assistant", content: visible || assembled, createdAt: new Date().toISOString() };
+            if (proposal) assistantTurn.proposal = proposal;
+            const finalMessages = [...messages, assistantTurn];
             await supabaseAdmin.from("engineer_conversations").upsert(
               { driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, messages: finalMessages, updated_at: new Date().toISOString() },
               { onConflict: "driver_id,season_id,car_id,track_id" },

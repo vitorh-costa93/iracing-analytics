@@ -1,70 +1,81 @@
-import type { DecodedRow, ParsedChange } from "./setup-diff";
+import type { ParsedChange } from "./setup-diff";
+import { PROPOSAL_CLOSE, PROPOSAL_OPEN, type IndexedRow, type ResolvedProposal } from "./engineer-proposal";
+import { plainParameterName } from "./setup-names";
 
+export type CitedSetup = { name: string; summary: string; changes: ParsedChange[] };
 export type EngineerPromptInput = {
   carName: string;
   trackName: string;
-  primarySetup: { filename: string; rows: DecodedRow[] } | null;
-  diff: { baseLabel: string; comparisonLabel: string; summary: string; changes: ParsedChange[] } | null;
+  /** Setup ativo: a conversa é sempre sobre ele. Linhas numeradas (p1, p2...) por lib/engineer-proposal. */
+  activeSetup: { name: string; rows: IndexedRow[] } | null;
+  /** O piloto está rodando a última proposta aplicada à mão sobre o setup ativo. */
+  appliedProposal: ResolvedProposal | null;
+  /** Setups citados com "/" na mensagem, já comparados com o ativo. */
+  cited: CitedSetup[];
 };
 
-// Ported from app/api/setup/engineer/route.ts's own arbTarget/differentialTarget/springTarget doc
-// comments (themselves sourced from the official SF23/GT3/GTP manuals) -- static grounding prose
-// instead of executable branches, so the LLM reasons over it directly instead of a fixed decision
-// tree. The three architectures' terminology differs enough (see each paragraph) that naming them
-// explicitly matters more than a generic "stiffer/softer" gloss would.
-const DOMAIN_KNOWLEDGE = `Conhecimento técnico de referência (baseado nos manuais oficiais destes carros -- use como base, não invente números fora dele):
+// Base técnica vinda dos manuais oficiais (SF23, GT3, GTP). Texto de referência para o modelo raciocinar,
+// não árvore de decisão. Sem "--" para o modelo não copiar o hábito na fala.
+const DOMAIN_KNOWLEDGE = `Base técnica (manuais oficiais destes carros; use como referência e não invente números fora dela):
 
-BARRA ESTABILIZADORA (ARB): no Super Formula SF23 e nos GT3, é "ARB Diameter"/"ARB Size" (mm) -- diâmetro maior é sempre mais rígido, só existem alguns tamanhos fixos (nunca um intervalo contínuo). Nos GTP (Acura ARX-06, BMW M Hybrid V8, Porsche 963, Cadillac V-Series.R -- confirmado idêntico nos quatro manuais oficiais, é convenção da classe) é "ARB Blades" numerado -- número maior é mais rígido. O Ferrari 499P (GTP, sem manual oficial publicado) segue essa mesma convenção por analogia de classe, não por confirmação específica.
+BARRA ESTABILIZADORA: no Super Formula SF23 e nos GT3 é "ARB Diameter"/"ARB Size" (mm); diâmetro maior é mais duro e só existem alguns tamanhos fixos. Nos GTP (Acura ARX-06, BMW M Hybrid V8, Porsche 963, Cadillac V-Series.R) é "ARB Blades" numerado; número maior é mais duro. O Ferrari 499P segue a convenção dos GTP por analogia de classe.
 
-DIFERENCIAL: três arquiteturas diferentes.
-- SF23: "Coast Angle" (frenagem/desaceleração) e "Drive Angle" (aceleração) são independentes. ÂNGULO MAIOR = MENOS força de bloqueio (contra-intuitivo) -- ângulo menor é o que aumenta o bloqueio.
-- GT3: um único "Diff Preload" (ft-lbs). Aumentar preload sempre soma dois efeitos ao mesmo tempo: mais subesterço fora do acelerador (entrada mais estável) E mais sobresterço de "snap" no acelerador -- é um dial só, não dois independentes.
-- GTP: "Ramp Angles" funciona como o coast/drive angle do SF23 (ângulo menor = mais bloqueio) mas afeta frenagem E aceleração JUNTOS, não separadamente. Também tem "Preload" (igual ao GT3: mais = mais bloqueio, mesmo trade-off dos dois lados) e "Clutch Friction Plates" (mais placas = mais bloqueio em toda a volta, sempre, é um multiplicador geral).
+DIFERENCIAL, três arquiteturas:
+. SF23: "Coast Angle" (freada) e "Drive Angle" (aceleração) são independentes. Ângulo MAIOR = MENOS bloqueio (contraintuitivo).
+. GT3: um "Diff Preload" só. Mais preload deixa a entrada mais estável (empurra mais sem acelerador) e dá mais "snap" no acelerador; é um ajuste só com os dois efeitos.
+. GTP: "Ramp Angles" funciona como no SF23 (ângulo menor = mais bloqueio), mas afeta freada e aceleração juntas. "Preload" funciona como no GT3. "Clutch Friction Plates": mais discos = mais bloqueio na volta toda.
 
-MOLA TRASEIRA: no SF23 e GT3 é "Spring Rate" por roda (Left Rear / Right Rear, ajustável independente). Nos GTP não existe mola por roda -- é uma "Heave Spring" central, desacoplada do rolamento por design. Amolecer a heave spring reduz downforce/eficiência em curva rápida porque a altura traseira cai abaixo do ideal aerodinâmico -- isso é um trade-off explícito do manual, não um efeito colateral raro.
+MOLA TRASEIRA: SF23 e GT3 têm mola por roda. GTP tem "Heave Spring" central; amolecer a heave baixa a traseira e tira apoio em curva rápida (efeito explícito do manual).
 
-BRAKE BIAS: mais bias dianteiro (número maior) reduz a chance de a traseira rotacionar na frenagem, mas pode empurrar em direção ao subesterço na entrada; menos bias dianteiro faz o oposto.
+BRAKE BIAS: número maior = mais freio na frente = freia mais reto, mas vira menos na entrada. Número menor faz o oposto.`;
 
-REGRAS OBRIGATÓRIAS PARA TODA RESPOSTA:
-1. Diga sempre explicitamente a direção da mudança (ex.: "aumente" ou "diminua" o valor que aparece na tela do jogo) -- nunca só "deixe mais rígido/macio", porque isso não diz qual direção de seta/dropdown clicar.
-2. Nunca invente um valor-alvo contínuo exato (N/mm, mm, graus, %) que o carro talvez não aceite -- esses parâmetros só aceitam alguns degraus fixos do catálogo do carro, que não temos mapeados. Aponte a direção e deixe o piloto usar a seta/dropdown do próprio jogo para o próximo valor disponível. Cliques de amortecedor (damper clicks) são a única exceção -- ±1 clique sempre é um valor válido.
-3. Sempre deixe claro que o arquivo .sto original NÃO é regravado por este app -- qualquer mudança sugerida precisa ser aplicada manualmente no menu do carro dentro do iRacing.
-4. Se o piloto descrever um sintoma sem dizer a fase da curva (entrada/meio/saída) ou o eixo (dianteira/traseira), pergunte antes de sugerir uma mudança -- uma mudança de setup pode corrigir um trecho e piorar outro.`;
+const STYLE_RULES = `COMO FALAR (o piloto é bom de pilotagem e sabe pouco de setup):
+1. Fale como engenheiro no rádio: frases curtas, em português do Brasil, sem jargão. Se usar um termo técnico, explique em poucas palavras na mesma frase ("brake bias, quanto do freio vai pra frente").
+2. Chame os setups pelo nome (ex.: "o Baseline"), nunca "Setup A" ou "Setup B". Nunca cite aba, seção ou o nome em inglês do parâmetro como "Chassis • Front • ARB Blades"; diga "barra da frente".
+3. Não use hífen duplo nem travessão para emendar frases; use vírgula ou ponto. Não use títulos, tabelas ou listas longas. No máximo 6 frases por resposta, fora o bloco de proposta.
+4. Diga sempre a direção da mudança no valor que aparece na tela do jogo ("aumente 1 clique", "diminua 1 posição").
+5. Nunca invente um valor contínuo (N/mm, mm, graus, %, psi): esses ajustes só aceitam alguns degraus do próprio carro. Fale em direção e cliques/posições/passos e deixe o piloto usar a seta do jogo.
+6. Quando sugerir uma mudança, avise numa frase curta que o arquivo .sto original NÃO é reescrito por este app e que a mudança é feita à mão, no menu do carro dentro do iRacing.
 
-// Cap the number of rows embedded in the prompt: an unusually large decoded-setup payload would
-// otherwise blow up the prompt size (and OpenAI cost) on every single turn of the conversation --
-// CLAUDE.md rule 7's cost guard-rail. 150 rows comfortably covers any real decoded setup file.
-const MAX_DECODED_ROWS = 150;
+COMO CONDUZIR A CONVERSA:
+1. Se o sintoma vier vago (sem dizer se é na freada/entrada, no meio ou na saída/acelerando, ou em curva lenta ou rápida), pergunte isso primeiro, numa pergunta só, e não proponha mudança ainda.
+2. Com a fase clara, proponha no máximo 2 mudanças, para o piloto sentir o efeito de cada uma. Explique por que em linguagem simples e o que ele deve sentir.
+3. Quando o piloto voltar com feedback depois de testar, parta do que ele está rodando agora: mantenha o que funcionou e corrija o que piorou.
+4. Se ele citar outro setup, use a comparação real abaixo para dizer o que o outro faz diferente e para qual lado pender.`;
 
-function formatDecodedRows(rows: DecodedRow[]): string {
-  if (!rows.length) return "";
-  return rows
-    .filter((row) => row.label)
-    .slice(0, MAX_DECODED_ROWS)
-    .map((row) => `| ${row.tab ?? "Setup"} | ${row.section ?? "Geral"} | ${row.label} | ${row.metric_value ?? "—"} |`)
-    .join("\n");
+const PROPOSAL_RULES = `BLOCO DE PROPOSTA (obrigatório SEMPRE que você sugerir uma mudança concreta; proibido quando só estiver perguntando):
+Termine a resposta com o bloco abaixo, depois de todo o texto, sem cerca de código e sem comentar o bloco. Ele é lido pelo app e não aparece para o piloto.
+${PROPOSAL_OPEN}{"mudancas":[{"id":"p7","direcao":"diminuir","passos":1,"nome":"Barra da frente mais macia"}],"o_que_mudou":"frase simples dizendo o que mudou e de quanto","por_que":"frase simples ligando ao que o piloto contou","melhora":"o que deve melhorar","pode_piorar":"o que pode piorar","como_testar":"como testar, citando a curva ou fase que ele contou"}${PROPOSAL_CLOSE}
+Regras do bloco: "id" é o código da linha na tabela de parâmetros do setup ativo (p1, p2...); "direcao" é "aumentar" ou "diminuir" o valor da tela; "passos" é um inteiro de 1 a 3 (cliques/posições); "nome" tem até 6 palavras. JSON válido, numa linha, só com essas chaves. Se não houver tabela de parâmetros, não escreva o bloco.`;
+
+function formatRows(rows: IndexedRow[]): string {
+  return rows.map((row) => `| ${row.id} | ${row.name} | ${row.label} (${row.section}) | ${row.value} |`).join("\n");
 }
 
-function formatDiffChanges(changes: ParsedChange[]): string {
-  return changes
+function formatCited(cited: CitedSetup, activeName: string): string {
+  const lines = cited.changes
     .filter((change) => change.actionable)
-    .map((change) => `| ${change.tab} | ${change.section} | ${change.label} | ${change.before} | ${change.after} |`)
+    .slice(0, 40)
+    .map((change) => `| ${plainParameterName(change.label, change.section)} | ${change.before} | ${change.after} |`)
     .join("\n");
+  return `O piloto citou o setup "${cited.name}". Comparação real com o ativo ("${activeName}"):\n${cited.summary}\n| Parâmetro | ${activeName} | ${cited.name} |\n|:-|:-|:-|\n${lines || "| (nenhuma diferença com efeito claro) | | |"}`;
 }
 
 export function buildSystemPrompt(input: EngineerPromptInput): string {
-  const header = `Você é o engenheiro de pista pessoal do piloto para o ${input.carName} em ${input.trackName}. Converse naturalmente, mas toda recomendação técnica deve se basear no conhecimento abaixo e nos dados reais do setup do piloto.`;
+  const header = `Você é o engenheiro de pista pessoal do piloto no ${input.carName} em ${input.trackName}. A conversa é sempre sobre o setup ativo abaixo.`;
 
-  let groundingSection: string;
-  if (input.diff) {
-    const table = formatDiffChanges(input.diff.changes);
-    groundingSection = `O piloto está comparando dois setups: "${input.diff.baseLabel}" e "${input.diff.comparisonLabel}".\n\nResumo comparativo: ${input.diff.summary}\n\nDiferenças com efeito prático conhecido:\n| Aba | Seção | Parâmetro | ${input.diff.baseLabel} | ${input.diff.comparisonLabel} |\n|---|---|---|---|---|\n${table || "(nenhuma diferença com efeito prático mapeado)"}\n\nUse essa comparação real para discutir com o piloto para qual lado pender em cada trecho -- não invente um "meio-termo" calculado, o valor exato precisa ser escolhido por ele no menu do carro.`;
-  } else if (input.primarySetup && input.primarySetup.rows.length) {
-    const table = formatDecodedRows(input.primarySetup.rows);
-    groundingSection = `Setup ativo do piloto: "${input.primarySetup.filename}".\n\nParâmetros decodificados:\n| Aba | Seção | Parâmetro | Valor atual |\n|---|---|---|---|\n${table}\n\nUse esses valores reais ao recomendar uma direção (ex.: cite o valor atual do parâmetro relevante).`;
+  const sections: string[] = [header, STYLE_RULES, DOMAIN_KNOWLEDGE];
+  if (input.activeSetup && input.activeSetup.rows.length) {
+    sections.push(`SETUP ATIVO: "${input.activeSetup.name}". Parâmetros decodificados pelo Garage61 (use os valores reais e o código da linha no bloco de proposta):\n| Código | Nome para o piloto | Nome no jogo | Valor atual |\n|:-|:-|:-|:-|\n${formatRows(input.activeSetup.rows)}`);
+    if (input.appliedProposal && input.appliedProposal.changes.length) {
+      const applied = input.appliedProposal.changes.map((change) => `${change.name}: ${change.a} → ${change.b}`).join("; ");
+      sections.push(`O piloto está rodando a sua última proposta aplicada à mão sobre o "${input.activeSetup.name}": ${applied}. Os passos do próximo bloco se somam a essa proposta (para voltar um ajuste, use a direção contrária).`);
+    }
+    sections.push(PROPOSAL_RULES);
   } else {
-    groundingSection = "Não há setup decodificado disponível para este carro/pista ainda -- suas recomendações precisam ser genéricas (direção do ajuste, não valor atual), e você deve dizer isso ao piloto.";
+    sections.push("Não há setup decodificado para este carro e pista ainda. Suas sugestões precisam ser genéricas (direção do ajuste, sem valor atual) e você deve dizer isso ao piloto. Não escreva bloco de proposta.");
   }
-
-  return `${header}\n\n${DOMAIN_KNOWLEDGE}\n\n${groundingSection}`;
+  const activeName = input.activeSetup?.name ?? "setup ativo";
+  for (const cited of input.cited) sections.push(formatCited(cited, activeName));
+  return sections.join("\n\n");
 }
