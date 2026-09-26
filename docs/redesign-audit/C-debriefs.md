@@ -1,0 +1,87 @@
+# Auditoria C: Debriefs da Season e da Week
+
+Antes = `94c4d8d` (`components/DmaicReportModal.tsx`, arquivo hoje apagado, ~251 linhas de código minificado; linhas citadas abaixo são as do `git show 94c4d8d:` desse arquivo). Agora = `main` (`components/debriefs/DebriefsView.tsx`, `lib/debrief-*.ts`, `app/api/dashboard/report/route.ts`).
+
+Resumo: `lib/race-engineer-analysis.ts` NÃO mudou desde 94c4d8d (`git log` vazio), então o limiar 50 (`race-engineer-analysis.ts:112`), a confiança, severidade e `weeklyImpact` são os mesmos. A rota continua chamando `buildEngineerSection`, mas o payload novo descarta muita coisa que ela ainda calcula (custo gasto à toa).
+
+## Tabela
+
+| Item | Antes | Agora | Situação | Impacto | Recomendação |
+|---|---|---|---|---|---|
+| Leitura rápida (summary) | modal "LEITURA RÁPIDA" (~l.197), texto de `base.summary` em race-engineer-analysis | `DebriefsView.tsx:134-142`, `quickSummary` em `lib/debrief-narrative.ts:68` | LÓGICA MUDOU (texto novo) | Frase agora depende de vitórias, parcela das perdas grandes sobre ganho/perda (limiares 0,9 / 0,4-0,6), incidentes (+1 / -0,5), melhor/pior week (>=3 weeks). Fonte diferente do summary antigo | Aceitável se o piloto aprovou a voz; confirmar limiares |
+| Ritmo × resultado (frase) | `pace-vs-result-insight.ts`: só dispara se ritmo e resultado discordam (gap/std ±0,02 s); senão `null` | mesmo arquivo reescrito (l.20-58): sempre retorna texto, lê quadrantes do gráfico novo; telemetria só confirma (±0,02 s) | LÓGICA MUDOU | Antes usava consistência (std) e incidentes na condição; agora `stdDelta` e `incidentsNow/Before` saíram da entrada. Incidente só aparece se média dos pontos "rápido e perdeu" supera as outras em >=1 | Reintroduzir std como confirmação, se quiser paridade |
+| Recomendação | `recommendation.ts` 4 quadrantes; net = valor por corrida na week | reescrito (l.1-55). Condição de topo: `net>0 && !netWorse` (net BRUTO); novos gatilhos `raceCraftIssue = fastLoss/pacePoints >= 0.3` e `pacePoints>=3`, `paceWorsened`, `lossFocus` | LÓGICA MUDOU | Ordem de prioridade mudou: antes `netBetter&&paceGood` > `netBetter` > `paceGood` > `hadIsolatedTrouble` (severeCount>0 ou sequência >=2) > default. Agora net>0 > net>0 abaixo da ref > `paceGood||raceCraftIssue` > severeCount > paceWorsened > netBetter > default. `worstRunLength` (sequência >=2) saiu da decisão. `netBetter/netWorse` agora exigem `baseline.length>0` (route.ts, linha `netBetter=baseline.length>0&&...`); antes com baseline vazio comparava com 0 | Decidir se "net>0 mas abaixo da ref" deve ser a 2ª ramificação (ver perguntas) |
+| Severidade das perdas (limiar 50) | Card "Severidade das perdas" (~l.37): count, rate, ref count/rate, total, share, pior sequência | Só `kpis.severeCount`, `severeThreshold` (KPI "Perdas grandes", `DebriefsView.tsx:147`). Limiar 50 igual (`race-engineer-analysis.ts:112`) | IGUAL (cálculo) / PERDIDO (detalhe) | Sumiram: taxa, referência, total de perdas, parcela das perdas, pior sequência atual vs referência | Levar para Evidência (item "Perdas grandes") |
+| Sequências de resultado atual vs referência | Card "Sequências de resultado da Season" (~l.51): maior ganho/perda atual e referência com datas e delta | Evidência "Sequências de resultado" (`DebriefsView.tsx:266-276`): só contagens (ganho/perda, ref., recorde). KPI "Sequência" (l.150) NOVO (sequência aberta e recorde de todos os tempos, `debrief-charts.ts:134-156`) | LÓGICA MUDOU | Perdeu delta acumulado e datas da sequência; ganhou sequência aberta. "Recorde" usa histórico anterior a `previousStart` (`historyBefore`, tabela `race_results`, colunas `raced_at,category,series_name,irating_delta`) | Manter; opcional restaurar delta da sequência |
+| Comparação season atual vs anterior (melhorou/piorou) | `compareSeasons` + linhas extras gap/std (~l.28-36, route 94c4d8d) | Removida: `route.ts` não importa mais `lib/season-comparison` | PERDIDO | Some a tabela melhorou/piorou/estável (vitória, pódio, Δ iRating, distância até a melhor volta, desvio-padrão). Hoje só o KPI "Saldo de iRating vs. season anterior" | Pergunta 2 |
+| Onde perdas severas aconteceram (completion) | Card "Onde as perdas severas aconteceram na corrida" (~l.25 do bloco): amostra, média, mediana, cedo <=25%, abandono | Painel "Em que ponto da corrida você perde" (`DebriefsView.tsx:159-164`, `lossTimingBins` `debrief-charts.ts:118`): histograma 4 faixas 0-25/25-50/50-75/75-100 sobre o mesmo `raceProgress` e `delta < -threshold` | LÓGICA MUDOU (visual e agrupamento) / NOVO gráfico | Mesmo dado (`retirementEvents.raceProgress`), mesma amostra (perda>50 e progresso não nulo). Some mediana e taxa de abandono nas perdas | OK; recuperar mediana se importar |
+| Incidentes por corrida | Card (~l.38): média, corridas 4+, taxa, ref. | KPI + Evidência (`DebriefsView.tsx:149,227-236`): média, ref., contagem 4+ (taxa `highRate` vem no payload, não é mostrada) | IGUAL (cálculo, vem de `base.incidentSummary`) | OK. Tom do KPI: loss se +0,5 acima da ref. | OK |
+| Leitura do engenheiro / findings | "Leitura do engenheiro" (~l.215) com `findings[]` finding/watch/data, `headline`, `comparison` | Removida do payload e da tela | PERDIDO | Sumiram findings, headline e a frase de comparação da week ("Referência: média das outras weeks = X por corrida em N corridas"); parte foi absorvida pelo summary novo | Pergunta 3 |
+| Abandonos com confiança | Card "Abandonos e tempo em pista" (~l.55): lista com tipo, confiança, voltas, tempo em pista, progresso % | Evidência "Abandonos" (l.237-251): 12 itens, mostra tipo, voltas e delta. Confiança driver/confirmed/probable existe no payload (`route.ts` retirements.items) e só vira texto "Provável abandono (saiu antes de 80%)" e contagem de confirmados no resumo | LÓGICA MUDOU (só exibição) | Perdeu tempo em pista e progresso %; confiança só implícita | Mostrar chip de confiança por item |
+| Consistência de ritmo | Bloco "Consistência de ritmo": distância até a melhor volta, variação entre voltas (CV, s) | Evidência "Consistência dos pedais" mostra só pedais; `gapDeltaSeconds`/`stdDeltaSeconds` vão no payload (`route.ts` pedals) mas NÃO são exibidos; só a frase `paceConsistencyNote` | PERDIDO (exibição) | Números de gap médio, desvio, CV sumiram da tela | Exibir gap e desvio em Evidência |
+| Repetibilidade dos inputs | freio/acelerador/volante em % de CV | `inputConsistencyPct = round(clamp(100-CV,0,100))` (`debrief-charts.ts:160`) | LÓGICA MUDOU | Definição nova: "100% = sempre igual", derivada do mesmo CV. Um CV de 8% vira "92%": leitura diferente da anterior | Documentado em `method`; OK |
+| Correlação com o ritmo (mín. 15 voltas) | Bloco "Correlação com o ritmo" (`throttleLapCorrelation` etc.) | Removida da tela e do payload (`telemetryInputProfile` ainda calcula) | PERDIDO | Sumiu o teste de "quais inputs andam com o tempo de volta" | Pergunta 4 |
+| Curva a curva (cornerBraking) | Card "Curva a curva: onde muda o ponto de frenagem" (`compareCornerBraking`) | Removido de rota (import apagado) e tela | PERDIDO (decisão do piloto: vai ao Telemetry Lab, Evidência ocupa o lugar) | Nenhum, mas conferir se `corner-braking-comparison.ts` tem consumo no Telemetry Lab, senão fica órfão | Verificar consumidor; não decidido aqui |
+| Corridas de maior impacto | `impactRaces` com `severe`, `lossShare` | `DebriefsView.tsx:181-185`, top 4 por |delta| (`route.ts`, `slice(0,4)`); antes o número não verificado | IGUAL (dado) | `lossShare` = |delta| / soma das perdas, igual ao anterior (não verificado linha a linha; `raceRow` recalcula) | Conferir `slice` antigo vs 4 |
+| Pressão por week | `weeklyImpact` (Week N · corridas · perdas severas) | Painel só na season (`WeekPressureBars`); na week vira lista de corridas (`raceList`) | LÓGICA MUDOU | Antes existia nos dois escopos; agora `weeks` só é exibida na season. Nova `raceList` na week | OK |
+| Contextos de perdas/ganhos | `topLosses/topGains` por `race-engineer-analysis` (delta total, `avgDelta`, `avgPositionChange`, `shareOfLosses`) | `contexts()` em `route.ts` (top 3+3): agrupa track+car, `delta` = soma; UI ordena/mostra MÉDIA por corrida (`DebriefsView.tsx:128,191`) mas escolhe top 3 pela SOMA | LÓGICA MUDOU | Inconsistência: ranking por soma, barra por média. Perdeu `avgPositionChange` e `shareOfLosses`. Não confere com a Visão Geral (item f) | Alinhar ao critério do Overview (pergunta 5) |
+| Metodologia | string única no payload | `evidence.method` com 8 linhas, item "Como calculamos" | LÓGICA MUDOU (só texto, mais completo) | Melhor | OK |
+| Ritmo × resultado (gráfico) | não existia | `PaceScatter`, `buildPaceChart` (`debrief-charts.ts:78-114`) | NOVO | Ver premissas abaixo | Ver pergunta 1 |
+| Quando as perdas acontecem | (parcial: completion) | `LossTimingBars`, `lossTimingText` | NOVO | Ver premissas | OK |
+| Modal DmaicReportModal | modal com abas por segmento | `app/debriefs/page.tsx` + `SegmentedControl` | SÓ TEXTO/VISUAL | Nomes dos segmentos: "Formula Car"/"Sports Car · GT3"/"Sports Car · IMSA" viraram "Super Formula"/"GT3"/"IMSA"; no antigo o rótulo "Super Formula" só valia na week. GT3/IMSA continuam identificados por `series_name` (correto: classe x série) | OK |
+
+## (b) Rota `/api/dashboard/report`
+
+- Segmentos: mesmos três `match` por `series_name` (`route.ts`, `SEGMENTS`); só mudam labels. Segmento desconhecido cai em `SEGMENTS[0]` (antes também). Payload agora tem `sections:[section]` (um único), sem `methodology` no topo (foi para `evidence.method`).
+- Cache de servidor: `REPORT_CACHE_TTL_MS=120_000` igual (guard-rail preservado, `route.ts` acima da `reportCache`). NOVO `historyCache` com o mesmo TTL, consulta paginada `race_results` (4 colunas) para o recorde de sequência, compartilhada entre os 6 recortes. Cabe na regra 7 do CLAUDE.md (guard-rail próprio), mas a consulta varre TODO o histórico anterior à season anterior: não verificado o volume; é leve (4 colunas) e cacheada.
+- Cache local: `iracing-debrief-v5-` -> `iracing-debrief-v6-` (`DebriefsView.tsx:18`): correto, a forma do payload mudou.
+- Week atual: antes `latestWeek` = maior week só do segmento selecionado (`now`); agora `currentSeasonWeek(currentRows)` = maior week em qualquer categoria (`lib/season-week.ts:64`). Consulta ao banco (v_race_results_irating, 30 dias): formula_car e sports_car ambas em week 12 hoje, então o numeral NÃO muda agora. Só muda quando um segmento não correu na última week (antes mostraria week anterior daquele segmento; agora mostra a week atual vazia, com "Nenhuma corrida nesta semana"). Decisão coerente com o texto de `season-week.ts`. O rótulo "Week N" virou "Semana N" (`weekLabel`); a numeração é a mesma coluna `season_week`.
+- Referência: week = demais weeks da season no mesmo segmento; season = season anterior (`before`). Igual ao antes. Comparação: week por corrida, season pela soma (igual); referência da week em `kpis.referenceNet` = média por corrida.
+- Dado extra na rota: `net` agora é sempre o total bruto (antes a variável `net` já virava por corrida na week). Uso em `quickSummary`: `referenceNet` = total das demais weeks, com divisão interna por corridas (`debrief-narrative.ts:77`), consistente.
+- Escopo `session_type=3`: a rota lê `v_race_results_irating` (só corridas) e `race_results` (só corridas oficiais do iRStats); regra respeitada. Nada de Practice/Qualifying.
+
+## (c) Libs de texto: só redação x lógica
+
+- `pace-consistency-note.ts`: LÓGICA MUDOU em dois pontos, além do texto: (1) nova saída antes `null`: quando só um lado passou de ±0,02 s, as frases "Uma das duas melhorou/piorou" viraram 4 frases específicas (gap/std separados); (2) quando nenhum passa do limiar retorna "Ritmo e constância parecidos com a referência." (antes `null`); a guarda nova `if (both null) return null` mantém o null só sem dados. Limiar 0,02 s igual.
+- `pace-vs-result-insight.ts`: assinatura mudou (perdeu `stdDeltaSeconds`, `incidentsNow/Before`, `netPhrase`; ganhou `unit,points,quadrants,split`). Condição de disparo: antes só discordância; agora sempre texto. `netClause` (de race-engineer-analysis) já não é usada aqui.
+- `recommendation.ts`: assinatura mudou (`severeThreshold`, `worstRunLength` saíram; entraram `net`, `paceWorsened`, `lossFocus`, `fastLoss`, `pacePoints`). Ordem de prioridade descrita na tabela; a regra do CLAUDE.md de 09/09 ("perda isolada em season boa não vira parar de se inscrever") foi mantida (net>0 primeiro).
+- Efeito observável: "caiu 3 pontos" com `incidentsWorse` etc. são só redação; o que muda decisão: limiar 30% de `fastLoss/pacePoints`, `netWorse` exigir baseline, `worstRunLength` fora.
+
+## (d) `race-engineer-analysis.ts`
+
+Inalterado. Ainda usado: `buildEngineerSection` (para `severity.threshold/count`, `confidence`, `incidentSummary`, `weeklyImpact`), tipos `RaceInput`/`Category`. Deixou de ser usado: `netClause` (import removido da rota), `findings`, `headline`, `comparison`, `severeCompletion`, `streakComparison`, `topLosses/topGains`, `seasonComparison`, `action`, `summary` (todos calculados e descartados na rota; custo de CPU baixo, mas é código morto no payload). Não verificado se `netClause` tem outro consumidor.
+
+## (e) Novas análises e premissas
+
+Ritmo × resultado (`lib/debrief-charts.ts:78-114`):
+- Eixo Y = iRating ganho (season: soma por week; week: por corrida). Eixo X = distância percentual da melhor volta da corrida (`fastest_lap_time` de `v_race_results_irating`) até a SUA melhor volta de corrida no mesmo carro+pista, dentro da janela carregada (season atual + anterior). Confirma a premissa do código: `race_fastest_lap_time`/`winner_fastest_lap_time` quase vazias (comentário l.11-14: 0 e 3 de 237).
+- Corte rápido/devagar = mediana de todas as corridas do segmento, ignorando carro+pista com uma corrida só (distância 0 por construção); corridas >5% longe são descartadas (`PACE_OUTLIER_PCT`, `raceGapPct`). Pontos ausentes viram `missing`.
+- Consequência: NÃO mede ritmo contra o campo nem contra o vencedor; mede contra o próprio teto do piloto naquela combinação. Com uma corrida em um carro+pista o ponto fica em 0% (fica fora só do cálculo do corte, mas ainda entra no gráfico como "rápido"). Aceitável como proxy honesto (o texto da metodologia avisa, `route.ts` method), mas o título "Você foi rápido, mas perdeu iRating?" promete mais do que o dado entrega: "rápido" = perto do seu próprio melhor. Também é ciente da amostra pequena: com < 3 pontos o texto recusa conclusão (`pace-vs-result-insight.ts`).
+- Sensibilidade: o ponto de melhor volta da própria corrida pode ser o teto (distância 0) por definição quando só há uma corrida; na season, média das distâncias por week esconde variação.
+
+Quando as perdas acontecem (`lossTimingBins`): mesmas fontes de `raceProgress` do modal antigo (tempo em pista / corrida mais longa no mesmo carro+pista, telemetria Garage61). Perdas > limiar 50 com progresso conhecido. Sem telemetria a perda some do histograma (amostra exibida via `currentSample`). Aceitável.
+
+## (f) Consistência com a Visão Geral
+
+- Perda grande: 50 pontos em uma corrida, definido em `race-engineer-analysis.ts:112` e reexposto como `kpis.severeThreshold`; conferir se o Overview usa a mesma constante: não verificado nesta área.
+- Contextos: debriefs usam soma por carro+pista para escolher (`route.ts contexts()`) e média por corrida para desenhar (`DebriefsView.tsx:128`); o critério da Visão Geral (média por corrida x soma) não foi verificado aqui. Inconsistência interna a resolver.
+- Week: numeração única `season_week` via `lib/season-week.ts`; o numeral atual não muda hoje (ambas categorias em 12, consulta somente leitura).
+
+## PERGUNTAS AO PILOTO
+
+1. Ritmo × resultado usa "sua melhor volta naquele carro+pista" como referência, não o vencedor (dado vazio). Aceita? Recomendo aceitar e renomear o título para "Você foi perto do seu melhor, mas perdeu iRating?".
+2. A tabela "melhorou / piorou / estável" (season atual vs anterior) foi removida. Quer de volta dentro de Evidência? Recomendo sim, com as mesmas métricas (`lib/season-comparison.ts` ainda existe).
+3. Os "findings/leitura do engenheiro" do modal antigo sumiram, absorvidos pelo resumo. Manter assim? Recomendo sim, se o resumo cobrir; senão restaurar os "watch".
+4. "Correlação com o ritmo" (mín. 15 voltas) saiu. Vai para o Telemetry Lab também, ou volta em Evidência? Recomendo Telemetry Lab, como curva a curva.
+5. Contextos: ranking por soma ou por média por corrida? Recomendo alinhar com o que a Visão Geral faz e usar o mesmo nas duas.
+6. Recomendação: "net>0 mas abaixo da referência" (frase "Saldo positivo, mas abaixo da referência") é a 2ª ramificação; antes um `netBetter` sem ritmo bom pedia cautela. Confirma a nova ordem?
+
+## RESTAURAR
+
+- Tabela melhorou/piorou/estável (94c4d8d `lib/season-comparison.ts` + bloco `seasonComparison` da rota) em Evidência.
+- Severidade com taxa, referência, total, share e pior sequência (`base.severity`, ainda calculado) em Evidência.
+- Números de gap e desvio-padrão (`gapDeltaSeconds`, `stdDeltaSeconds`, já no payload) e tempo/progresso dos abandonos.
+- Chip de confiança driver/confirmed/probable por abandono (dado já no payload).
+- `avgPositionChange` e `shareOfLosses` nos contextos (`topLosses`/`topGains` de `race-engineer-analysis.ts`).
+- Frase da week "Referência: média das outras weeks..." (`comparison`), hoje só no KPI.
+- Remover do payload/cálculo o que a tela já não usa (`buildEngineerSection` retorna findings etc.), sem mexer nas regras de negócio.
