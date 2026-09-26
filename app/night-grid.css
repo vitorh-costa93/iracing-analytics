@@ -268,6 +268,13 @@ body { font-variant-numeric: tabular-nums; }
 .ng-chip[data-tone="formula"] { --chip: var(--ng-formula); }
 .ng-chip[data-tone="road"] { --chip: var(--ng-road); }
 .ng-chip[data-variant="solid"] { background: var(--ng-sr-badge); color: #fff; }
+/* Cores oficiais das classes de licença do iRacing (as mesmas de antes do redesign, --license-* em globals.css). */
+.ng-chip[data-variant="solid"][data-license="R"] { background: var(--license-rookie); }
+.ng-chip[data-variant="solid"][data-license="D"] { background: var(--license-d); }
+.ng-chip[data-variant="solid"][data-license="C"] { background: var(--license-c); color: #241a02; }
+.ng-chip[data-variant="solid"][data-license="B"] { background: var(--license-b); }
+.ng-chip[data-variant="solid"][data-license="A"] { background: var(--license-a); }
+.ng-chip[data-variant="solid"][data-license="P"] { background: var(--license-pro); color: #14130f; }
 .ng-chip[data-variant="pill"] {
   height: 28px;
   padding: 0 12px;
