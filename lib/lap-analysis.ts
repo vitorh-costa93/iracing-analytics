@@ -296,6 +296,23 @@ export function compareLaps(own: Trace, reference: Trace, ownLapTime: number, co
   return { estimatedReferenceTime, estimatedGap, trackLengthMeters, grid, sections, straightsLostSeconds };
 }
 
+/** Trecho conta como perda a partir de 5 milésimos (mesmo corte da lista "Curva a curva"). */
+export const SECTION_LOSS_THRESHOLD = 0.005;
+
+/**
+ * Totais do resumo "Curva a curva" (auditoria B, 26/09/2026): perdido nos trechos, ganho nos trechos
+ * e o resto nas retas e transições (`straightsLostSeconds`), que antes era calculado e não aparecia.
+ * Por construção `lost - gained + straightsLost = estimatedGap`, então a soma fecha na tela.
+ * Valores positivos = tempo perdido; `gained` é positivo quando você ganha.
+ */
+export function sectionTotals(comparison: Pick<LapComparison, "sections" | "estimatedGap" | "straightsLostSeconds">) {
+  const losses = comparison.sections.filter((section) => section.lostSeconds > SECTION_LOSS_THRESHOLD);
+  const gains = comparison.sections.filter((section) => section.lostSeconds <= SECTION_LOSS_THRESHOLD);
+  const lost = losses.reduce((sum, section) => sum + section.lostSeconds, 0);
+  const gained = gains.reduce((sum, section) => sum - section.lostSeconds, 0);
+  return { lost, lossCount: losses.length, gained, gainCount: gains.length, straightsLost: comparison.straightsLostSeconds, gap: comparison.estimatedGap };
+}
+
 /** Tempo perdido acumulado na volta até uma distância (interpolado na grade). */
 export function lostAt(grid: GridSample[], distance: number) {
   if (!grid.length) return 0;

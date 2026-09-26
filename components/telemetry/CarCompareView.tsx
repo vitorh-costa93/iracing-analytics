@@ -4,11 +4,11 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chip, Panel, SelectPill } from "@/components/ui";
 import LapMap from "@/components/telemetry/LapMap";
 import SectionPopup from "@/components/telemetry/SectionPopup";
-import { isLossSection } from "@/components/telemetry/CornerByCorner";
+import { isLossSection, SectionTotalsSummary } from "@/components/telemetry/CornerByCorner";
 import { formatLapTime, parseTelemetryCsv, type Trace } from "@/lib/telemetry-trace";
 import { compareLaps } from "@/lib/lap-analysis";
 import { detectLapCorners } from "@/lib/lap-corners";
-import { carNoun, describeSection, formatSeconds, formatSignedSeconds } from "@/lib/engineer-talk";
+import { carNoun, describeSection, formatSignedSeconds } from "@/lib/engineer-talk";
 import { countInWindow } from "@/lib/microcorrections";
 import { shortCarName } from "@/lib/car-short-name";
 import { brakePointText, comparePhrase, mapCaption, microFootnote, microTone, sectionMinSpeeds } from "@/lib/car-compare-talk";
@@ -156,10 +156,6 @@ export default function CarCompareView() {
   const maxDelta = Math.max(0.5, ...cars.map((car) => car.deltaSeconds)) * 1.03;
   const footnote = microFootnote(cars.map((car) => ({ carName: car.carName, bestLapSeconds: car.bestLapSeconds, microPerLap: car.microcorrections?.perLap ?? null })), shortCarName);
 
-  const losses = sections.filter(isLossSection);
-  const gains = sections.filter((section) => !isLossSection(section));
-  const lost = losses.reduce((sum, section) => sum + section.lostSeconds, 0);
-  const gained = gains.reduce((sum, section) => sum - section.lostSeconds, 0);
   const maxAbs = Math.max(0.01, ...sections.map((section) => Math.abs(section.lostSeconds)));
   const trackLength = comparison?.trackLengthMeters ?? traces?.own.trackLengthMeters ?? null;
   const rows = traces && own && rival ? sections.map((section) => {
@@ -238,11 +234,7 @@ export default function CarCompareView() {
                 : !comparison ? <div className="ngr-empty">{traces ? "Não foi possível alinhar as duas voltas." : "Carregando a telemetria das duas voltas mais rápidas…"}</div>
                   : (
                     <>
-                      <div className="ngt-summary">
-                        <div><strong data-tone="loss">{formatSeconds(lost)}</strong><span>perdidos em {losses.length} {losses.length === 1 ? "trecho" : "trechos"}</span></div>
-                        <div><strong data-tone="gain">{formatSeconds(Math.max(0, gained))}</strong><span>ganhos em {gains.length} {gains.length === 1 ? "trecho" : "trechos"}</span></div>
-                        <div><strong>{formatSignedSeconds(gained - lost)}</strong><span>no total dos trechos · o resto está nas retas</span></div>
-                      </div>
+                      <SectionTotalsSummary comparison={comparison} against={ref.sub} />
                       <div className="ngc-rows-head" aria-hidden><span>Trecho</span><span><span>Perde</span><span>Ganha</span></span><span>Tempo</span><span>Vel. mínima (você / ele)</span><span>Microcorr. (você / ele)</span><span>Ponto de freio</span><span>Em uma frase</span></div>
                       {rows.map(({ section, speeds, microOwn, microRival, talk }, rowIndex) => {
                         const loss = isLossSection(section);

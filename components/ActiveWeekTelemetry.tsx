@@ -6,6 +6,9 @@ import { trackUiEvent } from "@/lib/track-ui-event";
 import { weekLabel } from "@/lib/season-week";
 import { formatLapTime, hasCompleteGps, ibtToBestLapCsv, parseTelemetryCsv, traceUsesOvertake, type Trace, type TracePoint } from "@/lib/telemetry-trace";
 import { compareLaps } from "@/lib/lap-analysis";
+import { detectMicrocorrections, type MicrocorrectionResult } from "@/lib/microcorrections";
+import { microLapSummary, microSectionChip } from "@/lib/microcorrection-talk";
+import { lapWhenLabel, selectionExplanation } from "@/lib/telemetry-selection";
 import { formatSignedSeconds } from "@/lib/engineer-talk";
 import { sectionMarkerLabel, type LapCorner } from "@/lib/corner-sequences";
 import { Panel, SelectPill } from "@/components/ui";
@@ -71,10 +74,20 @@ function rankContexts(items: Combination[]) {
 
 const isSf23 = (name: string) => /super formula sf23/i.test(name);
 
+/** Microcorreções precisam do traço em resolução cheia (lib/microcorrections.ts), não dos ~900 pontos
+ * do gráfico: o CSV já baixado é lido de novo, sem nenhum download extra. */
+function microOf(csv: string, lapTimeSeconds: number): MicrocorrectionResult | null {
+  try {
+    const full = parseTelemetryCsv(csv, { maxPoints: Infinity });
+    return detectMicrocorrections(full.points.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), lapTimeSeconds);
+  } catch { return null; }
+}
+
 export default function ActiveWeekTelemetry() {
   const [data, setData] = useState<ActiveWeekData | null>(null);
   const [selectedKey, setSelectedKey] = useState("");
   const [trace, setTrace] = useState<Trace | null>(null);
+  const [traceCsv, setTraceCsv] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [traceLoading, setTraceLoading] = useState(false);
@@ -116,6 +129,7 @@ export default function ActiveWeekTelemetry() {
   useEffect(() => {
     let active = true;
     setTrace(null);
+    setTraceCsv(null);
     setError(null);
     setHover(null);
     setOpenId(null);
@@ -125,7 +139,7 @@ export default function ActiveWeekTelemetry() {
       .then(async (response) => {
         const text = await response.text();
         if (!response.ok) throw new Error("A telemetria dessa volta ainda não foi trazida para o app. Use \"Atualizar dados\" no cabeçalho para buscá-la e depois toque em Tentar novamente.");
-        if (active) setTrace(parseTelemetryCsv(text));
+        if (active) { setTrace(parseTelemetryCsv(text)); setTraceCsv(text); }
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setTraceLoading(false));
@@ -163,6 +177,9 @@ export default function ActiveWeekTelemetry() {
     return compareLaps(trace, referenceTrace, selected.bestLap.lapTime, corners);
   }, [trace, referenceTrace, selected, corners]);
   const gpsOk = useMemo(() => (trace ? hasCompleteGps(trace) : false), [trace]);
+  const ownMicro = useMemo(() => (traceCsv && selected?.bestLap ? microOf(traceCsv, selected.bestLap.lapTime) : null), [traceCsv, selected]);
+  const referenceMicro = useMemo(() => (reference && comparison ? microOf(reference.csv, comparison.estimatedReferenceTime) : null), [reference, comparison]);
+  const microSummary = useMemo(() => (ownMicro && referenceMicro && comparison ? microLapSummary(ownMicro, referenceMicro, comparison.sections) : null), [ownMicro, referenceMicro, comparison]);
 
   // Guarda só o número (gap) por volta representativa + referência, para os outros cartões.
   useEffect(() => {
@@ -242,9 +259,10 @@ export default function ActiveWeekTelemetry() {
   const category = selected?.car.category ?? null;
   const trackLength = comparison?.trackLengthMeters ?? trace?.trackLengthMeters ?? null;
 
-  const eligibility = selected?.bestLap
-    ? `Volta elegível, sem P2P ativo${trace ? (gpsOk ? " e com o traçado completo no GPS" : "; o GPS desta volta tem falhas, então o mapa pode ficar incompleto") : ""} · passe o mouse para comparar`
-    : "Ainda não há uma volta limpa com telemetria para este contexto.";
+  // Critério da escolha (restaurado de 94c4d8d) + legenda da volta (data/hora) + aviso de GPS.
+  const lapWhen = selected?.bestLap ? lapWhenLabel(selected.bestLap.startTime) : null;
+  const gpsNote = trace && selected?.bestLap ? (gpsOk ? "O traçado desta volta está completo no GPS." : "O GPS desta volta tem falhas, então o mapa pode ficar incompleto.") : null;
+  const eligibility = selected ? selectionExplanation(selected) : "";
 
   const uploadButton = (label: string) => (
     <label className="ngt-link-button" aria-disabled={uploading}>
@@ -304,7 +322,8 @@ export default function ActiveWeekTelemetry() {
         <div className="ngt-lap-grid">
           <Panel className="ngt-tall" kicker="Volta representativa" title="Tempo perdido e o que você fez nos pedais"
             subtitle={<>
-              <div>{eligibility}</div>
+              <div>{eligibility}{gpsNote ? ` ${gpsNote}` : ""}</div>
+              {lapWhen && <div className="ngt-lapwhen">{`${lapWhen[0].toUpperCase()}${lapWhen.slice(1)} · ${formatLapTime(selected.bestLap!.lapTime)} · passe o mouse no gráfico para comparar`}</div>}
               {referenceTrace && reference && (
                 <div className="ngt-refline"><span>Referência: {reference.filename} · enviada em {new Date(reference.uploadedAt).toLocaleDateString("pt-BR")}</span>{uploadButton("Trocar referência")}</div>
               )}
@@ -328,11 +347,12 @@ export default function ActiveWeekTelemetry() {
         </div>
       )}
 
-      {comparison && <CornerByCorner comparison={comparison} filter={filter} onFilter={(value) => { setFilter(value); setOpenId(null); }} biggestLossId={biggestLossId} onOpen={openSectionById} />}
+      {comparison && <CornerByCorner comparison={comparison} filter={filter} onFilter={(value) => { setFilter(value); setOpenId(null); }} biggestLossId={biggestLossId} onOpen={openSectionById} micro={microSummary} />}
 
       {comparison && openSection && trace && referenceTrace && (
         <SectionPopup section={openSection} index={openIndex} total={visibleSections.length} trace={trace} referenceTrace={referenceTrace}
           trackId={selected?.track.id ?? null} trackLengthMeters={trackLength} category={category} isBiggestLoss={openSection.id === biggestLossId}
+          extraChips={ownMicro && referenceMicro ? [microSectionChip(ownMicro.distances, referenceMicro.distances, openSection)] : undefined}
           onPrev={prev} onNext={next} onClose={closePopup} />
       )}
     </div>

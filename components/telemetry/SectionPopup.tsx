@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { FocusedGaugePanel, type FocusedSide } from "@/components/FocusedGaugeChart";
 import LapMap from "@/components/telemetry/LapMap";
 import { lostInSectionAt, pointsInWindow, type SectionResult } from "@/lib/lap-analysis";
-import { describeSection, formatSignedSeconds, type RefNoun } from "@/lib/engineer-talk";
+import { describeSection, formatSignedSeconds, type RefNoun, type TalkChip } from "@/lib/engineer-talk";
 import { wrapDistance } from "@/lib/corner-sequences";
 import { interpolate, type Trace } from "@/lib/telemetry-trace";
 
@@ -13,7 +13,7 @@ import { interpolate, type Trace } from "@/lib/telemetry-trace";
  * sequência, inputs você x referência com mostradores sincronizados, barra mais lento/mais rápido
  * que acompanha o hover e o mapa "Traçado" local com zoom/pan. Anterior/próxima (e setas), Esc fecha.
  */
-export default function SectionPopup({ section, index, total, trace, referenceTrace, trackId, trackLengthMeters, category, isBiggestLoss, onPrev, onNext, onClose, refNoun, refLabel = "Referência" }: {
+export default function SectionPopup({ section, index, total, trace, referenceTrace, trackId, trackLengthMeters, category, isBiggestLoss, onPrev, onNext, onClose, refNoun, refLabel = "Referência", extraChips }: {
   section: SectionResult;
   index: number;
   total: number;
@@ -29,6 +29,8 @@ export default function SectionPopup({ section, index, total, trace, referenceTr
   /** Comparação de carros (etapa 4): o outro lado é um carro, não a volta de referência. */
   refNoun?: RefNoun;
   refLabel?: string;
+  /** chips extras do trecho (ex.: microcorreções você x referência, auditoria B5) */
+  extraChips?: TalkChip[];
 }) {
   const [hover, setHover] = useState<number | null>(null);
   const closeRef = useRef<HTMLButtonElement | null>(null);
@@ -128,7 +130,7 @@ export default function SectionPopup({ section, index, total, trace, referenceTr
           <div className="ngt-trace-side">
             <div className="ngt-legend"><span><i />Sua volta</span><span><i data-line="ref-popup" />{refLabel}</span></div>
             <div className="ngt-trace-hint">{`${wrapDistance(at).toFixed(1).replace(".", ",")}% da volta · passe o mouse no gráfico para localizar o ponto no mapa`}</div>
-            {talk.chips.map((chip) => (
+            {[...talk.chips, ...(extraChips ?? [])].map((chip) => (
               <div key={chip.k} className="ngt-chip-box" data-tone={chip.tone}><div>{chip.k}</div><div>{chip.v}</div></div>
             ))}
           </div>
