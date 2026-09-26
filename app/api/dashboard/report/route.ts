@@ -94,7 +94,7 @@ export async function GET(request:NextRequest){
   const incidentStats=(value:typeof base.incidentSummary.current)=>({races:value.races,average:value.average,highCount:value.highCount,highRate:value.highRate});
   const pedal=(profile:typeof inputs)=>({brake:inputConsistencyPct(profile.brakeRepeatabilityPct),throttle:inputConsistencyPct(profile.throttleRepeatabilityPct),steering:inputConsistencyPct(profile.steeringRepeatabilityPct)});
   const weekAverage=baseline.length?referenceTotal/baseline.length:null;
-  const referenceLine=scope==="week"&&weekAverage!==null?"Referência: média das outras semanas desta season = "+(weekAverage>0?"+":"")+weekAverage.toFixed(1).replace(".",",")+" de iRating por corrida em "+baseline.length+(baseline.length===1?" corrida.":" corridas."):null;
+  const referenceLine=scope==="week"&&weekAverage!==null?"Referência: média das outras semanas desta season = "+(weekAverage>0?"+":weekAverage<0?"−":"")+Math.abs(weekAverage).toFixed(1).replace(".",",")+" de iRating por corrida em "+baseline.length+(baseline.length===1?" corrida.":" corridas."):null;
   // Restaurado de 94c4d8d: tabela melhorou / piorou / estável (só season) com as linhas extras de ritmo e constância.
   let seasonComparison:DebriefSection["evidence"]["seasonComparison"]=null;
   if(scope==="season"){const cmp=compareSeasons(now,before),extra:SeasonCompareRow[]=[];
@@ -104,7 +104,7 @@ export async function GET(request:NextRequest){
    const pick=(list:Array<{metric:string;unit:SeasonCompareRow["unit"];now:number|null;before:number|null;change:number|null}>,direction:SeasonCompareRow["direction"]):SeasonCompareRow[]=>list.map(item=>({metric:item.metric,unit:item.unit,now:item.now,before:item.before,change:item.change,direction}));
    seasonComparison={improved:[...pick(cmp.improved,"improved"),...extra.filter(x=>x.direction==="improved")],worsened:[...pick(cmp.worsened,"worsened"),...extra.filter(x=>x.direction==="worsened")],stable:[...pick(cmp.stable,"stable"),...extra.filter(x=>x.direction==="stable")]};
   }
-  const sev=base.severity,watchFinding=base.findings.find(item=>item.kind==="watch")?.text??null;
+  const sev=base.severity;
   const splitText=pace.split===null?"":" Hoje o seu normal é "+dec(pace.split,2)+"%.";
   const section:DebriefSection={
    segment:segment.id,label:segment.label,week:scope==="week"?latestWeek:null,confidence:confidenceLabel,races:selected.length,referenceRaces:baseline.length,
@@ -122,7 +122,7 @@ export async function GET(request:NextRequest){
     incidents:{current:incidentStats(base.incidentSummary.current),reference:incidentStats(base.incidentSummary.reference)},
     retirements:{items:survival.events.slice(0,12).map(event=>{const[car,track]=event.context.split(" • ");return{date:event.racedAt,track:track??event.context,car:car??"",type:event.confidence==="probable"?"Provável abandono (saiu antes de 80% da corrida)":event.type,confidence:event.confidence,completedLaps:event.completedLaps,delta:event.delta,timeOnTrackSeconds:event.timeOnTrackSeconds,progressPct:event.progressPct}}),currentCount:survival.events.length,referenceCount:survivalReference.events.length,currentRate:selected.length?Math.round(survival.events.length/selected.length*100):null,referenceRate:baseline.length?Math.round(survivalReference.events.length/baseline.length*100):null},
     pedals:{current:pedal(inputs),reference:pedal(inputReference),laps:inputs.laps,referenceLaps:inputReference.laps,gapSeconds:round(inputs.averageGapToBestSeconds,2),referenceGapSeconds:round(inputReference.averageGapToBestSeconds,2),stdSeconds:round(inputs.lapStdDevSeconds,2),referenceStdSeconds:round(inputReference.lapStdDevSeconds,2),gapDeltaSeconds:round(gapDeltaSeconds,3),stdDeltaSeconds:round(stdDeltaSeconds,3),note:paceConsistencyNote(gapDeltaSeconds,stdDeltaSeconds)},
-    streaks:{gain:longestStreak(periodDeltas,"gain"),loss:longestStreak(periodDeltas,"loss"),referenceGain:longestStreak(baselineDeltas,"gain"),referenceLoss:longestStreak(baselineDeltas,"loss"),recordGain:longestStreak(allDeltas,"gain"),watch:watchFinding},
+    streaks:{gain:longestStreak(periodDeltas,"gain"),loss:longestStreak(periodDeltas,"loss"),referenceGain:longestStreak(baselineDeltas,"gain"),referenceLoss:longestStreak(baselineDeltas,"loss"),recordGain:longestStreak(allDeltas,"gain")},
     method:[
      "Só corridas oficiais importadas do iRStats. Treino e classificação não entram.",
      scope==="week"?"Referência: as outras semanas desta season. O saldo delas é comparado por corrida, para ser justo com uma semana só.":"Referência: a season anterior inteira, no mesmo segmento.",

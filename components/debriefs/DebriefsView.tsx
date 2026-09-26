@@ -202,7 +202,7 @@ function contextSubtitle(row: DebriefContextRow) {
   const parts = [row.car, plural(row.races, "corrida", "corridas"), "saldo total " + signedInt(row.delta)];
   if (row.avgPositionChange !== null) {
     const places = Math.abs(row.avgPositionChange);
-    parts.push(places < 0.05 ? "mesma posição em média" : (row.avgPositionChange > 0 ? "ganha " : "perde ") + dec(places, 1) + (places === 1 ? " posição" : " posições") + " por corrida");
+    parts.push(places < 0.05 ? "mesma posição em média" : (row.avgPositionChange > 0 ? "ganha " : "perde ") + dec(places, 1) + (places > 1 ? " posições" : " posição") + " por corrida");
   }
   if (row.shareOfLosses !== null) parts.push(row.shareOfLosses + "% de tudo o que você perdeu");
   return parts.join(" · ");
@@ -242,7 +242,7 @@ function compareChange(row: SeasonCompareRow) {
   const change = row.change as number;
   // Segundos: negativo = mais perto/mais constante (bom). Nas demais métricas, positivo = melhor.
   const words = row.direction === "stable" ? "estável" : row.direction === "improved" ? "melhorou" : "piorou";
-  return words + " (" + signedNumber(change, compareDigits(row)) + UNIT_TEXT[row.unit] + ")";
+  return words + " (" + signedNumber(change, compareDigits(row)) + (row.unit === "%" ? " pontos percentuais" : UNIT_TEXT[row.unit]) + ")";
 }
 
 const pedalText =(set: PedalSet) => {
@@ -338,13 +338,10 @@ function Evidence({ section, referenceLabel }: { section: DebriefSection; refere
       title: "Sequências de resultado",
       summary: "ganhando " + streaks.gain + " · perdendo " + streaks.loss + " · recorde " + streaks.recordGain,
       body: (
-        <div className="ngd-ev-list">
-          <div className="ngd-ev-grid">
-            <Stat label="Maior sequência ganhando" value={streaks.gain + " (ref. " + streaks.referenceGain + ")"} tone="gain" />
-            <Stat label="Maior sequência de derrotas" value={streaks.loss + " (ref. " + streaks.referenceLoss + ")"} tone="loss" />
-            <Stat label="Recorde ganhando" value={String(streaks.recordGain)} />
-          </div>
-          {streaks.watch && <div className="ngd-ev-line">{streaks.watch}</div>}
+        <div className="ngd-ev-grid">
+          <Stat label="Maior sequência ganhando" value={streaks.gain + " (ref. " + streaks.referenceGain + ")"} tone="gain" />
+          <Stat label="Maior sequência de derrotas" value={streaks.loss + " (ref. " + streaks.referenceLoss + ")"} tone="loss" />
+          <Stat label="Recorde ganhando" value={String(streaks.recordGain)} />
         </div>
       ),
     },

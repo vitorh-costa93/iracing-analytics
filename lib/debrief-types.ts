@@ -45,7 +45,7 @@ export type DebriefSection = {
     incidents: { current: IncidentStats; reference: IncidentStats };
     retirements: { items: RetirementItem[]; currentCount: number; referenceCount: number; currentRate: number | null; referenceRate: number | null };
     pedals: { current: PedalSet; reference: PedalSet; laps: number; referenceLaps: number; gapSeconds: number | null; referenceGapSeconds: number | null; stdSeconds: number | null; referenceStdSeconds: number | null; gapDeltaSeconds: number | null; stdDeltaSeconds: number | null; note: string | null };
-    streaks: { gain: number; loss: number; referenceGain: number; referenceLoss: number; recordGain: number; /** Aviso "watch" do engenheiro (ex.: sem cadeia longa de perdas). */ watch: string | null };
+    streaks: { gain: number; loss: number; referenceGain: number; referenceLoss: number; recordGain: number };
     method: string[];
   };
 };
