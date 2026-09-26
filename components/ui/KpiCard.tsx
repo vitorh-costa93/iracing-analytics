@@ -61,7 +61,7 @@ export function KpiCard({ category, label, value, badge, trend, trendTone = "neu
       <div className="ng-kpi-label">{label}</div>
       <div className="ng-kpi-value-row">
         <div className="ng-kpi-value">{value}</div>
-        {badge !== undefined && badge !== null && badge !== "" && <Chip variant="solid" license={licenseLetter(badge)} title="Safety Rating (iRacing)">{badge}</Chip>}
+        {badge !== undefined && badge !== null && badge !== "" && <Chip variant="solid" license={licenseLetter(String(badge))} title="Safety Rating (iRacing)">{badge}</Chip>}
       </div>
       {trend !== undefined && <div className="ng-kpi-trend" data-tone={trendTone}>{trend}</div>}
       {sparkline && <Sparkline spark={sparkline} category={category} />}
