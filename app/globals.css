@@ -71,31 +71,6 @@
   --mono: var(--font-mono), ui-monospace, "SFMono-Regular", Menlo, monospace;
 }
 
-.data-freshness {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  margin: 14px 0;
-  padding: 10px 12px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.data-freshness > div,
-.data-freshness span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.data-freshness strong { color: var(--text); }
-.data-freshness small { width: 100%; color: #b86f22; }
-.data-freshness.has-error { border-color: color-mix(in srgb, #b86f22 50%, var(--line)); }
-
-
 html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); }
 body { font-family: var(--body); font-weight: 400; letter-spacing: -.01em; }
 button, input, select { font: inherit; }
@@ -104,238 +79,100 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 ::selection { background: rgba(28, 79, 156, .35); color: var(--text); }
 :focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
 
-.app-shell { min-height: 100vh; background: linear-gradient(180deg, var(--bg-top) 0, var(--bg) 220px); padding: 0 24px 56px; }
-.app-frame { width: min(1460px, 100%); margin: 0 auto; }
-
-.app-header { min-height: 112px; display: flex; align-items: center; justify-content: space-between; gap: 28px; border-bottom: 1px solid var(--border); }
-.brand-block { display: flex; align-items: center; gap: 16px; }
 .brand-mark { width: 45px; height: 45px; background: #101011; position: relative; overflow: hidden; border-radius: 3px; border: 1px solid var(--border-strong); box-shadow: inset 0 -3px 0 #0e0e0f; }
 .brand-mark::before { content: ""; position: absolute; left: -9px; top: 5px; width: 43px; height: 9px; background: var(--brand); transform: skewX(-25deg); }
 .brand-mark::after { content: ""; position: absolute; left: 8px; top: 19px; width: 32px; height: 7px; background: var(--text); transform: skewX(-25deg); }
 .brand-mark span { position: absolute; left: 17px; top: 31px; width: 24px; height: 5px; background: var(--brand-red); transform: skewX(-25deg); }
 .brand-kicker, .section-kicker { color: var(--brand); font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase; }
-.brand-block h1 { margin: 2px 0 1px; font-size: 25px; letter-spacing: -.02em; line-height: 1.12; }
-.brand-block p { margin: 0; font-size: 14px; color: var(--muted); font-family: var(--mono); }
-.brand-block p span { margin: 0 5px; color: var(--border-strong); }
-.header-actions { display: flex; align-items: center; gap: 10px; }
-.header-csv-upload { position: relative; display: flex; align-items: center; }
-.header-csv-upload .secondary-button { padding: 12px 14px; cursor: pointer; }
-.header-csv-upload .secondary-button.disabled { opacity: .6; cursor: wait; }
-.header-csv-upload .secondary-button input { display: none; }
-.header-csv-message { position: absolute; top: calc(100% + 6px); right: 0; width: max-content; max-width: 260px; padding: 8px 10px; background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); font-size: 11px; line-height: 1.4; border-radius: 3px; z-index: 6; }
-.season-chip { display: flex; flex-direction: column; min-width: 132px; padding: 9px 12px; border: 1px solid var(--border); background: var(--surface); }
-.season-chip span { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; color: var(--soft); text-transform: uppercase; }
-.season-chip strong { margin-top: 2px; font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
+
 .primary-button { border: 1px solid var(--brand); background: var(--brand); color: var(--on-brand); padding: 12px 17px; font-weight: 700; font-size: 14px; cursor: pointer; border-radius: 3px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; }
 .primary-button:hover:not(:disabled) { background: var(--brand-dark); border-color: var(--brand-dark); }
 .quick-open-button { border: 1px solid var(--border); background: var(--surface); color: var(--text); padding: 12px 14px; font-weight: 600; font-size: 13px; cursor: pointer; border-radius: 3px; text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 4px; }
 .quick-open-button:hover { background: var(--surface-raised); border-color: var(--border-strong); }
-.theme-toggle { display: inline-flex; align-items: center; justify-content: center; width: 40px; height: 40px; flex: 0 0 auto; border: 1px solid var(--border); background: var(--surface); color: var(--muted); cursor: pointer; border-radius: 3px; }
-.theme-toggle:hover { background: var(--surface-raised); border-color: var(--border-strong); color: var(--text); }
-.primary-button:disabled, .primary-button.disabled { opacity: .5; cursor: wait; pointer-events: none; }
 
-.status-banner { margin-top: 14px; padding: 10px 13px; border: 1px solid var(--border-strong); background: var(--brand-pale); color: var(--on-brand); font-size: 14px; border-radius: 3px; }
-.section-block { margin-top: 30px; }
-.section-title-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 24px; margin-bottom: 14px; }
-.section-title-row h2, .panel-heading h2 { margin: 4px 0 0; font-size: 22px; line-height: 1.15; letter-spacing: -.01em; }
-.section-title-row h2 em { color: var(--soft); font-size: 16px; font-style: normal; font-weight: 500; margin: 0 4px; font-family: var(--body); }
-.section-title-row p, .panel-heading p { margin: 5px 0 0; color: var(--muted); font-size: 14px; }
-.season-summary { color: var(--muted); font-family: var(--mono); font-size: 13px; }
-.season-summary strong { color: var(--text); font-weight: 500; }
-.season-summary span { color: var(--border-strong); margin: 0 5px; }
+.primary-button:disabled, .primary-button.disabled { opacity: .5; cursor: wait; pointer-events: none; }
 
 /* 05/09/2026: fixo em 4 colunas até os dois KPIs de Sequência entrarem na mesma linha (6 cards) --
  * um grid de 4 colunas com 6 itens deixa a última linha torta (4 + 2 alinhados à esquerda). Mesmo
  * fix de auto-fit já usado em outras grades desta página (week-context-grid, library-groups). */
 .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px; }
-.kpi-card { min-height: 154px; background: var(--surface); border: 1px solid var(--border); border-top: 3px solid var(--border-strong); padding: 18px 20px 14px; text-align: center; }
-.kpi-card:nth-child(1), .kpi-card:nth-child(2) { border-top-color: var(--blue); }
-.kpi-card.formula { border-top-color: var(--blue); }.kpi-card.sports { border-top-color: var(--amber); }
+
 .kpi-label { color: var(--muted); font-family: var(--mono); font-size: 11px; letter-spacing: .08em; font-weight: 500; text-transform: uppercase; }
-.kpi-icon { width: 25px; height: 25px; margin-right: 8px; display: inline-grid; place-items: center; border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--blue); font-size: 17px; vertical-align: middle; }
-.kpi-main { margin-top: 13px; font-family: var(--mono); font-size: 36px; line-height: 1; letter-spacing: -.02em; font-weight: 700; font-variant-numeric: tabular-nums; }
+
 .positive { color: var(--green); }
 .negative { color: var(--red); }
 .neutral { color: var(--text); }
-.kpi-secondary { display: flex; align-items: center; justify-content: center; gap: 9px; margin-top: 13px; padding-top: 10px; border-top: 1px solid var(--border); color: var(--muted); font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }
-.kpi-divider { width: 1px; height: 12px; background: var(--border); }
-.kpi-unavailable { margin-top: 17px; padding-top: 11px; border-top: 1px solid var(--border); color: var(--soft); font-size: 13px; }
 
 .panel { background: var(--surface); border: 1px solid var(--border); box-shadow: var(--shadow); }
-.large-panel { margin-top: 18px; padding: 20px 20px 13px; }
-.panel-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; }
-.panel-heading.compact { align-items: center; padding-bottom: 14px; border-bottom: 1px solid var(--border); }
-.panel-heading h3 { margin: 3px 0 0; font-size: 17px; letter-spacing: -.01em; }
-.segmented-control { display: inline-flex; border: 1px solid var(--border-strong); background: var(--surface-muted); border-radius: 3px; overflow: hidden; }
-.segmented-control button { border: 0; border-right: 1px solid var(--border); padding: 8px 12px; background: transparent; color: var(--muted); font-family: var(--mono); font-size: 12px; font-weight: 500; letter-spacing: .04em; cursor: pointer; }
-.segmented-control button:last-child { border-right: 0; }
-.segmented-control button.active { background: var(--brand); color: var(--on-brand); }
-.segmented-control.small button { padding: 11px 10px; font-size: 11px; min-height: 40px; }
-.series-filter select { border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); padding: 8px 30px 8px 10px; font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; max-width: 220px; }
-.ranking-subfilter { margin: -2px 0 10px; }
 
-.season-chart-wrap { margin-top: 15px; }
 .chart-legend { display: flex; justify-content: flex-end; gap: 20px; margin: 0 8px 2px 0; color: var(--muted); font-family: var(--mono); font-size: 11px; }
 .chart-legend span { display: inline-flex; align-items: center; gap: 6px; }
 /* 02/09/2026: default to --blue (Formula) so a SeasonChart rendered with no category prop still looks
  * right; .season-chart-wrap.sports overrides both this and every other "current series" color below to
  * --amber, so the chart matches whichever KPI card it sits under instead of always reading cyan. */
 .legend-line { width: 22px; height: 3px; display: inline-block; background: var(--blue); }
-.season-chart-wrap.sports .legend-line.current { background: var(--amber); }
+
 .legend-line.previous { background: var(--soft); }
-.chart-canvas { position: relative; width: 100%; min-height: 264px; }
-.chart-canvas svg { width: 100%; height: auto; display: block; overflow: visible; }
+
 .grid-line { stroke: var(--border); stroke-width: 1; }
 .axis-label { fill: var(--soft); font-size: 11px; font-weight: 500; font-family: var(--mono); }
-.season-line { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
-.season-line.current { stroke: var(--blue); filter: drop-shadow(0 0 5px rgba(79,209,232,.4)); }
-.season-line.previous { stroke: var(--soft); stroke-width: 1.5; stroke-dasharray: 3 5; }
-.season-area { stroke: none; }.season-area.current { fill: rgba(79,209,232,.12); }.season-area.previous { fill: rgba(143,151,163,.05); }
+
 /* Hit target only, never the visible marker itself (02/09/2026: "o tamanho da bolinha... tá
  * bizarramente grande" -- :hover used to fill THIS r=18 circle directly, so the visible dot was
  * exactly as big as the finger-friendly hit target it needed to be, not a normal-looking marker
  * size). See .chart-hit-marker below for the actual small dot, drawn separately. */
-.chart-hit { fill: transparent; stroke: transparent; cursor: crosshair; }
-.chart-hit-marker { fill: var(--blue); stroke: var(--bg); stroke-width: 2; pointer-events: none; }
-.chart-tooltip { position: absolute; right: 18px; top: 14px; width: min(330px, calc(100% - 36px)); background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); padding: 13px 14px; box-shadow: 0 12px 30px rgba(0,0,0,.4); pointer-events: none; z-index: 5; }
-.tooltip-kicker { color: var(--blue); font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
-.chart-canvas.sports .season-line.current { stroke: var(--amber); filter: drop-shadow(0 0 5px rgba(255,176,32,.4)); }
-.chart-canvas.sports .season-area.current { fill: rgba(255,176,32,.12); }
-.chart-canvas.sports .chart-hit-marker { fill: var(--amber); }
-.chart-canvas.sports .tooltip-kicker { color: var(--amber); }
-.tooltip-rating { margin-top: 5px; font-family: var(--mono); font-size: 21px; font-weight: 700; }
-.tooltip-grid { display: grid; grid-template-columns: 70px 1fr; gap: 5px 10px; margin-top: 10px; font-family: var(--mono); font-size: 12px; }
-.tooltip-grid span { color: var(--muted); }
-.tooltip-grid strong { font-weight: 500; }
 
-.historical-section { margin-top: 20px; }
-.performance-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.ranking-panel { padding: 16px; min-height: 515px; }
-.performance-ranking { margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
-.ranking-split { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
-.ranking-split h4 { margin: 16px 0 0; color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .1em; font-weight: 500; text-transform: uppercase; }
-.context-icon { flex: 0 0 18px; font-size: 16px; filter: saturate(.85); }
 .diverging-ranking { margin-top: 14px; }
 .diverging-axis { display: grid; grid-template-columns: 1fr 1px 1fr; align-items: center; margin-left: 42%; color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; }
 .diverging-axis span:first-child { padding-right: 8px; text-align: right; }.diverging-axis span:last-child { padding-left: 8px; }.diverging-axis i { height: 13px; background: var(--border-strong); }
 .diverging-row { display: grid; grid-template-columns: minmax(150px, 42%) 1fr minmax(64px, auto); align-items: center; gap: 10px; min-height: 64px; padding: 7px 0; border-bottom: 1px solid var(--border); }
-.diverging-note { margin: 6px 0 8px; color: var(--soft); font-size: 11px; line-height: 1.4; }
+
 .diverging-label { min-width: 0; display: grid; grid-template-columns: 20px auto minmax(0, 1fr); align-items: center; gap: 6px; }.diverging-label img { object-fit: cover; box-shadow: 0 0 0 1px rgba(255,255,255,.08); }.diverging-label svg { color: var(--blue); }
 .brand-icon-chip { display: inline-flex; align-items: center; justify-content: center; width: 20px; height: 20px; border-radius: 4px; background: #eef2f5; flex: 0 0 auto; }
 .brand-icon-chip .brand-icon { box-shadow: none !important; object-fit: contain !important; filter: brightness(0); }
 .diverging-label strong { min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.35; font-size: 12px; font-weight: 600; color: var(--text); }.diverging-label small { grid-column: 2 / 4; color: var(--muted); font-size: 10px; line-height: 1.2; }.diverging-label .brand-icon { object-fit: contain; box-shadow: none; }
 .diverging-bar { position: relative; height: 8px; background: linear-gradient(90deg, rgba(255,92,92,.09) 0 49.7%, var(--border) 49.7% 50.3%, rgba(53,212,136,.09) 50.3%); }.diverging-bar .center-line { position: absolute; left: 50%; top: -3px; width: 1px; height: 14px; background: var(--border-strong); }
-.diverging-bar.gap-bar { background: var(--border); }
-.winner-gap-panel { margin-top: 16px; }
+
 .diverging-bar span { position: absolute; top: 1px; height: 6px; }.diverging-bar span.positive { background: var(--green); }.diverging-bar span.negative { background: var(--red); }
 .diverging-row > b { font-family: var(--mono); font-size: 11px; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.performance-row-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; font-size: 13px; }
-.performance-label-wrap { min-width: 0; display: flex; align-items: center; gap: 7px; }
-.performance-label { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text); font-weight: 600; }
+
 .performance-badge { flex: 0 0 auto; padding: 2px 5px; border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--muted); font-family: var(--mono); font-size: 10px; }
-.performance-row-top strong { font-family: var(--mono); font-size: 14px; font-variant-numeric: tabular-nums; }
-.performance-track { height: 6px; margin-top: 6px; background: var(--border); overflow: hidden; }
-.performance-fill { height: 100%; min-width: 3px; }
-.performance-fill.positive { background: var(--green); }
-.performance-fill.negative { background: var(--red); }
-.performance-fill.neutral { background: var(--soft); }
-.performance-meta { margin-top: 4px; color: var(--muted); font-size: 11px; }
+
 .ranking-empty { padding: 34px 0; color: var(--soft); font-size: 14px; text-align: center; }
 
-.telemetry-panel { margin-top: 18px; padding: 20px; border: 1px solid var(--border); border-left: 1px solid var(--brand); background: linear-gradient(90deg, rgba(28,79,156,.09), transparent 160px); }
-.telemetry-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 24px; }
-.telemetry-heading h2 { margin: 4px 0 5px; font-size: 19px; }
-.telemetry-heading p { margin: 0; color: var(--muted); font-size: 14px; }
-.telemetry-selector { min-width: min(440px, 100%); display: flex; flex-direction: column; gap: 5px; }
-.telemetry-selector span, .telemetry-meta span { color: var(--soft); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .09em; text-transform: uppercase; }
-.telemetry-selector select { width: 100%; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); padding: 10px 34px 10px 11px; font-size: 14px; font-weight: 600; border-radius: 3px; }
-.telemetry-selector select:disabled { color: var(--text); opacity: 1; background: var(--surface-muted); }
-.telemetry-content { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--border); }
-.telemetry-meta { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.telemetry-meta div { display: flex; flex-direction: column; gap: 5px; padding: 11px 12px; background: var(--surface-muted); border: 1px solid var(--border); }
-.telemetry-meta strong { font-family: var(--mono); font-size: 15px; font-variant-numeric: tabular-nums; }
-.telemetry-state { margin-top: 16px; padding: 18px; background: var(--surface-muted); border: 1px solid var(--border); color: var(--muted); font-size: 14px; }
-.telemetry-state.error { color: var(--red); background: var(--red-pale); border-color: var(--red); }
-.retry-button { display: block; margin-top: 10px; padding: 8px 14px; border: 1px solid var(--red); background: transparent; color: var(--red); font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 3px; }
-.retry-button:hover { background: var(--red-pale); }
-.state-box .retry-button { margin: 14px auto 0; }
-.telemetry-chart-wrap { margin-top: 18px; }
-.telemetry-legend { display: flex; justify-content: flex-end; gap: 18px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.telemetry-legend span::before { content: ""; width: 18px; height: 3px; display: inline-block; margin-right: 6px; vertical-align: middle; background: currentColor; }
-.telemetry-legend .speed { color: var(--text); }
-.telemetry-legend .throttle { color: var(--green); }
-.telemetry-legend .brake { color: var(--red); }
-.telemetry-chart { width: 100%; height: auto; margin-top: 8px; overflow: visible; }
-.telemetry-chart text { fill: var(--soft); font-size: 11px; font-family: var(--mono); }
-.telemetry-grid { stroke: var(--border); stroke-width: 1; }
-.telemetry-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 /* 02/09/2026: "o contrato de cor por categoria... azul também significa canal de velocidade" -- speed
  * isn't Formula-category data, it's a channel every category has, so coloring it --blue made it read as
  * "Formula" on screen. White matches the speed readout's own color in FocusedGaugeChart's gauge widget
  * (see that file's own comment: "velocidade... em branco"), so this channel now has ONE color across
  * both the trace chart and the gauge cluster instead of two different conventions. */
-.trace-speed { stroke: var(--text); }
+
 .trace-throttle { stroke: var(--green); }
 .trace-brake { stroke: var(--red); opacity: .9; }
-.telemetry-caption { margin: 5px 0 0; color: var(--soft); font-size: 12px; text-align: right; }
-.telemetry-entry { margin-top: 18px; padding: 20px; display: flex; justify-content: space-between; align-items: center; gap: 20px; border: 1px solid var(--border); border-left: 1px solid var(--brand); background: linear-gradient(90deg, rgba(28,79,156,.09), transparent 160px); }
-.telemetry-entry h2 { margin: 4px 0; font-size: 18px; }.telemetry-entry p { margin: 0; color: var(--muted); font-size: 14px; }
-.link-button { text-decoration: none; }.secondary-link { color: var(--brand); font-size: 14px; text-decoration: none; }.compact-header { min-height: 88px; }.telemetry-page-frame { max-width: 1600px; }
-.channel-key { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 14px; margin-top: 8px; color: var(--muted); font-family: var(--mono); font-size: 10px; }
-.channel-key span::before { content: ""; display: inline-block; width: 14px; height: 2px; margin-right: 5px; vertical-align: middle; background: currentColor; }
-.channel-key .speed { color: var(--text); }.channel-key .throttle { color: var(--green); }.channel-key .brake { color: var(--red); }.channel-key .steering { color: var(--channel-steering); }.channel-key .rpm { color: var(--channel-rpm); }.channel-key .gear { color: var(--muted); }.channel-key .clutch { color: var(--channel-clutch); }.channel-key .dynamics { color: var(--channel-dynamics); }
-.interactive-chart { position: relative; min-width: 0; }
-.corner-marker-line { stroke: var(--amber); stroke-width: 1; stroke-dasharray: 2 4; opacity: .6; }
-.corner-marker-label { fill: var(--amber); font-size: 11px; font-weight: 700; font-family: var(--mono); }
+
+.link-button { text-decoration: none; }
+
 .channel-label { fill: var(--soft) !important; font-size: 10px !important; letter-spacing: .08em; }
-.channel-range { fill: var(--soft) !important; font-size: 9px !important; font-family: var(--mono); }
+
 /* Same speed-channel color as the legend/telemetry-legend rule above (--text, not --blue) -- see that
  * rule's own comment. This second .trace-speed (the interactive per-corner chart's own channel set)
  * used to silently override the first one via source order since both had equal specificity. */
-.trace-speed { stroke: var(--text); }.trace-throttle { stroke: var(--green); }.trace-brake { stroke: var(--red); }.trace-steering { stroke: var(--channel-steering); }.trace-rpm { stroke: var(--reference); }.trace-gear { stroke: var(--muted); }.trace-clutch { stroke: var(--channel-clutch); }.trace-latAccel, .trace-longAccel, .trace-yawRate { stroke: var(--channel-dynamics); }
+.trace-throttle { stroke: var(--green); }.trace-brake { stroke: var(--red); }
 .reference-line { stroke-dasharray: 6 5; opacity: .55; }
 .hover-line { stroke: var(--text); stroke-width: 1; stroke-dasharray: 3 3; vector-effect: non-scaling-stroke; }
 .gauge-divider { stroke: var(--border); stroke-width: 1; vector-effect: non-scaling-stroke; }
-.telemetry-hover-panel { position: sticky; top: calc(var(--ng-header-h, 0px) + 16px); min-width: 0; padding: 14px; border: 1px solid var(--border-strong); background: var(--surface-deep); color: var(--text); align-self: start; }
-.telemetry-hover-empty { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
-.telemetry-hover > strong { display: block; margin-bottom: 7px; font-size: 13px; font-family: var(--display); }.telemetry-hover div { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; padding: 2px 0; font-family: var(--mono); font-size: 11px; }.telemetry-hover span { color: var(--muted); text-transform: uppercase; }.telemetry-hover b { font-weight: 500; }.telemetry-hover em { color: var(--reference); font-style: normal; }
-.insights-grid button ul { margin: 8px 0 0; padding-left: 15px; color: var(--muted); font-size: 11px; line-height: 1.6; }
-.selected-segment { fill: rgba(79,209,232,.09); stroke: rgba(79,209,232,.35); stroke-width: 1; pointer-events: none; }
-.channel-report { margin-top: 16px; padding: 14px; background: var(--surface-muted); border: 1px solid var(--border); }.channel-report h3 { margin: 0 0 8px; font-size: 16px; }.channel-report p { margin: 4px 0; color: var(--muted); font-size: 13px; }
 
 .brand-kicker, .section-kicker, .primary-button, .segmented-control button, .kpi-label, .performance-label, .performance-row-top strong { font-weight: 500; }
-.brand-block h1, .section-title-row h2, .panel-heading h2, .kpi-main { font-weight: 700; }
-.panel { border-color: var(--border); border-radius: 3px; }.kpi-card { border-radius: 3px; }.primary-button { border-radius: 3px; }
-.reference-bar { margin-top: 14px; padding: 13px 14px; display: flex; align-items: center; justify-content: space-between; gap: 18px; border: 1px solid var(--border-strong); background: var(--brand-pale); border-radius: 3px; }
-.reference-bar div { display: flex; flex-direction: column; gap: 3px; }
-.reference-bar strong { font-size: 15px; }
-.reference-bar p { margin: 0; color: var(--muted); font-size: 12px; }
-.reference-upload { flex: 0 0 auto; padding: 10px 13px; background: var(--brand); color: var(--on-brand); font-size: 13px; font-weight: 700; cursor: pointer; border-radius: 3px; }
-.reference-upload.disabled { opacity: .55; cursor: wait; }
-.reference-upload input { display: none; }
-.reference-message { margin-top: 8px; color: var(--muted); font-size: 12px; }
-.reference-message.error { color: var(--red); font-weight: 500; }
-.telemetry-legend .reference { color: var(--reference); }
-.trace-reference { stroke: var(--reference); stroke-dasharray: 6 5; }
-.comparison-section { margin-top: 18px; border-top: 1px solid var(--border); padding-top: 18px; }
-.comparison-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-.comparison-summary div { padding: 12px; display: flex; flex-direction: column; gap: 5px; background: var(--surface-muted); border: 1px solid var(--border); }
-.comparison-summary span { color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; }
-.comparison-summary strong { font-family: var(--mono); font-size: 20px; font-variant-numeric: tabular-nums; }
+
+.panel { border-color: var(--border); border-radius: 3px; }.primary-button { border-radius: 3px; }
+
 /* Delta Bar (02/09/2026) -- reuses .diverging-bar's own visual language (center-line + left/right-
  * growing colored span), just at a fixed ±2s scale instead of normalized against other rows. */
-.delta-bar-row { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; margin-top: 10px; }
-.delta-bar-label { color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; white-space: nowrap; }
-.delta-bar { height: 10px; }
+
 /* Popup Delta Bar (03/09/2026) -- same widget, LOCAL to one corner/sequence inside the "Melhor volta
  * vs referência" insight popup, growing as the mouse moves over the inputs chart above it (see
  * ActiveWeekTelemetry.tsx's own comment). The value line under the bar makes the exact number legible
  * without relying on bar-width alone at this small size. */
-.popup-delta-bar { margin-top: 4px; }
-.popup-delta-bar .delta-bar-row { margin-top: 0; }
-.popup-delta-bar-value { display: block; margin-top: 4px; color: var(--muted); font-family: var(--mono); font-size: 11px; text-align: center; }
-.insights-heading { margin-top: 20px; }
-.insights-heading h3 { margin: 4px 0 0; font-size: 16px; }
+
 /* Colors here match iRacing's own in-sim telemetry widget exactly (asked for explicitly, 29/08/2026:
  * "as mesmas cores, uma replicação perfeita") -- neutral gray wheel, bright yellow gear, white speed,
  * red center-mark, regardless of own vs reference. That widget only ever shows one car, so it has no
@@ -373,21 +210,12 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * version rendered gray/10px, not the white/19px this rule sets. */
 .focused-chart text.gauge-speed-readout { fill: #fff; font-family: var(--mono); font-size: 19px; font-weight: 800; }
 .focused-chart text.focused-chart-legend-label { font-family: var(--mono); font-size: 10px; font-weight: 500; }
-.insights-grid { margin-top: 10px; display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; }
-.insights-grid button { padding: 13px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); color: inherit; text-align: left; cursor: pointer; }
-.insights-grid button:hover, .insights-grid button.active { background: var(--brand-pale); border-color: var(--brand-dark); }
-.insights-grid button strong, .insights-grid button span { display: block; }
-.insights-grid button strong { font-size: 14px; }
-.insights-grid button span { margin-top: 3px; color: var(--brand); font-size: 12px; font-weight: 600; }
+
 .insights-grid button p, .comparison-note { color: var(--muted); font-size: 12px; line-height: 1.5; }
 .comparison-note { margin: 10px 0 0; }
-.track-map-panel { margin-top: 20px; padding: 14px; border: 1px solid var(--border); background: var(--surface-muted); }.track-map-panel h3 { margin: 4px 0 8px; font-size: 16px; }.track-map-panel > p, .track-map-empty { margin: 6px 0 0; color: var(--soft); font-size: 11px; }
-.track-map-zoom-wrap { position: relative; width: 100%; height: 100%; }
-.track-map-zoom-controls { position: absolute; top: 6px; left: 6px; display: flex; flex-direction: column; gap: 3px; z-index: 2; }
-.track-map-zoom-controls button { width: 22px; height: 22px; border: 1px solid var(--border-strong); background: var(--surface-raised); color: var(--text); font-family: var(--mono); font-size: 13px; line-height: 1; cursor: pointer; border-radius: 3px; padding: 0; }
-.track-map-zoom-controls button:hover { background: var(--surface); }
+
 .track-map { width: 100%; height: 220px; display: block; }
-.track-map g { transition: transform .15s ease-out; }.track-outline { fill: none; stroke: var(--border-strong); stroke-width: 18; stroke-linejoin: round; stroke-linecap: round; opacity: .55; }/* Own/reference lines: like Garage61's own map (confirmed by direct side-by-side comparison,
+.track-map g { transition: transform .15s ease-out; }/* Own/reference lines: like Garage61's own map (confirmed by direct side-by-side comparison,
  29/08/2026) -- a thin colored thread running INSIDE a much wider asphalt ribbon, not a thick line
  that swallows the ribbon. At full-lap zoom the real GPS divergence between two similar laps is
  often under a meter, i.e. sub-pixel once projected across an entire circuit -- a 4px stroke turned
@@ -399,7 +227,7 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * --reference (dashed purple), the SAME purple already used for the reference-trace overlay on the
  * main telemetry chart (.trace-reference below) -- one own/reference color pair for the whole app now,
  * not two different ones depending on which screen you're on. */
-.track-own-line { fill: none; stroke: var(--text); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }.track-highlight { fill: none; stroke: var(--text); stroke-width: 5; stroke-linecap: round; }.track-marker { fill: var(--bg); stroke: var(--text); stroke-width: 4; }.track-marker-ref { fill: var(--bg); stroke: var(--reference); stroke-width: 4; }.track-reference { fill: none; stroke: var(--reference); stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 5 3; vector-effect: non-scaling-stroke; }
+
 /* vector-effect: non-scaling-stroke keeps these lines a fixed number of real screen pixels wide --
  needed so the click-to-zoom +/- controls make lines stay thin while the real gap between them grows
  (see the comment above). But that same fixed-real-pixel width means the line-to-ribbon ratio breaks
@@ -407,27 +235,17 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  size, while a non-scaling stroke doesn't -- on a narrow phone viewport the SVG renders far smaller
  than on desktop, so the same 1.5px line reads as proportionally much thicker relative to the ribbon.
  Thinning it at narrow widths keeps the same visual ratio confirmed correct on desktop. */
-@media (max-width: 520px) {
-  .track-own-line, .track-reference { stroke-width: .7; }
-}
-.track-map-legend { display: flex; gap: 14px; margin: 6px 0 0; font-family: var(--mono); font-size: 10px; color: var(--muted); }.track-map-legend span { display: inline-flex; align-items: center; gap: 5px; }.track-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; }.track-map-legend .own::before { background: var(--text); }.track-map-legend .reference::before { background: var(--reference); background-image: repeating-linear-gradient(90deg, var(--reference) 0 3px, transparent 3px 6px); }
+
 /* Generic per-car line for the shared components/TrackMap.tsx (car comparison's per-corner deep
  * dive) -- arbitrary color via inline style, unlike .track-own-line/.track-reference which are
  * fixed to the app's own/reference red/blue convention. */
-.track-compare-line { fill: none; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; vector-effect: non-scaling-stroke; }
+
 /* 02/09/2026 P0 fix: "o mapa 'sticky' de Track Position não é sticky" -- was a 2-row grid (full-width
  * map band in row 1, chart+hover-panel in row 2), and .telemetry-map-sticky was `position: static`
  * despite its own name and its own caption instructing an interaction ("passe o mouse... clique para
  * dar zoom") that required it to stay visible alongside the chart. Now a single row: chart on the
  * left, and .telemetry-side-sticky (map + hover readout together) genuinely `position: sticky` in the
  * right column, so both are on screen at the same scroll position as the chart, the whole time. */
-.telemetry-workspace { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); grid-template-rows: auto; gap: 18px; align-items: start; margin-top: 10px; }
-.telemetry-side-sticky { grid-column: 2; grid-row: 1; position: sticky; top: calc(var(--ng-header-h, 0px) + 16px); display: flex; flex-direction: column; gap: 14px; align-self: start; max-height: calc(100vh - var(--ng-header-h, 0px) - 32px); }
-.telemetry-map-sticky { padding: 14px; border: 1px solid var(--border-strong); background: var(--surface-deep); flex: 0 0 auto; }
-.telemetry-map-sticky h3 { margin: 4px 0 10px; font-size: 16px; }
-.telemetry-map-sticky .track-map-zoom-wrap, .telemetry-map-sticky .track-map { height: 300px; }
-.telemetry-map-sticky > p:last-child { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
-.interactive-chart { grid-column: 1; grid-row: 1; }.telemetry-hover-panel { position: static; flex: 1; min-height: 0; overflow: auto; }
 
 .insight-popup-backdrop { position: fixed; inset: 0; z-index: 20; display: flex; align-items: center; justify-content: center; background: rgba(3,5,7,.72); padding: 20px; }
 /* Widened 760->980 (31/08/2026: "dá para aumentar a largura desse objeto como um todo e isso iria
@@ -445,22 +263,14 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
 .insight-popup-head h3 { margin: 4px 0 0; font-size: 18px; }
 .insight-popup-close { flex: 0 0 auto; padding: 8px 12px; border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 500; cursor: pointer; border-radius: 3px; }
 .insight-popup-close:hover { background: var(--surface-raised); }
-.insight-popup-nav { display: flex; gap: 6px; flex: 0 0 auto; }
-.insight-popup-step { padding: 8px 12px; border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); font-family: var(--mono); font-size: 11px; font-weight: 500; cursor: pointer; border-radius: 3px; }
-.insight-popup-step:hover:not(:disabled) { background: var(--surface-raised); }
-.insight-popup-step:disabled { opacity: .4; cursor: not-allowed; }
+
 .insight-popup-detail { margin: 12px 0 0; color: var(--muted); font-size: 14px; line-height: 1.6; }
 /* 08/09/2026: o popup "Resumo da season/semana" (05/09/2026) foi substituído pelo Debrief DMAIC
  * (components/DmaicReportModal.tsx, botões no header) -- a rota /api/dashboard/report mudou de
  * formato nesse meio tempo e o popup antigo ficou quebrado (fetch ok, mas sem o campo `paragraphs`
  * que ele esperava). Removido o componente e o CSS específico dele; `.engineer-report-section`
  * continua em uso pelo debrief novo. */
-.engineer-report-section { padding: 16px 18px; border: 1px solid var(--border); border-top: 3px solid var(--border-strong); background: var(--surface-muted); border-radius: 3px; }
-.engineer-report-section:first-child { border-top-color: var(--blue); }
-.engineer-report-section:last-child { border-top-color: var(--amber); }
-.engineer-report-section h4 { margin: 0 0 10px; font-size: 15px; }
-.engineer-report-section p { margin: 0 0 10px; color: var(--text); font-size: 14px; line-height: 1.65; }
-.engineer-report-section p:last-child { margin-bottom: 0; }
+
 /* Chart stacked ON TOP of the map, not side by side (31/08/2026: "ao invés de ser um gráfico ao lado
  * do outro, o de inputs pode vir em cima do gráfico... aumentaríamos horizontalmente o espaço ocupado
  * pelos gráficos") -- the popup box itself stays the same size, but the chart (now much wider than a
@@ -468,13 +278,11 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * columns (inputs, accel bar, brake bar, gear, speed, wheel) at a readable size, and the map below
  * gets a fixed real-track-shape-appropriate height instead of being squeezed to match the chart's. */
 .insight-popup-body { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
-.insight-popup-map { display: grid; grid-template-rows: auto 1fr auto auto; gap: 6px; padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); }
+
 /* 31/08/2026: trimmed 340->260 alongside the popup-width increase above, to actually close out the
  * remaining vertical overflow that forced a scrollbar on a typical viewport (confirmed live: 906px-
  * wide popup still ~113px taller than 88vh at 914px viewport height before this cut). */
-.insight-popup-map .track-map, .insight-popup-map .track-map-zoom-wrap { height: 195px; }
-.insight-popup-metrics { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 16px; }
-.insight-popup-metrics span { padding: 6px 10px; border: 1px solid var(--border); background: var(--surface-muted); font-family: var(--mono); font-size: 11px; font-weight: 500; border-radius: 3px; }
+
 /* background is --gauge-bg (fixed dark, not a theme-following token) -- this gauge cluster deliberately
  * replicates iRacing's own in-sim widget colors exactly (see the steering-wheel-rim/gear-readout/
  * gauge-speed-readout rules below, all literal hex), calibrated against a dark cockpit background;
@@ -486,9 +294,6 @@ h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -.01
  * --gauge-reference above. */
 .focused-chart text { fill: #8b8783; font-size: 10px; font-family: var(--mono); }
 .focused-chart polyline { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
-.focused-chart .trace-steering { stroke-width: 2.5; }
-.focused-zone { fill: rgba(28,79,156,.1); }
-.focused-hover-hint { margin: 0; color: var(--soft); font-size: 11px; }
 
 footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-size: 11px; text-align: center; }
 
@@ -503,144 +308,23 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .app-tabs-action { display: inline-flex; align-items: center; gap: 7px; padding: 12px 16px 10px; border: none; border-bottom: 3px solid transparent; background: none; color: var(--muted); font-family: var(--mono); font-size: 13px; font-weight: 500; letter-spacing: .02em; cursor: pointer; white-space: nowrap; }
 .app-tabs-action:hover { color: var(--brand); }
 
-.kpi-card { min-height: 166px; padding: 16px; border-top-width: 3px; text-align: left; border-radius: 3px !important; }
-.kpi-card.formula, .kpi-card.sports { border-top-color: var(--border-strong); }
-.kpi-card.formula { border-top-color: var(--blue); }.kpi-card.sports { border-top-color: var(--amber); }
-.kpi-card-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .kpi-label { padding-top: 7px; color: var(--muted); }
-.kpi-icon { width: 34px; height: 34px; margin: 0; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-raised); }
-.kpi-card.sports .kpi-icon { color: var(--amber); background: var(--amber-pale); }.kpi-icon svg { width: 25px; height: 18px; fill: currentColor; }
-.kpi-main { margin-top: 5px; color: var(--text); font-size: 30px; }
-.kpi-trend { margin-top: 7px; font-family: var(--mono); font-size: 12px; font-weight: 500; }.kpi-description { margin-top: 10px; color: var(--muted); font-size: 11px; }
+
+.kpi-trend { margin-top: 7px; font-family: var(--mono); font-size: 12px; font-weight: 500; }
 /* Safety Rating badge (02/09/2026: "conseguiríamos trazer mais coisas próprias do iRacing pra cá" --
  * safetyRating.currentDisplay was already fetched/typed here but never rendered anywhere) -- same
  * license-letter + colored-box treatment iRacing's own UI uses. Sits next to the iRating KPI value,
  * not a separate card, since it's read alongside the number it qualifies, not as its own metric. */
-.kpi-main-row { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-.sr-badge { display: inline-flex; align-items: center; gap: 4px; padding: 3px 7px; border-radius: 3px; font-family: var(--mono); font-size: 12px; font-weight: 700; letter-spacing: .02em; color: #fff; }
-.sr-badge-rookie { background: var(--license-rookie); }
-.sr-badge-d { background: var(--license-d); }
-.sr-badge-c { background: var(--license-c); color: #241a02; }
-.sr-badge-b { background: var(--license-b); }
-.sr-badge-a { background: var(--license-a); }
-.sr-badge-pro { background: var(--license-pro); color: #14130f; }
 
-.rating-chart-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch; }.rating-chart-grid .large-panel { min-width: 0; display: flex; flex-direction: column; }.rating-chart-grid .season-chart-wrap { display: flex; flex-direction: column; flex: 1; }.rating-chart-grid .chart-canvas { flex: 1; }.rating-chart-grid .chart-canvas svg { height: 100%; }.rating-chart-grid .scatter-wrap { flex: 1; display: flex; flex-direction: column; }.rating-chart-grid .scatter-wrap svg { flex: 1; height: 100%; }
-.official-results-panel { margin-top: 18px; padding: 20px; }
-.results-freshness { padding: 6px 9px; border: 1px solid var(--border); background: var(--surface-muted); color: var(--muted); font-family: var(--mono); font-size: 11px; white-space: nowrap; }
-.official-results-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-.results-category { border: 1px solid var(--border); border-top: 3px solid var(--blue); background: var(--surface-muted); }
-.results-category.sports { border-top-color: var(--amber); }
-.results-category-heading { display: flex; justify-content: space-between; gap: 12px; padding: 13px 14px; border-bottom: 1px solid var(--border); }
-.results-category-heading strong { font-size: 15px; }.results-category-heading span { color: var(--muted); font-size: 12px; }
-.results-table { display: grid; }
-.results-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 14px; border-bottom: 1px solid var(--border); }
-.results-row:last-child { border-bottom: 0; }.results-row > div { min-width: 0; display: grid; gap: 2px; }
-.results-row strong { overflow-wrap: anywhere; font-size: 12px; font-weight: 600; }.results-row span { color: var(--soft); font-size: 11px; }
-.results-row b { min-width: 28px; color: var(--blue); font-family: var(--mono); font-size: 18px; text-align: right; }.results-category.sports .results-row b { color: var(--amber); }
-.official-results-note { margin: 11px 0 0; color: var(--soft); font-size: 11px; }
-.rating-chart-grid .panel-heading h2 { font-size: 17px; }.rating-chart-grid .panel-heading p { font-size: 12px; }.rating-chart-grid .chart-canvas { min-height: 180px; }
-.scatter-wrap { position: relative; margin-top: 14px; }.scatter-wrap svg { width: 100%; min-height: 250px; overflow: visible; }.scatter-wrap text { fill: var(--soft); font-family: var(--mono); font-size: 10px; }.scatter-grid { stroke: var(--border); stroke-width: 1; }.scatter-zero { stroke: var(--border-strong); stroke-width: 1.5; }.scatter-positive { fill: var(--green); opacity: .85; }.scatter-negative { fill: var(--red); opacity: .85; }.scatter-hit { fill: transparent; cursor: pointer; }.scatter-tooltip { position: absolute; right: 12px; top: 8px; display: grid; gap: 3px; max-width: 280px; padding: 10px 12px; border-radius: 3px; background: var(--surface-deep); border: 1px solid var(--border-strong); color: var(--text); pointer-events: none; }.scatter-tooltip strong { font-family: var(--mono); font-size: 15px; }.scatter-tooltip span { color: var(--muted); font-size: 11px; }
-.season-races-panel { margin-top: 18px; padding: 20px; }.race-table-wrap {
-  margin-top: 16px; overflow: auto; position: relative;
-  /* 04/09/2026 varredura: a tabela já era scrollável na horizontal (overflow:auto), mas sem
-   * nenhuma pista visual disso -- no mobile a coluna Carro só ficava cortada na borda do
-   * viewport ("Super F", "Ferrari 4"), sem reticências nem sombra indicando que dá pra
-   * arrastar pra ver o resto. Sombra clássica de "scroll shadow", CSS puro: dois gradientes
-   * fixos ao viewport (sombra) + dois presos ao conteúdo (mascarando a sombra quando já não
-   * há mais o que rolar naquele lado) -- desaparece sozinha nas pontas, sem JS. */
-  background:
-    linear-gradient(to right, var(--surface) 30%, rgba(0, 0, 0, 0)),
-    linear-gradient(to left, var(--surface) 30%, rgba(0, 0, 0, 0)) 100% 0,
-    radial-gradient(farthest-side at 0 50%, rgba(0, 0, 0, .35), rgba(0, 0, 0, 0)),
-    radial-gradient(farthest-side at 100% 50%, rgba(0, 0, 0, .35), rgba(0, 0, 0, 0)) 100% 0;
-  background-repeat: no-repeat;
-  background-color: var(--surface);
-  background-size: 40px 100%, 40px 100%, 14px 100%, 14px 100%;
-  background-attachment: local, local, scroll, scroll;
-}.race-table-pagination { display: flex; align-items: center; justify-content: center; gap: 16px; margin-top: 14px; color: var(--muted); font-family: var(--mono); font-size: 12px; }.race-table-pagination button { padding: 8px 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; border-radius: 3px; }.race-table-pagination button:hover:not(:disabled) { background: var(--surface-muted); border-color: var(--brand); }.race-table-pagination button:disabled { opacity: .4; cursor: not-allowed; }.race-table { width: 100%; border-collapse: collapse; white-space: nowrap; font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums; }.race-table th { padding: 9px 10px; background: var(--surface-muted); color: var(--soft); text-align: left; text-transform: uppercase; letter-spacing: .05em; font-weight: 500; }.race-table td { padding: 10px; border-top: 1px solid var(--border); }.race-table td:nth-child(3), .race-table td:nth-child(4), .race-table td:nth-child(5) { white-space: normal; min-width: 150px; font-family: var(--body); }
-.race-table th:first-child, .race-table td:first-child { padding-right: 0; width: 16px; }
-.race-category-swatch { display: inline-block; width: 6px; height: 16px; border-radius: 2px; background: var(--border-strong); }
-.race-category-swatch.formula_car { background: var(--blue); }
-.race-category-swatch.sports_car { background: var(--amber); }
-
-.insights-grid button strong { font-size: 16px; }.insights-grid button span { font-size: 14px; }.insights-grid button p { font-size: 15px; line-height: 1.55; }.insights-grid button ul { font-size: 13px; }
-
-.setup-lab { margin-top: 26px; }.setup-intro { display: flex; justify-content: space-between; align-items: flex-end; gap: 20px; }.setup-intro h2 { margin: 4px 0; font-size: 24px; }.setup-intro p { margin: 0; color: var(--muted); font-size: 14px; }
-.setup-context { min-width: min(460px, 100%); max-width: 100%; display: grid; gap: 6px; }.setup-context span { color: var(--muted); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }.setup-context select { width: 100%; max-width: 100%; padding: 11px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 3px; }
-.setup-subtabs { display: flex; gap: 4px; margin-top: 25px; border-bottom: 1px solid var(--border); }.setup-subtabs button { display: inline-flex; align-items: center; gap: 7px; padding: 12px 16px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--muted); font-family: var(--mono); font-size: 13px; cursor: pointer; }.setup-subtabs button.active { color: var(--text); border-bottom-color: var(--brand-red); }
-.setup-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 18px; }.setup-card { min-height: 310px; padding: 20px; }.setup-card h3 { margin: 13px 0 5px; }.setup-card > p { color: var(--muted); font-size: 13px; }.step-number { color: var(--brand); font-family: var(--mono); font-size: 13px; letter-spacing: .1em; }
 /* 02/09/2026 P2 fix: same auto-fit-instead-of-fixed-3-columns fix as .week-context-grid above --
  * "Laboratory's setup library shows 7 cards in 3 columns leaving a 2-slot hole" whenever the card
  * count isn't a multiple of 3. */
-.local-library { margin-top: 18px; padding: 20px; }.local-library h3 { display: flex; align-items: center; gap: 8px; }.library-groups { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 16px; }.library-groups > div { display: grid; gap: 4px; padding: 13px; border: 1px solid var(--border); background: var(--surface-muted); }.library-groups strong { font-size: 14px; }.library-groups span, .library-groups small { color: var(--muted); font-size: 12px; line-height: 1.4; }
-.setup-drop { min-height: 130px; margin-top: 22px; display: grid; place-items: center; align-content: center; gap: 9px; border: 1px dashed var(--border-strong); background: var(--brand-pale); color: var(--brand); cursor: pointer; border-radius: 3px; }.setup-drop strong { font-size: 13px; }.setup-drop input, .secondary-button input { display: none; }.setup-output ul { max-height: 130px; overflow: auto; padding-left: 18px; font-size: 12px; }.setup-output li span { color: var(--soft); }
-.setup-drop.disabled { opacity: .55; cursor: wait; }.setup-access { min-height: 130px; margin-top: 22px; padding: 18px; display: flex; align-items: center; gap: 13px; border: 1px solid var(--border); background: var(--surface-muted); }.setup-access svg { flex: 0 0 auto; }.setup-access div { display: grid; gap: 5px; }.setup-access strong { font-size: 14px; }.setup-access span { color: var(--muted); font-size: 12px; line-height: 1.45; }.setup-access.available { color: var(--green); background: var(--green-pale); border-color: var(--green); }.setup-access.blocked { color: var(--amber); background: var(--amber-pale); border-color: var(--amber-dim); }
-.setup-file-select { width: 100%; margin-top: 16px; padding: 11px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); font-size: 14px; border-radius: 3px; }.setup-drop.compact { min-height: 92px; margin-top: 12px; }.decoder-consent { display: flex; align-items: flex-start; gap: 9px; margin-top: 20px; color: var(--muted); font-size: 14px; line-height: 1.5; cursor: pointer; }.decoder-consent input { margin-top: 3px; accent-color: var(--brand); }.setup-compare-button { width: 100%; margin-top: 18px; }.setup-compare-button:disabled { opacity: .5; cursor: not-allowed; }.setup-diff { margin-top: 14px; padding: 22px; }.setup-diff .panel-heading p { font-size: 14px; }.setup-diff article { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(240px, .75fr) minmax(320px, 1.35fr); align-items: start; gap: 18px; padding: 14px 0; border-top: 1px solid var(--border); }.setup-diff article > div:first-child { display: grid; gap: 4px; }.setup-diff article > div:first-child span { color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .05em; }.setup-diff article > div:first-child strong { font-size: 14px; font-weight: 600; line-height: 1.35; }.setup-values { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; font-family: var(--mono); font-size: 13px; }.setup-values span { display: grid; gap: 3px; min-width: 0; }.setup-values small, .setup-summary-contributors small { color: var(--soft); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; }.setup-values del { color: var(--red); overflow-wrap: anywhere; }.setup-values ins { color: var(--green); text-decoration: none; font-weight: 500; overflow-wrap: anywhere; }.setup-values b { color: var(--soft); font-weight: 400; }.setup-diff article > p { margin: 0; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.45; }
-.setup-summary { margin-top: 14px; padding: 14px 16px; background: var(--brand-pale); border: 1px solid var(--border-strong); border-radius: 3px; }
-.setup-summary > p, .setup-summary-text { margin: 12px 0 0; color: var(--on-brand); font-size: 13px; line-height: 1.45; max-width: 120ch; }
-.setup-comparison-head { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.setup-comparison-head div { padding: 10px 12px; border: 1px solid var(--border-strong); background: var(--surface); border-radius: 3px; }
-.setup-comparison-head span { display: block; color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .08em; }
-.setup-comparison-head strong { display: block; margin-top: 4px; font-size: 13px; line-height: 1.35; overflow-wrap: anywhere; }
-.setup-summary-contributors { margin-top: 10px; }
-.setup-summary-contributors ul { margin: 6px 0 0; padding-left: 18px; }
-.setup-summary-contributors li { font-size: 13px; line-height: 1.6; color: var(--on-brand); }
-.setup-summary-contributors del { color: var(--red); text-decoration: line-through; }
-.setup-summary-contributors ins { color: var(--green); text-decoration: none; font-weight: 600; }
-.setup-summary-categories { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
-.setup-decision-guide { margin-top: 14px; padding: 12px 14px; border: 1px solid var(--border-strong); background: var(--surface-muted); border-radius: 3px; }
-.setup-decision-guide > span { color: var(--brand); font: 10px var(--mono); letter-spacing: .08em; }.setup-decision-guide ol { margin: 7px 0 0; padding-left: 18px; color: var(--muted); font-size: 13px; line-height: 1.55; }
-.setup-diff-groups { margin-top: 14px; display: grid; gap: 10px; }.setup-diff-group { border: 1px solid var(--border); border-radius: 3px; background: var(--surface); }.setup-diff-group > summary { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; cursor: pointer; color: var(--text); font-weight: 700; }.setup-diff-group > summary small { color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .07em; }.setup-diff-group[open] > summary { border-bottom: 1px solid var(--border); color: var(--brand); }.setup-diff-group article { margin: 0 14px; }.setup-diff-group article:first-of-type { border-top: 0; }
-.engineer-quick-prompts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 14px 0; }.engineer-quick-prompts > span { color: var(--soft); font: 10px var(--mono); letter-spacing: .08em; }.engineer-quick-prompts button { border: 1px solid var(--border-strong); border-radius: 999px; padding: 6px 9px; background: var(--surface); color: var(--muted); font-size: 12px; cursor: pointer; }.engineer-quick-prompts button:hover { border-color: var(--brand); color: var(--brand); }
-.setup-readonly-tag { color: var(--amber); font-style: normal; }
+.local-library { margin-top: 18px; padding: 20px; }.local-library h3 { display: flex; align-items: center; gap: 8px; }
 
-.setup-patterns { margin-top: 14px; padding: 22px; }
-.setup-patterns-meta { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-.setup-patterns-list { margin-top: 16px; display: grid; gap: 10px; }
-.setup-pattern-card { padding: 14px 16px; border: 1px solid var(--border); border-left: 1px solid var(--border-strong); background: var(--surface); border-radius: 3px; }
-.setup-pattern-card.increase { border-left-color: var(--green); background: linear-gradient(90deg, rgba(53,212,136,.05), transparent 160px); }
-.setup-pattern-card.decrease { border-left-color: var(--red); background: linear-gradient(90deg, rgba(255,92,92,.05), transparent 160px); }
-.setup-pattern-card.mixed { border-left-color: var(--soft); opacity: .75; }
-.setup-pattern-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
-.setup-pattern-head span { display: block; color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .05em; }
-.setup-pattern-head strong { font-size: 14px; font-weight: 600; }
-.setup-pattern-summary { margin: 8px 0 0; color: var(--muted); font-size: 13px; line-height: 1.5; }
-.setup-pattern-examples { margin-top: 10px; display: flex; flex-wrap: wrap; gap: 8px; }
-.setup-pattern-examples span { padding: 4px 8px; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 3px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
-.setup-pattern-examples del { color: var(--red); text-decoration: line-through; }
-.setup-pattern-examples ins { color: var(--green); text-decoration: none; font-weight: 600; }
+.setup-diff { margin-top: 14px; padding: 22px; }.setup-diff article { display: grid; grid-template-columns: minmax(190px, .8fr) minmax(240px, .75fr) minmax(320px, 1.35fr); align-items: start; gap: 18px; padding: 14px 0; border-top: 1px solid var(--border); }.setup-diff article > div:first-child { display: grid; gap: 4px; }.setup-diff article > div:first-child span { color: var(--soft); font-family: var(--mono); font-size: 10px; letter-spacing: .05em; }.setup-diff article > div:first-child strong { font-size: 14px; font-weight: 600; line-height: 1.35; }.setup-diff article > p { margin: 0; color: var(--muted); font-size: 13px; font-weight: 400; line-height: 1.45; }
 
-.setup-guardrail { color: var(--amber) !important; font-size: 12px !important; line-height: 1.55; }.engineer-layout { display: grid; grid-template-columns: 2fr 1fr; gap: 12px; margin-top: 18px; }.engineer-chat, .engineer-context { padding: 20px; }.engineer-message { display: flex; gap: 12px; }.engineer-message p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }.engineer-message code { padding: 1px 5px; background: var(--surface-muted); border: 1px solid var(--border); border-radius: 3px; font-family: var(--mono); font-size: 12px; }.engineer-chat textarea { width: 100%; min-height: 90px; margin-top: 10px; padding: 14px; resize: vertical; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 3px; }.engineer-actions { display: flex; justify-content: space-between; margin-top: 10px; }.secondary-button { padding: 11px 14px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--brand); font-family: var(--mono); font-size: 13px; cursor: pointer; border-radius: 3px; }.engineer-context h3 { margin: 6px 0 14px; }.engineer-context li { margin: 8px 0; color: var(--muted); font-size: 13px; }
-
-.engineer-thread { margin-top: 16px; display: flex; flex-direction: column; gap: 14px; max-height: 560px; overflow-y: auto; padding-right: 4px; }
-.engineer-turn { padding: 12px 14px; border-radius: 3px; }
-.engineer-turn > span { display: block; color: var(--soft); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .08em; margin-bottom: 4px; text-transform: uppercase; }
-.engineer-turn.user { background: var(--brand-pale); }
-.engineer-turn.user p { margin: 0; color: var(--on-brand); font-size: 14px; line-height: 1.5; }
-.engineer-turn.assistant { background: var(--surface-muted); border: 1px solid var(--border); }
-.engineer-turn.assistant article { margin-top: 10px; padding: 12px; background: linear-gradient(90deg, rgba(28,79,156,.1), var(--surface) 160px); border-left: 1px solid var(--brand); }
-.engineer-input-wrap { position: relative; }
-.engineer-setup-picker { position: absolute; left: 0; right: 0; bottom: calc(100% + 4px); max-height: 220px; overflow-y: auto; background: var(--surface); border: 1px solid var(--border-strong); box-shadow: 0 12px 30px rgba(0,0,0,.5); z-index: 5; border-radius: 3px; }
-.engineer-setup-picker button { display: flex; justify-content: space-between; width: 100%; padding: 9px 12px; border: 0; border-bottom: 1px solid var(--border); background: transparent; color: var(--text); text-align: left; font-size: 13px; cursor: pointer; }
-.engineer-setup-picker button:last-child { border-bottom: 0; }
-.engineer-setup-picker button:hover { background: var(--brand-pale); }
-.engineer-setup-picker button span { color: var(--soft); font-size: 11px; }
-.secondary-button.disabled { opacity: .55; cursor: wait; }.engineer-setup-select { display: grid; gap: 5px; margin-top: 18px; }.engineer-setup-select span { color: var(--soft); font-family: var(--mono); font-size: 11px; font-weight: 400; letter-spacing: .08em; }.engineer-setup-select select { padding: 10px; border: 1px solid var(--border-strong); background: var(--surface); color: var(--text); border-radius: 3px; }
-.engineer-loading { color: var(--muted); font-size: 12px; font-family: var(--mono); margin: 8px 0; }
-.engineer-turn-markdown { line-height: 1.55; }
-.engineer-turn-markdown p { margin: 0 0 8px; }
-.engineer-turn-markdown ul, .engineer-turn-markdown ol { margin: 0 0 8px; padding-left: 20px; }
-.engineer-turn-markdown strong { color: var(--text); font-weight: 700; }
-.engineer-turn-markdown code { font-family: var(--mono); font-size: 12px; background: var(--surface-muted); padding: 1px 4px; border-radius: 2px; }
-.engineer-turn-actions { display: flex; gap: 8px; margin-top: 6px; }
-.engineer-turn-actions button { background: none; border: 1px solid var(--border); color: var(--muted); font-size: 11px; font-family: var(--mono); padding: 3px 8px; border-radius: 3px; cursor: pointer; }
-.engineer-turn-actions button:hover { color: var(--text); border-color: var(--border-strong); }
-.engineer-turn.streaming .engineer-turn-markdown::after { content: "▋"; display: inline-block; margin-left: 2px; animation: engineer-cursor-blink 1s step-end infinite; color: var(--muted); }
 @keyframes engineer-cursor-blink { 50% { opacity: 0; } }
-.state-box { max-width: 720px; margin: 90px auto; padding: 22px; border: 1px solid var(--border); background: var(--surface); color: var(--muted); }
-.state-box.error { color: var(--red); }
-.week-context-section { margin-top: 18px; }
+
 .manual-sync-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
 .manual-sync-bookmarklet { display: grid; gap: 5px; padding: 16px; border: 1px dashed var(--border); background: var(--surface-muted); cursor: grab; text-decoration: none; }
 .manual-sync-bookmarklet:active { cursor: grabbing; }
@@ -650,12 +334,6 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
  * órfão" -- a fixed 3-column template left 2 empty slots whenever the driver had fewer than 3 active
  * weekly contexts (the common case: often just 1). auto-fit collapses unused tracks instead of
  * stretching empty ones, so 1-2 cards sit at a natural width instead of a mostly-empty row. */
-.week-context-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
-.week-context-card { display: grid; gap: 5px; padding: 16px; border: 1px solid var(--border); border-top: 3px solid var(--brand); background: var(--surface); }
-.week-context-card > span, .week-context-card small { color: var(--muted); font-family: var(--mono); font-size: 10px; letter-spacing: .06em; text-transform: uppercase; }
-.week-context-card h3 { margin: 0; font-size: 16px; }.week-context-card strong { font-family: var(--mono); font-size: 25px; }.week-context-card strong.neutral { color: var(--soft); }
-.week-context-card a { margin-top: 4px; color: var(--brand); font-size: 12px; font-weight: 700; text-decoration: none; }
-.week-context-card a:hover { text-decoration: underline; }
 
 @media (max-width: 1080px) {
   .kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -720,89 +398,31 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 }
 
 .race-debrief { margin-top: 18px; }
-.race-debrief-category-toggle { display: inline-flex; border: 1px solid var(--border-strong); background: var(--surface-muted); border-radius: 3px; overflow: hidden; margin-bottom: 16px; }
-.race-debrief-category-toggle button { border: 0; border-right: 1px solid var(--border); padding: 9px 16px; background: transparent; color: var(--muted); font-family: var(--mono); font-size: 12px; font-weight: 500; cursor: pointer; }
-.race-debrief-category-toggle button:last-child { border-right: 0; }
-.race-debrief-category-toggle button.active { background: var(--brand); color: var(--on-brand); }
-.race-debrief-header p { margin: 4px 0 0; color: var(--muted); font-size: 13px; }
-.sample-confidence { display: inline-flex; margin-top: 8px; padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 999px; color: var(--muted); font: 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; }
-.sample-confidence.strong { color: var(--green); border-color: var(--green); }.sample-confidence.limited { color: var(--amber); border-color: var(--amber-dim); }
+
 .ranking-confidence { display:inline-block; margin-left:5px; color:var(--muted); font:9px var(--mono); text-transform:uppercase; letter-spacing:.03em; }.ranking-confidence.strong { color:var(--green); }.ranking-confidence.moderate { color:var(--cyan); }.ranking-confidence.limited { color:var(--amber); }
-.race-debrief-disclosure { margin-top: 16px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); }
-.race-debrief-disclosure > summary { cursor: pointer; padding: 12px 16px; color: var(--brand); font: 700 12px var(--mono); letter-spacing: .04em; text-transform: uppercase; }
-.race-debrief-disclosure[open] > summary { border-bottom: 1px solid var(--border); }
-.race-debrief-disclosure .race-debrief-chart-block, .race-debrief-disclosure .race-debrief-channels { margin: 0; border: 0; border-radius: 0; }
-.telemetry-selection-note { display: grid; gap: 4px; margin: 12px 0; padding: 10px 12px; border-left: 3px solid var(--brand); background: var(--surface-muted); color: var(--muted); font-size: 12px; line-height: 1.45; }
-.telemetry-selection-note strong { color: var(--text); font: 10px var(--mono); letter-spacing: .06em; }.telemetry-selection-note.is-limited { border-left-color: var(--amber); }
-.race-debrief-summary { margin-top: 14px; padding: 16px; background: var(--brand-pale); border: 1px solid var(--border-strong); border-radius: 3px; }
-.race-debrief-summary > p { margin: 0; color: var(--on-brand); font-size: 14px; line-height: 1.55; }
-.race-debrief-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 14px; }
-.race-debrief-metrics div { padding: 10px 12px; background: var(--surface); border: 1px solid var(--border-strong); border-radius: 3px; text-align: center; }
-.race-debrief-metrics span { display: block; color: var(--soft); font-family: var(--mono); font-size: 10px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; }
-.race-debrief-metrics strong { font-family: var(--mono); font-size: 16px; font-variant-numeric: tabular-nums; }
-.race-debrief-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 16px; }
-.race-debrief-col { padding: 16px; border-radius: 3px; border: 1px solid var(--border); }
-.race-debrief-col.strengths { background: var(--green-pale); border-color: var(--green); }
-.race-debrief-col.improvements { background: var(--amber-pale); border-color: var(--amber-dim); }
-.race-debrief-col h4 { margin: 4px 0 10px; font-size: 15px; }
-.race-debrief-col p { margin: 0 0 10px; font-size: 13px; line-height: 1.55; color: var(--text); }
-.race-debrief-channels { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
-.race-debrief-chart-block { margin-top: 16px; padding: 16px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface); }
-.race-debrief-chart-block h4 { margin: 4px 0 6px; font-size: 15px; }
+
 .debrief-chart { width: 100%; height: auto; display: block; margin-top: 8px; }
 .debrief-chart.compact { max-width: none; }
-.debrief-grid { stroke: var(--border); stroke-width: 1; }
-.debrief-axis { fill: var(--soft); font-family: var(--mono); font-size: 10px; }
-.debrief-avg-line { stroke: var(--soft); stroke-width: 1.5; stroke-dasharray: 5 4; }
-.debrief-dot { fill: var(--blue); opacity: .85; }
-.debrief-dot.best { fill: var(--green); r: 6; }
-.race-debrief-channels-note { margin: 4px 0 12px; color: var(--muted); font-size: 12px; }
-.race-debrief-channel-bars { display: grid; gap: 8px; }
-.race-debrief-channel-row { display: grid; grid-template-columns: 90px 1fr 46px; align-items: center; gap: 10px; }
-.race-debrief-channel-row span { font-size: 12px; font-weight: 600; color: var(--muted); }
-.race-debrief-channel-track { height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
+
 /* 02/09/2026: tier-colored (great/good/warn/bad, same scale as .corner-chip/.sector-map-segment
  * elsewhere) instead of always --blue -- a flat "positive-looking" color regardless of the actual
  * value was exactly what made this bar readable backwards (see this rule's own JSX-side comment). */
-.race-debrief-channel-track div { height: 100%; border-radius: 5px; background: var(--soft); }
-.race-debrief-channel-track div.great { background: var(--green); }
-.race-debrief-channel-track div.good { background: var(--blue); }
-.race-debrief-channel-track div.warn { background: var(--amber); }
-.race-debrief-channel-track div.bad { background: var(--red); }
-.race-debrief-channel-score { font-family: var(--mono); font-size: 12px; text-align: right; color: var(--soft); }
-.race-debrief-channel-score.great { color: var(--green); }
-.race-debrief-channel-score.good { color: var(--blue); }
-.race-debrief-channel-score.warn { color: var(--amber); }
-.race-debrief-channel-score.bad { color: var(--red); }
-
-.race-debrief-outlier-list { margin: 0; padding-left: 18px; font-size: 13px; color: var(--text); line-height: 1.6; }
 
 /* Comparar carros: one horizontal-bar idiom (CompareBar in CarComparison.tsx) reused for three very
  * different units -- seconds of delta, a consistency ratio, a % of track width -- so the driver can
  * scan "which car wins" the same way in all three sections instead of three different chart types. */
-.car-compare-picker { margin-bottom: 16px; display: flex; flex-direction: column; gap: 6px; }
-.car-compare-picker select { padding: 8px 10px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); font-family: var(--mono); font-size: 13px; border-radius: 3px; max-width: 480px; }
-.car-compare-block { display: grid; gap: 8px; margin-bottom: 14px; }
-.car-compare-block:last-child { margin-bottom: 0; }
+
 /* Name+icon on its own line, bar+time on the next -- a full car name ("McLaren 720S GT3 EVO") next
  * to a bar and a time value doesn't fit one row without truncating something (31/08/2026: "quero que
  * o nome todo apareça por extenso"). */
-.car-compare-row { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "name name" "traction traction" "track value"; align-items: center; gap: 4px 10px; }
-.car-compare-row-name { grid-area: name; display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
-.car-compare-row-track { grid-area: track; height: 10px; background: var(--border); border-radius: 5px; overflow: hidden; }
-.car-compare-row-fill { height: 100%; background: var(--blue); border-radius: 5px; }
-.car-compare-row-value { grid-area: value; font-family: var(--mono); font-size: 11px; color: var(--text); text-align: right; white-space: nowrap; }
 
 /* 10/09/2026: track conditions moved inline next to each car name in the best-lap ranking
  * ("como informação adicional ao lado do nome de cada carro") instead of a separate section. */
-.car-compare-row-cond { font-weight: 400; color: var(--muted); font-size: 11px; }
+
 /* 11/09/2026: destracionamento/microcorreções rate -- only rendered when notable (see
  * formatTractionInline), amber like the other "pay attention" signals in this app (e.g.
  * comparison-note-warning), not the neutral muted tone conditions use, since this one is actionable. */
-.car-compare-row-traction { grid-area: traction; font-family: var(--mono); font-size: 10.5px; color: var(--amber, #e0973b); }
-.comparison-note-warning { color: var(--orange, #e0973b); }
 
-.race-debrief-corner-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 /* 01/09/2026: "o certo é o mapa ficar do tamanho do quadrado amarelo, não do vermelho... o fim do
  * quadrado do minimapa bate com o fim das caixas de texto dos cards de consistência" -- the map
  * (corner-card-map-col) is now a grid sibling of the rest of the card's content (corner-card-body),
@@ -810,22 +430,14 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
  * this grid makes BOTH columns match the TALLER one's height automatically -- body's natural content
  * height (title + charts + narrative + chips), whatever that turns out to be per card -- so the map
  * always reaches exactly as far down as the text below it, with no fixed height to keep in sync. */
-.race-debrief-corner-card { display: grid; grid-template-columns: 1fr minmax(200px, 26%); gap: 12px; align-items: stretch; padding: 14px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); }
-.corner-card-body { display: flex; flex-direction: column; min-width: 0; }
-.corner-card-map-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.race-debrief-corner-card h5 { margin: 0 0 10px; font-size: 15px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.race-debrief-corner-card h5 span { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; white-space: nowrap; }
+
 /* Consistency chart and best-braking chart used to be one combined SVG sharing this row with the
  * track map; split into their own columns (29/08/2026, "separe em dois gráficos a parte da
  * consistência e a parte da melhor freada... dá pra aproveitar a largura que tem ali") so each
  * fills its own share of the row's width instead of the two being crammed into one chart. The map
  * itself moved OUT of this row (01/09/2026, see .race-debrief-corner-card above) so it's now just
  * the two fixed-height mini-charts. */
-.corner-mini-row { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr); gap: 12px; align-items: stretch; margin-bottom: 8px; }
-.corner-mini-col { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
-.corner-mini-col-label { font-family: var(--mono); font-size: 10px; letter-spacing: .03em; text-transform: uppercase; color: var(--muted); }
-.corner-mini-empty { fill: var(--muted); font-family: var(--mono); font-size: 9px; }
-.corner-mini-chart { width: 100%; height: 150px; background: var(--surface-map); border: 1px solid var(--border); border-radius: 3px; cursor: crosshair; touch-action: none; }
+
 /* flex:1 here used to be a no-op (31/08/2026 regression) because the map's actual PARENT
  * (.corner-mini-col) sat INSIDE corner-mini-row, a row sized by the two fixed-150px charts beside
  * it -- flex:1 had no taller container to grow into. Now that corner-card-map-col is its own grid
@@ -834,87 +446,26 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
  * the shared components/TrackMap.tsx now (real OSM boundary), not its own
  * .corner-mini-map-outline/-marker classes -- those are gone, see that component's own
  * track-outline/track-compare-line. */
-.corner-mini-map { width: 100%; height: 100%; background: var(--surface-map); border: 1px solid var(--border); border-radius: 3px; }
+
 /* Shared TrackMap.tsx now wraps its <svg> in its own .track-map-zoom-wrap div (01/09/2026, added
  * for scroll-to-zoom) -- the svg itself is no longer corner-card-map-col's direct flex child, so
  * flex:1 has to live on the wrap div for the same "stretch to the full card height" effect that
  * used to sit on .corner-mini-map directly (see .race-debrief-corner-card's own comment above). */
-.corner-card-map-col .track-map-zoom-wrap { flex: 1; min-height: 150px; }
-.corner-mini-axis { stroke: var(--border-strong); stroke-width: 1; stroke-dasharray: 2 2; }
-.corner-mini-band { opacity: .2; }
-.corner-mini-band.brake { fill: var(--red); }
-.corner-mini-band.throttle { fill: var(--green); }
-.corner-mini-line { fill: none; stroke-width: 1.6; }
-.corner-mini-line.brake { stroke: var(--red); filter: drop-shadow(0 0 3px rgba(255,92,92,.5)); }
-.corner-mini-line.throttle { stroke: var(--green); filter: drop-shadow(0 0 3px rgba(53,212,136,.45)); }
-.corner-narrative { margin: 0 0 8px; color: var(--text); font-size: 12px; line-height: 1.4; max-width: 110ch; }
+
 /* In-chart channel labels + gain callout (29/08/2026: "só nomeie dentro do gráfico e também
  * indique quanto tempo eu conseguiria ganhar") -- both mini-charts share these, no dedicated
  * ideal-line color/dash treatment anymore (see BestBrakingChart's own comment). */
-.corner-mini-chart-label { font-family: var(--mono); font-size: 8px; font-weight: 600; letter-spacing: .03em; }
-.corner-mini-chart-label.brake { fill: var(--red); }
-.corner-mini-chart-label.throttle { fill: var(--green); }
-.corner-mini-gain { fill: var(--text); font-family: var(--mono); font-size: 9px; font-weight: 600; }
-.corner-mini-legend { margin: 6px 0 8px; color: var(--muted); font-size: 11px; }
-.corner-metric-grid { display: flex; flex-wrap: wrap; gap: 6px; }
-.corner-chip { padding: 3px 7px; border: 1px solid var(--border-strong); border-radius: 3px; font-family: var(--mono); font-size: 10px; color: var(--muted); background: var(--surface); }
-.corner-chip.great { color: var(--green); border-color: var(--green); }
-.corner-chip.good { color: var(--blue); border-color: var(--blue-dark); }
-.corner-chip.warn { color: var(--amber); border-color: var(--amber-dim); }
-.corner-chip.bad { color: var(--red); border-color: var(--red); }
-
-@media (max-width: 720px) {
-  .race-debrief-metrics, .race-debrief-columns { grid-template-columns: 1fr; }
-  .setup-comparison-head { grid-template-columns: 1fr; }
-  /* 12/09/2026 fix: "os cards de análise curva a curva tão vazando no mobile" -- both of these
-   * side-by-side layouts had a fixed-pixel minimum column (200px / 220px+220px = 440px combined)
-   * that a phone viewport can't satisfy without overflowing; stacking to one column on mobile
-   * matches every other side-by-side card in this file (.sector-map-layout, .car-compare-row1
-   * above) instead of leaving these two as the only ones that never got the same treatment. */
-  .race-debrief-corner-card { grid-template-columns: 1fr; }
-  .corner-mini-row { grid-template-columns: 1fr; }
-}
 
 .sector-consistency { margin-top: 18px; }
-.sector-list { margin-top: 16px; display: flex; flex-direction: column; gap: 8px; }
-.sector-map-layout { display: grid; grid-template-columns: minmax(360px, .9fr) minmax(420px, 1.1fr); gap: 14px; margin-top: 16px; align-items: stretch; }
-.sector-map-card { display: grid; gap: 10px; padding: 12px; border: 1px solid var(--border); background: var(--surface-muted); border-radius: 3px; }
-.sector-map { width: 100%; min-height: 320px; background: var(--surface-map); border: 1px solid var(--border); border-radius: 3px; }
-.sector-map-base { fill: none; stroke: var(--border-strong); stroke-width: 9; stroke-linecap: round; stroke-linejoin: round; opacity: .45; }
-.sector-map-segment { fill: none; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
-.sector-map-segment.great { stroke: var(--green); }.sector-map-segment.good { stroke: var(--blue); }.sector-map-segment.warn { stroke: var(--amber); }.sector-map-segment.bad { stroke: var(--red); }
-.sector-map-legend { display: flex; flex-wrap: wrap; gap: 8px; color: var(--muted); font-family: var(--mono); font-size: 10px; }
-.sector-map-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.sector-map-legend span::before { content: ""; width: 12px; height: 3px; display: inline-block; background: currentColor; }
-.sector-map-legend .great { color: var(--green); }.sector-map-legend .good { color: var(--blue); }.sector-map-legend .warn { color: var(--amber); }.sector-map-legend .bad { color: var(--red); }
-.sector-detail-list { display: grid; gap: 8px; }
-.sector-detail { display: grid; grid-template-columns: 34px minmax(120px, 1fr) repeat(3, minmax(90px, auto)); gap: 8px 12px; align-items: center; padding: 10px 12px; border: 1px solid var(--border); border-left: 3px solid var(--border-strong); background: var(--surface); border-radius: 3px; }
-.sector-detail.great { border-left-color: var(--green); }.sector-detail.good { border-left-color: var(--blue); }.sector-detail.warn { border-left-color: var(--amber); }.sector-detail.bad { border-left-color: var(--red); }
-.sector-detail > span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
-.sector-detail strong { font-family: var(--mono); font-size: 11px; color: var(--text); }
-.sector-detail div { display: grid; gap: 2px; font-family: var(--mono); font-size: 12px; text-align: right; }
-.sector-detail b { color: var(--soft); font-size: 9px; font-weight: 500; letter-spacing: .08em; text-transform: uppercase; }
-.sector-detail em { font-style: normal; font-weight: 700; }
-.sector-detail p { grid-column: 1 / -1; margin: 0; color: var(--amber); font-size: 11px; }
-.sector-row { display: grid; grid-template-columns: 36px 1fr 110px 270px; align-items: center; gap: 4px 12px; padding: 10px 12px; border: 1px solid var(--border); background: var(--surface); border-radius: 3px; }
-.sector-note { grid-column: 1 / -1; color: var(--amber); font-size: 11px; }
-.sector-number { font-family: var(--mono); font-size: 12px; font-weight: 700; color: var(--muted); }
-.sector-track { position: relative; height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
-.sector-spread { height: 100%; border-radius: 4px; }
-.sector-best-marker { position: absolute; left: 0; top: -2px; bottom: -2px; width: 2px; background: var(--text); }
+
 .sector-consistency { font-family: var(--mono); font-size: 11px; font-weight: 600; }
-.sector-times { color: var(--soft); font-family: var(--mono); font-size: 11px; text-align: right; }
-.sector-row.great .sector-spread { background: var(--green); }.sector-row.great .sector-consistency { color: var(--green); }
-.sector-row.good .sector-spread { background: var(--blue); }.sector-row.good .sector-consistency { color: var(--blue); }
-.sector-row.warn .sector-spread { background: var(--amber); }.sector-row.warn .sector-consistency { color: var(--amber); }
-.sector-row.bad .sector-spread { background: var(--red); }.sector-row.bad .sector-consistency { color: var(--red); }
 
 /* Comparar carros' own per-corner map -- reuses .sector-map/.sector-map-card/.sector-map-base as-is
  * (same base-track-outline styling as SectorConsistency's own map) but colors segments by which CAR
  * won them (inline style, one color per car) instead of a consistency bucket class. ".compact" sizes
  * it down to live beside the ranking bars (29/08/2026: "o mapa está ocupando espaço demais") instead
  * of its own full-width block. */
-.sector-map-segment-colored { fill: none; stroke-width: 7; stroke-linecap: round; stroke-linejoin: round; }
+
 /* 11/09/2026: "tem muito espaço disponível dentro do box" -- the grid cell (.car-compare-row1, below)
  * already stretches this card to match the ranking-bars column's full height, but the SVG only ever
  * took its own intrinsic viewBox-aspect height, leaving the rest of that stretched card empty. Making
@@ -922,70 +473,44 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
  * own height:100% finally reach the full stretched height instead of stopping short of it --
  * preserveAspectRatio="xMidYMid meet" (components/TrackMap.tsx) still fits the real track without
  * distorting it, it just now has the full box to fit into. */
-.sector-map.compact { min-height: 220px; height: 100%; }
-.sector-map-card.compact { padding: 8px; flex: 1; grid-template-rows: 1fr auto; }
-.car-compare-row1 .race-debrief-chart-block { display: flex; flex-direction: column; }
-.sector-curve-label { fill: var(--soft); font-family: var(--mono); font-size: 8px; }
 
 /* Row 1 (29/08/2026 layout: "Primeira linha de gráficos: melhor volta; mapa da pista"): ranking bars
  * and the compact fastest-per-corner map side by side, not stacked full-width blocks. align-items
  * stretch (31/08/2026, was "start") so the left column matches the map's full height instead of
  * leaving a gap below it -- "já que o mapa da direita ocupa mais espaço vertical, o gráfico de delta
  * de tempo e o texto com o insight podiam dividir toda a altura". */
-.car-compare-row1 { display: grid; grid-template-columns: minmax(280px, 1.3fr) minmax(260px, 1fr); gap: 14px; align-items: stretch; }
-.car-compare-row1 .race-debrief-chart-block { margin: 0; }
+
 /* Left column splits into two equal halves -- ranking bars on top, engineer insight on the bottom --
  * stretched to match the taller map column on the right instead of the insight trailing right after
  * the bars with empty space below it. */
-.car-compare-row1-left { display: flex; flex-direction: column; gap: 14px; }
-.car-compare-row1-left > .race-debrief-chart-block { flex: 1 1 0; display: flex; flex-direction: column; }
-.car-compare-insight-block { justify-content: center; }
-.car-compare-insight-block .car-compare-narrative { flex: 1; display: flex; align-items: center; }
 
 /* Per-corner deep dive (29/08/2026: "um deep-dive em cada curva... os gráficos de inputs um do lado
  * do outro... esse minimapa focado naquela curva irá mostrar as linhas que cada carro fez"). */
-.corner-deep-picker { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
-.corner-deep-picker select { padding: 6px 8px; background: var(--surface); border: 1px solid var(--border-strong); color: var(--text); font-family: var(--mono); font-size: 12px; border-radius: 3px; }
-.corner-deep-picker span { color: var(--muted); font-family: var(--mono); font-size: 11px; }
+
 /* 12/09/2026 fix: "os cards de análise curva a curva tão vazando no mobile" -- minmax(420px, 1fr)
  * forces every column to be AT LEAST 420px wide even on a ~360-390px phone viewport, since
  * minmax()'s minimum is never allowed to shrink the track below that floor; the card (and its
  * text) then genuinely overflows the screen, it isn't just visually cramped. min(420px, 100%)
  * caps that floor at the container's own width, so the single column fills the phone exactly
  * instead of overflowing it, with no behavior change at all on desktop where 420px already fits. */
-.corner-deep-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(420px, 100%), 1fr)); gap: 12px; }
-.corner-deep-card { padding: 12px; border: 1px solid var(--border); border-radius: 3px; background: var(--surface-muted); min-width: 0; }
-.corner-deep-card h5 { margin: 0 0 8px; font-size: 14px; font-family: var(--display); display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
-.corner-deep-card h5 span { font-size: 11px; color: var(--muted); font-family: var(--mono); font-weight: 500; white-space: nowrap; }
+
 /* The whole card is now the open-popup button (31/08/2026: "os inputs e o traçado só aparecem quando
  * eu clico em cada curva" -- inputs/map moved out of the inline card entirely, into
  * CornerFocusedPopup, so there's no narrative/charts split left to carve the click target down to
  * just the title). .corner-deep-card supplies the visual card chrome (border/background/padding);
  * this only adds the button resets/behavior on top of it -- must not redeclare border/background/
  * padding or it'd fight that rule for the same element. */
-.corner-deep-card-open { display: block; width: 100%; text-align: left; cursor: pointer; font: inherit; color: inherit; }
-.corner-deep-card-open:hover h5 { text-decoration: underline; text-underline-offset: 3px; }
+
 /* Live throttle/brake bars in the focused-chart popup's gauge column (29/08/2026, per the iRacing
  * widget reference image). */
 .pedal-bar-track { fill: var(--border); }
 .pedal-bar-fill.throttle { fill: var(--green); }
 .pedal-bar-fill.brake { fill: var(--red); }
-.corner-deep-meta { display: flex; justify-content: space-between; gap: 10px; margin-top: 8px; font-family: var(--mono); font-size: 11px; }
-.corner-deep-narrative { margin: 0 0 10px; color: var(--text); font-size: 12px; line-height: 1.5; }
+
 /* Engineer's-read paragraph, now its own bottom-half block beside the map (31/08/2026: "o gráfico de
  * delta de tempo e o texto com o insight podiam dividir toda a altura, sendo cada um ocupando metade
  * da altura do mapa") -- a highlighted callout, not plain body text, since it's the one thing on this
  * row meant to be read as advice rather than a number. */
-.car-compare-narrative { margin: 0; padding: 10px 12px; background: var(--brand-pale); border: 1px solid var(--brand-dark); border-radius: 3px; color: var(--text); font-size: 12px; line-height: 1.55; }
-
-@media (max-width: 720px) {
-  .sector-row { grid-template-columns: 1fr; gap: 4px; }
-  .sector-times { text-align: left; }
-  .sector-map-layout, .sector-detail { grid-template-columns: 1fr; }
-  .sector-detail div { text-align: left; }
-  .car-compare-row1 { grid-template-columns: 1fr; }
-}
-
 
 /* DMAIC reports: the analysis is intentionally a readable dialog, not another dense dashboard card. */
 .dmaic-report-actions { display: inline-flex; align-items: center; gap: 8px; }
@@ -996,12 +521,7 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 .dmaic-modal-head h2 { margin: 4px 0 0; font-size: 25px; }
 .dmaic-modal-head p { margin: 6px 0 0; color: var(--muted); font-size: 14px; }
 .modal-close { border: 1px solid var(--border-strong); background: var(--surface-muted); color: var(--text); padding: 9px 12px; cursor: pointer; font-family: var(--mono); font-size: 12px; }
-.dmaic-section { margin-top: 22px; border: 1px solid var(--border); }
-.dmaic-section > h3 { margin: 0; padding: 12px 14px; background: var(--surface-muted); font-size: 17px; }
-.dmaic-stage { padding: 12px 14px; border-top: 1px solid var(--border); }
-.dmaic-stage strong { display: block; color: var(--brand); font-family: var(--mono); font-size: 11px; letter-spacing: .1em; }
-.dmaic-stage p { margin: 6px 0 0; color: var(--text); font-size: 14px; line-height: 1.55; }
-.dmaic-error { margin-top: 18px; padding: 12px; border: 1px solid var(--red); background: var(--red-pale); color: var(--red); }
+
 .calendar-import-modal { max-width: 760px; }
 .calendar-import-body { padding-top: 18px; }
 .calendar-drop { display: grid; gap: 6px; padding: 20px; border: 1px dashed var(--border-strong); background: var(--surface-muted); cursor: pointer; }
@@ -1027,18 +547,6 @@ footer { margin-top: 24px; color: var(--soft); font-family: var(--mono); font-si
 }
 
 /* Race-engineer debrief */
-.engineer-modal { max-width: 980px; }
-.engineer-section { background: var(--surface); }
-.engineer-reading, .engineer-action { padding: 14px; border-top: 1px solid var(--border); background: var(--surface-muted); }
-.engineer-reading strong, .engineer-action strong { font-family: var(--mono); font-size: 11px; letter-spacing: .08em; color: var(--brand); }
-.engineer-reading p, .engineer-action p { margin: 6px 0 0; line-height: 1.55; }
-.evidence-list { display:grid; gap: 0; }
-.evidence-row { display:grid; grid-template-columns: 92px 1fr; gap:12px; padding:13px 14px; border-top:1px solid var(--border); border-left:3px solid var(--blue); }
-.evidence-row.incidents { border-left-color:var(--red); }.evidence-row.sof { border-left-color:var(--amber); }.evidence-row.pace { border-left-color:var(--green); }
-.evidence-row span { font-family:var(--mono); font-size:10px; color:var(--muted); letter-spacing:.06em; }.evidence-row p { margin:0; line-height:1.55; }
-.engineer-note { margin:0; padding:12px 14px; border-top:1px solid var(--border); color:var(--muted); font-size:12px; line-height:1.5; }
-@media(max-width:760px){.evidence-row{grid-template-columns:1fr;gap:5px}}
-
 
 /* Mobile race-engineer debrief: keep comparison grids inside the viewport. */
 @media (max-width: 760px) {

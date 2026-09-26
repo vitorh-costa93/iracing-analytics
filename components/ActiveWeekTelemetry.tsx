@@ -144,6 +144,7 @@ export default function ActiveWeekTelemetry() {
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.message ?? "Erro ao carregar referência");
+        if (result.status === "unavailable") throw new Error(result.message ?? "Referência indisponível agora.");
         if (active && result.reference) {
           const parsed = parseTelemetryCsv(result.reference.csv);
           if (isSf23(selected.car.name) && traceUsesOvertake(parsed)) throw new Error("A referência ativa usa P2P/Overtake. Envie uma volta sem esse recurso.");
@@ -241,9 +242,8 @@ export default function ActiveWeekTelemetry() {
   const category = selected?.car.category ?? null;
   const trackLength = comparison?.trackLengthMeters ?? trace?.trackLengthMeters ?? null;
 
-  const lapKind = selected?.bestLap?.selectionReason.startsWith("race") ? "de corrida" : selected?.bestLap?.selectionReason === "practice_best_lap" ? "de practice" : "limpa";
   const eligibility = selected?.bestLap
-    ? `Volta ${lapKind} elegível${selected && isSf23(selected.car.name) ? ", sem P2P ativo" : ""}${trace ? (gpsOk ? " e com o traçado completo no GPS" : "; o GPS desta volta tem falhas, então o mapa pode ficar incompleto") : ""} · passe o mouse para comparar`
+    ? `Volta elegível, sem P2P ativo${trace ? (gpsOk ? " e com o traçado completo no GPS" : "; o GPS desta volta tem falhas, então o mapa pode ficar incompleto") : ""} · passe o mouse para comparar`
     : "Ainda não há uma volta limpa com telemetria para este contexto.";
 
   const uploadButton = (label: string) => (
@@ -292,7 +292,7 @@ export default function ActiveWeekTelemetry() {
               <div className="ngt-context-side">
                 <div className="ngt-context-best">{item.bestLap ? formatLapTime(item.bestLap.lapTime) : "—"}</div>
                 <div className="ngt-context-gap" data-tone={gap === null ? undefined : gap > 0 ? "loss" : "gain"}>
-                  {gap !== null ? `${formatSignedSeconds(gap)} vs. ref.` : noReference ? "sem referência" : "gap ao abrir"}
+                  {gap !== null ? `${formatSignedSeconds(gap)} vs. ref.` : noReference ? "sem referência" : "abra para calcular"}
                 </div>
               </div>
             </button>
