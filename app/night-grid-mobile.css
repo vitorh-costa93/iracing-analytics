@@ -85,6 +85,15 @@
   .ngt-trace-map { height: 260px; }
 }
 
+/* ---- Setup Lab: chat com altura relativa a tela e teclado sem cobrir o campo */
+@media (max-width: 720px) {
+  html body .ngs-chat { height: min(600px, 78dvh); }
+  html body .ngs-chat textarea, html body .ngs-chat input { scroll-margin-bottom: 24px; }
+  /* Com o teclado aberto, a barra inferior sai de cena para nao cobrir o campo de texto. */
+  body:has(input:focus, textarea:focus) .ng-bottom-nav { display: none; }
+  body:has(input:focus, textarea:focus) { padding-bottom: 0; }
+}
+
 /* ---- Base compartilhada: titulo com seletor, segmentados, selects */
 @media (max-width: 720px) {
   .ng-page-title { width: 100%; }
