@@ -19,7 +19,11 @@ const GRID_STEP = 0.25; // % of lap distance
 const THRESHOLD_RATIO = 0.35; // fraction of p90(|lateralAccel|) that counts as "turning"
 const HIGH_PEAK_RATIO = 0.8; // a short but very sharp run (e.g. a chicane) is kept even if its arc is short
 const MIN_ARC_PCT = 1.5; // minimum arc length to keep a run that isn't a high-peak spike
-const MERGE_GAP_PCT = 1; // runs separated by less than this are treated as one corner complex
+export const MERGE_GAP_PCT = 1; // runs separated by less than this are treated as one corner complex
+/** Teto em metros do intervalo que ainda funde duas corridas de heading num mesmo complexo (ver o
+ * comentário de 03/09/2026 em detectCornersFromGps). Exportado para lib/corner-sequences.ts, que
+ * agrupa curvas SEPARADAS mas coladas em sequências a partir de um intervalo maior que este. */
+export const ABSOLUTE_MERGE_GAP_METERS = 80;
 
 function interpolateCircular(sorted: CornerSample[], distance: number): number {
   const d = ((distance % 100) + 100) % 100;
@@ -238,7 +242,6 @@ export function detectCornersFromGps(points: Array<{ distance: number; lat: numb
   // tracks) keeps corners genuinely more than ~80m apart on track separate regardless of track
   // length, while leaving short-track behavior (already grid-search-verified) unchanged: on Algarve
   // or Red Bull Ring, 1% of lap is already well under 80m, so the cap never binds there.
-  const ABSOLUTE_MERGE_GAP_METERS = 80;
   const metersPerPct = lapLengthMeters > 0 ? lapLengthMeters / 100 : 0;
   const mergeGapPct = metersPerPct > 0 ? Math.min(1, ABSOLUTE_MERGE_GAP_METERS / metersPerPct) : 1;
   const MERGE_GAP = Math.max(1, Math.round(mergeGapPct / STEP)); // runs separated by less than this are one corner complex

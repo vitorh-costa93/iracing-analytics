@@ -1,0 +1,248 @@
+/* Night Grid · Telemetry Lab, semana ativa (redesign etapa 3, 25/09/2026).
+ * Fonte da verdade visual: docs/redesign-mockup/Telemetry.dc.html e TelemetryPopup.dc.html
+ * (cores, raios, paddings e tamanhos copiados do mockup). Tokens base em app/night-grid.css (--ng-);
+ * os poucos tons que só esta tela usa ficam aqui como --ngt-. Prefixo das classes: .ngt- */
+:root {
+  --ngt-deep: #0A0E18;
+  --ngt-inset: #0B0F1E;
+  --ngt-grid: #141B30;
+  --ngt-axis: #5C6A9E;
+  --ngt-map-base: #2A3562;
+  --ngt-map-dim: #1E2748;
+  --ngt-gear: #F2C230;
+  --ngt-loss-fill: #3A1219;
+  --ngt-gain-fill: #0F2A1F;
+  --ngt-backdrop: rgba(3, 5, 12, .8);
+}
+:root[data-theme="light"] {
+  --ngt-deep: #F5F7FC;
+  --ngt-inset: #EEF1F9;
+  --ngt-grid: #E3E7F2;
+  --ngt-axis: #8D97BB;
+  --ngt-map-base: #C9D1E8;
+  --ngt-map-dim: #DDE3F3;
+  --ngt-gear: #B88A00;
+  --ngt-loss-fill: #FBE1E1;
+  --ngt-gain-fill: #DDF5E9;
+  --ngt-backdrop: rgba(14, 19, 34, .45);
+}
+
+.ngt-screen { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
+.ngt-state { padding: 18px 20px; background: var(--ng-card); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-card); color: var(--ng-muted); font-size: 14px; display: flex; align-items: center; gap: 12px; }
+.ngt-state[data-tone="error"] { color: var(--ng-loss); }
+.ngt-link-button { border: 1px solid var(--ng-border); background: var(--ng-card-2); color: var(--ng-text); border-radius: var(--ng-radius-control); height: 30px; padding: 0 12px; font: inherit; font-size: 13px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ngt-link-button:hover:not(:disabled) { border-color: var(--ng-tooltip-border); }
+.ngt-link-button:disabled { opacity: .6; cursor: progress; }
+.ngt-link-button input[type="file"] { display: none; }
+
+/* ------------------------------------------------------------------ contextos da semana */
+.ngt-more-contexts { display: flex; align-items: center; gap: 12px; font-size: 13px; color: var(--ng-muted); }
+.ngt-more-contexts .ng-select { margin-left: auto; }
+.ngt-contexts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; }
+.ngt-context {
+  text-align: left; cursor: pointer; color: var(--ng-text); background: var(--ng-card);
+  border: 1px solid var(--ng-border); border-radius: var(--ng-radius-card); padding: 12px 16px;
+  display: flex; align-items: center; gap: 12px; font-family: var(--ng-font-body); min-width: 0;
+}
+.ngt-context:hover { border-color: var(--ng-tooltip-border); }
+.ngt-context[aria-pressed="true"] { border-color: var(--ng-brand); }
+.ngt-context:focus-visible { outline: 2px solid var(--ng-text); outline-offset: 2px; }
+.ngt-context-bar { width: 6px; align-self: stretch; border-radius: 3px; background: var(--ng-soft); flex-shrink: 0; }
+.ngt-context-bar[data-category="sports"] { background: var(--ng-sports); }
+.ngt-context-bar[data-category="formula"] { background: var(--ng-formula); }
+.ngt-context-main { flex-grow: 1; min-width: 0; }
+.ngt-context-track { font-weight: 600; font-size: 15px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ngt-context-car { font-size: 13px; color: var(--ng-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ngt-context-side { text-align: right; flex-shrink: 0; }
+.ngt-context-best { font-family: var(--ng-font-display); font-weight: 600; font-size: 20px; }
+.ngt-context-gap { font-size: 12px; color: var(--ng-muted); }
+.ngt-context-gap[data-tone="loss"] { color: var(--ng-loss); }
+.ngt-context-gap[data-tone="gain"] { color: var(--ng-gain); }
+
+/* ------------------------------------------------------------------ volta representativa + mapa */
+.ngt-lap-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
+.ngt-tall { height: 470px; gap: 4px; }
+.ngt-legend { display: flex; gap: 14px; font-size: 12px; color: var(--ng-muted); padding-top: 4px; }
+.ngt-legend span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ngt-legend i { width: 14px; height: 3px; background: var(--ng-text); display: inline-block; }
+.ngt-legend i[data-line="ref"] { background: var(--ng-reference); }
+.ngt-legend i[data-line="ref-popup"] { background: var(--ng-reference-popup); }
+.ngt-refline { display: flex; align-items: center; gap: 10px; font-size: 12px; color: var(--ng-soft); margin-top: 2px; min-width: 0; }
+.ngt-refline span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ngt-refline .ngt-link-button { height: 24px; padding: 0 10px; font-size: 12px; }
+.ngt-refline[data-tone="error"] { color: var(--ng-loss); }
+.ngt-chart { width: 100%; flex-grow: 1; min-height: 0; display: block; cursor: crosshair; outline: none; }
+.ngt-chart:focus-visible { outline: 2px solid var(--ng-tooltip-border); outline-offset: 2px; border-radius: 4px; }
+.ngt-chart text { font-family: var(--ng-font-body); }
+.ngt-axis-label { font-size: 11px; fill: var(--ng-soft); }
+.ngt-grid-line { stroke: var(--ng-line); }
+.ngt-grid-zero { stroke: var(--ngt-axis); }
+.ngt-own-line { fill: none; stroke: var(--ng-text); stroke-width: 1.8; stroke-linejoin: round; }
+.ngt-ref-line { fill: none; stroke: var(--ng-reference); stroke-width: 1.8; stroke-linejoin: round; }
+.ngt-delta-line { fill: none; stroke: var(--ng-loss); stroke-width: 2.2; stroke-linejoin: round; }
+.ngt-cursor { stroke: var(--ng-soft); stroke-dasharray: 3 3; }
+.ngt-tip-box { fill: var(--ng-header); stroke: var(--ng-tooltip-border); }
+.ngt-tip-title { font-size: 12px; font-weight: 600; fill: var(--ng-text); }
+.ngt-tip-key { font-size: 12px; fill: var(--ng-muted); }
+.ngt-tip-own { font-size: 12px; font-weight: 600; fill: var(--ng-text); }
+.ngt-tip-ref { font-size: 12px; font-weight: 600; fill: var(--ng-reference); }
+.ngt-tip-head-own { font-size: 11px; fill: var(--ng-text); }
+.ngt-tip-head-ref { font-size: 11px; fill: var(--ng-reference); }
+.ngt-empty-chart { flex-grow: 1; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 12px; color: var(--ng-muted); font-size: 14px; line-height: 1.5; max-width: 560px; }
+
+/* mapas (Track Position e Traçado do popup) */
+.ngt-map-wrap { flex-grow: 1; min-height: 0; position: relative; display: flex; }
+.ngt-map { width: 100%; height: 100%; display: block; overflow: hidden; }
+.ngt-map-base { fill: none; stroke: var(--ngt-map-base); stroke-linejoin: round; stroke-linecap: round; }
+.ngt-map[data-variant="popup"] .ngt-map-base { stroke: var(--ngt-map-dim); }
+.ngt-map-seg { fill: none; stroke: var(--ngt-map-base); stroke-linejoin: round; stroke-linecap: round; }
+.ngt-map-own { fill: none; stroke: var(--ng-text); stroke-width: 1.8; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.ngt-map-ref { fill: none; stroke: var(--ng-reference); stroke-width: 1.8; vector-effect: non-scaling-stroke; stroke-linejoin: round; }
+.ngt-map[data-variant="popup"] .ngt-map-own, .ngt-map[data-variant="popup"] .ngt-map-ref { stroke-width: 2; }
+.ngt-map[data-variant="popup"] .ngt-map-ref { stroke: var(--ng-reference-popup); }
+.ngt-map-marker circle { stroke: var(--ngt-axis); cursor: pointer; }
+.ngt-map-marker[data-tone="loss"] circle { fill: var(--ngt-loss-fill); }
+.ngt-map-marker[data-tone="gain"] circle { fill: var(--ngt-gain-fill); }
+.ngt-map-marker text { font-family: var(--ng-font-body); font-weight: 600; fill: var(--ng-text); pointer-events: none; }
+.ngt-map-marker:hover circle { stroke: var(--ng-text); }
+.ngt-ball-halo { fill: var(--ng-loss); fill-opacity: .25; }
+.ngt-ball { fill: var(--ng-loss); stroke: #fff; }
+.ngt-ball-ref { fill: var(--ng-reference); stroke: var(--ng-card); }
+.ngt-map[data-variant="popup"] .ngt-ball { fill: var(--ngt-deep); stroke: var(--ng-text); }
+.ngt-map[data-variant="popup"] .ngt-ball-ref { fill: var(--ng-reference-popup); stroke: var(--ngt-deep); }
+.ngt-map-empty { flex-grow: 1; display: flex; align-items: center; justify-content: center; color: var(--ng-muted); font-size: 13px; }
+
+/* ------------------------------------------------------------------ curva a curva */
+.ngt-summary { display: flex; gap: 24px; margin: 6px 0 4px; flex-wrap: wrap; }
+.ngt-summary > div { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 10px 16px; display: flex; align-items: baseline; gap: 10px; }
+.ngt-summary strong { font-family: var(--ng-font-display); font-weight: 700; font-size: 24px; }
+.ngt-summary strong[data-tone="loss"] { color: var(--ng-loss); }
+.ngt-summary strong[data-tone="gain"] { color: var(--ng-gain); }
+.ngt-summary span { font-size: 13px; color: var(--ng-muted); }
+.ngt-rows-head, .ngt-row { display: grid; grid-template-columns: 220px minmax(0, 1fr) 90px minmax(0, 1.5fr) 90px; gap: 14px; }
+.ngt-rows-head { padding: 4px 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); }
+.ngt-rows-head > span:nth-child(2) { display: flex; justify-content: space-between; }
+.ngt-rows-head > span:nth-child(3) { text-align: right; }
+.ngt-row {
+  align-items: center; min-height: 52px; padding: 0 10px; text-align: left; background: transparent; color: var(--ng-text);
+  border: 0; border-top: 1px solid var(--ng-line); cursor: pointer; font-family: var(--ng-font-body); width: 100%;
+}
+.ngt-row:hover { background: color-mix(in srgb, var(--ng-card-2) 55%, transparent); }
+.ngt-row:focus-visible { outline: 2px solid var(--ng-text); outline-offset: -2px; }
+.ngt-row-name { font-weight: 600; font-size: 14px; }
+.ngt-row-range { font-size: 12px; color: var(--ng-soft); }
+.ngt-bar { position: relative; height: 14px; }
+.ngt-bar-axis { position: absolute; left: 50%; top: -3px; bottom: -3px; width: 1px; background: var(--ngt-axis); }
+.ngt-bar-fill { position: absolute; top: 2px; height: 10px; border-radius: 2px; }
+.ngt-row-dt { text-align: right; font-weight: 600; font-size: 14px; }
+.ngt-row-note { font-size: 13px; color: var(--ng-text-2); line-height: 1.35; padding: 6px 0; }
+.ngt-row-tag { text-align: right; }
+.ngt-tag { height: 22px; padding: 0 8px; border-radius: var(--ng-radius-tag); font-size: 12px; font-weight: 600; display: inline-flex; align-items: center; white-space: nowrap; }
+[data-tone="loss"] > .ngt-tag, .ngt-tag[data-tone="loss"] { background: var(--ngt-loss-fill); color: var(--ng-loss); }
+[data-tone="gain"] > .ngt-tag, .ngt-tag[data-tone="gain"] { background: var(--ngt-gain-fill); color: var(--ng-gain); }
+.ngt-row[data-tone="loss"] .ngt-row-dt { color: var(--ng-loss); }
+.ngt-row[data-tone="gain"] .ngt-row-dt { color: var(--ng-gain); }
+.ngt-row[data-tone="loss"] .ngt-bar-fill { background: var(--ng-loss); }
+.ngt-row[data-tone="gain"] .ngt-bar-fill { background: var(--ng-gain); }
+.ngt-empty-list { padding: 14px 10px; border-top: 1px solid var(--ng-line); color: var(--ng-muted); font-size: 13px; }
+.ngt-footnote { font-size: 12px; color: var(--ng-soft); margin: 6px 0 0; }
+
+/* ------------------------------------------------------------------ popup do trecho */
+.ngt-backdrop {
+  position: fixed; inset: 0; z-index: 60; background: var(--ngt-backdrop); display: flex; align-items: flex-start; justify-content: center;
+  padding: calc(var(--ng-header-h) + 10px) 16px 32px; box-sizing: border-box; overflow-y: auto;
+}
+.ngt-popup {
+  width: 1000px; max-width: 100%; background: var(--ng-header); border: 1px solid var(--ng-tooltip-border); border-radius: 14px;
+  padding: 22px 26px; box-sizing: border-box; display: flex; flex-direction: column; gap: 14px; box-shadow: 0 30px 80px rgba(0, 0, 0, .6);
+  color: var(--ng-text); font-family: var(--ng-font-body);
+}
+.ngt-popup-head { display: flex; align-items: flex-start; gap: 12px; }
+.ngt-popup-kicker { font-size: 11px; letter-spacing: .14em; font-weight: 600; color: var(--ng-sports); text-transform: uppercase; }
+.ngt-popup[data-category="formula"] .ngt-popup-kicker { color: var(--ng-formula); }
+.ngt-popup-title { margin: 2px 0 0; font-family: var(--ng-font-display); font-weight: 600; font-size: 24px; letter-spacing: .02em; text-transform: uppercase; }
+.ngt-popup-range { font-size: 12px; color: var(--ng-soft); margin-top: 2px; }
+.ngt-popup-nav { margin-left: auto; display: flex; gap: 12px; flex-shrink: 0; }
+.ngt-popup-nav button { height: 34px; padding: 0 14px; background: var(--ng-card-2); color: var(--ng-text); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-control); font: inherit; font-size: 13px; cursor: pointer; }
+.ngt-popup-nav button:disabled { opacity: .45; cursor: default; }
+.ngt-popup-nav button.ngt-close { border-color: var(--ng-tooltip-border); font-weight: 600; }
+.ngt-popup-nav button:focus-visible { outline: 2px solid var(--ng-text); outline-offset: 2px; }
+.ngt-popup-detail { font-size: 15px; line-height: 1.55; color: var(--ng-text-2); margin: 0; }
+.ngt-seq { background: var(--ng-card); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-card); padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+.ngt-seq-title { font-size: 12px; letter-spacing: .1em; color: var(--ng-muted); font-weight: 600; }
+.ngt-seq-parts { display: flex; gap: 12px; flex-wrap: wrap; }
+.ngt-seq-part { flex: 1; min-width: 160px; background: var(--ngt-inset); border-radius: var(--ng-radius-control); padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ngt-seq-part[data-total] { border: 1px solid var(--ng-tooltip-border); }
+.ngt-seq-part span { font-weight: 600; }
+.ngt-seq-part strong { font-family: var(--ng-font-display); font-weight: 700; font-size: 18px; }
+.ngt-seq-part strong[data-tone="loss"] { color: var(--ng-loss); }
+.ngt-seq-part strong[data-tone="gain"] { color: var(--ng-gain); }
+
+.ngt-inputs { display: grid; grid-template-columns: minmax(0, 1fr) 300px; border: 1px solid var(--ng-border); border-radius: var(--ng-radius-control); overflow: hidden; background: var(--ngt-deep); }
+.ngt-inputs-chart { position: relative; border-right: 1px solid var(--ng-border); }
+.ngt-inputs-chart svg { width: 100%; display: block; cursor: crosshair; touch-action: pan-y; }
+.ngt-inputs-chart text { font-family: var(--ng-font-body); }
+.ngt-inputs-grid { stroke: var(--ngt-grid); }
+.ngt-in-throttle { fill: none; stroke: var(--ng-gain); stroke-width: 2.2; }
+.ngt-in-brake { fill: none; stroke: var(--ng-loss); stroke-width: 2.2; }
+.ngt-in-throttle[data-ref], .ngt-in-brake[data-ref] { stroke-opacity: .75; stroke-width: 2; stroke-dasharray: 5 3; }
+.ngt-in-cursor { stroke: var(--ng-muted); stroke-dasharray: 2 4; }
+.ngt-gauges { display: flex; flex-direction: column; }
+.ngt-gauge { flex: 1; display: flex; align-items: center; gap: 12px; padding: 12px 14px; }
+.ngt-gauge + .ngt-gauge { border-top: 1px solid var(--ng-border); }
+.ngt-pedals { display: flex; gap: 4px; height: 64px; align-items: flex-end; }
+.ngt-pedal { width: 9px; height: 100%; background: var(--ngt-map-dim); position: relative; }
+.ngt-pedal i { position: absolute; bottom: 0; left: 0; right: 0; }
+.ngt-pedal[data-channel="throttle"] i { background: var(--ng-gain); }
+.ngt-pedal[data-channel="brake"] i { background: var(--ng-loss); }
+.ngt-gear { font-family: var(--ng-font-display); font-weight: 700; font-size: 30px; color: var(--ngt-gear); min-width: 22px; text-align: center; }
+.ngt-speed { flex: 1; text-align: right; }
+.ngt-speed strong { display: block; font-family: var(--ng-font-display); font-weight: 700; font-size: 22px; }
+.ngt-speed span { font-size: 11px; letter-spacing: .14em; font-weight: 600; color: var(--ng-text); }
+.ngt-gauge[data-side="reference"] .ngt-speed span { color: var(--ng-reference-popup); }
+.ngt-wheel { flex-shrink: 0; }
+.ngt-wheel circle.rim, .ngt-wheel line { fill: none; stroke: var(--ng-muted); stroke-width: 4; }
+
+.ngt-deltabar { display: flex; align-items: center; gap: 10px; }
+.ngt-deltabar > span { font-size: 11px; letter-spacing: .1em; color: var(--ng-soft); width: 76px; }
+.ngt-deltabar > span:last-child { text-align: right; }
+.ngt-deltabar-track { flex: 1; height: 10px; background: var(--ngt-map-dim); border-radius: 5px; position: relative; }
+.ngt-deltabar-track .ngt-bar-axis { top: -2px; bottom: -2px; }
+.ngt-deltabar-fill { position: absolute; top: 0; height: 10px; border-radius: 5px; }
+.ngt-deltabar-fill[data-tone="loss"] { background: var(--ng-loss); }
+.ngt-deltabar-fill[data-tone="gain"] { background: var(--ng-gain); }
+.ngt-deltabar-text { text-align: center; font-size: 13px; color: var(--ng-muted); margin-top: -6px; }
+
+.ngt-trace { background: var(--ngt-deep); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-control); padding: 12px 14px; display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 14px; align-items: center; }
+.ngt-trace-label { font-size: 11px; letter-spacing: .14em; color: var(--ng-sports); font-weight: 600; }
+.ngt-popup[data-category="formula"] .ngt-trace-label { color: var(--ng-formula); }
+.ngt-trace-map { height: 230px; display: flex; }
+.ngt-trace-side { display: flex; flex-direction: column; gap: 8px; }
+.ngt-trace-hint { font-size: 12px; color: var(--ng-soft); }
+.ngt-chip-box { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 8px 12px; }
+.ngt-chip-box div:first-child { font-size: 12px; color: var(--ng-soft); }
+.ngt-chip-box div:last-child { font-weight: 600; font-size: 14px; color: var(--ng-text); }
+.ngt-chip-box[data-tone="loss"] div:last-child { color: var(--ng-loss); }
+.ngt-chip-box[data-tone="gain"] div:last-child { color: var(--ng-gain); }
+
+/* ------------------------------------------------------------------ larguras menores */
+@media (max-width: 1100px) {
+  .ngt-lap-grid { grid-template-columns: minmax(0, 1fr); }
+  .ngt-tall { height: auto; }
+  .ngt-tall .ngt-chart { min-height: 320px; }
+  .ngt-tall .ngt-map-wrap { height: 340px; }
+  .ngt-rows-head, .ngt-row { grid-template-columns: 170px minmax(0, 1fr) 80px minmax(0, 1.4fr) 90px; }
+}
+@media (max-width: 860px) {
+  .ngt-contexts { grid-template-columns: minmax(0, 1fr); }
+  .ngt-rows-head { display: none; }
+  .ngt-row { grid-template-columns: minmax(0, 1fr) 80px; row-gap: 4px; padding: 10px; }
+  .ngt-row .ngt-bar { grid-column: 1 / -1; order: 3; }
+  .ngt-row .ngt-row-note { grid-column: 1 / -1; order: 4; padding: 0; }
+  .ngt-row .ngt-row-tag { display: none; }
+  .ngt-inputs, .ngt-trace { grid-template-columns: minmax(0, 1fr); }
+  .ngt-inputs-chart { border-right: 0; border-bottom: 1px solid var(--ng-border); }
+  .ngt-popup { padding: 16px; }
+  .ngt-popup-head { flex-wrap: wrap; }
+  .ngt-popup-nav { margin-left: 0; width: 100%; }
+}

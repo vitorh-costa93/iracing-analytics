@@ -26,4 +26,4 @@ Objetivo: fidelidade 100% ao mockup, análises novas, tudo funcionando. Substitu
 
 ## Estado
 - [x] Mockup aprovado e exportado para `docs/redesign-mockup/`.
-- [x] Etapa 1 (25/09/2026: tokens `--ng-`, fontes, cabeçalho global, `components/ui/`, `/debriefs` placeholder) · [ ] 2 · [ ] 3 · [ ] 4 · [ ] 5 · [ ] 6 · [ ] 7 · [ ] Publicação em produção
+- [x] Etapa 1 (25/09/2026: tokens `--ng-`, fontes, cabeçalho global, `components/ui/`, `/debriefs` placeholder) · [ ] 2 · [x] 3 (Telemetry Lab semana ativa: contextos clicáveis, volta representativa com hover ligado ao mapa, curva a curva com sequências por critério de pilotagem, popup no estilo iRacing, textos de engenheiro em `lib/engineer-talk.ts`) · [ ] 4 · [ ] 5 · [ ] 6 · [ ] 7 · [ ] Publicação em produção
