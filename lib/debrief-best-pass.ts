@@ -29,6 +29,8 @@ export type BestPass = {
   gainVsAverage: number;
   passes: number;
   points: BestPassPoint[];
+  /** freio/acelerador da referência (a volta enviada pelo piloto) na mesma janela, se houver cobertura. */
+  referencePoints: BestPassPoint[] | null;
 };
 
 export function bestPassOf(samples: LapSectionSample[]): { sample: LapSectionSample; gainVsAverage: number } | null {
@@ -59,13 +61,18 @@ export function passPoints(trace: Trace, windowStart: number, windowEnd: number,
   }));
 }
 
-export function buildBestPasses(sections: SelfSection[], traces: { lapNumber: number | null; trace: Trace }[]): BestPass[] {
+/** Pontos da referência têm cobertura o bastante na janela do trecho para valer a pena desenhar (evita
+ * uma linha pontilhada picada, de 1 ou 2 pontos, quando a referência mal passa por ali). */
+const MIN_REFERENCE_POINTS = 5;
+
+export function buildBestPasses(sections: SelfSection[], traces: { lapNumber: number | null; trace: Trace }[], referenceTrace?: Trace | null): BestPass[] {
   const result: BestPass[] = [];
   for (const section of topGainSections(sections)) {
     const best = bestPassOf(section.samples);
     if (!best || best.sample.lapNumber === null) continue;
     const lap = traces.find((item) => item.lapNumber === best.sample.lapNumber);
     if (!lap) continue;
+    const referencePoints = referenceTrace ? passPoints(referenceTrace, section.windowStart, section.windowEnd) : [];
     result.push({
       sectionId: section.id,
       lapNumber: best.sample.lapNumber,
@@ -73,6 +80,7 @@ export function buildBestPasses(sections: SelfSection[], traces: { lapNumber: nu
       gainVsAverage: Number(best.gainVsAverage.toFixed(3)),
       passes: section.samples.length,
       points: passPoints(lap.trace, section.windowStart, section.windowEnd),
+      referencePoints: referencePoints.length >= MIN_REFERENCE_POINTS ? referencePoints : null,
     });
   }
   return result;

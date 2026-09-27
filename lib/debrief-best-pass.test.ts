@@ -58,3 +58,25 @@ describe("passPoints / buildBestPasses", () => {
     expect(passes[0].points[0].lat).toBeCloseTo(-21, 1); // traço da volta 4 (offset 2)
   });
 });
+
+describe("buildBestPasses com referência (linha pontilhada, mesma cor do canal)", () => {
+  it("inclui referencePoints quando a referência cobre a janela do trecho", () => {
+    const sections = [section("s1", 0.15, [sample(3, 9.9), sample(4, 9.7), sample(5, 10.0)])];
+    const passes = buildBestPasses(
+      sections,
+      [{ lapNumber: 3, trace: trace(1) }, { lapNumber: 4, trace: trace(2) }, { lapNumber: 5, trace: trace(3) }],
+      trace(9),
+    );
+    expect(passes[0].referencePoints).not.toBeNull();
+    expect(passes[0].referencePoints!.length).toBeGreaterThanOrEqual(5);
+    expect(passes[0].referencePoints![0].lat).toBeCloseTo(-14, 1); // traço da referência (offset 9), não o da volta 4
+  });
+  it("sem referência (ou cobertura insuficiente), referencePoints fica null", () => {
+    const sections = [section("s1", 0.15, [sample(3, 9.9), sample(4, 9.7), sample(5, 10.0)])];
+    const own = [{ lapNumber: 3, trace: trace(1) }, { lapNumber: 4, trace: trace(2) }, { lapNumber: 5, trace: trace(3) }];
+    expect(buildBestPasses(sections, own)[0].referencePoints).toBeNull();
+    expect(buildBestPasses(sections, own, null)[0].referencePoints).toBeNull();
+    const empty: Trace = { points: [], channels: [], trackLengthMeters: 4000 };
+    expect(buildBestPasses(sections, own, empty)[0].referencePoints).toBeNull();
+  });
+});

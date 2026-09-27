@@ -196,10 +196,12 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
   // Referência do carro/pista: a volta que o PILOTO enviou (telemetry_references), não uma volta
   // "da classe". Tempo estimado e microcorreções dela.
   let reference: { gap: number; microPerMinute: number | null } | null = null;
+  let referenceTrace: Trace | null = null;
   if (fastest && race.car_id && race.track_id) {
     const refFull = await loadReference(driverId, race.car_id, race.track_id);
     if (refFull && coversLap(refFull)) {
-      const comparison = compareLaps(fastest.trace, decimate(refFull, ANALYSIS_POINTS), fastest.lap.lapTime, corners);
+      referenceTrace = decimate(refFull, ANALYSIS_POINTS);
+      const comparison = compareLaps(fastest.trace, referenceTrace, fastest.lap.lapTime, corners);
       if (comparison) {
         const refMicro = detectMicrocorrections(refFull.points.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), comparison.estimatedReferenceTime);
         reference = { gap: comparison.estimatedReferenceTime - fastest.lap.lapTime, microPerMinute: refMicro.count ? Number(refMicro.perMinute.toFixed(1)) : null };
@@ -241,7 +243,10 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
       talk: describeSelfSection(section, index, self?.canCompareFastSlow ?? false),
     })),
     // Melhor passagem (mapa local + freio/acelerador) nos trechos com mais ganho (auditoria B7).
-    bestPasses: buildBestPasses(sections, traces.map((item) => ({ lapNumber: item.lap.lapNumber, trace: item.trace }))),
+    // A curva da referência (auditoria, 27/09/2026: "linha contínua a sua, pontilhada a da referência,
+    // mesmas cores para os dois") só entra quando a comparação de ritmo (compareLaps) já validou a
+    // referência para esta corrida -- reaproveita a mesma volta decimada, sem ler o Storage de novo.
+    bestPasses: buildBestPasses(sections, traces.map((item) => ({ lapNumber: item.lap.lapNumber, trace: item.trace })), referenceTrace),
     sectors: sectorReport
       ? {
         lapsAnalyzed: sectorReport.lapsAnalyzed, idealLap: sectorReport.idealLapSeconds, bestLap: sectorReport.actualBestLapSeconds, gap: sectorReport.gapToIdealSeconds, worstSector: sectorReport.worstSector,

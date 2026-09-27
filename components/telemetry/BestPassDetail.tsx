@@ -3,7 +3,8 @@
 import { useMemo, useState, type MouseEvent, type TouchEvent } from "react";
 import LapMap from "@/components/telemetry/LapMap";
 import { wrapDistance } from "@/lib/corner-sequences";
-import type { BestPass } from "@/lib/debrief-best-pass";
+import type { BestPass, BestPassPoint } from "@/lib/debrief-best-pass";
+type BestPassPointLike = Pick<BestPassPoint, "d" | "brake" | "throttle">;
 import type { Trace, TracePoint } from "@/lib/telemetry-trace";
 
 /**
@@ -35,7 +36,7 @@ export default function BestPassDetail({ pass, label, trackId }: { pass: BestPas
     trackLengthMeters: null,
   }), [pass]);
 
-  const line = (field: "brake" | "throttle") => pass.points
+  const line = (points: BestPassPointLike[], field: "brake" | "throttle") => points
     .filter((point) => point[field] !== null)
     .map((point) => `${x(point.d).toFixed(1)},${y(point[field] as number).toFixed(1)}`)
     .join(" ");
@@ -58,7 +59,10 @@ export default function BestPassDetail({ pass, label, trackId }: { pass: BestPas
           {gain >= 0.005 ? `: ${decimal(gain, 2)} s mais rápida que a sua média neste trecho (${pass.passes} passagens).` : `: praticamente igual à sua média neste trecho (${pass.passes} passagens).`}
           {" "}É o seu próprio jeito de fazer, não uma referência de fora: veja onde você freou e quando voltou ao acelerador.
         </p>
-        <div className="ngr-best-legend"><span><i data-line="brake" />Freio</span><span><i data-line="throttle" />Acelerador</span></div>
+        <div className="ngr-best-legend">
+          <span><i data-line="brake" />Freio</span><span><i data-line="throttle" />Acelerador</span>
+          {pass.referencePoints && <span className="ngr-best-legend-ref"><i data-line="ref" />Sua volta de referência (pontilhado)</span>}
+        </div>
       </div>
       <svg className="ngr-best-chart" viewBox={`0 0 ${W} ${H}`} role="img"
         aria-label={`Freio e acelerador da volta ${pass.lapNumber ?? ""} em ${label}; passe o mouse para localizar no mapa`}
@@ -66,8 +70,10 @@ export default function BestPassDetail({ pass, label, trackId }: { pass: BestPas
         <line x1={PAD_L} x2={W - PAD_R} y1={y(0)} y2={y(0)} className="ngt-grid-line" />
         <line x1={PAD_L} x2={W - PAD_R} y1={y(1)} y2={y(1)} className="ngt-grid-line" />
         <text x={PAD_L} y={11} className="ngr-best-axis">100%</text>
-        <polyline points={line("brake")} className="ngr-best-brake" />
-        <polyline points={line("throttle")} className="ngr-best-throttle" />
+        {pass.referencePoints && <polyline points={line(pass.referencePoints, "brake")} className="ngr-best-brake ngr-best-ref" />}
+        {pass.referencePoints && <polyline points={line(pass.referencePoints, "throttle")} className="ngr-best-throttle ngr-best-ref" />}
+        <polyline points={line(pass.points, "brake")} className="ngr-best-brake" />
+        <polyline points={line(pass.points, "throttle")} className="ngr-best-throttle" />
         {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={PAD_T - 4} y2={H - PAD_B} className="ngt-cursor" />}
       </svg>
       <div className="ngr-best-map">

@@ -92,10 +92,15 @@
 .ngr-best-legend span { display: flex; align-items: center; gap: 6px; }
 .ngr-best-legend i { width: 14px; height: 3px; display: inline-block; background: var(--ng-loss); }
 .ngr-best-legend i[data-line="throttle"] { background: var(--ng-gain); }
+/* Referência (auditoria, 27/09/2026): sua volta = linha contínua; a de referência = pontilhada, mesma
+ * cor do canal (freio/acelerador) nos dois -- não a cor genérica de referência (branco/ciano) usada no
+ * resto do app, porque aqui o que importa é comparar o MESMO pedal, não distinguir "de quem" de longe. */
+.ngr-best-legend i[data-line="ref"] { background: none; border-top: 2px dashed var(--ng-muted); height: 0; }
 .ngr-best-chart { width: 100%; height: auto; display: block; cursor: crosshair; touch-action: pan-y; }
 .ngr-best-axis { font-size: 10px; fill: var(--ng-soft); font-family: var(--ng-font-body); }
 .ngr-best-brake { fill: none; stroke: var(--ng-loss); stroke-width: 1.8; stroke-linejoin: round; }
 .ngr-best-throttle { fill: none; stroke: var(--ng-gain); stroke-width: 1.8; stroke-linejoin: round; }
+.ngr-best-ref { stroke-width: 1.4; stroke-dasharray: 4 3; opacity: .8; }
 .ngr-best-map { height: 170px; display: flex; min-width: 0; }
 
 /* voltas descartadas */
