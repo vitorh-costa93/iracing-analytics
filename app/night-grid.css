@@ -129,6 +129,14 @@ body { font-variant-numeric: tabular-nums; }
   .ng-freshness-text { display: none; }
   .ng-nav a { padding: 0 12px; }
 }
+/* 27/09/2026: entre o corte de 1240px (acima) e o de 760px (abaixo) a navegação (4 links) não cabia mais
+ * e o cabeçalho ganhava rolagem horizontal a partir de ~970px de conteúdo em janelas de 800-1000px
+ * (achado pela revisão da restauração do Telemetry Lab). Ela passa a rolar na horizontal já aqui, como já
+ * fazia a partir de 760px -- nunca estoura a largura da janela, então não precisa de outro breakpoint. */
+@media (max-width: 1000px) {
+  .ng-nav { overflow-x: auto; scrollbar-width: none; flex: 1 1 auto; min-width: 0; }
+  .ng-nav a { padding: 0 10px; white-space: nowrap; }
+}
 /* Até a etapa 7 (Mobile.dc.html, navegação inferior), o celular mantém o cabeçalho com a navegação
  * rolando na horizontal -- funcional, mas ainda não é o desenho mobile aprovado. */
 @media (max-width: 760px) {
