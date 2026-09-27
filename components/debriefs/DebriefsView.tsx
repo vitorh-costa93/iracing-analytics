@@ -187,10 +187,10 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
       </div>
 
       <div className="ngd-row-2 ngd-row-even">
-        <Panel kicker="CONTEXTOS" title="Onde você perde e onde você sustenta ganhos" subtitle="Média por corrida, só combinações de carro e pista com 2 corridas ou mais">
+        <Panel kicker="CONTEXTOS" title="Onde você perde e onde você sustenta ganhos" subtitle={scope === "week" ? "Média por corrida, cada combinação de carro e pista da semana" : "Média por corrida, só combinações de carro e pista com 2 corridas ou mais"}>
           {contextRows.length ? contextRows.map((row) => (
             <DivergingRow key={row.track + row.car} title={row.track} subtitle={contextSubtitle(row)} value={contextAvg(row)} max={contextMax} valueText={signedNumber(contextAvg(row), 1) + "/corrida"} />
-          )) : <div className="ngd-empty">Nenhuma combinação de carro e pista com 2 corridas ou mais {scope === "week" ? "nesta semana" : "nesta season"}.</div>}
+          )) : <div className="ngd-empty">{scope === "week" ? "Nenhuma corrida nesta semana ainda." : "Nenhuma combinação de carro e pista com 2 corridas ou mais nesta season."}</div>}
         </Panel>
         <Evidence section={section} referenceLabel={scope === "season" ? "Season anterior" : "Demais semanas"} />
       </div>
