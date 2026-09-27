@@ -12,12 +12,14 @@ const metrics = (overrides: Partial<SectionMetrics>): SectionMetrics => ({
 const FORBIDDEN = [/p\.p\./i, /Δ/, /--/, /coeficiente/i, /repetibilidade/i, /referência/i];
 
 describe("brakePointText", () => {
+  const own = carNoun("BMW");
+  const ref = carNoun("Cadillac");
   it("fala o ponto de freio como no mockup", () => {
-    expect(brakePointText(metrics({ brakeDeltaMeters: -12.2 }))).toBe("freia 12 m antes");
-    expect(brakePointText(metrics({ brakeDeltaMeters: 4.4 }))).toBe("freia 4 m depois");
-    expect(brakePointText(metrics({ brakeDeltaMeters: 0.8 }))).toBe("igual");
-    expect(brakePointText(metrics({ brakeUse: "own" }))).toBe("só você freia");
-    expect(brakePointText(metrics({ brakeUse: "none" }))).toBe("sem freada");
+    expect(brakePointText(metrics({ brakeDeltaMeters: -12.2 }), own, ref)).toBe("freia 12 m antes");
+    expect(brakePointText(metrics({ brakeDeltaMeters: 4.4 }), own, ref)).toBe("freia 4 m depois");
+    expect(brakePointText(metrics({ brakeDeltaMeters: 0.8 }), own, ref)).toBe("igual");
+    expect(brakePointText(metrics({ brakeUse: "own" }), own, ref)).toBe("só o BMW freia");
+    expect(brakePointText(metrics({ brakeUse: "none" }), own, ref)).toBe("sem freada");
   });
 });
 
@@ -34,12 +36,13 @@ describe("textos contra outro carro", () => {
     for (const pattern of FORBIDDEN) expect(text).not.toMatch(pattern);
   });
   it("legenda do mapa e frase com microcorreções", () => {
+    const own = carNoun("BMW");
     const ref = carNoun("Cadillac");
-    expect(mapCaption("Curvas 3–4", { own: 96, rival: 105 }, ref, "x")).toBe("Curvas 3–4: o Cadillac mantém 9 km/h a mais no ponto mais lento.");
-    expect(comparePhrase("Você entra devagar.", 6, 2)).toBe("Você entra devagar. Ele faz 4 microcorreções a menos: o carro fica mais assentado.");
-    expect(comparePhrase("Boa saída.", 2, 2)).toBe("Boa saída.");
+    expect(mapCaption("Curvas 3–4", { own: 96, rival: 105 }, own, ref, "x")).toBe("Curvas 3–4: o Cadillac mantém 9 km/h a mais no ponto mais lento.");
+    expect(comparePhrase("O BMW entra devagar.", 6, 2, own, ref)).toBe("O BMW entra devagar. O Cadillac faz 4 microcorreções a menos: o carro fica mais assentado.");
+    expect(comparePhrase("Boa saída.", 2, 2, own, ref)).toBe("Boa saída.");
     const generic = "Ponto forte, sem diferença clara nos pedais.";
-    expect(comparePhrase(generic, 1, 1, 0)).not.toBe(comparePhrase(generic, 1, 1, 1));
+    expect(comparePhrase(generic, 1, 1, own, ref, 0)).not.toBe(comparePhrase(generic, 1, 1, own, ref, 1));
   });
 });
 

@@ -70,6 +70,8 @@ function chipDuration(seconds: number) {
 /** Como falar do outro lado da comparação: a volta de referência (padrão) ou outro carro. */
 export type RefNoun = { sub: string; de: string; a: string };
 export const REFERENCE: RefNoun = { sub: "a referência", de: "da referência", a: "à referência" };
+/** Lado "próprio" da comparação por padrão (Telemetry Lab / Debrief: sua volta contra a referência). */
+export const YOU: RefNoun = { sub: "você", de: "de você", a: "a você" };
 /** "o Cadillac" / "do Cadillac" / "ao Cadillac" (carros são masculinos: o carro). */
 export function carNoun(shortName: string): RefNoun {
   return { sub: `o ${shortName}`, de: `do ${shortName}`, a: `ao ${shortName}` };
@@ -114,8 +116,9 @@ const adviceFor = (R: RefNoun): Partial<Record<ClauseKind, string>> => ({
   "brake-late": "Você freia mais tarde, mas perde no resto da curva: tente frear um pouco antes e soltar o freio mais cedo.",
 });
 
-/** Achados do trecho, na voz "você" (sem o sujeito, que vem da frase anterior). */
-export function sectionClauses(metrics: SectionMetrics, isSequence: boolean, R: RefNoun = REFERENCE): Clause[] {
+/** Achados do trecho, na voz "você" (sem o sujeito, que vem da frase anterior); OWN troca o sujeito
+ * quando o lado "próprio" também é um carro nomeado, não a pessoa (Comparação de carros). */
+export function sectionClauses(metrics: SectionMetrics, isSequence: boolean, R: RefNoun = REFERENCE, OWN: RefNoun = YOU): Clause[] {
   const clauses: Clause[] = [];
   const m = metrics;
   const apex = isSequence && m.apexCorner ? ` ${partRef(m.apexCorner).em}` : " no meio da curva";
@@ -130,9 +133,9 @@ export function sectionClauses(metrics: SectionMetrics, isSequence: boolean, R: 
       chip: { k: "Ponto de freio", v: `${meters} m mais ${early ? "cedo" : "tarde"}`, tone: early ? "loss" : "gain" },
     });
   } else if (m.brakeUse === "own") {
-    clauses.push({ kind: "brake-own", bad: true, weight: 14, long: `pisa no freio onde ${R.sub} passa sem frear`, short: `freia onde ${R.sub} não freia`, chip: { k: "Freio", v: `você freia, ${R.sub} não`, tone: "loss" } });
+    clauses.push({ kind: "brake-own", bad: true, weight: 14, long: `pisa no freio onde ${R.sub} passa sem frear`, short: `freia onde ${R.sub} não freia`, chip: { k: "Freio", v: `${OWN.sub} freia, ${R.sub} não`, tone: "loss" } });
   } else if (m.brakeUse === "ref") {
-    clauses.push({ kind: "brake-ref", bad: false, weight: 14, long: `passa sem frear onde ${R.sub} freia`, short: "passa sem frear", chip: { k: "Freio", v: `${R.sub} freia, você não`, tone: "gain" } });
+    clauses.push({ kind: "brake-ref", bad: false, weight: 14, long: `passa sem frear onde ${R.sub} freia`, short: "passa sem frear", chip: { k: "Freio", v: `${R.sub} freia, ${OWN.sub} não`, tone: "gain" } });
   }
 
   if (m.minSpeedDeltaKmh !== null && Math.abs(m.minSpeedDeltaKmh) >= 2) {
@@ -235,7 +238,7 @@ const PHASE: Record<ClauseKind, number> = {
 };
 const byPhase = (a: Clause, b: Clause) => PHASE[a.kind] - PHASE[b.kind];
 
-function tradeOff(section: SectionResult): { note: string | null; detail: string | null } {
+function tradeOff(section: SectionResult, OWN: RefNoun = YOU): { note: string | null; detail: string | null } {
   if (!section.isSequence) return { note: null, detail: null };
   const parts = section.parts.map((part) => ({ ...part, gain: -part.lostSeconds, ref: partRef(part.corner) }));
   const payers = parts.filter((part) => part.gain < -TIE_SECONDS);
@@ -247,19 +250,19 @@ function tradeOff(section: SectionResult): { note: string | null; detail: string
     const payerFirst = parts.indexOf(payer) < parts.indexOf(winner);
     if (payerFirst && net >= 0) {
       return {
-        note: `você sacrifica ${payer.ref.sub} para sair forte ${winner.ref.de}, e a troca compensa`,
-        detail: `Você entra um pouco devagar ${payer.ref.em} (perde ${talkTime(payer.gain)}), só que isso deixa o carro alinhado e você ganha ${talkTime(winner.gain)} ${winner.ref.em}.`,
+        note: `${OWN.sub} sacrifica ${payer.ref.sub} para sair forte ${winner.ref.de}, e a troca compensa`,
+        detail: `${cap(OWN.sub)} entra um pouco devagar ${payer.ref.em} (perde ${talkTime(payer.gain)}), só que isso deixa o carro alinhado e ${OWN.sub} ganha ${talkTime(winner.gain)} ${winner.ref.em}.`,
       };
     }
     if (payerFirst) {
       return {
-        note: `você sacrifica ${payer.ref.sub}, mas não recupera tudo ${winner.ref.em}`,
-        detail: `Você perde ${talkTime(payer.gain)} ${payer.ref.em} e recupera só ${talkTime(winner.gain)} ${winner.ref.em}: a troca ainda não paga.`,
+        note: `${OWN.sub} sacrifica ${payer.ref.sub}, mas não recupera tudo ${winner.ref.em}`,
+        detail: `${cap(OWN.sub)} perde ${talkTime(payer.gain)} ${payer.ref.em} e recupera só ${talkTime(winner.gain)} ${winner.ref.em}: a troca ainda não paga.`,
       };
     }
     return {
-      note: `você entra forte ${winner.ref.em}, mas paga ${payer.ref.em}`,
-      detail: `Você ganha ${talkTime(winner.gain)} ${winner.ref.em}, mas paga ${talkTime(payer.gain)} ${payer.ref.em}.${net < 0 ? ` Aqui costuma valer entrar um pouco mais devagar ${winner.ref.em} para sair melhor ${payer.ref.de}.` : ""}`,
+      note: `${OWN.sub} entra forte ${winner.ref.em}, mas paga ${payer.ref.em}`,
+      detail: `${cap(OWN.sub)} ganha ${talkTime(winner.gain)} ${winner.ref.em}, mas paga ${talkTime(payer.gain)} ${payer.ref.em}.${net < 0 ? ` Aqui costuma valer entrar um pouco mais devagar ${winner.ref.em} para sair melhor ${payer.ref.de}.` : ""}`,
     };
   }
   if (payers.length) {
@@ -275,13 +278,13 @@ function tradeOff(section: SectionResult): { note: string | null; detail: string
   return { note: null, detail: null };
 }
 
-function sequenceIntro(section: SectionResult) {
+function sequenceIntro(section: SectionResult, OWN: RefNoun = YOU) {
   const first = partRef(section.corners[0]);
   const last = partRef(section.corners[section.corners.length - 1]);
   const names = section.corners.length === 2
     ? `${cap(first.sub)} e ${last.sub} são uma coisa só`
     : `${cap(joinClauses(section.corners.map((corner) => partRef(corner).sub)))} são uma sequência só`;
-  return `${names}: o que você faz na entrada ${first.de} decide como você sai ${last.de}.`;
+  return `${names}: o que ${OWN.sub} faz na entrada ${first.de} decide como ${OWN.sub} sai ${last.de}.`;
 }
 
 function neutralChips(metrics: SectionMetrics): TalkChip[] {
@@ -294,16 +297,17 @@ function neutralChips(metrics: SectionMetrics): TalkChip[] {
 }
 
 /** Texto completo de um trecho (linha da lista + popup). */
-export function describeSection(section: SectionResult, options: { isBiggestLoss?: boolean; ref?: RefNoun } = {}): SectionTalk {
+export function describeSection(section: SectionResult, options: { isBiggestLoss?: boolean; ref?: RefNoun; own?: RefNoun } = {}): SectionTalk {
   const R = options.ref ?? REFERENCE;
+  const OWN = options.own ?? YOU;
   const ADVICE = adviceFor(R);
   const gain = -section.lostSeconds;
   const loss = gain < -TIE_SECONDS;
   const tie = Math.abs(gain) <= TIE_SECONDS;
-  const clauses = sectionClauses(section.metrics, section.isSequence, R);
+  const clauses = sectionClauses(section.metrics, section.isSequence, R, OWN);
   const bad = clauses.filter((clause) => clause.bad);
   const good = clauses.filter((clause) => !clause.bad);
-  const trade = tradeOff(section);
+  const trade = tradeOff(section, OWN);
 
   const chips: TalkChip[] = clauses.slice(0, 3).sort(byPhase).map((clause) => clause.chip);
   for (const chip of neutralChips(section.metrics)) {
@@ -312,44 +316,44 @@ export function describeSection(section: SectionResult, options: { isBiggestLoss
   }
 
   const sentences: string[] = [];
-  if (section.isSequence) sentences.push(sequenceIntro(section));
+  if (section.isSequence) sentences.push(sequenceIntro(section, OWN));
   if (trade.detail) sentences.push(trade.detail);
 
   let note: string;
   if (tie) {
-    sentences.push(section.isSequence ? `No total você fica empatado com ${R.sub} na sequência.` : `Aqui você fica empatado com ${R.sub}.`);
+    sentences.push(section.isSequence ? `No total ${OWN.sub} fica empatado com ${R.sub} na sequência.` : `Aqui ${OWN.sub} fica empatado com ${R.sub}.`);
     sentences.push("Nada a corrigir.");
     note = `Igual ${R.a}.`;
   } else if (loss) {
     const time = talkTime(gain);
     const where = section.isSequence ? "na sequência" : "aqui";
     sentences.push(options.isBiggestLoss && Math.abs(gain) >= 0.1
-      ? `É a maior oportunidade da volta: você perde ${time} ${where}.`
-      : `Você perde ${time} ${where}.`);
+      ? `É a maior oportunidade da volta: ${OWN.sub} perde ${time} ${where}.`
+      : `${cap(OWN.sub)} perde ${time} ${where}.`);
     const top = bad.slice(0, 3).sort(byPhase);
     const causes = top.map((clause) => clause.long);
     if (causes.length) {
-      sentences.push(`${cap(causes.length === 1 ? `você ${causes[0]}` : joinClauses(causes))}.`);
+      sentences.push(`${cap(causes.length === 1 ? `${OWN.sub} ${causes[0]}` : joinClauses(causes))}.`);
       const primary = top[0].kind;
       const steeringToo = bad.some((clause) => clause.kind === "steer-more");
       sentences.push(primary === "throttle-late" && steeringToo ? "Tente abrir o volante um pouco antes para poder pisar mais cedo." : ADVICE[primary] ?? ADVICE["line"]!);
     } else {
-      sentences.push("Não aparece um motivo claro nos pedais nem no volante. Compare os traçados no mapa e veja se você passa pelo mesmo ponto.");
+      sentences.push("Não aparece um motivo claro nos pedais nem no volante. Compare os traçados no mapa e veja se passa pelo mesmo ponto.");
     }
     const shorts = bad.slice(0, 2).sort(byPhase).map((clause) => clause.short);
     note = trade.note
       ? `${cap(trade.note)}.`
-      : shorts.length ? `Você ${joinClauses(shorts)}.` : "Perde tempo sem um motivo claro nos pedais; confira o traçado.";
+      : shorts.length ? `${cap(OWN.sub)} ${joinClauses(shorts)}.` : "Perde tempo sem um motivo claro nos pedais; confira o traçado.";
   } else {
     const time = talkTime(gain);
-    sentences.push(section.isSequence ? `No total sobra ${time} a seu favor.` : `Você ganha ${time} aqui.`);
+    sentences.push(section.isSequence ? `No total sobra ${time} ${OWN === YOU ? "a seu favor" : `a favor ${OWN.de}`}.` : `${cap(OWN.sub)} ganha ${time} aqui.`);
     const reasons = good.slice(0, 2).sort(byPhase).map((clause) => clause.long);
-    if (reasons.length) sentences.push(`${cap(reasons.length === 1 ? `você ${reasons[0]}` : joinClauses(reasons))}.`);
+    if (reasons.length) sentences.push(`${cap(reasons.length === 1 ? `${OWN.sub} ${reasons[0]}` : joinClauses(reasons))}.`);
     sentences.push(section.isSequence ? "Não mexa nisso." : "Continue assim.");
     const shorts = good.slice(0, 2).sort(byPhase).map((clause) => clause.short);
     note = trade.note
       ? `Ponto forte. ${cap(trade.note)}.`
-      : shorts.length ? `Ponto forte. Você ${joinClauses(shorts)}.` : "Ponto forte, sem diferença clara nos pedais.";
+      : shorts.length ? `Ponto forte. ${cap(OWN.sub)} ${joinClauses(shorts)}.` : "Ponto forte, sem diferença clara nos pedais.";
   }
 
   return { note, detail: sentences.join(" "), chips, tag: loss ? "Onde perde" : "Ponto forte" };

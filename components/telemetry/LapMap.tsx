@@ -60,8 +60,9 @@ export default function LapMap({ trace, referenceTrace, trackId, variant, range 
 
   const gps = trace.points.filter(validGps);
   const refGps = referenceTrace ? referenceTrace.points.filter(validGps) : [];
-  // +-1% de contexto em volta do trecho: aproximação e saída visíveis sem engolir as curvas vizinhas.
-  const mapRange = range ? [range[0] - 1, range[1] + 1] as [number, number] : null;
+  // +-3% de contexto em volta do trecho (25/09/2026: "menos zoom para mostrar todo o contexto" --
+  // 1% só dava para ver a aproximação/saída do próprio trecho, sem as curvas vizinhas ao redor).
+  const mapRange = range ? [range[0] - 3, range[1] + 3] as [number, number] : null;
   const inRange = (points: TracePoint[]) => mapRange
     ? points
       .map((point) => ({ point, d: unwrapIntoWindow(point.distance, mapRange[0], mapRange[1]) }))
@@ -81,7 +82,10 @@ export default function LapMap({ trace, referenceTrace, trackId, variant, range 
   const project = (point: GpsLike) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   const xy = (point: GpsLike) => project(point).split(",").map(Number) as [number, number];
   const isFullTrackView = !zoomed && boundaryPoints.length > 0;
-  const initialScale = isFullTrackView ? 1 : projectGps.fillScale;
+  // Zoom padrão do popup mais contido que o fillScale bruto (até 2.5x): com mais contexto ao redor
+  // (mapRange acima), preencher o quadro inteiro voltaria a engolir as curvas vizinhas. O zoom manual
+  // (roda do mouse ou pinça no toque, lib/useMapZoomPan.ts) continua disponível até 40x.
+  const initialScale = isFullTrackView ? 1 : Math.min(1.3, projectGps.fillScale);
   // resetKey inclui o trecho no popup: anterior/próxima reenquadra, o hover nunca mexe na câmera.
   const resetKey = zoomed && range ? `${trackId}:${range[0].toFixed(2)}:${range[1].toFixed(2)}` : trackId;
   const { svgRef, camera, isDragging, onMouseDown, onTouchStart, transform } = useMapZoomPan(width, height, true, resetKey, initialScale);
@@ -117,9 +121,6 @@ export default function LapMap({ trace, referenceTrace, trackId, variant, range 
             <polyline key={index} points={segment.pts.map(([lat, lon]) => project({ lat, lon })).join(" ")} className="ngt-map-base" style={{ strokeWidth: Math.max(2, projectGps.metersToPixels(segment.width)) }} />
           ))
           : splitGpsSegments(gps).map((segment, index) => <polyline key={index} points={segment.map(project).join(" ")} className="ngt-map-base" style={{ strokeWidth: fallbackWidth }} />)}
-        {zoomed && selected.length >= 2 && splitGpsSegments(selected).map((segment, index) => (
-          <polyline key={`seg-${index}`} points={segment.map(project).join(" ")} className="ngt-map-seg" style={{ strokeWidth: Math.max(8, projectGps.metersToPixels(16)), opacity: 0.55 }} />
-        ))}
         {refLines.map((segment, index) => <polyline key={`ref-${index}`} points={segment.map(project).join(" ")} className="ngt-map-ref" />)}
         {ownLines.map((segment, index) => <polyline key={`own-${index}`} points={segment.map(project).join(" ")} className="ngt-map-own" />)}
         {!zoomed && markers.map((marker) => {

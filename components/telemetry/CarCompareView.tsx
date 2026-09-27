@@ -120,6 +120,8 @@ export default function CarCompareView() {
   const defaultRival = own ? (cars[0]?.carId !== own.carId ? cars[0] : cars[1]) ?? null : null;
   const rival = cars.find((car) => car.carId === rivalId && car.carId !== own?.carId) ?? defaultRival;
   const ref = useMemo(() => carNoun(rival ? shortCarName(rival.carName) : "outro carro"), [rival]);
+  const ownNoun = useMemo(() => carNoun(own ? shortCarName(own.carName) : "seu carro"), [own]);
+  const ownShort = own ? shortCarName(own.carName) : "";
 
   useEffect(() => {
     setTraces(null);
@@ -169,7 +171,7 @@ export default function CarCompareView() {
     const speeds = sectionMinSpeeds(traces.own, traces.rival, section);
     const microOwn = countInWindow(own.fastestLap.microDistances, section.windowStart, section.windowEnd);
     const microRival = countInWindow(rival.fastestLap.microDistances, section.windowStart, section.windowEnd);
-    const talk = describeSection(section, { isBiggestLoss: section.id === biggestLossId, ref });
+    const talk = describeSection(section, { isBiggestLoss: section.id === biggestLossId, ref, own: ownNoun });
     return { section, speeds, microOwn, microRival, talk };
   }) : [];
   const mapRow = rows.find((row) => row.section.id === mapSection?.id) ?? null;
@@ -229,12 +231,12 @@ export default function CarCompareView() {
               {data?.conditionsNote && <div className="ngc-conditions" role="note">{data.conditionsNote}</div>}
             </Panel>
             <Panel className="ngc-h430" kicker="Mapa" title="Trecho selecionado" subtitle="Região local, não o circuito inteiro"
-              actions={rival ? <div className="ngc-legend"><span><i />Você</span><span><i data-line="rival" />{rivalShort}</span></div> : undefined}>
+              actions={rival ? <div className="ngc-legend"><span><i />{ownShort}</span><span><i data-line="rival" />{rivalShort}</span></div> : undefined}>
               <div className="ngc-map">
                 {traces && mapSection ? <LapMap trace={traces.own} referenceTrace={traces.rival} trackId={data?.track?.id ?? null} variant="popup" range={[mapSection.windowStart, mapSection.windowEnd]} width={380} height={250} />
                   : <div className="ngt-map-empty">{traceError ?? (rival ? "Carregando o traçado dos dois carros…" : "Escolha um carro para comparar.")}</div>}
               </div>
-              {mapRow && <div className="ngr-note">{mapCaption(mapRow.section.label, mapRow.speeds, ref, mapRow.talk.note)}</div>}
+              {mapRow && <div className="ngr-note">{mapCaption(mapRow.section.label, mapRow.speeds, ownNoun, ref, mapRow.talk.note)}</div>}
             </Panel>
           </div>
 
@@ -275,7 +277,7 @@ export default function CarCompareView() {
           )}
 
           {own && rival && (
-            <Panel kicker="Curva a curva" title={`Você × ${rival.carName}`}
+            <Panel kicker="Curva a curva" title={`${own.carName} × ${rival.carName}`}
               subtitle="O mesmo curva a curva do Telemetry Lab, agora contra o carro escolhido. Sequências são analisadas juntas."
               actions={<span className="ngr-note">Clique num trecho para abrir a análise completa →</span>}>
               {traceError ? <div className="ngr-empty">{traceError}</div>
@@ -283,11 +285,11 @@ export default function CarCompareView() {
                   : (
                     <>
                       <SectionTotalsSummary comparison={comparison} against={ref.sub} />
-                      <div className="ngc-rows-head" aria-hidden><span>Trecho</span><span><span>Perde</span><span>Ganha</span></span><span>Tempo</span><span>Vel. mínima (você / ele)</span><span>Microcorr. (você / ele)</span><span>Ponto de freio</span><span>Em uma frase</span></div>
+                      <div className="ngc-rows-head" aria-hidden><span>Trecho</span><span><span>Perde</span><span>Ganha</span></span><span>Tempo</span><span>Vel. mínima ({ownShort} / {rivalShort})</span><span>Microcorr. ({ownShort} / {rivalShort})</span><span>Ponto de freio</span><span>Em uma frase</span></div>
                       {rows.map(({ section, speeds, microOwn, microRival, talk }, rowIndex) => {
                         const loss = isLossSection(section);
                         const width = Math.max((Math.abs(section.lostSeconds) / maxAbs) * 48, 2);
-                        const phrase = comparePhrase(talk.note, microOwn, microRival, rowIndex);
+                        const phrase = comparePhrase(talk.note, microOwn, microRival, ownNoun, ref, rowIndex);
                         return (
                           <button key={section.id} type="button" className="ngc-row" data-tone={loss ? "loss" : "gain"} aria-current={section.id === mapSection?.id ? "true" : undefined}
                             aria-label={`${section.label}: ${formatSignedSeconds(-section.lostSeconds)}. ${phrase} Abrir detalhe.`}
@@ -298,7 +300,7 @@ export default function CarCompareView() {
                             <div className="ngt-row-dt">{formatSignedSeconds(-section.lostSeconds)}</div>
                             <div className="ngc-cell">{speeds.own !== null && speeds.rival !== null ? `${Math.round(speeds.own)} / ${Math.round(speeds.rival)} km/h` : "—"}</div>
                             <div className="ngc-cell">{microOwn} / {microRival}</div>
-                            <div className="ngc-cell">{brakePointText(section.metrics)}</div>
+                            <div className="ngc-cell">{brakePointText(section.metrics, ownNoun, ref)}</div>
                             <div className="ngc-phrase">{phrase}</div>
                           </button>
                         );
@@ -313,7 +315,7 @@ export default function CarCompareView() {
       {comparison && openSection && traces && rival && (
         <SectionPopup section={openSection} index={openIndex} total={sections.length} trace={traces.own} referenceTrace={traces.rival}
           trackId={data?.track?.id ?? null} trackLengthMeters={trackLength} category="sports" isBiggestLoss={openSection.id === biggestLossId}
-          refNoun={ref} refLabel={rivalShort} onPrev={prev} onNext={next} onClose={closePopup} />
+          ownNoun={ownNoun} ownLabel={ownShort} refNoun={ref} refLabel={rivalShort} onPrev={prev} onNext={next} onClose={closePopup} />
       )}
     </div>
   );

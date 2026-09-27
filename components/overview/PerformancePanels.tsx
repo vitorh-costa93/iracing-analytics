@@ -87,7 +87,7 @@ export function GapToWinner({ items }: { items: WinnerGapItem[] }) {
               </div>
             </div>
             <div className="ngo-rank-bar"><span style={{ background: tone, left: 0, width: `${w}%` }} /></div>
-            <div className="ngo-rank-value ngo-rank-value-2" style={{ color: tone }}>{percent(item.avgGapPct)}<span>média {seconds(item.avgGapSeconds)}</span></div>
+            <div className="ngo-rank-value ngo-rank-value-2" style={{ color: tone }}>média {seconds(item.avgGapSeconds)}<span>{percent(item.avgGapPct)}</span></div>
           </div>
         );
       })}

@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { FocusedGaugePanel, type FocusedSide } from "@/components/FocusedGaugeChart";
 import LapMap from "@/components/telemetry/LapMap";
 import { lostInSectionAt, pointsInWindow, type SectionResult } from "@/lib/lap-analysis";
-import { describeSection, formatSignedSeconds, type RefNoun, type TalkChip } from "@/lib/engineer-talk";
+import { describeSection, formatSignedSeconds, YOU, type RefNoun, type TalkChip } from "@/lib/engineer-talk";
 import { wrapDistance } from "@/lib/corner-sequences";
 import { interpolate, type Trace } from "@/lib/telemetry-trace";
 
@@ -13,7 +13,7 @@ import { interpolate, type Trace } from "@/lib/telemetry-trace";
  * sequência, inputs você x referência com mostradores sincronizados, barra mais lento/mais rápido
  * que acompanha o hover e o mapa "Traçado" local com zoom/pan. Anterior/próxima (e setas), Esc fecha.
  */
-export default function SectionPopup({ section, index, total, trace, referenceTrace, trackId, trackLengthMeters, category, isBiggestLoss, onPrev, onNext, onClose, refNoun, refLabel = "Referência", extraChips }: {
+export default function SectionPopup({ section, index, total, trace, referenceTrace, trackId, trackLengthMeters, category, isBiggestLoss, onPrev, onNext, onClose, ownNoun, ownLabel = "Você", refNoun, refLabel = "Referência", extraChips }: {
   section: SectionResult;
   index: number;
   total: number;
@@ -26,7 +26,9 @@ export default function SectionPopup({ section, index, total, trace, referenceTr
   onPrev: () => void;
   onNext: () => void;
   onClose: () => void;
-  /** Comparação de carros (etapa 4): o outro lado é um carro, não a volta de referência. */
+  /** Comparação de carros (etapa 4): os dois lados são carros testados pelo usuário, não "você x referência". */
+  ownNoun?: RefNoun;
+  ownLabel?: string;
   refNoun?: RefNoun;
   refLabel?: string;
   /** chips extras do trecho (ex.: microcorreções você x referência, auditoria B5) */
@@ -46,7 +48,7 @@ export default function SectionPopup({ section, index, total, trace, referenceTr
     return () => document.removeEventListener("keydown", onKey);
   }, [onClose, onNext, onPrev]);
 
-  const talk = describeSection(section, { isBiggestLoss, ref: refNoun });
+  const talk = describeSection(section, { isBiggestLoss, ref: refNoun, own: ownNoun ?? YOU });
   const gain = -section.lostSeconds;
   const loss = talk.tag === "Onde perde";
   const from = section.windowStart, to = section.windowEnd;
@@ -68,7 +70,7 @@ export default function SectionPopup({ section, index, total, trace, referenceTr
     angleRad: value(source, "steering"), gear: value(source, "gear"), speedMs: value(source, "speed"),
     throttleNow: value(source, "throttle"), brakeNow: value(source, "brake"),
   });
-  const sides = [side("own", "VOCÊ", "var(--ng-text)", false, trace, ownPts), side("reference", refLabel.toUpperCase(), "var(--ng-reference-popup)", true, referenceTrace, refPts)];
+  const sides = [side("own", ownLabel.toUpperCase(), "var(--ng-text)", false, trace, ownPts), side("reference", refLabel.toUpperCase(), "var(--ng-reference-popup)", true, referenceTrace, refPts)];
 
   const running = hover !== null ? lostInSectionAt(section.lostSeries, hover) : section.lostSeconds;
   const scale = Math.max(0.15, Math.abs(section.lostSeconds) * 1.15, Math.abs(running));
@@ -128,7 +130,7 @@ export default function SectionPopup({ section, index, total, trace, referenceTr
             </div>
           </div>
           <div className="ngt-trace-side">
-            <div className="ngt-legend"><span><i />Sua volta</span><span><i data-line="ref-popup" />{refLabel}</span></div>
+            <div className="ngt-legend"><span><i />{ownLabel}</span><span><i data-line="ref-popup" />{refLabel}</span></div>
             <div className="ngt-trace-hint">{`${wrapDistance(at).toFixed(1).replace(".", ",")}% da volta · passe o mouse no gráfico para localizar o ponto no mapa`}</div>
             {[...talk.chips, ...(extraChips ?? [])].map((chip) => (
               <div key={chip.k} className="ngt-chip-box" data-tone={chip.tone}><div>{chip.k}</div><div>{chip.v}</div></div>

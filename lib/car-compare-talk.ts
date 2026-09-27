@@ -3,15 +3,16 @@ import type { RefNoun } from "./engineer-talk";
 import type { Trace } from "./telemetry-trace";
 
 /**
- * Textos e números da Comparação de carros (redesign etapa 4, 26/09/2026; Compare.dc.html). O
- * curva a curva é o mesmo da semana ativa (lib/lap-analysis.ts + lib/engineer-talk.ts), só que o
- * outro lado é um carro: "o Cadillac", "ele".
+ * Textos e números da Comparação de carros (redesign etapa 4, 26/09/2026; Compare.dc.html). Aqui os
+ * dois lados são carros que o próprio usuário testou (nenhum dos dois é "você" pilotando ao vivo
+ * contra uma referência): o curva a curva é o mesmo da semana ativa (lib/lap-analysis.ts +
+ * lib/engineer-talk.ts), só que ambos os lados são nomeados pelo carro, ex.: "o Cadillac" x "o BMW".
  */
 
-/** "freia 12 m antes", "freia 4 m depois", "igual", "só você freia", "só ele freia". */
-export function brakePointText(metrics: SectionMetrics): string {
-  if (metrics.brakeUse === "own") return "só você freia";
-  if (metrics.brakeUse === "ref") return "só ele freia";
+/** "freia 12 m antes", "freia 4 m depois", "igual", "só o Cadillac freia", "só o BMW freia". */
+export function brakePointText(metrics: SectionMetrics, own: RefNoun, ref: RefNoun): string {
+  if (metrics.brakeUse === "own") return `só ${own.sub} freia`;
+  if (metrics.brakeUse === "ref") return `só ${ref.sub} freia`;
   if (metrics.brakeUse === "none") return "sem freada";
   if (metrics.brakeDeltaMeters === null) return "igual";
   const meters = Math.round(Math.abs(metrics.brakeDeltaMeters));
@@ -38,21 +39,21 @@ const GENERIC_LOSS = "Perde tempo sem um motivo claro nos pedais; confira o tra�
 const LOSS_VARIANTS = [GENERIC_LOSS, "Pedais parecidos: a perda deve vir do carro ou do traçado.", "Sem diferença clara nos comandos; olhe o traçado no mapa."];
 
 /** `index` varia as frases genéricas entre linhas vizinhas para a lista não repetir a mesma frase. */
-export function comparePhrase(rawNote: string, microOwn: number | null, microRival: number | null, index = 0) {
+export function comparePhrase(rawNote: string, microOwn: number | null, microRival: number | null, own: RefNoun, ref: RefNoun, index = 0) {
   const note = rawNote === GENERIC_GAIN ? GAIN_VARIANTS[index % GAIN_VARIANTS.length] : rawNote === GENERIC_LOSS ? LOSS_VARIANTS[index % LOSS_VARIANTS.length] : rawNote;
   if (microOwn === null || microRival === null) return note;
   const diff = microOwn - microRival;
-  if (diff >= 3) return `${note} Ele faz ${diff} microcorreções a menos: o carro fica mais assentado.`;
-  if (diff <= -3) return `${note} Você faz ${-diff} microcorreções a menos aqui.`;
+  if (diff >= 3) return `${note} ${ref.sub[0].toUpperCase()}${ref.sub.slice(1)} faz ${diff} microcorreções a menos: o carro fica mais assentado.`;
+  if (diff <= -3) return `${own.sub[0].toUpperCase()}${own.sub.slice(1)} faz ${-diff} microcorreções a menos aqui.`;
   return note;
 }
 
 /** Legenda do mapa do trecho: quem leva mais velocidade no ponto mais lento. */
-export function mapCaption(label: string, speeds: { own: number | null; rival: number | null }, ref: RefNoun, fallback: string) {
+export function mapCaption(label: string, speeds: { own: number | null; rival: number | null }, own: RefNoun, ref: RefNoun, fallback: string) {
   if (speeds.own !== null && speeds.rival !== null) {
     const diff = Math.round(speeds.rival - speeds.own);
     if (diff >= 2) return `${label}: ${ref.sub} mantém ${diff} km/h a mais no ponto mais lento.`;
-    if (diff <= -2) return `${label}: você mantém ${-diff} km/h a mais que ${ref.sub} no ponto mais lento.`;
+    if (diff <= -2) return `${label}: ${own.sub} mantém ${-diff} km/h a mais que ${ref.sub} no ponto mais lento.`;
     return `${label}: mesma velocidade no ponto mais lento; a diferença está na entrada e na saída.`;
   }
   return `${label}: ${fallback}`;
