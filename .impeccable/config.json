@@ -45,6 +45,15 @@
         ],
         "createdAt": "2026-09-08T11:54:25.875Z",
         "reason": "same functional severity/category color-coding language as the 08/27 evidence-row/sector-detail entry above (.evidence-row border-left, colored per kind: incidents/sof/pace) -- deliberate, not decorative; not an AI artifact."
+      },
+      {
+        "rule": "side-tab",
+        "value": "border-left: 3px solid var(--ng-caution)",
+        "files": [
+          "app/night-grid-debrief.css"
+        ],
+        "createdAt": "2026-09-27T13:21:15.793Z",
+        "reason": "Padrao de aviso ja em uso no app (ngs-orientation em night-grid-setup.css, ngt-micro-note em night-grid-telemetry.css): borda de 2-3px + fundo card-2 para callouts de atencao/aviso, consistente em 3 arquivos; nao e um acento decorativo isolado"
       }
     ]
   }
