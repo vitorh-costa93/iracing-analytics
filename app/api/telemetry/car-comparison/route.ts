@@ -135,7 +135,7 @@ function conditionsDivergence(cars: { carName: string; conditions: LapConditions
   const humiditySpread = spread(withConditions.map((car) => car.conditions!.relativeHumidityPct));
   const usageSpread = spread(withConditions.map((car) => car.conditions!.trackUsagePct));
   const parts: string[] = [];
-  if (tempSpread > CONDITIONS_TEMP_DELTA_C) parts.push(`temperatura da pista variou ${tempSpread.toFixed(1)}°C`);
+  if (tempSpread > CONDITIONS_TEMP_DELTA_C) parts.push(`temperatura da pista variou ${tempSpread.toFixed(1).replace(".", ",")}°C`);
   if (usageSpread > CONDITIONS_USAGE_DELTA_PCT) parts.push(`borracha na pista variou ${usageSpread.toFixed(0)}%`);
   if (humiditySpread > CONDITIONS_HUMIDITY_DELTA_PCT) parts.push(`umidade relativa variou ${humiditySpread.toFixed(0)}%`);
   if (!parts.length) return null;
