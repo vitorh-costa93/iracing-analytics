@@ -59,6 +59,7 @@
 .ngt-refline span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
 .ngt-refline .ngt-link-button { height: 24px; padding: 0 10px; font-size: 12px; }
 .ngt-refline[data-tone="error"] { color: var(--ng-loss); }
+.ngt-lapwhen { font-size: 12px; color: var(--ng-soft); margin-top: 2px; }
 .ngt-chart { width: 100%; flex-grow: 1; min-height: 0; display: block; cursor: crosshair; outline: none; }
 .ngt-chart:focus-visible { outline: 2px solid var(--ng-tooltip-border); outline-offset: 2px; border-radius: 4px; }
 .ngt-chart text { font-family: var(--ng-font-body); }
@@ -103,7 +104,7 @@
 /* ------------------------------------------------------------------ curva a curva */
 .ngt-summary { display: flex; gap: 24px; margin: 6px 0 4px; flex-wrap: wrap; }
 .ngt-summary > div { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 10px 16px; display: flex; align-items: baseline; gap: 10px; }
-.ngt-summary strong { font-family: var(--ng-font-display); font-weight: 700; font-size: 24px; }
+.ngt-summary strong { font-family: var(--ng-font-display); font-weight: 700; font-size: 24px; white-space: nowrap; }
 .ngt-summary strong[data-tone="loss"] { color: var(--ng-loss); }
 .ngt-summary strong[data-tone="gain"] { color: var(--ng-gain); }
 .ngt-summary span { font-size: 13px; color: var(--ng-muted); }
@@ -134,6 +135,10 @@
 .ngt-row[data-tone="gain"] .ngt-bar-fill { background: var(--ng-gain); }
 .ngt-empty-list { padding: 14px 10px; border-top: 1px solid var(--ng-line); color: var(--ng-muted); font-size: 13px; }
 .ngt-footnote { font-size: 12px; color: var(--ng-soft); margin: 6px 0 0; }
+/* microcorreções da volta contra a referência (auditoria B5) */
+.ngt-micro-note { font-size: 13px; line-height: 1.45; color: var(--ng-text-2); margin: 4px 0 8px; padding: 8px 12px; border-left: 3px solid var(--ng-line); background: var(--ng-card-2); border-radius: 0 var(--ng-radius-control) var(--ng-radius-control) 0; }
+.ngt-micro-note[data-tone="loss"] { border-left-color: var(--ng-loss); }
+.ngt-micro-note[data-tone="gain"] { border-left-color: var(--ng-gain); }
 
 /* ------------------------------------------------------------------ popup do trecho */
 .ngt-backdrop {

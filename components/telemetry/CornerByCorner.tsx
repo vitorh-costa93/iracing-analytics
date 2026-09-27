@@ -3,7 +3,7 @@
 import { Panel, SegmentedControl } from "@/components/ui";
 import { describeSection, formatSeconds, formatSignedSeconds } from "@/lib/engineer-talk";
 import { wrapDistance } from "@/lib/corner-sequences";
-import type { LapComparison, SectionResult } from "@/lib/lap-analysis";
+import { SECTION_LOSS_THRESHOLD, sectionTotals, type LapComparison, type SectionResult } from "@/lib/lap-analysis";
 
 export type CornerFilter = "all" | "loss" | "gain";
 
@@ -14,27 +14,43 @@ const FILTERS = [
 ];
 
 export function isLossSection(section: SectionResult) {
-  return section.lostSeconds > 0.005;
+  return section.lostSeconds > SECTION_LOSS_THRESHOLD;
 }
 
 export function filterSections(sections: SectionResult[], filter: CornerFilter) {
   return sections.filter((section) => filter === "all" || (filter === "loss") === isLossSection(section));
 }
 
+/**
+ * Resumo do curva a curva: perdido, ganho, retas e transições e o saldo da volta. O resíduo das retas
+ * (`straightsLostSeconds`) é o que faltava para a soma fechar na tela (auditoria B, 26/09/2026):
+ * perdido - ganho + retas = saldo. Usado na semana ativa e na Comparação de carros.
+ */
+export function SectionTotalsSummary({ comparison, against }: { comparison: LapComparison; against: string }) {
+  const totals = sectionTotals(comparison);
+  const straightsTone = totals.straightsLost > SECTION_LOSS_THRESHOLD ? "loss" : totals.straightsLost < -SECTION_LOSS_THRESHOLD ? "gain" : undefined;
+  return (
+    <div className="ngt-summary">
+      <div><strong data-tone="loss">{formatSeconds(totals.lost)}</strong><span>perdidos em {totals.lossCount} {totals.lossCount === 1 ? "trecho" : "trechos"}</span></div>
+      <div><strong data-tone="gain">{formatSeconds(Math.max(0, totals.gained))}</strong><span>ganhos em {totals.gainCount} {totals.gainCount === 1 ? "trecho" : "trechos"}</span></div>
+      <div><strong data-tone={straightsTone}>{formatSignedSeconds(-totals.straightsLost)}</strong><span>nas retas e transições</span></div>
+      <div><strong>{formatSignedSeconds(-totals.gap)}</strong><span>saldo da volta contra {against}</span></div>
+    </div>
+  );
+}
+
 /** Seção "Curva a curva" (Telemetry.dc.html): todos os trechos com tempo ganho/perdido, barra
  * divergente, frase curta e etiqueta; curvas coladas aparecem como uma sequência só. */
-export default function CornerByCorner({ comparison, filter, onFilter, biggestLossId, onOpen }: {
+export default function CornerByCorner({ comparison, filter, onFilter, biggestLossId, onOpen, micro }: {
   comparison: LapComparison;
   filter: CornerFilter;
   onFilter: (filter: CornerFilter) => void;
   biggestLossId: string | null;
   onOpen: (id: string) => void;
+  /** resumo das microcorreções da volta contra a referência (lib/microcorrection-talk.ts) */
+  micro?: { text: string; tone: "gain" | "loss" | "neutral" } | null;
 }) {
   const sections = comparison.sections;
-  const losses = sections.filter(isLossSection);
-  const gains = sections.filter((section) => !isLossSection(section));
-  const lost = losses.reduce((sum, section) => sum + section.lostSeconds, 0);
-  const gained = gains.reduce((sum, section) => sum - section.lostSeconds, 0);
   const maxAbs = Math.max(0.01, ...sections.map((section) => Math.abs(section.lostSeconds)));
   const visible = filterSections(sections, filter);
 
@@ -42,11 +58,8 @@ export default function CornerByCorner({ comparison, filter, onFilter, biggestLo
     <Panel kicker="Curva a curva" title="Onde você perde e onde você é forte"
       subtitle="Curvas coladas viram uma sequência só: uma não vale sozinha, porque você pode sacrificar a entrada de uma para sair melhor da outra. Clique para ver o detalhe."
       actions={<SegmentedControl options={FILTERS} value={filter} onChange={onFilter} ariaLabel="Filtrar trechos" />}>
-      <div className="ngt-summary">
-        <div><strong data-tone="loss">{formatSeconds(lost)}</strong><span>perdidos em {losses.length} {losses.length === 1 ? "trecho" : "trechos"}</span></div>
-        <div><strong data-tone="gain">{formatSeconds(Math.max(0, gained))}</strong><span>ganhos em {gains.length} {gains.length === 1 ? "trecho" : "trechos"}</span></div>
-        <div><strong>{formatSignedSeconds(-comparison.estimatedGap)}</strong><span>saldo contra a referência (o resto está nas retas)</span></div>
-      </div>
+      <SectionTotalsSummary comparison={comparison} against="a referência" />
+      {micro && <p className="ngt-micro-note" data-tone={micro.tone === "neutral" ? undefined : micro.tone}>{micro.text}</p>}
       <div className="ngt-rows-head" aria-hidden><span>Trecho</span><span><span>Perde</span><span>Ganha</span></span><span>Tempo</span><span>Em uma frase</span><span /></div>
       {visible.length === 0 && <div className="ngt-empty-list">{filter === "loss" ? "Nenhum trecho com perda contra a referência." : filter === "gain" ? "Nenhum trecho em que você ganha da referência." : "Nenhuma curva detectada nesta volta."}</div>}
       {visible.map((section) => {

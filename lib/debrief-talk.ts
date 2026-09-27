@@ -213,7 +213,8 @@ export type DebriefFacts = {
   /** fração das freadas a menos de 3 m da mediana do trecho */
   brakeRepeatShare: number | null;
   worstSector: { label: string; spread: number } | null;
-  sections: SelfSection[];
+  /** só o que as frases usam: assim o Race Debrief monta os fatos a partir do payload em cache */
+  sections: Pick<SelfSection, "corners" | "lever" | "laps" | "gainIfRepeat">[];
 };
 
 /** Pontos fortes e de melhoria (3 cada, no máximo), em linguagem de conversa. */

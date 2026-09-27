@@ -22,6 +22,17 @@ export type DiscardedLap = { lapNumber: number | null; lapTime: number; reason: 
 
 const OUTLIER_Z = 2.5;
 
+/**
+ * Piso de voltas completadas (race_results.laps, iRStats) para uma corrida entrar no Race Debrief.
+ * Volta ao valor da versão anterior (94c4d8d:app/api/telemetry/debrief/route.ts, MIN_LAPS = 5) por
+ * decisão do piloto (auditoria B8, 26/09/2026); a primeira versão do Night Grid tinha baixado para 3.
+ */
+export const MIN_RACE_LAPS = 5;
+
+export function isDebriefRace(completedLaps: number | null | undefined) {
+  return (completedLaps ?? 0) >= MIN_RACE_LAPS;
+}
+
 function median(values: number[]) {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);

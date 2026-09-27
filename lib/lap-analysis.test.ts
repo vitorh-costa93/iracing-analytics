@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { compareLaps, lateralOffsetMeters, lostAt, lostInSectionAt } from "./lap-analysis";
+import { compareLaps, lateralOffsetMeters, lostAt, lostInSectionAt, sectionTotals } from "./lap-analysis";
 import type { LapCorner } from "./corner-sequences";
 import type { Trace, TracePoint } from "./telemetry-trace";
 
@@ -87,6 +87,16 @@ describe("compareLaps", () => {
     const flat: CornerShape[] = [refShapes[0], refShapes[1], { at: 53, depth: 15, brakeAt: 52.2, throttleAt: 53.5 }];
     const result = compareLaps(makeTrace(flat), makeTrace(flat), 90, corners)!;
     expect(result.sections.map((section) => section.label)).toEqual(["Curva 1", "Curva 2", "Curva 3"]);
+  });
+
+  it("sectionTotals: perdido - ganho + retas e transições fecha no saldo da volta", () => {
+    const own = makeTrace([{ at: 20.5, depth: 32, brakeAt: 17, throttleAt: 22.5 }, { at: 50, depth: 16, brakeAt: 47.8, throttleAt: 50.3 }, refShapes[2]]);
+    const result = compareLaps(own, makeTrace(refShapes), 91, corners)!;
+    const totals = sectionTotals(result);
+    expect(totals.lossCount + totals.gainCount).toBe(result.sections.length);
+    expect(totals.lost).toBeGreaterThan(0);
+    expect(totals.straightsLost).toBe(result.straightsLostSeconds);
+    expect(totals.lost - totals.gained + totals.straightsLost).toBeCloseTo(result.estimatedGap, 9);
   });
 
   it("devolve null quando as voltas não se alinham", () => {

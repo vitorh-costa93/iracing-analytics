@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { consistencyLabel } from "@/lib/sector-consistency";
 
 // Extraído de app/api/telemetry/sectors/route.ts (redesign etapa 4, 26/09/2026) para o Race Debrief novo
 // (app/api/telemetry/race-debrief) usar exatamente a mesma volta ideal e a mesma consistência por setor.
@@ -13,10 +14,6 @@ function median(values: number[]) { const sorted = [...values].sort((a, b) => a 
 function formatTime(value: number) {
   if (value >= 60) { const minutes = Math.floor(value / 60), seconds = value - minutes * 60; return `${minutes}:${seconds.toFixed(3).padStart(6, "0")}`; }
   return `${value.toFixed(3)}s`;
-}
-function consistencyLabel(sd: number, avg: number) {
-  const ratio = avg > 0 ? sd / avg : 0;
-  return ratio < 0.003 ? "muito consistente" : ratio < 0.008 ? "consistente" : ratio < 0.016 ? "variável" : "muito inconsistente";
 }
 
 /**

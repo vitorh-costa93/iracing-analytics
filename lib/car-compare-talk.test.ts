@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { brakePointText, comparePhrase, mapCaption, microFootnote, microTone } from "./car-compare-talk";
+import { brakePointText, comparePhrase, lapSpreadText, mapCaption, microFootnote, microTone, segmentWins, trackUsageText } from "./car-compare-talk";
 import { carNoun, describeSection } from "./engineer-talk";
 import { shortCarName } from "./car-short-name";
 import type { SectionMetrics, SectionResult } from "./lap-analysis";
@@ -59,5 +59,19 @@ describe("microTone / microFootnote", () => {
       { carName: "Ford Mustang GT3", bestLapSeconds: 97.4, microPerLap: 40 },
       { carName: "McLaren 720S GT3 EVO", bestLapSeconds: 97.6, microPerLap: 27 },
     ], shortCarName)).toBe("Menos correção nem sempre é mais rápido aqui: você corrige menos com o McLaren, mas a volta mais rápida saiu com o Mustang.");
+  });
+});
+
+describe("quem manda em cada pedaço / consistência / uso de pista (restaurados, auditoria B11)", () => {
+  it("conta os pedaços vencidos por carro, na ordem pedida", () => {
+    const segments = [{ winnerCarId: 2 }, { winnerCarId: 1 }, { winnerCarId: 2 }, { winnerCarId: null }, { winnerCarId: 9 }];
+    expect(segmentWins(segments, [1, 2, 3])).toEqual([{ carId: 1, wins: 1 }, { carId: 2, wins: 2 }, { carId: 3, wins: 0 }]);
+  });
+
+  it("textos curtos de uso da pista e desvio do tempo de volta", () => {
+    expect(trackUsageText({ avgPct: 61.6, maxPct: 104.2 })).toBe("média 62% · máx. 104%");
+    expect(trackUsageText(null)).toBe("sem contorno da pista");
+    expect(lapSpreadText({ stddev: 0.214, label: "consistente" })).toBe("±0,21 s · consistente");
+    expect(lapSpreadText(null)).toBe("poucas voltas");
   });
 });
