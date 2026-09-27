@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Chip, Panel, SelectPill } from "@/components/ui";
 import LapMap from "@/components/telemetry/LapMap";
 import SectionPopup from "@/components/telemetry/SectionPopup";
+import SectorWinnerMap, { type MapSegment, type OutlinePoint } from "@/components/telemetry/SectorWinnerMap";
 import { isLossSection, SectionTotalsSummary } from "@/components/telemetry/CornerByCorner";
 import { formatLapTime, parseTelemetryCsv, type Trace } from "@/lib/telemetry-trace";
 import { compareLaps } from "@/lib/lap-analysis";
@@ -11,7 +12,7 @@ import { detectLapCorners } from "@/lib/lap-corners";
 import { carNoun, describeSection, formatSignedSeconds } from "@/lib/engineer-talk";
 import { countInWindow } from "@/lib/microcorrections";
 import { shortCarName } from "@/lib/car-short-name";
-import { brakePointText, comparePhrase, mapCaption, microFootnote, microTone, sectionMinSpeeds } from "@/lib/car-compare-talk";
+import { brakePointText, comparePhrase, lapSpreadText, mapCaption, microFootnote, microTone, sectionMinSpeeds, segmentWins, trackUsageText } from "@/lib/car-compare-talk";
 import { trackUiEvent } from "@/lib/track-ui-event";
 
 /**
@@ -26,9 +27,13 @@ type Category = "gt3" | "gtp";
 type SeasonOption = { seasonId: string; seasonName: string };
 type TrackOption = { trackId: number; trackName: string; trackVariant: string | null; carCount: number };
 type ListPayload = { status: string; seasons: SeasonOption[]; selectedSeasonId: string | null; tracks: TrackOption[]; message?: string };
+type Consistency = { stddev: number; label: string } | null;
+type InputConsistency = { overall: { score: number; label: string }; channels: { channel: string; name: string; score: number; label: string }[] } | null;
 type CarRow = {
-  carId: number; carName: string; bestLapSeconds: number; deltaSeconds: number; avgLapSeconds: number | null;
+  carId: number; carName: string; color: string; bestLapSeconds: number; deltaSeconds: number; avgLapSeconds: number | null;
+  lapsAnalyzed: number;
   microcorrections: { laps: number; perLap: number; perMinute: number } | null;
+  lapTimeConsistency: Consistency; inputConsistency: InputConsistency; trackUsage: { avgPct: number; maxPct: number } | null;
   fastestLap: { id: string; lapSeconds: number; microDistances: number[] };
 };
 type ComparisonPayload = {
@@ -36,6 +41,8 @@ type ComparisonPayload = {
   track: { id: number; name: string; variant: string | null } | null;
   cars: CarRow[]; ownCarId: number | null; plausibleLapCount?: number;
   weeks?: { weekNumber: number; lapCount: number }[];
+  // Restaurados (auditoria B11): a rota já calculava e a tela nova não mostrava.
+  trackOutline?: OutlinePoint[] | null; mapSegments?: MapSegment[]; conditionsNote?: string | null;
 };
 
 const CLASS_OPTIONS = [{ value: "gt3" as const, label: "GT3" }, { value: "gtp" as const, label: "IMSA · GTP" }];
@@ -166,6 +173,10 @@ export default function CarCompareView() {
     return { section, speeds, microOwn, microRival, talk };
   }) : [];
   const mapRow = rows.find((row) => row.section.id === mapSection?.id) ?? null;
+  const colorByCar = new Map(cars.map((car) => [car.carId, car.color]));
+  const hasSectorMap = !!data?.trackOutline && data.trackOutline.length >= 20 && !!data.mapSegments?.length;
+  const wins = segmentWins(data?.mapSegments ?? [], cars.map((car) => car.carId));
+  const totalPieces = data?.mapSegments?.length ?? 0;
   const rivalShort = rival ? shortCarName(rival.carName) : "";
 
   return (
@@ -215,6 +226,7 @@ export default function CarCompareView() {
                 })}
               </div>
               {footnote && <div className="ngc-foot">{footnote}</div>}
+              {data?.conditionsNote && <div className="ngc-conditions" role="note">{data.conditionsNote}</div>}
             </Panel>
             <Panel className="ngc-h430" kicker="Mapa" title="Trecho selecionado" subtitle="Região local, não o circuito inteiro"
               actions={rival ? <div className="ngc-legend"><span><i />Você</span><span><i data-line="rival" />{rivalShort}</span></div> : undefined}>
@@ -225,6 +237,42 @@ export default function CarCompareView() {
               {mapRow && <div className="ngr-note">{mapCaption(mapRow.section.label, mapRow.speeds, ref, mapRow.talk.note)}</div>}
             </Panel>
           </div>
+
+          {(hasSectorMap || cars.some((car) => car.lapTimeConsistency || car.inputConsistency || car.trackUsage)) && (
+            <div className="ngc-extra">
+              {hasSectorMap && (
+                <Panel kicker="Mais rápido por trecho" title="Quem manda em cada pedaço da pista"
+                  subtitle="Cada pedaço de 5% da volta fica com a cor do carro mais rápido ali, entre todos os carros comparados.">
+                  <div className="ngc-sector-map">
+                    <SectorWinnerMap outline={data!.trackOutline!} segments={data!.mapSegments!} colorByCar={colorByCar} trackId={data?.track?.id ?? null} />
+                  </div>
+                  <div className="ngc-wins">
+                    {wins.map(({ carId, wins: count }) => {
+                      const car = cars.find((item) => item.carId === carId)!;
+                      return <span key={carId}><i style={{ background: car.color }} />{shortCarName(car.carName)}<b>{count} de {totalPieces}</b></span>;
+                    })}
+                  </div>
+                </Panel>
+              )}
+              <Panel kicker="Consistência por carro" title="Quanto cada carro repete e quanto usa da pista"
+                subtitle="Nas voltas plausíveis de cada carro: variação do tempo de volta, dos pedais e do volante, e quanto da largura da pista a volta usa.">
+                <div className="ngc-cons" role="table" aria-label="Consistência e uso da pista por carro">
+                  <div className="ngc-cons-head" role="row"><span role="columnheader">Carro</span><span role="columnheader">Tempo de volta</span><span role="columnheader">Pedais e volante</span><span role="columnheader">Uso da pista</span></div>
+                  {cars.map((car) => (
+                    <div key={car.carId} className="ngc-cons-row" role="row" data-own={car.carId === own?.carId ? "" : undefined}>
+                      <span role="cell" className="ngc-cons-car"><i style={{ background: car.color }} />{shortCarName(car.carName)}</span>
+                      <span role="cell">{lapSpreadText(car.lapTimeConsistency)}</span>
+                      <span role="cell">{car.inputConsistency ? (
+                        <><b>{car.inputConsistency.overall.label}</b><em>{car.inputConsistency.channels.map((channel) => `${channel.name.toLowerCase()} ${channel.label}`).join(" · ")}</em></>
+                      ) : "poucas voltas com telemetria"}</span>
+                      <span role="cell">{trackUsageText(car.trackUsage)}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="ngc-foot">Uso da pista: 0% é andar sempre no meio, 100% é colar na borda (acima de 100% passa da borda marcada no mapa).</div>
+              </Panel>
+            </div>
+          )}
 
           {own && rival && (
             <Panel kicker="Curva a curva" title={`Você × ${rival.carName}`}

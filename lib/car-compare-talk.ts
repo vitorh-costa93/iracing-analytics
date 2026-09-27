@@ -76,3 +76,25 @@ export function microFootnote(cars: CarMicro[], shortName: (name: string) => str
   if (fastest.carName === calmest.carName) return `O carro mais rápido é também o que pede menos correção por volta: o ${shortName(fastest.carName)} fica mais colado ao chão.`;
   return `Menos correção nem sempre é mais rápido aqui: você corrige menos com o ${shortName(calmest.carName)}, mas a volta mais rápida saiu com o ${shortName(fastest.carName)}.`;
 }
+
+/**
+ * "Quem manda em cada pedaço" (auditoria B11): quantos dos pedaços fixos da volta (mapSegments da
+ * rota, 5% cada) cada carro venceu, na ordem do ranking. Pedaço sem vencedor não conta.
+ */
+export function segmentWins(segments: { winnerCarId: number | null }[], carIds: number[]) {
+  const wins = new Map(carIds.map((id) => [id, 0]));
+  for (const segment of segments) if (segment.winnerCarId !== null && wins.has(segment.winnerCarId)) wins.set(segment.winnerCarId, (wins.get(segment.winnerCarId) ?? 0) + 1);
+  return carIds.map((carId) => ({ carId, wins: wins.get(carId) ?? 0 }));
+}
+
+/** Uso da largura da pista (trackWidthUsage da rota): 0% = sempre no meio, 100% = colado na borda. */
+export function trackUsageText(usage: { avgPct: number; maxPct: number } | null) {
+  if (!usage) return "sem contorno da pista";
+  return `média ${Math.round(usage.avgPct)}% · máx. ${Math.round(usage.maxPct)}%`;
+}
+
+/** Desvio do tempo de volta (lapTimeConsistency da rota): "±0,21 s · consistente". */
+export function lapSpreadText(consistency: { stddev: number; label: string } | null) {
+  if (!consistency) return "poucas voltas";
+  return `±${consistency.stddev.toFixed(2).replace(".", ",")} s · ${consistency.label}`;
+}

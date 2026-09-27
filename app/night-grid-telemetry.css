@@ -104,7 +104,7 @@
 /* ------------------------------------------------------------------ curva a curva */
 .ngt-summary { display: flex; gap: 24px; margin: 6px 0 4px; flex-wrap: wrap; }
 .ngt-summary > div { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 10px 16px; display: flex; align-items: baseline; gap: 10px; }
-.ngt-summary strong { font-family: var(--ng-font-display); font-weight: 700; font-size: 24px; }
+.ngt-summary strong { font-family: var(--ng-font-display); font-weight: 700; font-size: 24px; white-space: nowrap; }
 .ngt-summary strong[data-tone="loss"] { color: var(--ng-loss); }
 .ngt-summary strong[data-tone="gain"] { color: var(--ng-gain); }
 .ngt-summary span { font-size: 13px; color: var(--ng-muted); }
