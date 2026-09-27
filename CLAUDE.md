@@ -141,3 +141,10 @@ The user prefers production publishing after validation. Commit/push with Git CL
 ## Product UX signals (10/09/2026)
 
 `ui_interaction_events` is an intentionally small, private product-usage log. It records only explicit interface decisions (week context, telemetry/debrief navigation, opened evidence and Setup Lab actions) with allow-listed identifiers/categories. It never receives telemetry samples, setup contents or filenames, or free-form engineer text. The endpoint is same-origin, best-effort and rate-limited; instrumentation must not block the driving-analysis flow.
+
+## Token/session hygiene (27/09/2026)
+
+The user's global instructions (`~/.claude/CLAUDE.md`) already set the account-wide rules below; this is a local reminder because a long-running session here (`redesign-ui-b` work, hundreds of turns without a `/clear`) drove a large share of a weekly usage spike.
+
+- **New/unrelated topic in this repo:** save what needs to continue (commit, spec file, or memory), then clear the session (`clear_session` in the desktop app, or ask the user to type `/clear`) instead of continuing to pile turns onto the same context.
+- **Subagents:** `ui-logic-opus` stays on Opus (it's scoped to genuinely hard-logic screens — Telemetry Lab, Debriefs, Setup Lab chat); `ui-port-sonnet` and `ui-fidelity-reviewer` stay on Sonnet. Don't add a new subagent definition without an explicit `model:` in its frontmatter, and default to Sonnet/Haiku unless the task is hard logic like the ones above.
