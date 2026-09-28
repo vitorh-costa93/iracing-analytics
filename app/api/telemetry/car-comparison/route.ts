@@ -4,10 +4,11 @@ import path from "node:path";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { detectCornersFromGps } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
-import { detectSteeringCorrections, summarizeTractionEvents, type TractionSample, type TractionSummary } from "@/lib/traction-events";
+import { summarizeTractionEvents, type TractionSample, type TractionSummary } from "@/lib/traction-events";
 import { compareTractionAcrossCars } from "@/lib/traction-narrative";
 import { checkLapsGps, type LapGpsCheck } from "@/lib/lap-gps-check-cache";
 import { readTelemetryText, storeTelemetryCsv } from "@/lib/telemetry-storage";
+import { detectMicrocorrections } from "@/lib/microcorrections";
 
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
@@ -1220,11 +1221,12 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     // OWN median wasted-steering-motion there across the other sampled laps, so a bump that's just
     // "normal for this corner" stops counting -- this column now reuses that same validated detector
     // (already computed above for the trade-off narrative) instead of a second, weaker one.
-    const correctionEvents = detectSteeringCorrections(tractionSamples);
-    // traces[0] is always the fastest verified lap and never gets filtered out of validLaps inside
-    // summarizeTractionEvents/detectSteeringCorrections (only LATER laps can be dropped for being too
-    // short), so lapIndex 0 there reliably means "the fastest lap" here too.
-    const fastestLapMicroDistances = correctionEvents.filter((event) => event.lapIndex === 0).map((event) => Number(((event.startDistance + event.endDistance) / 2).toFixed(2)));
+    // Trecho a trecho (linha "Microcorr. own/rival" do curva a curva abaixo) continua no detector
+    // denso por passagem (lib/microcorrections.ts, uma volta só) -- comparar UM trecho específico
+    // entre dois carros precisa de sinal em toda a volta, não só dos poucos eventos "de verdade" que
+    // o detector com baseline acima deixa passar (esse é o número certo para o total da coluna, não
+    // para achar EM QUAL curva a diferença está).
+    const fastestLapMicroDistances = detectMicrocorrections(chosen.trace.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), bestLapSeconds).distances;
     const microcorrections = tractionEvents.lapsAnalyzed ? { laps: tractionEvents.lapsAnalyzed, perLap: tractionEvents.correctionsPerLap } : null;
     const avgLapSeconds = timePool.length ? Number(mean(timePool).toFixed(3)) : null;
 
