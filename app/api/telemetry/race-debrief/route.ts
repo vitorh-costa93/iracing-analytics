@@ -33,7 +33,7 @@ import { sectorSpreadRatio } from "@/lib/sector-consistency";
  */
 export const maxDuration = 120;
 
-const CACHE_VERSION = 3; // 3: sem race_results/iRating no payload, melhor passagem por trecho, setores relativos
+const CACHE_VERSION = 4; // 4 (28/09/2026): detector de microcorreções trocado (traction-events no geral, fallback ao vivo de telemetria) -- payloads calculados antes disso ficariam presos no número/telemetria antigos para sempre sem isso
 const CACHE_PREFIX = "race:";
 const MAX_CACHED_RACES = 30;
 const LIST_LIMIT = 40; // ~6 semanas de corridas: o seletor alcança corridas que já têm telemetria armazenada
