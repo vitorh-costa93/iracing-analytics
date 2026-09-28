@@ -84,7 +84,7 @@ describe("rightAndWrong", () => {
 describe("strengthsAndImprovements", () => {
   const base: DebriefFacts = {
     gridPosition: 6, finishPosition: 3, incidents: 2, laps: 31, bestLap: 95.412, cleanAverage: 96.02, paceTrend: 0.05,
-    microPerMinute: 41, referenceMicroPerMinute: 34, brakeRepeatShare: 0.84, worstSector: { label: "S2", spread: 0.21 },
+    microPerLap: 41, referenceMicroPerLap: 34, brakeRepeatShare: 0.84, worstSector: { label: "S2", spread: 0.21 },
     sections: [section({ lever: "brake-later", corners: [c(3), c(4)], isSequence: true })],
   };
   it("gera no máximo 3 de cada, sem termos proibidos", () => {
@@ -96,7 +96,7 @@ describe("strengthsAndImprovements", () => {
     clean([...strengths, ...improvements]);
   });
   it("sempre devolve algo, mesmo sem dados", () => {
-    const empty: DebriefFacts = { gridPosition: null, finishPosition: null, incidents: null, laps: null, bestLap: null, cleanAverage: null, paceTrend: null, microPerMinute: null, referenceMicroPerMinute: null, brakeRepeatShare: null, worstSector: null, sections: [] };
+    const empty: DebriefFacts = { gridPosition: null, finishPosition: null, incidents: null, laps: null, bestLap: null, cleanAverage: null, paceTrend: null, microPerLap: null, referenceMicroPerLap: null, brakeRepeatShare: null, worstSector: null, sections: [] };
     const { strengths, improvements } = strengthsAndImprovements(empty);
     expect(strengths).toHaveLength(1);
     expect(improvements).toHaveLength(1);

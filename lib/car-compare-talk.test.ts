@@ -61,7 +61,7 @@ describe("microTone / microFootnote", () => {
     expect(microFootnote([
       { carName: "Ford Mustang GT3", bestLapSeconds: 97.4, microPerLap: 40 },
       { carName: "McLaren 720S GT3 EVO", bestLapSeconds: 97.6, microPerLap: 27 },
-    ], shortCarName)).toBe("Menos correção nem sempre é mais rápido aqui: você corrige menos com o McLaren, mas a volta mais rápida saiu com o Mustang.");
+    ], shortCarName)).toBe("Menos correção nem sempre é mais rápido aqui: quem corrige menos é o McLaren, mas a volta mais rápida saiu com o Mustang.");
   });
 });
 

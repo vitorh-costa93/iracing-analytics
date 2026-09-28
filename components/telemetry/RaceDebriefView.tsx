@@ -119,7 +119,7 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
   const resultTone = gained === null || gained === 0 ? undefined : gained > 0 ? "gain" : "loss";
   const iratingTone = race.iratingDelta === null || race.iratingDelta === 0 ? undefined : race.iratingDelta > 0 ? "gain" : "loss";
   const perLapIncidents = race.incidents !== null && race.laps ? race.incidents / race.laps : null;
-  const microTone = !micro || micro.reference === null ? undefined : micro.perMinute <= micro.reference ? "gain" : micro.perMinute <= micro.reference * 1.15 ? "caution" : "loss";
+  const microTone = !micro || micro.reference === null ? undefined : micro.perLap <= micro.reference ? "gain" : micro.perLap <= micro.reference * 1.15 ? "caution" : "loss";
   const bestLap = pace.bestLap;
   const avgGap = bestLap !== null && pace.cleanAverage !== null ? pace.cleanAverage - bestLap : null;
   const sampleText = sample.telemetryLaps
@@ -161,8 +161,8 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
         </div>
         <div className="ngr-kpi">
           <div className="ngr-kpi-label">Microcorreções</div>
-          <div className="ngr-kpi-value" data-tone={microTone}>{micro ? `${Math.round(micro.perMinute)}/min` : "—"}</div>
-          <div className="ngr-kpi-sub">{!micro ? "precisa de telemetria da corrida" : micro.reference !== null ? `sua volta de referência: ${Math.round(micro.reference)}/min` : `${decimal(micro.perLap, 0)} por volta · sem referência`}</div>
+          <div className="ngr-kpi-value" data-tone={microTone}>{micro ? `${decimal(micro.perLap, 0)}/volta` : "—"}</div>
+          <div className="ngr-kpi-sub">{!micro ? "precisa de telemetria da corrida" : micro.reference !== null ? `sua volta de referência: ${Math.round(micro.reference)}/volta` : "sem referência"}</div>
         </div>
       </div>
 

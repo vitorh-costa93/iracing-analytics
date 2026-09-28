@@ -30,7 +30,7 @@ describe("microLapSummary", () => {
     const ref = result([10, 45, 70, 71, 80, 90, 91, 92, 93]);
     const summary = microLapSummary(own, ref, sections);
     expect(summary?.tone).toBe("loss");
-    expect(summary?.text).toBe("Microcorreções: você corrigiu o volante mais que a referência nesta volta, 12 contra 9 da referência (8 e 6 por minuto). Sinal de estar segurando o carro em vez de conduzir limpo. Onde mais aparece: Curva 1, 4 contra 1.");
+    expect(summary?.text).toBe("Microcorreções: você corrigiu o volante mais que a referência nesta volta, 12 contra 9 da referência. Sinal de estar segurando o carro em vez de conduzir limpo. Onde mais aparece: Curva 1, 4 contra 1.");
   });
 
   it("menos correção é ponto forte; sem nenhuma correção nos dois lados não diz nada", () => {
@@ -40,7 +40,7 @@ describe("microLapSummary", () => {
 
   it("não usa Δ nem abreviações", () => {
     const summary = microLapSummary(result([1, 2, 3]), result([1, 2, 3]), sections);
-    expect(summary?.text).toBe("Microcorreções: parecido com a referência nesta volta, 3 contra 3 da referência (2 e 2 por minuto).");
+    expect(summary?.text).toBe("Microcorreções: parecido com a referência nesta volta, 3 contra 3 da referência.");
     expect(summary?.text).not.toMatch(/Δ|p\.p\.|--/);
   });
 });

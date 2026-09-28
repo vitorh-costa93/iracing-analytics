@@ -208,8 +208,8 @@ export type DebriefFacts = {
   cleanAverage: number | null;
   /** segunda metade menos primeira metade das voltas limpas, em segundos (positivo = caiu) */
   paceTrend: number | null;
-  microPerMinute: number | null;
-  referenceMicroPerMinute: number | null;
+  microPerLap: number | null;
+  referenceMicroPerLap: number | null;
   /** fração das freadas a menos de 3 m da mediana do trecho */
   brakeRepeatShare: number | null;
   worstSector: { label: string; spread: number } | null;
@@ -231,7 +231,7 @@ export function strengthsAndImprovements(facts: DebriefFacts): { strengths: stri
   else if (facts.paceTrend !== null && facts.paceTrend < -0.15) strengths.push(`Você foi ficando mais rápido: a segunda metade da corrida saiu ${talkTime(facts.paceTrend)} por volta mais rápida.`);
   if (facts.incidents === 0) strengths.push("Corrida limpa, sem nenhum incidente.");
   if (facts.bestLap && facts.cleanAverage && facts.cleanAverage - facts.bestLap <= facts.bestLap * 0.005) strengths.push(`Sua média das voltas limpas ficou a só ${talkTime(facts.cleanAverage - facts.bestLap)} da melhor volta: ritmo de corrida perto do seu limite.`);
-  if (facts.microPerMinute !== null && facts.referenceMicroPerMinute !== null && facts.microPerMinute <= facts.referenceMicroPerMinute * 0.9) strengths.push(`Você corrige menos o volante que a referência (${Math.round(facts.microPerMinute)} contra ${Math.round(facts.referenceMicroPerMinute)} por minuto): carro na mão.`);
+  if (facts.microPerLap !== null && facts.referenceMicroPerLap !== null && facts.microPerLap <= facts.referenceMicroPerLap * 0.9) strengths.push(`Você corrige menos o volante que a referência (${Math.round(facts.microPerLap)} contra ${Math.round(facts.referenceMicroPerLap)} por volta): carro na mão.`);
 
   if (gained !== null && gained <= -2) improvements.push(`Você perdeu ${-gained} posições: largou em P${facts.gridPosition} e terminou em P${facts.finishPosition}. Vale rever no replay onde elas foram.`);
   if (facts.incidents !== null && facts.laps && facts.incidents / facts.laps >= 0.15) improvements.push(`Foram ${facts.incidents} incidentes em ${facts.laps} voltas. Antes de buscar ritmo, feche a porta para os toques e as saídas de pista.`);
@@ -243,7 +243,7 @@ export function strengthsAndImprovements(facts: DebriefFacts): { strengths: stri
   if (facts.worstSector && facts.worstSector.spread >= 0.1) improvements.push(`O ${facts.worstSector.label} é onde você mais varia: uns ${talkTime(facts.worstSector.spread)} para mais ou para menos entre as voltas.`);
   if (facts.paceTrend !== null && facts.paceTrend > 0.2) improvements.push(`O ritmo caiu ${talkTime(facts.paceTrend)} por volta na segunda metade. Poupe os pneus nas primeiras voltas.`);
   if (facts.bestLap && facts.cleanAverage && facts.cleanAverage - facts.bestLap > facts.bestLap * 0.01) improvements.push(`Sua média ficou ${talkTime(facts.cleanAverage - facts.bestLap)} acima da melhor volta: falta repetir a volta boa.`);
-  if (facts.microPerMinute !== null && facts.referenceMicroPerMinute !== null && facts.microPerMinute >= facts.referenceMicroPerMinute * 1.15) improvements.push(`Você corrige mais o volante que a referência (${Math.round(facts.microPerMinute)} contra ${Math.round(facts.referenceMicroPerMinute)} por minuto). Menos correção costuma ser mais tempo.`);
+  if (facts.microPerLap !== null && facts.referenceMicroPerLap !== null && facts.microPerLap >= facts.referenceMicroPerLap * 1.15) improvements.push(`Você corrige mais o volante que a referência (${Math.round(facts.microPerLap)} contra ${Math.round(facts.referenceMicroPerLap)} por volta). Menos correção costuma ser mais tempo.`);
 
   if (!strengths.length) strengths.push("Nada se destacou como ponto forte nos dados desta corrida.");
   if (!improvements.length) improvements.push("Nenhum ponto fraco claro nesta corrida. Busque tempo nos trechos com mais diferença entre suas voltas.");

@@ -8,7 +8,8 @@ import type { TalkChip } from "./engineer-talk";
  * da referência. A decisão foi voltar esse comparativo usando a métrica atual (lib/microcorrections.ts,
  * a mesma do Race Debrief e da Comparação de carros), sem RPM nem média de inputs. Os limites de "menos"
  * e "mais" são os mesmos do Race Debrief (lib/debrief-talk.ts): até 90% da referência é "menos", a
- * partir de 115% é "mais"; no meio, "parecido".
+ * partir de 115% é "mais"; no meio, "parecido". Números sempre por volta (28/09/2026: consistente com
+ * Race Debrief e Comparação de carros, nenhuma tela mostra por minuto).
  */
 export const MICRO_LESS_RATIO = 0.9;
 export const MICRO_MORE_RATIO = 1.15;
@@ -40,7 +41,7 @@ export function worstMicroSection(sections: SectionWindow[], own: number[], refe
 export function microLapSummary(own: MicrocorrectionResult, reference: MicrocorrectionResult, sections: SectionWindow[]): { text: string; tone: MicroTone } | null {
   if (own.count === 0 && reference.count === 0) return null;
   const tone = microTone(own.count, reference.count);
-  const numbers = `${own.count} contra ${reference.count} da referência (${Math.round(own.perMinute)} e ${Math.round(reference.perMinute)} por minuto)`;
+  const numbers = `${own.count} contra ${reference.count} da referência`;
   const worst = worstMicroSection(sections, own.distances, reference.distances);
   const where = worst ? ` Onde mais aparece: ${worst.label}, ${worst.own} contra ${worst.reference}.` : "";
   if (tone === "gain") return { tone, text: `Microcorreções: você mexeu menos no volante que a referência nesta volta, ${numbers}. Carro na mão.${where}` };

@@ -29,9 +29,9 @@ describe("detectMicrocorrections", () => {
     expect(result.count).toBe(0);
   });
 
-  it("conta correções rápidas de ±6° (1,5 Hz)", () => {
+  it("conta correções rápidas de ±9° (1,5 Hz)", () => {
     // 20 s com oscilação de 1,5 Hz: 2 viradas por ciclo, cada meia-onda dura 0,33 s
-    const result = detectMicrocorrections(lap(20, 60, (t) => 6 * Math.sin(2 * Math.PI * 1.5 * t)), 20);
+    const result = detectMicrocorrections(lap(20, 60, (t) => 9 * Math.sin(2 * Math.PI * 1.5 * t)), 20);
     expect(result.count).toBeGreaterThanOrEqual(56);
     expect(result.count).toBeLessThanOrEqual(60);
     expect(result.perMinute).toBeCloseTo(result.count * 3, 5);
@@ -46,7 +46,7 @@ describe("detectMicrocorrections", () => {
   });
 
   it("não conta abaixo da velocidade mínima (box, largada, rodada)", () => {
-    const result = detectMicrocorrections(lap(20, 60, (t) => 6 * Math.sin(2 * Math.PI * 1.5 * t), 10), 20);
+    const result = detectMicrocorrections(lap(20, 60, (t) => 9 * Math.sin(2 * Math.PI * 1.5 * t), 10), 20);
     expect(result.count).toBe(0);
   });
 
