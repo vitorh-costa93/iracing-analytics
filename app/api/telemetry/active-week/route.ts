@@ -19,8 +19,20 @@ type WeekRow = {
 
 type CatalogRow = { id: number; name: string; variant: string | null };
 
+// 28/09/2026: Garage61 sincroniza tanto corridas online reais quanto corridas offline contra IA
+// (usadas para testar overlay); driving_sessions.event_type sozinho NÃO distingue as duas -- ambas
+// usam event_type=1 quando session_type=3, confirmado empiricamente. O único campo que diferencia é
+// o "name" bruto do evento na API interna do Garage61 ("Offline (AI)" vs o nome da série oficial),
+// capturado em driving_sessions.event_name só pelo bookmarklet (garage61-import.js); sync/incremental
+// (API pública) não tem acesso a esse campo e grava null -- por isso null nunca é tratado como offline
+// aqui, só o prefixo "Offline" explícito.
+function isOfflineEventName(name: string | null | undefined) {
+  return typeof name === "string" && name.trim().toLowerCase().startsWith("offline");
+}
+
 type Garage61LapPayload = {
   id: string;
+  event?: string;
   startTime?: string;
   lapTime?: number;
   sessionType?: number;
@@ -136,7 +148,7 @@ export async function GET() {
     // still wins later when choosing the representative lap below.
     const { data: weekSessions, error: weekSessionsError } = await supabaseAdmin
       .from("driving_sessions")
-      .select("car_id, track_id, session_type")
+      .select("car_id, track_id, session_type, garage61_event_id, event_name")
       .eq("driver_id", driver.id)
       .gte("started_at", week.week_start)
       .lt("started_at", week.week_end)
@@ -145,8 +157,16 @@ export async function GET() {
       .not("track_id", "is", null);
     if (weekSessionsError) throw weekSessionsError;
 
+    // Só evento online conta: uma sessão offline não deve nem criar o card do combo carro/pista.
+    const onlineWeekSessions = (weekSessions ?? []).filter((session) => !isOfflineEventName(session.event_name));
+    const offlineEventIds = new Set(
+      (weekSessions ?? [])
+        .filter((session) => isOfflineEventName(session.event_name) && session.garage61_event_id)
+        .map((session) => session.garage61_event_id as string)
+    );
+
     const pairCounts = new Map<string, { carId: number; trackId: number; sessions: number; sessionTypes: Set<number> }>();
-    for (const session of weekSessions ?? []) {
+    for (const session of onlineWeekSessions) {
       if (typeof session.car_id !== "number" || typeof session.track_id !== "number") continue;
       const key = `${session.car_id}:${session.track_id}`;
       const current = pairCounts.get(key);
@@ -191,7 +211,8 @@ export async function GET() {
     const combinations = pairs.map((pair) => {
       const currentWeekLaps = lapsData
         .filter((row) => row.car_id === pair.carId && row.track_id === pair.trackId && row.garage61_payload)
-        .map((row) => row.garage61_payload as Garage61LapPayload);
+        .map((row) => row.garage61_payload as Garage61LapPayload)
+        .filter((lap) => !lap.event || !offlineEventIds.has(lap.event));
       const eligibleLaps = currentWeekLaps.filter((lap) => isEligibleLap(lap, weekStart, weekEnd));
       const car = cars.get(pair.carId);
       const isSuperFormula = /super formula sf23/i.test(car?.name ?? "");
@@ -207,8 +228,10 @@ export async function GET() {
       const raceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && (!isSuperFormula || !usedOvertake(lap)));
       const practiceLaps = eligibleLaps.filter((lap) => lap.sessionType === 1);
       // Race pace is the representative reference once a race exists; otherwise practice is the
-      // best way to prepare for a scheduled race. Qualifying is only a last-resort fallback.
-      const chosenPool = raceLaps.length ? raceLaps : practiceLaps.length ? practiceLaps : eligibleLaps;
+      // best way to prepare for a scheduled race. 28/09/2026: no fallback to qualifying (or to
+      // offline data, already filtered out above) anymore -- without an online race or practice
+      // lap, this combination has nothing trustworthy to represent and is dropped below instead.
+      const chosenPool = raceLaps.length ? raceLaps : practiceLaps.length ? practiceLaps : [];
       const bestLap = chosenPool
         .sort((a, b) => Number(a.lapTime) - Number(b.lapTime))[0];
       const track = tracks.get(pair.trackId);
@@ -226,11 +249,13 @@ export async function GET() {
           lapTime: Number(bestLap.lapTime),
           startTime: bestLap.startTime,
           sessionType: bestLap.sessionType ?? null,
-          selectionReason: raceLaps.length ? (isSuperFormula ? "race_best_lap_without_p2p" : "race_best_lap") : practiceLaps.length ? "practice_best_lap" : "fastest_clean_lap",
+          selectionReason: raceLaps.length ? (isSuperFormula ? "race_best_lap_without_p2p" : "race_best_lap") : "practice_best_lap",
           telemetryUrl: `/api/garage61/laps/${encodeURIComponent(bestLap.id)}/telemetry`,
         } : null,
       };
-    });
+    // Sem corrida nem prática online, o combo não tem uma volta representativa confiável --
+    // não cai pra qualifying nem pra offline (já filtrados acima): o contexto simplesmente não aparece.
+    }).filter((combination) => combination.bestLap !== null);
 
     combinations.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
     return NextResponse.json({

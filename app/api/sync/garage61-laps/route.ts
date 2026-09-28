@@ -24,7 +24,7 @@ export async function OPTIONS() {
 
 type IncomingSession = {
   eventId: string; sessionId: string; carId: number; trackId: number;
-  seasonId: string | null; sessionType: number | null; eventType: number | null;
+  seasonId: string | null; sessionType: number | null; eventType: number | null; eventName: string | null;
   startedAt: string; endedAt: string; lapCount: number;
 };
 
@@ -61,8 +61,8 @@ export async function POST(request: NextRequest) {
       const rows = sessions.map((s) => ({
         driver_id: driver.id, garage61_event_id: s.eventId, garage61_session_id: s.sessionId,
         car_id: s.carId, track_id: s.trackId, season_id: s.seasonId, season_name: null,
-        session_type: s.sessionType, event_type: s.eventType, started_at: s.startedAt, ended_at: s.endedAt,
-        lap_count: s.lapCount,
+        session_type: s.sessionType, event_type: s.eventType, event_name: s.eventName,
+        started_at: s.startedAt, ended_at: s.endedAt, lap_count: s.lapCount,
       }));
       for (let index = 0; index < rows.length; index += CHUNK) {
         const { error } = await supabaseAdmin.from("driving_sessions").upsert(rows.slice(index, index + CHUNK), {

@@ -118,6 +118,10 @@
   function captureSessionsAndLaps(event) {
     var eventId = event.id;
     var eventType = typeof event.event_type === "number" ? event.event_type : null;
+    // 28/09/2026: event_type sozinho não distingue online de offline (confirmado: uma corrida
+    // offline contra IA e uma corrida oficial têm o mesmo event_type=1) -- "name" é o campo real
+    // ("Offline (AI)" vs o nome da série), confirmado ao vivo na resposta de /api/internal/events/{id}.
+    var eventName = typeof event.name === "string" ? event.name : null;
     (event.sessions || []).forEach(function (session, sessionIdx) {
       var sessionId = String(sessionIdx);
       var runGroups = session.run_groups || [];
@@ -133,7 +137,7 @@
                 eventId: eventId, sessionId: sessionId, carId: lap.car_id, trackId: lap.track_id,
                 seasonId: lap.season !== undefined && lap.season !== null ? String(lap.season) : null,
                 sessionType: typeof lap.session_type === "number" ? lap.session_type : (typeof session.session_type === "number" ? session.session_type : null),
-                eventType: eventType, startedAt: lap.start_time, endedAt: endedAt, lapCount: 0,
+                eventType: eventType, eventName: eventName, startedAt: lap.start_time, endedAt: endedAt, lapCount: 0,
               };
               sessionsOut.push(agg);
             }

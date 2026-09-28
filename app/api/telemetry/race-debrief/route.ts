@@ -54,6 +54,15 @@ type RaceRow = {
 };
 type SessionRow = { id: number; garage61_event_id: string | null; car_id: number; track_id: number; started_at: string };
 
+// 28/09/2026: mesma constatação de active-week/route.ts -- event_type=1 sozinho não distingue uma
+// corrida online de uma corrida offline contra IA (usada pra testar overlay); ambas podem ter
+// session_type=3. O campo real é o "name" bruto do evento na API interna do Garage61 ("Offline (AI)"),
+// capturado em driving_sessions.event_name só pelo bookmarklet -- null (sync/incremental, API pública,
+// ou eventos antigos ainda não revisitados pelo bookmarklet) nunca é tratado como offline aqui.
+function isOfflineEventName(name: string | null | undefined) {
+  return typeof name === "string" && name.trim().toLowerCase().startsWith("offline");
+}
+
 async function currentDriverId() {
   const { data: driver } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
   if (!driver) throw new Error("Piloto não encontrado");
@@ -79,13 +88,17 @@ async function matchSessions(driverId: string, races: RaceRow[]) {
   const times = withIds.map((race) => new Date(race.raced_at).getTime());
   const { data, error } = await supabaseAdmin
     .from("driving_sessions")
-    .select("id,garage61_event_id,car_id,track_id,started_at")
+    .select("id,garage61_event_id,car_id,track_id,started_at,event_name")
     .eq("driver_id", driverId).eq("session_type", 3)
     .not("garage61_event_id", "is", null)
     .gte("started_at", new Date(Math.min(...times) - SESSION_MATCH_WINDOW_MS).toISOString())
     .lte("started_at", new Date(Math.max(...times) + SESSION_MATCH_WINDOW_MS).toISOString());
   if (error) throw error;
-  const sessions = (data ?? []) as SessionRow[];
+  // Só evento online conta: uma sessão offline nunca deve ser escolhida como a sessão de uma corrida,
+  // mesmo que esteja mais próxima no tempo do que a sessão online real.
+  const sessions = ((data ?? []) as (SessionRow & { event_name: string | null })[]).filter(
+    (session) => !isOfflineEventName(session.event_name)
+  );
   const result = new Map<string, SessionRow>();
   for (const race of withIds) {
     const racedAt = new Date(race.raced_at).getTime();
