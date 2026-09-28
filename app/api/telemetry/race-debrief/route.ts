@@ -4,7 +4,7 @@ import { readTelemetryText } from "@/lib/telemetry-storage";
 import { parseTelemetryCsv, type Trace } from "@/lib/telemetry-trace";
 import { detectLapCorners } from "@/lib/lap-corners";
 import { compareLaps } from "@/lib/lap-analysis";
-import { detectMicrocorrections, summarizeMicrocorrections } from "@/lib/microcorrections";
+import { detectSteeringCorrections, type TractionSample } from "@/lib/traction-events";
 import { analyzeSelfConsistency, type SelfSection } from "@/lib/self-consistency";
 import { describeSelfSection, rightAndWrong, strengthsAndImprovements } from "@/lib/debrief-talk";
 import { buildSectorReport } from "@/lib/sector-report";
@@ -133,6 +133,24 @@ function coversLap(trace: Trace) {
   return trace.points.length > 200 && first <= 3 && last >= 97;
 }
 
+/** Mesmo mapeamento do Comparar Carros (app/api/telemetry/car-comparison/route.ts): lib/traction-events.ts
+ * usa uma forma de amostra mínima e agnóstica de fonte, reaproveitada aqui para o mesmo detector
+ * validado de microcorreções (corner-relative baseline), em vez do limiar absoluto que reintroduziu o
+ * "conta o chacoalhão da pista" (28/09/2026). */
+function toRaceTractionSamples(points: Trace["points"]): TractionSample[] {
+  return points.map((point) => ({
+    distance: point.distance, throttle: point.throttle ?? undefined, rpm: point.rpm ?? undefined, gear: point.gear ?? undefined,
+    speedMs: point.speed ?? undefined, steeringRad: point.steering ?? undefined, yawRate: point.yawRate ?? undefined,
+  }));
+}
+
+/** Ponto médio de cada trecho flagrado (lib/traction-events.ts dá início/fim, não um ponto único) --
+ * o suficiente para o mesmo agrupamento por trecho (self-consistency, popup) que já existia com os
+ * pontos discretos do detector antigo. */
+function correctionMidpoints(events: { startDistance: number; endDistance: number; lapIndex?: number }[], lapIndex: number): number[] {
+  return events.filter((event) => event.lapIndex === lapIndex).map((event) => Number(((event.startDistance + event.endDistance) / 2).toFixed(2)));
+}
+
 /** Parte das freadas (volta × trecho) a menos de 3 m da mediana daquele trecho. */
 function brakeRepeatShare(sections: SelfSection[], trackLengthMeters: number | null) {
   if (!trackLengthMeters) return null;
@@ -183,18 +201,23 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
     try {
       const full = parseTelemetryCsv(text, { maxPoints: Infinity });
       if (!coversLap(full)) return null;
-      const micro = detectMicrocorrections(full.points.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), lap.lapTime);
-      return { lap, trace: decimate(full, ANALYSIS_POINTS), micro };
+      return { lap, trace: decimate(full, ANALYSIS_POINTS), tractionSamples: toRaceTractionSamples(full.points) };
     } catch { return null; }
   }))).filter((item): item is NonNullable<typeof item> => item !== null);
 
-  const micro = summarizeMicrocorrections(traces.map((item) => ({ result: item.micro, lapTimeSeconds: item.lap.lapTime })));
+  // Microcorreções: mesmo detector corner-relative do Comparar Carros (lib/traction-events.ts), sobre
+  // o pool de voltas de telemetria já baixadas acima. A baseline por trecho vem do próprio pool, então
+  // corrigido só conta quando destoa do que ESTE piloto normalmente faz ali -- uma zebra/bump que
+  // aparece igual em toda volta some da contagem por já estar na mediana.
+  const correctionEvents = traces.length ? detectSteeringCorrections(traces.map((item) => item.tractionSamples)) : [];
+  const micro = traces.length ? { perLap: Number((correctionEvents.length / traces.length).toFixed(1)), laps: traces.length } : null;
   const fastest = traces.length ? traces.reduce((best, item) => (item.lap.lapTime < best.lap.lapTime ? item : best)) : null;
   const corners = fastest && race.track_id ? detectLapCorners(fastest.trace.points, trackRow.data?.name ?? race.track_name ?? "", trackRow.data?.variant ?? "") : [];
-  const self = analyzeSelfConsistency(traces.map((item) => ({ lapNumber: item.lap.lapNumber, lapTime: item.lap.lapTime, trace: item.trace, microDistances: item.micro.distances })), corners);
+  const self = analyzeSelfConsistency(traces.map((item, index) => ({ lapNumber: item.lap.lapNumber, lapTime: item.lap.lapTime, trace: item.trace, microDistances: correctionMidpoints(correctionEvents, index) })), corners);
 
   // Referência do carro/pista: a volta que o PILOTO enviou (telemetry_references), não uma volta
-  // "da classe". Tempo estimado e microcorreções dela.
+  // "da classe". Tempo estimado e microcorreções dela -- entra no MESMO pool acima (uma volta a mais
+  // não desloca a mediana por trecho de forma relevante) para ficar na mesma unidade do `micro` geral.
   let reference: { gap: number; microPerLap: number | null } | null = null;
   let referenceTrace: Trace | null = null;
   if (fastest && race.car_id && race.track_id) {
@@ -203,8 +226,9 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
       referenceTrace = decimate(refFull, ANALYSIS_POINTS);
       const comparison = compareLaps(fastest.trace, referenceTrace, fastest.lap.lapTime, corners);
       if (comparison) {
-        const refMicro = detectMicrocorrections(refFull.points.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), comparison.estimatedReferenceTime);
-        reference = { gap: comparison.estimatedReferenceTime - fastest.lap.lapTime, microPerLap: refMicro.count || null };
+        const withReference = detectSteeringCorrections([...traces.map((item) => item.tractionSamples), toRaceTractionSamples(refFull.points)]);
+        const refCount = withReference.filter((event) => event.lapIndex === traces.length).length;
+        reference = { gap: comparison.estimatedReferenceTime - fastest.lap.lapTime, microPerLap: refCount || null };
       }
     }
   }
@@ -231,7 +255,7 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
     version: CACHE_VERSION,
     laps: { bestFromLaps, cleanAverage, cleanLaps: clean.length, paceTrend },
     referenceGap: reference ? Number(reference.gap.toFixed(3)) : null,
-    micro: micro ? { perMinute: micro.perMinute, perLap: micro.perLap, laps: micro.laps, reference: reference?.microPerLap ?? null } : null,
+    micro: micro ? { perLap: micro.perLap, laps: micro.laps, reference: reference?.microPerLap ?? null } : null,
     sample: { telemetryLaps, lapsWithoutTelemetry, robust: telemetryLaps >= 10 },
     brakeRepeatShare: self ? brakeRepeatShare(sections, self.trackLengthMeters) : null,
     worstSector: worstSector ? { label: `S${worstSector.sector}`, spread: worstSector.stddev } : null,

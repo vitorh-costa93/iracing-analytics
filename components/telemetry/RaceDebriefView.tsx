@@ -29,7 +29,7 @@ type Debrief = {
     iratingDelta: number | null; iratingBefore: number | null; iratingAfter: number | null;
   };
   pace: { bestLap: number | null; cleanAverage: number | null; cleanLaps: number; reference: { kind: "reference" | "winner"; gap: number } | null };
-  micro: { perMinute: number; perLap: number; laps: number; reference: number | null } | null;
+  micro: { perLap: number; laps: number; reference: number | null } | null;
   sample: { telemetryLaps: number; lapsWithoutTelemetry: number; robust: boolean };
   strengths: string[]; improvements: string[]; right: string[]; wrong: string[];
   selfNote: string | null;

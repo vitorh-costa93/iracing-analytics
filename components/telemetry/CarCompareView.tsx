@@ -32,7 +32,7 @@ type InputConsistency = { overall: { score: number; label: string }; channels: {
 type CarRow = {
   carId: number; carName: string; color: string; bestLapSeconds: number; deltaSeconds: number; avgLapSeconds: number | null;
   lapsAnalyzed: number;
-  microcorrections: { laps: number; perLap: number; perMinute: number } | null;
+  microcorrections: { laps: number; perLap: number } | null;
   lapTimeConsistency: Consistency; inputConsistency: InputConsistency; trackUsage: { avgPct: number; maxPct: number } | null;
   fastestLap: { id: string; lapSeconds: number; microDistances: number[] };
 };

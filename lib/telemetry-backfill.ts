@@ -106,10 +106,18 @@ async function compact() {
 // this column); excluding it here means the backfill only ever chases telemetry for laps that show up
 // AFTER that point (a fresh sync insert never sets telemetry_skip, so it defaults to false), instead of
 // competing with a multi-thousand-lap historical backlog for the same small per-run batch.
+//
+// 28/09/2026: "o Race Debrief tá mostrando corrida sem telemetria, mas a Semana Ativa tem" -- since
+// that reset, daily driving (practice + qualy + race) has outpaced BATCH=24/day, so a strict
+// oldest-id-first order lets practice/qualy laps (the bulk of any session) crowd out the much sparser
+// race laps that Race Debrief specifically needs. Doesn't touch BATCH/BUDGET (the guard-rails from
+// CLAUDE.md #7) or the overall oldest-first backlog direction -- only reorders WITHIN a bounded scan
+// window of the oldest pending laps, so race laps in that window go first.
+const SCAN_PAGES = 6; // rows scanned per run to reprioritize within = SCAN_PAGES * PAGE
 async function pendingTelemetry(current: string, previous: string) {
   const eligible: Candidate[] = [];
   let from = 0;
-  while (eligible.length < BATCH) {
+  for (let page = 0; page < SCAN_PAGES; page += 1) {
     const q = await supabaseAdmin.from("laps")
       .select("id,track_id,garage61_payload")
       .eq("can_view_telemetry", true)
@@ -123,7 +131,8 @@ async function pendingTelemetry(current: string, previous: string) {
     if (laps.length < PAGE) break;
     from += PAGE;
   }
-  return eligible.slice(0, BATCH);
+  const prioritized = [...eligible].sort((a, b) => Number(isRace(b.garage61_payload ?? {})) - Number(isRace(a.garage61_payload ?? {})) || a.id.localeCompare(b.id));
+  return prioritized.slice(0, BATCH);
 }
 
 export async function runTelemetryBackfill() {

@@ -19,14 +19,22 @@ import { unwrapIntoWindow } from "./corner-sequences";
  * tempo oficial da volta. Por isso a métrica precisa do traço em resolução cheia (não o traço
  * decimado de ~900 pontos do navegador) e do tempo da volta.
  *
- * Taxa mostrada em todo o app: por volta (Race Debrief, Semana ativa e Comparação de carros usam o
- * mesmo número). Menos é melhor, mas só compare o mesmo carro/pista ou pistas iguais: uma pista
- * travada tem mais volante.
+ * Taxa mostrada por volta. Menos é melhor, mas só compare o mesmo carro/pista ou pistas iguais: uma
+ * pista travada tem mais volante.
  *
  * MICRO_HYSTERESIS_DEG ajustado de 4° para 6° em 28/09/2026 (feedback ao vivo comparando GT3 em
  * Zandvoort: a contagem em pistas com muita zebra/bump estava alta demais, pegando o chacoalhão da
- * pista em vez de uma correção deliberada de volante -- "microcorreção é algo mais bruto"). Revalidar
- * com voltas reais se a contagem ainda parecer alta numa pista lisa.
+ * pista em vez de uma correção deliberada de volante -- "microcorreção é algo mais bruto").
+ *
+ * 28/09/2026, segunda rodada do mesmo feedback: subir a histerese não bastou, porque um limiar fixo
+ * não consegue mesmo distinguir "zebra que aparece todo santo dia nesse mesmo pedaço da pista" de
+ * "precisei corrigir de verdade aqui". Isso já tinha sido resolvido em 11/09/2026 -- lib/traction-events.ts
+ * (detectSteeringCorrections/compareToReference) compara cada trecho contra a MEDIANA do próprio
+ * piloto ali, entre as outras voltas da amostra, então uma irregularidade que se repete toda volta
+ * deixa de contar por já estar na baseline. Race Debrief e Comparação de carros usam esse detector
+ * (o mais correto, com baseline) para os números que aparecem na tela; este arquivo continua servindo
+ * a Semana ativa (comparação de uma volta contra uma única volta de referência, sem pool para montar
+ * uma baseline por trecho) e a janela de trechos (countInWindow) reaproveitada pelas duas telas acima.
  */
 export const MICRO_HYSTERESIS_DEG = 6;
 export const MICRO_MAX_SWING_SECONDS = 0.5;

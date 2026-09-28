@@ -4,11 +4,10 @@ import path from "node:path";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { detectCornersFromGps } from "@/lib/corner-detection";
 import { lookupCornerNames } from "@/lib/track-corners";
-import { summarizeTractionEvents, type TractionSample, type TractionSummary } from "@/lib/traction-events";
+import { detectSteeringCorrections, summarizeTractionEvents, type TractionSample, type TractionSummary } from "@/lib/traction-events";
 import { compareTractionAcrossCars } from "@/lib/traction-narrative";
 import { checkLapsGps, type LapGpsCheck } from "@/lib/lap-gps-check-cache";
 import { readTelemetryText, storeTelemetryCsv } from "@/lib/telemetry-storage";
-import { detectMicrocorrections, summarizeMicrocorrections } from "@/lib/microcorrections";
 
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
@@ -1210,15 +1209,23 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
     // over the SAME sample pool already downloaded for inputConsistency/trackUsage above, not a new
     // telemetry fetch. Uses every sampled lap, not just the fastest one, so the rate reflects a habit
     // across several laps rather than one lap's luck.
-    const tractionEvents = summarizeTractionEvents(traces.map(toTractionSamples));
-    // Redesign etapa 4 (26/09/2026): microcorreções por volta (lib/microcorrections.ts), sobre as MESMAS
-    // voltas verificadas já baixadas acima (resolução cheia do CSV), sem download novo. A lista de
-    // distâncias da volta mais rápida vai para o cliente contar por trecho no curva a curva.
-    const microPerLap = verified.slice(0, TELEMETRY_SAMPLE_LAPS).map((item) => ({
-      lapTimeSeconds: Number(item.lap.lap_time),
-      result: detectMicrocorrections(item.trace.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), Number(item.lap.lap_time)),
-    }));
-    const microcorrections = summarizeMicrocorrections(microPerLap);
+    const tractionSamples = traces.map(toTractionSamples);
+    const tractionEvents = summarizeTractionEvents(tractionSamples);
+    // 28/09/2026: "microcorreções ainda está excessivamente alto... foi feita uma correção desse
+    // indicador algumas semanas atrás" -- the redesign (26/09/2026) had put a brand-new, simpler
+    // absolute-threshold counter (lib/microcorrections.ts) behind this column, which reintroduced
+    // exactly the bug lib/traction-events.ts already fixed on 11/09/2026: a fixed degree/time
+    // threshold can't tell a genuine correction from track texture (curbs, zebra) that shows up at the
+    // SAME spot every lap. traction-events.ts's fix compares each spot on track against this driver's
+    // OWN median wasted-steering-motion there across the other sampled laps, so a bump that's just
+    // "normal for this corner" stops counting -- this column now reuses that same validated detector
+    // (already computed above for the trade-off narrative) instead of a second, weaker one.
+    const correctionEvents = detectSteeringCorrections(tractionSamples);
+    // traces[0] is always the fastest verified lap and never gets filtered out of validLaps inside
+    // summarizeTractionEvents/detectSteeringCorrections (only LATER laps can be dropped for being too
+    // short), so lapIndex 0 there reliably means "the fastest lap" here too.
+    const fastestLapMicroDistances = correctionEvents.filter((event) => event.lapIndex === 0).map((event) => Number(((event.startDistance + event.endDistance) / 2).toFixed(2)));
+    const microcorrections = tractionEvents.lapsAnalyzed ? { laps: tractionEvents.lapsAnalyzed, perLap: tractionEvents.correctionsPerLap } : null;
     const avgLapSeconds = timePool.length ? Number(mean(timePool).toFixed(3)) : null;
 
     return {
@@ -1227,7 +1234,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
       bestLapSeconds, bestLapFormatted: formatLapTime(bestLapSeconds),
       lapTimeConsistency, inputConsistency, trackUsage, trackUsageSegments, conditions, tractionEvents,
       avgLapSeconds, microcorrections, plausibleLaps: laps.length,
-      fastestLap: { id: chosen.lap.id, lapSeconds: bestLapSeconds, microDistances: microPerLap[0]?.result.distances ?? [] },
+      fastestLap: { id: chosen.lap.id, lapSeconds: bestLapSeconds, microDistances: fastestLapMicroDistances },
       fastestTrace: traces[0] ?? null, // stripped before the response is sent; kept only for the sector pass below
       sampleTraces: traces, // same -- kept for per-corner consistency below, stripped before response
     };
