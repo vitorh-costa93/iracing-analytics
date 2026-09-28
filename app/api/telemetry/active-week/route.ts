@@ -1,6 +1,14 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
+// 28/09/2026: GET() abaixo não lê nada do Request (sem searchParams, sem headers), então o Next.js
+// tenta tratar esse handler como estático -- calculado uma vez e servido congelado até o próximo
+// build/deploy, nunca mais refletindo dado novo do Supabase. app/api/dashboard/overview/route.ts já
+// tinha passado exatamente por isso ("this one -- which computes the driver's headline iRating for
+// right now -- should have from the start"); esta rota (a "melhor volta da semana") é do mesmo tipo
+// e nunca tinha essa declaração.
+export const dynamic = "force-dynamic";
+
 type WeekRow = {
   season_id: string;
   season_name: string;

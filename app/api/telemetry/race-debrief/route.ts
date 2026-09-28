@@ -32,6 +32,9 @@ import { sectorSpreadRatio } from "@/lib/sector-consistency";
  * Piso: corridas com pelo menos MIN_RACE_LAPS (5) voltas completadas, como no Meu Debrief antigo.
  */
 export const maxDuration = 120;
+// Lê request.url, então o Next.js já deveria tratar como dinâmico sozinho -- declarado explícito por
+// segurança, depois do mesmo bug (rota estática congelada) confirmado em active-week/route.ts.
+export const dynamic = "force-dynamic";
 
 const CACHE_VERSION = 4; // 4 (28/09/2026): detector de microcorreções trocado (traction-events no geral, fallback ao vivo de telemetria) -- payloads calculados antes disso ficariam presos no número/telemetria antigos para sempre sem isso
 const CACHE_PREFIX = "race:";

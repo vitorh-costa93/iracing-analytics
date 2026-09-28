@@ -13,6 +13,9 @@ import { detectMicrocorrections } from "@/lib/microcorrections";
 // Same class of route as app/api/telemetry/debrief/route.ts: up to a handful of cars, each needing
 // its own telemetry downloads/decodes, well past Vercel's platform-default timeout.
 export const maxDuration = 300;
+// Lê request.url, então o Next.js já deveria tratar como dinâmico sozinho -- declarado explícito por
+// segurança, depois do mesmo bug (rota estática congelada) confirmado em active-week/route.ts.
+export const dynamic = "force-dynamic";
 
 const GARAGE61_BASE = "https://garage61.net/api/v1";
 // 11/09/2026: "tá falando que tem 8 carros testados, mas não aparecem todos" -- 6 stopped covering a
