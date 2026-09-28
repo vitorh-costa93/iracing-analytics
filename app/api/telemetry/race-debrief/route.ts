@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { readTelemetryText } from "@/lib/telemetry-storage";
+import { readOrFetchTelemetryText, readTelemetryText } from "@/lib/telemetry-storage";
 import { parseTelemetryCsv, type Trace } from "@/lib/telemetry-trace";
 import { detectLapCorners } from "@/lib/lap-corners";
 import { compareLaps } from "@/lib/lap-analysis";
@@ -192,11 +192,15 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
     ? chronological.slice(-half).reduce((sum, lap) => sum + lap.lapTime, 0) / half - chronological.slice(0, half).reduce((sum, lap) => sum + lap.lapTime, 0) / half
     : null;
 
-  // Telemetria: só as voltas limpas com arquivo no Storage, das mais rápidas para as mais lentas.
-  const withTelemetry = clean.filter((lap) => lap.telemetryPath).sort((a, b) => a.lapTime - b.lapTime).slice(0, MAX_ANALYZED_LAPS);
-  const lapsWithoutTelemetry = clean.filter((lap) => !lap.telemetryPath).length;
-  const traces = (await Promise.all(withTelemetry.map(async (lap) => {
-    const text = await readTelemetryText(lap.telemetryPath as string);
+  // Telemetria: as voltas limpas mais rápidas primeiro, até MAX_ANALYZED_LAPS. Storage-first, com o
+  // MESMO fallback ao vivo do Garage61 que /api/garage61/laps/[id]/telemetry já usa (28/09/2026: "a
+  // Semana Ativa tem a telemetria, mas o Race Debrief mostra 'sem telemetria'" -- essa tela só lia
+  // laps.telemetry_path e nunca tentava buscar ao vivo uma volta que o backfill diário ainda não
+  // alcançou; abrir aquele mesmo carro/pista na Semana Ativa já fazia esse fallback e guardava o
+  // resultado, por isso o Race Debrief "via" telemetria depois -- só não buscava por conta própria).
+  const candidateLaps = clean.slice().sort((a, b) => a.lapTime - b.lapTime).slice(0, MAX_ANALYZED_LAPS);
+  const traces = (await Promise.all(candidateLaps.map(async (lap) => {
+    const text = await readOrFetchTelemetryText(lap.id, race.track_id, lap.telemetryPath);
     if (!text) return null;
     try {
       const full = parseTelemetryCsv(text, { maxPoints: Infinity });
@@ -204,6 +208,7 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
       return { lap, trace: decimate(full, ANALYSIS_POINTS), tractionSamples: toRaceTractionSamples(full.points) };
     } catch { return null; }
   }))).filter((item): item is NonNullable<typeof item> => item !== null);
+  const lapsWithoutTelemetry = clean.length - traces.length;
 
   // Microcorreções: mesmo detector corner-relative do Comparar Carros (lib/traction-events.ts), sobre
   // o pool de voltas de telemetria já baixadas acima. A baseline por trecho vem do próprio pool, então

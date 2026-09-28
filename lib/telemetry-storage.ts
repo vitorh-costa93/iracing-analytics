@@ -74,3 +74,30 @@ export async function storeTelemetryCsv(trackId: number | string, lapId: string,
   remember(`telemetry/${path}`, csv);
   return path;
 }
+
+// 28/09/2026: "Race Debrief tá mostrando corrida sem telemetria, mas a Semana Ativa tem" -- app/api/
+// garage61/laps/[id]/telemetry/route.ts already had this storage-first-with-live-fallback (a Telemetry
+// Lab page view fetches Garage61 directly for a lap the sync hasn't reached yet, and stores it so the
+// NEXT view is already fast), which is exactly why viewing a car/track in Semana Ativa can make its
+// telemetry "appear" -- but Race Debrief only ever read laps.telemetry_path and skipped a lap outright
+// when it was still null, never trying the same live fallback. This factors that route's own fallback
+// out so Race Debrief (and anywhere else) can reuse it instead of only reading what's already stored.
+// Doesn't touch the Storage egress budget above (a live Garage61 fetch isn't a Storage download).
+export async function readOrFetchTelemetryText(lapId: string, trackId: number | string | null, telemetryPath: string | null): Promise<string | null> {
+  if (telemetryPath) {
+    const stored = await readTelemetryText(telemetryPath);
+    if (stored) return stored;
+  }
+  const token = process.env.GARAGE61_API_TOKEN;
+  if (!token) return null;
+  try {
+    const response = await fetch(`https://garage61.net/api/v1/laps/${encodeURIComponent(lapId)}/csv`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: "text/csv" },
+      cache: "no-store",
+    });
+    if (!response.ok) return null;
+    const csv = await response.text();
+    if (trackId !== null && !telemetryPath) await storeTelemetryCsv(trackId, lapId, csv);
+    return csv;
+  } catch { return null; }
+}
