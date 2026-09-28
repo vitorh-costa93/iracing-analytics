@@ -214,10 +214,10 @@ export default function CarCompareView() {
                   const tone = microTone(micro, minMicro);
                   return (
                     <button key={car.carId} type="button" className="ngc-car" data-own={isOwn ? "" : undefined} aria-pressed={car.carId === rival?.carId}
-                      title={isOwn ? "Seu carro" : `Comparar curva a curva com o ${shortCarName(car.carName)}`}
+                      title={isOwn ? "Base da comparação curva a curva" : `Comparar curva a curva com o ${shortCarName(car.carName)}`}
                       onClick={() => { if (!isOwn) setRivalId(car.carId); }}>
                       <span className="ngc-car-rank">{index + 1}</span>
-                      <span className="ngc-car-name"><span>{car.carName}</span>{isOwn && <Chip tone="brand">seu carro</Chip>}</span>
+                      <span className="ngc-car-name"><span>{car.carName}</span>{isOwn && <Chip tone="brand">base</Chip>}</span>
                       <span className="ngc-car-best">{formatLapTime(car.bestLapSeconds)}</span>
                       <span className="ngc-car-avg">{car.avgLapSeconds !== null ? shortLap(car.avgLapSeconds) : "—"}</span>
                       <span className="ngc-micro"><span className="ngr-track ngr-track-lg"><span className="ngr-fill" data-tone={tone === "none" ? undefined : tone} style={{ display: "block", width: `${micro !== null ? Math.max(6, (micro / maxMicro) * 90) : 0}%` }} /></span><b data-tone={tone}>{micro !== null ? Math.round(micro) : "—"}</b></span>

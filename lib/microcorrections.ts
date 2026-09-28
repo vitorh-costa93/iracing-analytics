@@ -12,18 +12,23 @@ import { unwrapIntoWindow } from "./corner-sequences";
  *   3. o carro está a pelo menos MICRO_MIN_SPEED_KMH (fora de box, largada parada e rodada).
  * O sinal é reamostrado numa grade de tempo fixa de MICRO_GRID_HZ antes de contar, para o número não
  * depender da taxa de amostragem da fonte (CSV do Garage61 a 60 Hz, referência IBT reduzida a ~25 Hz):
- * na validação (3 voltas reais da Ferrari 499P em Road Atlanta, 26/09/2026) a contagem a partir de
- * 60 Hz e a partir de 20 Hz ficou a menos de 10% uma da outra com estes limiares, e deu 28–48 por
- * volta de 70 s (~25–40 por minuto), coerente com o que um piloto sente como "mexer no volante".
+ * na validação original (3 voltas reais da Ferrari 499P em Road Atlanta, 26/09/2026) a contagem a
+ * partir de 60 Hz e a partir de 20 Hz ficou a menos de 10% uma da outra com estes limiares.
  *
  * O tempo de cada amostra vem da própria volta: Σ(Δdistância / velocidade), reescalado para somar o
  * tempo oficial da volta. Por isso a métrica precisa do traço em resolução cheia (não o traço
  * decimado de ~900 pontos do navegador) e do tempo da volta.
  *
- * Taxas: por minuto de volta cronometrada (Race Debrief) e por volta (Comparação de carros). Menos é
- * melhor, mas só compare o mesmo carro/pista ou pistas iguais: uma pista travada tem mais volante.
+ * Taxa mostrada em todo o app: por volta (Race Debrief, Semana ativa e Comparação de carros usam o
+ * mesmo número). Menos é melhor, mas só compare o mesmo carro/pista ou pistas iguais: uma pista
+ * travada tem mais volante.
+ *
+ * MICRO_HYSTERESIS_DEG ajustado de 4° para 6° em 28/09/2026 (feedback ao vivo comparando GT3 em
+ * Zandvoort: a contagem em pistas com muita zebra/bump estava alta demais, pegando o chacoalhão da
+ * pista em vez de uma correção deliberada de volante -- "microcorreção é algo mais bruto"). Revalidar
+ * com voltas reais se a contagem ainda parecer alta numa pista lisa.
  */
-export const MICRO_HYSTERESIS_DEG = 4;
+export const MICRO_HYSTERESIS_DEG = 6;
 export const MICRO_MAX_SWING_SECONDS = 0.5;
 export const MICRO_MIN_SPEED_KMH = 60;
 export const MICRO_GRID_HZ = 20;

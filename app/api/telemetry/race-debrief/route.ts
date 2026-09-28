@@ -195,7 +195,7 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
 
   // Referência do carro/pista: a volta que o PILOTO enviou (telemetry_references), não uma volta
   // "da classe". Tempo estimado e microcorreções dela.
-  let reference: { gap: number; microPerMinute: number | null } | null = null;
+  let reference: { gap: number; microPerLap: number | null } | null = null;
   let referenceTrace: Trace | null = null;
   if (fastest && race.car_id && race.track_id) {
     const refFull = await loadReference(driverId, race.car_id, race.track_id);
@@ -204,7 +204,7 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
       const comparison = compareLaps(fastest.trace, referenceTrace, fastest.lap.lapTime, corners);
       if (comparison) {
         const refMicro = detectMicrocorrections(refFull.points.map((point) => ({ distance: point.distance, speed: point.speed, steering: point.steering })), comparison.estimatedReferenceTime);
-        reference = { gap: comparison.estimatedReferenceTime - fastest.lap.lapTime, microPerMinute: refMicro.count ? Number(refMicro.perMinute.toFixed(1)) : null };
+        reference = { gap: comparison.estimatedReferenceTime - fastest.lap.lapTime, microPerLap: refMicro.count || null };
       }
     }
   }
@@ -231,7 +231,7 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
     version: CACHE_VERSION,
     laps: { bestFromLaps, cleanAverage, cleanLaps: clean.length, paceTrend },
     referenceGap: reference ? Number(reference.gap.toFixed(3)) : null,
-    micro: micro ? { perMinute: micro.perMinute, perLap: micro.perLap, laps: micro.laps, reference: reference?.microPerMinute ?? null } : null,
+    micro: micro ? { perMinute: micro.perMinute, perLap: micro.perLap, laps: micro.laps, reference: reference?.microPerLap ?? null } : null,
     sample: { telemetryLaps, lapsWithoutTelemetry, robust: telemetryLaps >= 10 },
     brakeRepeatShare: self ? brakeRepeatShare(sections, self.trackLengthMeters) : null,
     worstSector: worstSector ? { label: `S${worstSector.sector}`, spread: worstSector.stddev } : null,
@@ -269,7 +269,7 @@ async function composeDebrief(race: RaceRow, analysis: Analysis) {
   const { strengths, improvements } = strengthsAndImprovements({
     gridPosition: race.grid_position, finishPosition: race.finish_position, incidents: race.incidents, laps: race.laps,
     bestLap, cleanAverage: analysis.laps.cleanAverage, paceTrend: analysis.laps.paceTrend,
-    microPerMinute: analysis.micro?.perMinute ?? null, referenceMicroPerMinute: analysis.micro?.reference ?? null,
+    microPerLap: analysis.micro?.perLap ?? null, referenceMicroPerLap: analysis.micro?.reference ?? null,
     brakeRepeatShare: analysis.brakeRepeatShare, worstSector: analysis.worstSector, sections: analysis.sections,
   });
   return {

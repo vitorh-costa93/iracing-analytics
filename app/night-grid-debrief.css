@@ -113,9 +113,11 @@
 .ngc-toolbar .ngr-spacer { min-width: 12px; }
 .ngc-top { display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 2fr); gap: 16px; }
 .ngc-h430 { min-height: 430px; }
-.ngc-cars-head, .ngc-car { display: grid; grid-template-columns: 24px minmax(0, 1.5fr) 80px 70px 110px minmax(0, 1.2fr) 70px; gap: 12px; }
-.ngc-cars-head { padding: 6px 10px; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); }
+.ngc-cars-head, .ngc-car { display: grid; grid-template-columns: 24px minmax(0, 1.5fr) 80px 70px 150px minmax(0, 1fr) 70px; gap: 12px 20px; }
+.ngc-cars-head { padding: 6px 10px; font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--ng-soft); align-items: end; }
 .ngc-cars-head span:nth-child(3), .ngc-cars-head span:nth-child(4) { text-align: right; }
+.ngc-cars-head span:nth-child(5) { text-align: left; white-space: normal; line-height: 1.25; }
+.ngc-cars-head span:nth-child(6) { white-space: normal; line-height: 1.25; }
 .ngc-cars-list { display: flex; flex-direction: column; max-height: 300px; overflow-y: auto; }
 .ngc-car {
   align-items: center; height: 48px; padding: 0 10px; border-radius: var(--ng-radius-control); border: 1px solid transparent;

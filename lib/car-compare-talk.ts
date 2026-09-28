@@ -34,7 +34,7 @@ export function sectionMinSpeeds(own: Trace, rival: Trace, section: Pick<Section
 
 /** A frase curta do trecho, com uma observação de microcorreções quando a diferença é clara. */
 const GENERIC_GAIN = "Ponto forte, sem diferença clara nos pedais.";
-const GAIN_VARIANTS = [GENERIC_GAIN, "Mesmos comandos, e o seu carro anda mais aqui.", "Ganho que vem do carro, não da pilotagem.", "Pedais parecidos; o seu carro sai na frente neste trecho."];
+const GAIN_VARIANTS = [GENERIC_GAIN, "Mesmos comandos, e este carro anda mais aqui.", "Ganho que vem do carro, não da pilotagem.", "Pedais parecidos; este carro sai na frente neste trecho."];
 const GENERIC_LOSS = "Perde tempo sem um motivo claro nos pedais; confira o traçado.";
 const LOSS_VARIANTS = [GENERIC_LOSS, "Pedais parecidos: a perda deve vir do carro ou do traçado.", "Sem diferença clara nos comandos; olhe o traçado no mapa."];
 
@@ -75,7 +75,7 @@ export function microFootnote(cars: CarMicro[], shortName: (name: string) => str
   const fastest = cars.reduce((a, b) => (a.bestLapSeconds <= b.bestLapSeconds ? a : b));
   const calmest = withMicro.reduce((a, b) => ((a.microPerLap as number) <= (b.microPerLap as number) ? a : b));
   if (fastest.carName === calmest.carName) return `O carro mais rápido é também o que pede menos correção por volta: o ${shortName(fastest.carName)} fica mais colado ao chão.`;
-  return `Menos correção nem sempre é mais rápido aqui: você corrige menos com o ${shortName(calmest.carName)}, mas a volta mais rápida saiu com o ${shortName(fastest.carName)}.`;
+  return `Menos correção nem sempre é mais rápido aqui: quem corrige menos é o ${shortName(calmest.carName)}, mas a volta mais rápida saiu com o ${shortName(fastest.carName)}.`;
 }
 
 /**
