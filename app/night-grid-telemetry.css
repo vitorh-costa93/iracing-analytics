@@ -60,13 +60,11 @@
 .ngt-refline .ngt-link-button { height: 24px; padding: 0 10px; font-size: 12px; }
 .ngt-refline[data-tone="error"] { color: var(--ng-loss); }
 .ngt-lapwhen { font-size: 12px; color: var(--ng-soft); margin-top: 2px; }
-/* Altura vem da própria proporção do viewBox (900x372 em RepresentativeLapChart.tsx), não de
- * flex-grow disputando o que sobrar do card -- era isso que espremia o gráfico numa caixa mais baixa
- * que a proporção real, forçando o navegador a esticar o desenho pra cobrir a caixa (28/09/2026).
- * max-height trava no tamanho de sempre em telas largas (onde a largura do card sozinha já daria uma
- * altura maior que a anterior); só aceita a pequena margem lateral rara de telas muito largas, em vez
- * de deixar o card inteiro crescer. */
-.ngt-chart { width: 100%; aspect-ratio: 900 / 372; height: auto; max-height: 320px; display: block; cursor: crosshair; outline: none; }
+/* Altura fixa; a largura do viewBox (RepresentativeLapChart.tsx) segue a largura real medida via
+ * ResizeObserver, não uma proporção fixa escalada por CSS -- uma proporção fixa sempre acaba dando
+ * margem lateral OU esticando o desenho em algum tamanho de card (28/09/2026, três tentativas só de
+ * CSS confirmaram isso). Caixa e viewBox ficam sempre 1:1, sem transformação de escala. */
+.ngt-chart { width: 100%; height: 320px; display: block; cursor: crosshair; outline: none; }
 .ngt-chart:focus-visible { outline: 2px solid var(--ng-tooltip-border); outline-offset: 2px; border-radius: 4px; }
 .ngt-chart text { font-family: var(--ng-font-body); }
 .ngt-axis-label { font-size: 11px; fill: var(--ng-soft); }

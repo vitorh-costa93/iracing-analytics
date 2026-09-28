@@ -1,6 +1,6 @@
 "use client";
 
-import type { KeyboardEvent, MouseEvent, TouchEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent, type MouseEvent, type TouchEvent } from "react";
 import { lostAt, type LapComparison } from "@/lib/lap-analysis";
 import { unwrapIntoWindow } from "@/lib/corner-sequences";
 import { interpolate, type Trace, type TracePoint } from "@/lib/telemetry-trace";
@@ -9,17 +9,25 @@ import { interpolate, type Trace, type TracePoint } from "@/lib/telemetry-trace"
  * Painel "volta representativa" (Telemetry.dc.html): tempo perdido acumulado contra a referência e,
  * embaixo, acelerador e freio (você x referência) na mesma escala de distância. O hover mostra um
  * cursor ligado à bolinha do mapa Track Position e um quadro com acelerador, freio, velocidade e
- * marcha dos dois naquele ponto. Geometria do SVG igual à do mockup (viewBox 900 x 372).
+ * marcha dos dois naquele ponto.
+ *
+ * 28/09/2026: a largura (W) segue a largura real medida do card via ResizeObserver, em vez de um
+ * viewBox fixo (900x372, a proporção original do mockup) escalado por CSS -- qualquer proporção fixa
+ * ou dá sobra de margem nas laterais (letterbox) ou estica o desenho, dependendo de como o card
+ * termina de largo em cada tela; não existe um único valor de largura de card em que as duas coisas
+ * não acontecem em algum tamanho de tela. Com W = largura real em pixels e H fixo, viewBox e caixa
+ * renderizada ficam SEMPRE 1:1 -- sem transformação de escala, logo sem distorção nem margem, e o
+ * texto (font-size em px) sempre no tamanho real pretendido, não escalado junto com o desenho.
  */
-const W = 900, H = 372, X0 = 44, X1 = 884;
-const DELTA_TOP = 28, DELTA_BOTTOM = 112;
-const THR_TOP = 152, THR_BOTTOM = 212;
-const BRK_TOP = 238, BRK_BOTTOM = 298;
-const CHART_BOTTOM = 332;
+const H = 320, X0 = 44, MARGIN_RIGHT = 16;
+const DELTA_TOP = 24, DELTA_BOTTOM = 96;
+const THR_TOP = 131, THR_BOTTOM = 182;
+const BRK_TOP = 205, BRK_BOTTOM = 256;
+const CHART_BOTTOM = 286;
+const X_TICKS_Y = 306;
+const MIN_W = 320; // largura mínima antes da primeira medição, ou se o card ficar comprimido demais
 
-const xOf = (distance: number) => X0 + (distance / 100) * (X1 - X0);
-
-function pedalLine(points: TracePoint[], field: "throttle" | "brake", top: number, bottom: number) {
+function pedalLine(points: TracePoint[], field: "throttle" | "brake", top: number, bottom: number, xOf: (distance: number) => number) {
   const step = Math.max(1, Math.floor(points.length / 700));
   return points
     .filter((point, index) => index % step === 0 && point[field] !== null && Number.isFinite(point[field]))
@@ -49,6 +57,22 @@ export default function RepresentativeLapChart({ trace, referenceTrace, comparis
   hover: number | null;
   onHover: (distance: number | null) => void;
 }) {
+  const svgRef = useRef<SVGSVGElement | null>(null);
+  const [width, setWidth] = useState(MIN_W);
+  useEffect(() => {
+    const el = svgRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver((entries) => {
+      const measured = entries[0]?.contentRect.width;
+      if (measured) setWidth(Math.max(MIN_W, Math.round(measured)));
+    });
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+  const W = width;
+  const X1 = W - MARGIN_RIGHT;
+  const xOf = (distance: number) => X0 + (distance / 100) * (X1 - X0);
+
   const grid = comparison.grid;
   const values = grid.map((sample) => sample.lostSoFar);
   const lo = Math.min(0, ...values), hi = Math.max(0, ...values);
@@ -123,7 +147,7 @@ export default function RepresentativeLapChart({ trace, referenceTrace, comparis
   }
 
   return (
-    <svg className="ngt-chart" viewBox={`0 0 ${W} ${H}`} role="img" tabIndex={0}
+    <svg ref={svgRef} className="ngt-chart" viewBox={`0 0 ${W} ${H}`} role="img" tabIndex={0}
       aria-label="Tempo perdido acumulado contra a referência, acelerador e freio ao longo da volta. Setas esquerda e direita percorrem a pista."
       onMouseMove={onMove} onMouseLeave={() => onHover(null)} onTouchStart={onTouch} onTouchMove={onTouch} onKeyDown={onKey}>
       {comparison.sections.map((section) => {
@@ -147,16 +171,16 @@ export default function RepresentativeLapChart({ trace, referenceTrace, comparis
       <text x="8" y={THR_TOP - 6} className="ngt-axis-label">ACELERADOR</text>
       <line x1={X0} x2={X1} y1={THR_TOP} y2={THR_TOP} className="ngt-grid-line" />
       <line x1={X0} x2={X1} y1={THR_BOTTOM} y2={THR_BOTTOM} className="ngt-grid-line" />
-      <polyline points={pedalLine(referenceTrace.points, "throttle", THR_TOP, THR_BOTTOM)} className="ngt-ref-line" />
-      <polyline points={pedalLine(trace.points, "throttle", THR_TOP, THR_BOTTOM)} className="ngt-own-line" />
+      <polyline points={pedalLine(referenceTrace.points, "throttle", THR_TOP, THR_BOTTOM, xOf)} className="ngt-ref-line" />
+      <polyline points={pedalLine(trace.points, "throttle", THR_TOP, THR_BOTTOM, xOf)} className="ngt-own-line" />
 
       <text x="8" y={BRK_TOP - 6} className="ngt-axis-label">FREIO</text>
       <line x1={X0} x2={X1} y1={BRK_TOP} y2={BRK_TOP} className="ngt-grid-line" />
       <line x1={X0} x2={X1} y1={BRK_BOTTOM} y2={BRK_BOTTOM} className="ngt-grid-line" />
-      <polyline points={pedalLine(referenceTrace.points, "brake", BRK_TOP, BRK_BOTTOM)} className="ngt-ref-line" />
-      <polyline points={pedalLine(trace.points, "brake", BRK_TOP, BRK_BOTTOM)} className="ngt-own-line" />
+      <polyline points={pedalLine(referenceTrace.points, "brake", BRK_TOP, BRK_BOTTOM, xOf)} className="ngt-ref-line" />
+      <polyline points={pedalLine(trace.points, "brake", BRK_TOP, BRK_BOTTOM, xOf)} className="ngt-own-line" />
 
-      {xTicks.map((tick) => <text key={tick.x} x={tick.x} y="356" textAnchor="middle" className="ngt-axis-label">{tick.label}</text>)}
+      {xTicks.map((tick) => <text key={tick.x} x={tick.x} y={X_TICKS_Y} textAnchor="middle" className="ngt-axis-label">{tick.label}</text>)}
       {cursor}
     </svg>
   );
