@@ -206,7 +206,16 @@ export async function GET() {
       const isSuperFormula = /super formula sf23/i.test(car?.name ?? "");
       const usedOvertake = (lap: Garage61LapPayload) => Boolean(lap.pushToPass) || Boolean(lap.p2pStatus) || Number(lap.p2pCount ?? 0) > 0;
       const rawRaceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && (!isSuperFormula || !usedOvertake(lap)));
-      const raceLaps = isSuperFormula ? withoutLikelyOvertakeLaps(rawRaceLaps) : rawRaceLaps;
+      // "Garage61 CSVs may not include P2P; remove only conservative obvious pace outliers when a
+      // direct channel is absent" (CLAUDE.md) -- the median+MAD trim below is a blunt fallback for
+      // when Garage61 gave us NOTHING to filter by directly. When this session's payload DOES carry
+      // P2P fields, usedOvertake() above already removed every flagged lap precisely; running the
+      // statistical trim on top of that risks throwing out a genuinely fast, clean lap as a false
+      // "likely overtake" positive (28/09/2026: exactly this, Interlagos SF23 -- a real clean lap
+      // faster than the field's median got trimmed, leaving a slower lap as "sua volta").
+      const hasP2pField = (lap: Garage61LapPayload) => lap.pushToPass !== undefined || lap.p2pStatus !== undefined || lap.p2pCount !== undefined;
+      const p2pFieldAvailable = eligibleLaps.some(hasP2pField);
+      const raceLaps = isSuperFormula && !p2pFieldAvailable ? withoutLikelyOvertakeLaps(rawRaceLaps) : rawRaceLaps;
       const practiceLaps = eligibleLaps.filter((lap) => lap.sessionType === 1);
       // Race pace is the representative reference once a race exists; otherwise practice is the
       // best way to prepare for a scheduled race. Qualifying is only a last-resort fallback.

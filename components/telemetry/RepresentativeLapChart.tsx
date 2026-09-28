@@ -123,7 +123,7 @@ export default function RepresentativeLapChart({ trace, referenceTrace, comparis
   }
 
   return (
-    <svg className="ngt-chart" viewBox={`0 0 ${W} ${H}`} role="img" tabIndex={0}
+    <svg className="ngt-chart" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none" role="img" tabIndex={0}
       aria-label="Tempo perdido acumulado contra a referência, acelerador e freio ao longo da volta. Setas esquerda e direita percorrem a pista."
       onMouseMove={onMove} onMouseLeave={() => onHover(null)} onTouchStart={onTouch} onTouchMove={onTouch} onKeyDown={onKey}>
       {comparison.sections.map((section) => {
