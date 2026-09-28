@@ -49,7 +49,7 @@
 
 /* ------------------------------------------------------------------ volta representativa + mapa */
 .ngt-lap-grid { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 16px; }
-.ngt-tall { height: 470px; gap: 4px; }
+.ngt-tall { min-height: 470px; gap: 4px; }
 .ngt-legend { display: flex; gap: 14px; font-size: 12px; color: var(--ng-muted); padding-top: 4px; }
 .ngt-legend span { display: flex; align-items: center; gap: 6px; white-space: nowrap; }
 .ngt-legend i { width: 14px; height: 3px; background: var(--ng-text); display: inline-block; }
@@ -60,7 +60,11 @@
 .ngt-refline .ngt-link-button { height: 24px; padding: 0 10px; font-size: 12px; }
 .ngt-refline[data-tone="error"] { color: var(--ng-loss); }
 .ngt-lapwhen { font-size: 12px; color: var(--ng-soft); margin-top: 2px; }
-.ngt-chart { width: 100%; flex-grow: 1; min-height: 0; display: block; cursor: crosshair; outline: none; }
+/* Altura vem da própria proporção do viewBox (900x372 em RepresentativeLapChart.tsx), não de
+ * flex-grow disputando o que sobrar do card -- era isso que espremia o gráfico numa caixa mais baixa
+ * que a proporção real, forçando o navegador a sobrar margem dos dois lados (letterbox) pra não
+ * distorcer o desenho (28/09/2026). */
+.ngt-chart { width: 100%; aspect-ratio: 900 / 372; height: auto; display: block; cursor: crosshair; outline: none; }
 .ngt-chart:focus-visible { outline: 2px solid var(--ng-tooltip-border); outline-offset: 2px; border-radius: 4px; }
 .ngt-chart text { font-family: var(--ng-font-body); }
 .ngt-axis-label { font-size: 11px; fill: var(--ng-soft); }
@@ -220,7 +224,7 @@
 /* ------------------------------------------------------------------ larguras menores */
 @media (max-width: 1100px) {
   .ngt-lap-grid { grid-template-columns: minmax(0, 1fr); }
-  .ngt-tall { height: auto; }
+  .ngt-tall { height: auto; min-height: 0; }
   .ngt-tall .ngt-chart { min-height: 320px; }
   .ngt-tall .ngt-map-wrap { height: 340px; }
   .ngt-rows-head, .ngt-row { grid-template-columns: 170px minmax(0, 1fr) 80px minmax(0, 1.4fr) 90px; }
