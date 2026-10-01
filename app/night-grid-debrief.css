@@ -145,11 +145,48 @@
 
 /* restaurados (auditoria B11): condições diferentes, quem manda em cada pedaço, consistência e uso de pista */
 .ngc-conditions { margin: 6px 10px 2px; padding: 8px 12px; border-left: 3px solid var(--ng-caution); background: var(--ng-card-2); border-radius: 0 var(--ng-radius-control) var(--ng-radius-control) 0; font-size: 13px; line-height: 1.45; color: var(--ng-text-2); }
-/* 29/09/2026: só sobrou "Consistência por carro" aqui -- "Mais rápido por trecho" subiu pra ngc-top
-   (substituindo o mapa de trecho único, redundante com o popup do curva a curva). Uma coluna só até
-   a próxima análise ocupar o segundo lugar da linha. */
-.ngc-extra { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+/* 29/09/2026: "Mais rápido por trecho" subiu pra ngc-top (substituindo o mapa de trecho único,
+   redundante com o popup do curva a curva); "Evolução do gap" ocupa o lugar que sobrou aqui, ao lado
+   de "Consistência por carro". Os dois esticam pra mesma altura (stretch, padrão do flex) -- pedido
+   explícito do usuário depois de testar align-items:start (deixava um vazio no lado mais curto). O
+   painel "Evolução do gap" tem um elemento flexível (o gráfico) que cresce pra preencher a altura
+   extra, então o stretch nunca vira um retângulo vazio -- só um respiro discreto ao redor do desenho. */
+.ngc-extra { display: flex; align-items: stretch; gap: 16px; flex-wrap: wrap; }
+.ngc-extra > .ng-panel { flex: 1 1 380px; }
 .ngc-sector-map { height: 250px; display: flex; }
+.ngc-cons-spacer { flex: 1; }
+
+/* Evolução do gap: KPIs empilhados numa coluna estreita + gráfico flexível ao lado (não embaixo),
+   pra manter o painel baixo -- validado no mockup https://claude.ai/artifact/EBw6RGMXG6sQCMXiCNFcEH. */
+.ngc-gap-layout { display: flex; gap: 16px; align-items: stretch; flex: 1; min-height: 0; }
+.ngc-gap-kpis { flex: 0 0 148px; display: flex; flex-direction: column; gap: 8px; }
+.ngc-gap-pill { background: var(--ng-card-2); border: 1px solid var(--ng-line); border-radius: var(--ng-radius-control); padding: 8px 10px; flex-shrink: 0; }
+.ngc-gap-n { font-family: var(--ng-font-display); font-size: 17px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1.15; }
+.ngc-gap-n[data-tone="gain"] { color: var(--ng-gain); }
+.ngc-gap-n[data-tone="loss"] { color: var(--ng-loss); }
+.ngc-gap-l { font-size: 10.5px; color: var(--ng-soft); margin-top: 2px; line-height: 1.3; }
+.ngc-gap-legend { display: flex; flex-direction: column; gap: 5px; font-size: 11px; color: var(--ng-muted); margin-top: 2px; flex-shrink: 0; }
+.ngc-gap-legend span { display: flex; align-items: center; gap: 6px; }
+.ngc-gap-legend i { width: 12px; height: 3px; border-radius: 2px; display: inline-block; flex-shrink: 0; }
+.ngc-gap-kpis-spacer { flex: 1; }
+.ngc-gap-chart-col { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.ngc-gap-hint { margin-top: 6px; font-size: 11px; color: var(--ng-soft); flex-shrink: 0; }
+
+/* o próprio wrapper/SVG (em components/telemetry/GapEvolutionChart.tsx): cresce com flex:1 mas
+   mantém a proporção do desenho (sem preserveAspectRatio="none" -- isso deixava o gráfico com cara
+   de esticado quando a diferença de altura era grande) e centraliza, com um teto de altura. */
+.ngc-gap-chart-wrap { position: relative; flex: 1; min-height: 140px; display: flex; align-items: center; justify-content: center; }
+.ngc-gap-chart-wrap svg { width: 100%; height: 100%; max-height: 260px; }
+.ngc-gap-zero { stroke: var(--ng-border); stroke-width: 1; stroke-dasharray: 3 3; }
+.ngc-gap-zone { font-size: 9.5px; fill: var(--ng-soft); text-transform: uppercase; letter-spacing: .04em; font-family: var(--ng-font-body); }
+.ngc-gap-tick { stroke: var(--ng-line); stroke-width: 1; }
+.ngc-gap-corner-label { font-size: 9px; fill: var(--ng-soft); font-family: var(--ng-font-body); }
+.ngc-gap-area-gain { fill: color-mix(in srgb, var(--ng-gain) 18%, transparent); }
+.ngc-gap-area-loss { fill: color-mix(in srgb, var(--ng-loss) 18%, transparent); }
+.ngc-gap-line { fill: none; stroke: var(--ng-text); stroke-width: 2; }
+.ngc-gap-hover-line { stroke: var(--ng-text); stroke-width: 1; stroke-dasharray: 2 2; opacity: .6; }
+.ngc-gap-callout { position: absolute; top: 4px; background: var(--ng-bg); border: 1px solid var(--ng-border); border-radius: 6px; padding: 6px 10px; font-size: 11.5px; color: var(--ng-text-2); pointer-events: none; white-space: normal; max-width: 220px; box-shadow: 0 6px 18px rgba(0,0,0,.4); z-index: 1; }
+.ngc-gap-callout b { color: var(--ng-text); }
 .ngc-wins { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 12px; color: var(--ng-muted); margin-top: 6px; }
 .ngc-wins span { display: inline-flex; align-items: center; gap: 6px; }
 .ngc-wins i, .ngc-cons-car i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; flex-shrink: 0; }
@@ -207,6 +244,10 @@
   .ngc-row { grid-template-columns: minmax(0, 1fr) 84px; row-gap: 4px; padding: 10px; }
   .ngc-row .ngt-bar { grid-column: 1 / -1; order: 3; }
   .ngc-row .ngc-phrase { grid-column: 1 / -1; order: 4; padding: 0; }
+  .ngc-gap-layout { flex-direction: column; }
+  .ngc-gap-kpis { flex-direction: row; flex-wrap: wrap; flex-basis: auto; width: 100%; }
+  .ngc-gap-kpis .ngc-gap-pill { flex: 1 1 100px; }
+  .ngc-gap-kpis-spacer { display: none; }
 }
 @media (max-width: 640px) {
   .ngr-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
