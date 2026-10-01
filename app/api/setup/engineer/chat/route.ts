@@ -4,8 +4,10 @@ import { comparativeSummary, diffSetups, type DecodedRow } from "@/lib/setup-dif
 import { buildSystemPrompt } from "@/lib/engineer-prompt";
 import { indexRows, latestProposal, parseProposalBlock, resolveProposal, splitEngineerText, type ResolvedProposal } from "@/lib/engineer-proposal";
 import { setupDisplayName } from "@/lib/setup-names";
+import { modelFor } from "@/lib/ai-models";
+import { logAiUsage, parseOpenAiUsage, type UsageRecord } from "@/lib/ai-usage";
 
-export const maxDuration = 60; // Vercel Hobby ceiling -- a streamed gpt-4o reply routinely takes 15-40s
+export const maxDuration = 60; // Vercel Hobby ceiling -- a streamed engineer reply routinely takes 15-40s
 export const dynamic = "force-dynamic";
 
 export type StoredMessage = {
@@ -58,7 +60,6 @@ export async function GET(request: NextRequest) {
   }
 }
 
-const OPENAI_MODEL = "gpt-4o";
 const MAX_HISTORY_MESSAGES = 20; // mirrors dashboard-psi/api/post-content.js's own truncation
 const MAX_MESSAGE_LENGTH = 4000; // mirrors dashboard-psi/api/post-content.js's own per-message truncation length
 const MAX_COMPLETION_TOKENS = 1000; // CLAUDE.md rule 7 cost guard-rail -- caps spend on a single reply
@@ -180,14 +181,17 @@ export async function POST(request: NextRequest) {
       ...messages.slice(-MAX_HISTORY_MESSAGES).map((message) => ({ role: message.role, content: message.content })),
     ];
 
+    const model = modelFor("engineer");
+    const startedAt = Date.now();
     const upstream = await fetchWithRetry("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: OPENAI_MODEL, stream: true, messages: openAiMessages, max_tokens: MAX_COMPLETION_TOKENS }),
+      body: JSON.stringify({ model, stream: true, stream_options: { include_usage: true }, messages: openAiMessages, max_completion_tokens: MAX_COMPLETION_TOKENS }),
     });
     if (!upstream.ok || !upstream.body) {
       const detail = await upstream.text().catch(() => "");
       console.error(`Erro da OpenAI (${upstream.status}): ${detail.slice(0, 500)}`);
+      await logAiUsage({ task: "engineer", model, ok: false, durationMs: Date.now() - startedAt, error: `HTTP ${upstream.status}: ${detail}` });
       throw new Error(`Erro da OpenAI (status ${upstream.status}). Tente novamente.`);
     }
 
@@ -198,6 +202,7 @@ export async function POST(request: NextRequest) {
         const decoder = new TextDecoder();
         let buffer = "";
         let streamFailed = false;
+        let usageTokens: Partial<UsageRecord> = {};
         try {
           while (true) {
             const { done, value } = await reader.read();
@@ -212,6 +217,7 @@ export async function POST(request: NextRequest) {
               if (payload === "[DONE]") continue;
               try {
                 const json = JSON.parse(payload);
+                if (json.usage) usageTokens = parseOpenAiUsage(json.usage);
                 const delta: string | undefined = json.choices?.[0]?.delta?.content;
                 if (delta) { assembled += delta; controller.enqueue(encoder.encode(delta)); }
               } catch {
@@ -232,6 +238,8 @@ export async function POST(request: NextRequest) {
             // controller may already be torn down if the client disconnected -- nothing to enqueue into.
           }
         }
+
+        await logAiUsage({ task: "engineer", model, ok: !streamFailed, ...usageTokens, durationMs: Date.now() - startedAt, error: streamFailed ? "stream interrompido" : undefined });
 
         // Persistence MUST happen before controller.close() below: on Vercel's serverless runtime,
         // nothing guarantees the function invocation stays alive once the HTTP response is closed, so
