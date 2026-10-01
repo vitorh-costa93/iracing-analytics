@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Panel, SelectPill } from "@/components/ui";
 import SectionPopup from "@/components/telemetry/SectionPopup";
 import SectorWinnerMap, { type MapSegment, type OutlinePoint } from "@/components/telemetry/SectorWinnerMap";
+import GapEvolutionChart from "@/components/telemetry/GapEvolutionChart";
 import { isLossSection, SectionTotalsSummary } from "@/components/telemetry/CornerByCorner";
 import { formatLapTime, parseTelemetryCsv, type Trace } from "@/lib/telemetry-trace";
 import { compareLaps } from "@/lib/lap-analysis";
@@ -81,6 +82,7 @@ export default function CarCompareView() {
   const [traces, setTraces] = useState<{ own: Trace; rival: Trace; key: string } | null>(null);
   const [traceError, setTraceError] = useState<string | null>(null);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [hoveredGapSectionId, setHoveredGapSectionId] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -182,6 +184,17 @@ export default function CarCompareView() {
     const talk = describeSection(section, { isBiggestLoss: section.id === biggestLossId, ref: nounB, own: nounA });
     return { section, speeds, microOwn, microRival, talk };
   }) : [];
+  // Evolução do gap (29/09/2026): saldo da volta inteira e os trechos de maior vantagem/perda,
+  // mesma convenção de sinal da lista "Curva a curva" (-section.lostSeconds, positivo = carA à frente).
+  const gapKpis = comparison && sections.length ? (() => {
+    let maxGain = sections[0];
+    let maxLoss = sections[0];
+    for (const section of sections) {
+      if (section.lostSeconds < maxGain.lostSeconds) maxGain = section;
+      if (section.lostSeconds > maxLoss.lostSeconds) maxLoss = section;
+    }
+    return { finalGap: -comparison.estimatedGap, maxGain, maxLoss };
+  })() : null;
   const colorByCar = new Map(cars.map((car) => [car.carId, car.color]));
   const hasSectorMap = !!data?.trackOutline && data.trackOutline.length >= 20 && !!data.mapSegments?.length;
   const wins = segmentWins(data?.mapSegments ?? [], cars.map((car) => car.carId));
@@ -254,8 +267,32 @@ export default function CarCompareView() {
             )}
           </div>
 
-          {cars.some((car) => car.lapTimeConsistency || car.inputConsistency || car.trackUsage) && (
+          {(comparison || cars.some((car) => car.lapTimeConsistency || car.inputConsistency || car.trackUsage)) && (
             <div className="ngc-extra">
+              {comparison && gapKpis && carA && carB && (
+                <Panel kicker="Evolução do gap" title="Onde a diferença se abre (ou fecha)"
+                  subtitle={`Diferença acumulada entre ${shortA} e ${shortB} ao longo da volta.`}>
+                  <div className="ngc-gap-layout">
+                    <div className="ngc-gap-kpis">
+                      <div className="ngc-gap-pill"><div className="ngc-gap-n" data-tone={gapKpis.finalGap >= 0 ? "gain" : "loss"}>{formatSignedSeconds(gapKpis.finalGap)}</div><div className="ngc-gap-l">saldo final da volta</div></div>
+                      <div className="ngc-gap-pill"><div className="ngc-gap-n" data-tone="gain">{formatSignedSeconds(-gapKpis.maxGain.lostSeconds)}</div><div className="ngc-gap-l">maior vantagem ({gapKpis.maxGain.label})</div></div>
+                      <div className="ngc-gap-pill"><div className="ngc-gap-n" data-tone="loss">{formatSignedSeconds(-gapKpis.maxLoss.lostSeconds)}</div><div className="ngc-gap-l">maior perda ({gapKpis.maxLoss.label})</div></div>
+                      <div className="ngc-gap-legend">
+                        <span><i style={{ background: "var(--ng-text)" }} />Gap acumulado</span>
+                        <span><i style={{ background: "var(--ng-gain)" }} />Ganhando</span>
+                        <span><i style={{ background: "var(--ng-loss)" }} />Perdendo</span>
+                      </div>
+                      <div className="ngc-gap-kpis-spacer" />
+                    </div>
+                    <div className="ngc-gap-chart-col">
+                      <GapEvolutionChart grid={comparison.grid} rows={rows} hoveredSectionId={hoveredGapSectionId}
+                        onHoverSection={setHoveredGapSectionId}
+                        onOpenSection={(id) => { setOpenId(id); trackUiEvent("telemetry_opportunity_opened", { carId: carA.carId, trackId: data?.track?.id, category: "gap_evolution", tab: "cars" }); }} />
+                      <div className="ngc-gap-hint">Passe o mouse num ponto da linha pra ver o trecho · clique pra abrir a análise completa.</div>
+                    </div>
+                  </div>
+                </Panel>
+              )}
               <Panel kicker="Consistência por carro" title="Quanto cada carro repete e quanto usa da pista"
                 subtitle="Nas voltas plausíveis de cada carro: variação do tempo de volta, dos pedais e do volante, e quanto da largura da pista a volta usa.">
                 <div className="ngc-cons" role="table" aria-label="Consistência e uso da pista por carro">
@@ -272,6 +309,7 @@ export default function CarCompareView() {
                   ))}
                 </div>
                 <div className="ngc-foot">Uso da pista: 0% é andar sempre no meio, 100% é colar na borda (acima de 100% passa da borda marcada no mapa).</div>
+                <div className="ngc-cons-spacer" />
               </Panel>
             </div>
           )}
