@@ -1,10 +1,10 @@
 # Claude handoff - Racing Analytics
 
-Read this file first for continuity, then read `AGENTS.md` and `PROJECT_CONTEXT.md` before changing code, SQL, sync behavior, or business rules. The repository is a personal, single-user iRacing analytics application deployed on Vercel.
+Read this file first for continuity, then `AGENTS.md` (source of the working rules) before changing code, SQL, sync behavior, or business rules. `PROJECT_CONTEXT.md` (~21k tokens) only on demand, when the task needs deep background. The repository is a personal, single-user iRacing analytics application deployed on Vercel.
 
 ## Current baseline
 
-- Branch: `main`, synchronized with `origin/main` at `6ba7677` (03/09/2026).
+- Branch: `main` (check `git status -sb` for sync state; do not trust a hash recorded here).
 - Stack: Next.js 15 / React 19 / TypeScript / Supabase PostgreSQL + Storage / Vercel.
 - Production: `https://iracing-analytics.vercel.app`.
 - Main source of truth for race results, season activity, and iRating: iRStats imports in `race_results` and `v_race_results_irating`.
@@ -110,27 +110,9 @@ The browser cannot execute Analytics-origin JavaScript inside Garage61 or iRStat
 
 Always inspect migrations, the live schema, and view consumers before changing database contracts. Use `npx supabase db query --linked` for read-only validation and migrations for mutations.
 
-## History through 03/09/2026
+## History
 
-### Foundation - 19 to 27 August
-
-- Supabase project was linked safely and baseline schema exported. Garage61 incremental session sync, seven-day overlap, idempotency, and sync observability were established.
-- Results moved from inferred Garage61 data to iRStats browser import. `race_results`, iRating reconstruction views, Road context support, Setup event identity, and data architecture documentation were added.
-- Active-week telemetry, reference uploads, detailed comparison, debrief, sector consistency, and setup comparison were implemented. The original Chrome extension bridge was replaced by portable bookmarklets.
-
-### Telemetry/data hardening - 28 to 31 August
-
-- Fixed gaps in live data sync for laps, sectors, and rating history; adopted Supabase-first telemetry UI and iRStats-only KPI source.
-- Added line-distance/track-usage analysis, synchronized gear/steering widget, corner ideal line, race-survival fallback pace, P2P upload correction, and touch/mobile telemetry improvements.
-- Replaced synthetic track ribbons with real OSM boundaries, expanded the boundary library, discarded disconnected alternate layouts, and verified full-lap GPS coverage before analysis.
-- Corrected Algarve corner names/counts, switched detection toward GPS heading, rebuilt Car Comparison around season -> track -> class/car selection, plausible lap-time clustering, real per-corner maps/charts, and GTP/GT3 separation.
-
-### UI and reliability - 1 to 3 September
-
-- Added drag-to-pan and cursor-centered scroll zoom across maps; improved focused widgets, minimap sizing, light/dark mode, Safety Rating badge, mobile navigation, comparison table Delta Bar, and chart/popup legibility.
-- Fixed the missing Vercel schedule root cause, then adjusted it to the Vercel Hobby daily limit. Added sync route time limits to avoid silent hangs.
-- Reworked iRating anchoring after diagnostic validation: confirmed stable snapshot, its true timestamp, bounded two-day recency correction, and no `MAX()` shortcut.
-- Fixed pagination limits in comparison queries, broken/partial Garage61 laps, Le Mans boundary length, setup imports from Practice, Laboratory car-name resolution, week-card matching by class instead of exact car, and opportunity cards to display real corner geometry instead of a generic 5% bin.
+Past milestones (Aug-Sep 2026) live in `docs/HISTORY.md`; read only on demand. Rules source of truth: `AGENTS.md`. `PROJECT_CONTEXT.md` is large (~434 lines): read only when a task needs it.
 
 ## Validation and publication
 

@@ -1,6 +1,6 @@
 # AGENTS.md — Racing Analytics
 
-Estas instruções valem para todo o repositório. Leia também `PROJECT_CONTEXT.md` antes de alterar código, SQL, sincronização ou regras de negócio.
+Estas instruções valem para todo o repositório (fonte das regras). Leia `PROJECT_CONTEXT.md` apenas sob demanda, quando a tarefa exigir contexto profundo, antes de alterar código, SQL, sincronização ou regras de negócio.
 
 ## Princípios de trabalho
 
