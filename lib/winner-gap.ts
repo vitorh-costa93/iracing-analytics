@@ -41,11 +41,30 @@ export function classWinnerFastestLap(
   return winner?.fastestLapTime ?? null;
 }
 
+/** Best lap among the finishers of the driver's own class (the whole field in a single-class race).
+ * This is the gap reference: the winner is not necessarily the fastest driver. Null when the class
+ * can't be resolved or nobody has a timed lap. */
+export function classFastestLap(
+  race: { multiclass: boolean; carName: string; finishers: Finisher[] },
+  classOf: (carName: string) => string | null
+): string | null {
+  const ownClass = race.multiclass ? classOf(race.carName) : null;
+  if (race.multiclass && !ownClass) return null;
+  let best: { text: string; seconds: number } | null = null;
+  for (const finisher of race.finishers) {
+    if (race.multiclass && classOf(finisher.carName) !== ownClass) continue;
+    const seconds = parseLapTimeSeconds(finisher.fastestLapTime);
+    if (seconds === null || !finisher.fastestLapTime) continue;
+    if (!best || seconds < best.seconds) best = { text: finisher.fastestLapTime, seconds };
+  }
+  return best?.text ?? null;
+}
+
 export type WinnerGapRace = {
   track_name: string;
   car_name?: string | null;
   fastest_lap_time: string | null;
-  winner_fastest_lap_time: string | null;
+  class_fastest_lap_time: string | null;
   series_name?: string | null;
   laps?: number | null;
 };
@@ -102,12 +121,13 @@ export function dropEarlyExitRaces<T extends WinnerGapRace>(rows: T[]): T[] {
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
-/** `by: "car"` groups by car name instead (the label still comes out in `track`). Sorted by average gap in seconds, smallest (most negative = you were faster) first. The
- * percentage stays on each item for display. */
+/** Gap = your best lap minus the best lap of your class in that race (never negative, since you
+ * are part of the field). `by: "car"` groups by car name instead (the label still comes out in
+ * `track`). Sorted by average gap in seconds, smallest first; the percentage stays for display. */
 export function aggregateWinnerGapByTrack(rows: WinnerGapRace[], by: "track" | "car" = "track"): WinnerGapByTrack[] {
   const byTrack = new Map<string, Array<{ seconds: number; pct: number }>>();
   for (const row of rows) {
-    const gap = raceWinnerGap(row.fastest_lap_time, row.winner_fastest_lap_time);
+    const gap = raceWinnerGap(row.fastest_lap_time, row.class_fastest_lap_time);
     if (!gap || Math.abs(gap.pct) > MAX_PLAUSIBLE_GAP_PCT) continue;
     const key = by === "car" ? row.car_name : row.track_name;
     if (!key) continue;

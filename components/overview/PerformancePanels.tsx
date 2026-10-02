@@ -66,20 +66,21 @@ export function gapOverall(items: WinnerGapItem[]) {
   return races ? items.reduce((s, i) => s + i.avgGapPct * i.races, 0) / races : 0;
 }
 
-/** Medida 2: gap em segundos para a melhor volta do vencedor, por pista. Negativo (verde) = você foi
- * mais rápido que o vencedor; positivo (vermelho) = mais lento. Só itens com mais de uma corrida; 5 menores e 5 maiores gaps. */
+/** Medida 2: gap em segundos para a melhor volta da sua classe na corrida (você faz parte do grupo,
+ * então o gap nunca é negativo; zero = a melhor volta foi sua). Só itens com mais de uma corrida;
+ * 5 menores e 5 maiores gaps. */
 export function GapToWinner({ items: allItems, kind = "track" }: { items: WinnerGapItem[]; kind?: "track" | "car" }) {
   // Só pistas com mais de uma corrida; até 5 menores e 5 maiores gaps (mesma seleção da Medida 1).
   const eligible = allItems.filter((i) => i.races > 1).sort((a, b) => a.avgGapSeconds - b.avgGapSeconds);
   const items = eligible.length > 10 ? [...eligible.slice(0, 5), ...eligible.slice(-5)] : eligible;
-  if (!items.length) return <div className="ngo-empty">Ainda sem itens com mais de uma corrida com a volta do vencedor.</div>;
+  if (!items.length) return <div className="ngo-empty">Ainda sem itens com mais de uma corrida com a melhor volta da classe.</div>;
   const min = Math.min(...items.map((i) => i.avgGapSeconds), 0);
   const max = Math.max(...items.map((i) => i.avgGapSeconds), 0);
   const range = Math.max(max - min, 0.001);
   const zero = (-min / range) * 100;
   return (
     <div className="ngo-rank">
-      <div className="ngo-rank-axis"><span /><span><span>VOCÊ MAIS RÁPIDO</span><span>VENCEDOR MAIS RÁPIDO</span></span><span /></div>
+      <div className="ngo-rank-axis"><span /><span><span>MAIS PERTO</span><span>MAIS LONGE</span></span><span /></div>
       {items.map((item) => {
         const faster = item.avgGapSeconds <= 0;
         const tone = faster ? "var(--ng-gain)" : "var(--ng-loss)";

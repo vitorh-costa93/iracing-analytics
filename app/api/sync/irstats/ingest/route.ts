@@ -67,22 +67,22 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: "error", message: roadCountError.message }, { status: 500, headers: CORS_HEADERS });
   }
 
-  // One-time backfill of the class winner's best lap: races imported before that column existed
+  // One-time backfill of the class best lap: races imported before that column existed
   // are re-sent by the browser script (same parser/upsert, so idempotent). Bounded to rows still
   // missing the value and by WINNER_BACKFILL_LIMIT.
   const { data: missingRows, error: missingError } = await supabaseAdmin
     .from("race_results")
     .select("irstats_race_id")
     .eq("driver_id", driver.id)
-    .is("winner_fastest_lap_time", null)
+    .is("class_fastest_lap_time", null)
     .order("raced_at", { ascending: false })
     .limit(WINNER_BACKFILL_LIMIT);
   if (missingError) {
     return NextResponse.json({ status: "error", message: missingError.message }, { status: 500, headers: CORS_HEADERS });
   }
-  const missingWinnerIds = (missingRows ?? []).map((row) => row.irstats_race_id as number);
+  const missingBackfillIds = (missingRows ?? []).map((row) => row.irstats_race_id as number);
 
-  return NextResponse.json({ status: "ok", knownIds, roadCount: roadCount ?? 0, missingWinnerIds }, { headers: CORS_HEADERS });
+  return NextResponse.json({ status: "ok", knownIds, roadCount: roadCount ?? 0, missingBackfillIds }, { headers: CORS_HEADERS });
 }
 
 export async function POST(request: NextRequest) {

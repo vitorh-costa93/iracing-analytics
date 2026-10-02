@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateWinnerGapByTrack, dropEarlyExitRaces, classWinnerFastestLap, normalizeRaceClass, parseLapTimeSeconds, raceWinnerGap } from "./winner-gap";
+import { aggregateWinnerGapByTrack, dropEarlyExitRaces, classFastestLap, classWinnerFastestLap, normalizeRaceClass, parseLapTimeSeconds, raceWinnerGap } from "./winner-gap";
 
 const classes: Record<string, string> = {
   "Acura ARX-06 GTP": "GTP",
@@ -67,10 +67,10 @@ describe("raceWinnerGap", () => {
 describe("aggregateWinnerGapByTrack", () => {
   it("averages per track, skips races without both laps, and sorts by smallest gap in seconds first", () => {
     const result = aggregateWinnerGapByTrack([
-      { track_name: "Monza", fastest_lap_time: "1:22.000", winner_fastest_lap_time: "1:21.000" },
-      { track_name: "Monza", fastest_lap_time: "1:21.500", winner_fastest_lap_time: "1:21.000" },
-      { track_name: "Suzuka", fastest_lap_time: "1:40.000", winner_fastest_lap_time: "1:40.000" },
-      { track_name: "Spa", fastest_lap_time: null, winner_fastest_lap_time: "2:00.000" },
+      { track_name: "Monza", fastest_lap_time: "1:22.000", class_fastest_lap_time: "1:21.000" },
+      { track_name: "Monza", fastest_lap_time: "1:21.500", class_fastest_lap_time: "1:21.000" },
+      { track_name: "Suzuka", fastest_lap_time: "1:40.000", class_fastest_lap_time: "1:40.000" },
+      { track_name: "Spa", fastest_lap_time: null, class_fastest_lap_time: "2:00.000" },
     ]);
     expect(result.map((row) => row.track)).toEqual(["Suzuka", "Monza"]);
     const monza = result[1];
@@ -84,8 +84,8 @@ describe("aggregateWinnerGapByTrack", () => {
 describe("aggregateWinnerGapByTrack outliers and car grouping", () => {
   it("drops races whose gap is implausible (>5%)", () => {
     const result = aggregateWinnerGapByTrack([
-      { track_name: "Imola", fastest_lap_time: "1:30.000", winner_fastest_lap_time: "1:29.000" },
-      { track_name: "Imola", fastest_lap_time: "2:26.000", winner_fastest_lap_time: "1:29.000" },
+      { track_name: "Imola", fastest_lap_time: "1:30.000", class_fastest_lap_time: "1:29.000" },
+      { track_name: "Imola", fastest_lap_time: "2:26.000", class_fastest_lap_time: "1:29.000" },
     ]);
     expect(result[0].races).toBe(1);
     expect(result[0].avgGapSeconds).toBeCloseTo(1);
@@ -94,8 +94,8 @@ describe("aggregateWinnerGapByTrack outliers and car grouping", () => {
   it("can group by car", () => {
     const result = aggregateWinnerGapByTrack(
       [
-        { track_name: "A", car_name: "X", fastest_lap_time: "1:30.000", winner_fastest_lap_time: "1:29.000" },
-        { track_name: "B", car_name: "X", fastest_lap_time: "1:30.000", winner_fastest_lap_time: "1:28.000" },
+        { track_name: "A", car_name: "X", fastest_lap_time: "1:30.000", class_fastest_lap_time: "1:29.000" },
+        { track_name: "B", car_name: "X", fastest_lap_time: "1:30.000", class_fastest_lap_time: "1:28.000" },
       ],
       "car"
     );
@@ -106,7 +106,7 @@ describe("aggregateWinnerGapByTrack outliers and car grouping", () => {
 });
 
 describe("dropEarlyExitRaces", () => {
-  const base = { track_name: "Spa", car_name: "SF23", series_name: "SF", fastest_lap_time: "1:54.000", winner_fastest_lap_time: "1:52.000" };
+  const base = { track_name: "Spa", car_name: "SF23", series_name: "SF", fastest_lap_time: "1:54.000", class_fastest_lap_time: "1:52.000" };
   it("drops races finished under 60% of the usual distance, keeps full ones", () => {
     const rows = [
       { ...base, laps: 19 }, { ...base, laps: 19 }, { ...base, laps: 20 }, { ...base, laps: 19 },
@@ -121,5 +121,24 @@ describe("dropEarlyExitRaces", () => {
       { ...base, laps: null },
     ];
     expect(dropEarlyExitRaces(rows)).toHaveLength(4);
+  });
+});
+
+describe("classFastestLap", () => {
+  const finishers = [
+    { carName: "Acura ARX-06 GTP", fastestLapTime: "1:40.500" },
+    { carName: "Ferrari 296 GT3", fastestLapTime: "1:47.900" },
+    { carName: "Ferrari 296 GT3", fastestLapTime: "1:47.200" },
+    { carName: "BMW M4 GT3", fastestLapTime: null },
+  ];
+  it("single class: best lap of the whole field, even when the winner didn't set it", () => {
+    const race = { multiclass: false, carName: "X", finishers: [{ carName: "X", fastestLapTime: "1:20.474" }, { carName: "X", fastestLapTime: "1:18.881" }] };
+    expect(classFastestLap(race, () => null)).toBe("1:18.881");
+  });
+  it("multiclass: best lap among the driver's own class only", () => {
+    expect(classFastestLap({ multiclass: true, carName: "Ferrari 296 GT3", finishers }, (name) => classes[name] ?? null)).toBe("1:47.200");
+  });
+  it("multiclass with unresolved class returns null", () => {
+    expect(classFastestLap({ multiclass: true, carName: "Unknown", finishers }, (name) => classes[name] ?? null)).toBeNull();
   });
 });

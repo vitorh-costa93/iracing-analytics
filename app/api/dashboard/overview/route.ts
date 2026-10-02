@@ -574,17 +574,17 @@ export async function GET(request: Request) {
       }
     }
 
-    // Gap to the class winner's best lap, per track. Only races imported after the column existed
-    // carry winner_fastest_lap_time, so this set is small and grows forward.
+    // Gap to the best lap of your class in each race, per track. Only races with class_fastest_lap_time
+    // (set on import, one-time bookmarklet backfill for older races) enter.
     const winnerGapAllRows: WinnerGapRace[] = [];
     {
       const pageSize = 1000;
       for (let offset = 0; ; offset += pageSize) {
         const { data: page, error: pageError } = await supabaseAdmin
           .from("race_results")
-          .select("track_name,car_name,series_name,laps,fastest_lap_time,winner_fastest_lap_time")
+          .select("track_name,car_name,series_name,laps,fastest_lap_time,class_fastest_lap_time")
           .eq("driver_id", driver.id)
-          .not("winner_fastest_lap_time", "is", null)
+          .not("class_fastest_lap_time", "is", null)
           .order("raced_at", { ascending: true })
           .range(offset, offset + pageSize - 1);
         if (pageError) throwSupabaseError("race_results (winner gap)", pageError);

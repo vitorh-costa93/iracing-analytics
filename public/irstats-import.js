@@ -156,17 +156,17 @@
       if (page > 30) { log("Limite de páginas atingido (30), parando."); break; }
     }
 
-    // One-time full-history backfill of the winner's best lap (gap-to-winner). The server lists
+    // One-time full-history backfill of the class best lap (gap reference). The server lists
     // races in that window still missing it; re-sending them is idempotent (same upsert key).
-    var winnerBackfillDone = window.localStorage.getItem("iis_winner_backfill_all") === "1";
-    var winnerBackfillIds = winnerBackfillDone ? [] : (knownData.missingWinnerIds || []).filter(function (id) { return newRaceIds.indexOf(id) === -1; });
-    if (winnerBackfillIds.length) {
-      log(winnerBackfillIds.length + " corrida(s) do histórico sem gap p/ vencedor: reimportando.");
-      newRaceIds = newRaceIds.concat(winnerBackfillIds);
+    var classBestBackfillDone = window.localStorage.getItem("iis_class_best_backfill") === "1";
+    var classBestBackfillIds = classBestBackfillDone ? [] : (knownData.missingBackfillIds || []).filter(function (id) { return newRaceIds.indexOf(id) === -1; });
+    if (classBestBackfillIds.length) {
+      log(classBestBackfillIds.length + " corrida(s) do histórico sem a melhor volta da classe: reimportando.");
+      newRaceIds = newRaceIds.concat(classBestBackfillIds);
     }
 
     if (!newRaceIds.length) {
-      if (!winnerBackfillDone) window.localStorage.setItem("iis_winner_backfill_all", "1");
+      if (!classBestBackfillDone) window.localStorage.setItem("iis_class_best_backfill", "1");
       if (ROAD_RECONCILIATION && !forceRoadAudit) window.localStorage.setItem("iis_import_schema", "2");
       complete("iRStats lido: nenhuma corrida nova para importar.");
       return;
@@ -221,7 +221,7 @@
 
     // Mark the backfill done only on a clean run; unresolvable classes would otherwise be retried
     // forever, so a run that finished without errors closes it even if some stay null.
-    if (!winnerBackfillDone && totalFailed === 0) window.localStorage.setItem("iis_winner_backfill_all", "1");
+    if (!classBestBackfillDone && totalFailed === 0) window.localStorage.setItem("iis_class_best_backfill", "1");
     if (ROAD_RECONCILIATION && totalFailed === 0 && !forceRoadAudit) window.localStorage.setItem("iis_import_schema", "2");
     complete("iRStats lido: " + totalImported + " corrida(s) nova(s) importada(s), " + totalFailed + " com erro.");
   }

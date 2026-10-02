@@ -2,7 +2,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { fetchIrstatsPage, parseRaceDetailPage, parseRaceListPage } from "@/lib/irstats";
-import { classWinnerFastestLap, normalizeRaceClass } from "@/lib/winner-gap";
+import { classFastestLap, classWinnerFastestLap, normalizeRaceClass } from "@/lib/winner-gap";
 
 // The rate-limited sequential fetch loop below can run well past a platform's default serverless
 // timeout (commonly 10s). Give it real headroom and force dynamic rendering (no caching) since
@@ -143,6 +143,7 @@ export async function importRaceFromHtml(raceId: number, html: string, driverId:
     fastest_lap_time: parsed.fastestLapTime,
     race_fastest_lap_time: parsed.raceFastestLapTime,
     winner_fastest_lap_time: classWinnerFastestLap(parsed, classOf),
+    class_fastest_lap_time: classFastestLap(parsed, classOf),
     incidents: parsed.incidents,
     points: parsed.points,
     sof: parsed.sof,
