@@ -597,10 +597,17 @@ export async function GET(request: Request) {
     // corrida vem do mesmo car_class do histórico, para as duas medidas falarem dos mesmos contextos.
     const classByCar = new Map<string, string | null>();
     for (const row of historical as Array<{ car: string; car_class: string | null }>) classByCar.set(row.car, row.car_class);
+    // GT3 e IMSA seguem os toggles da Medida 1 (Pista/Carro e, no IMSA por pista, a classe).
+    const gapPair = (rows: WinnerGapRace[]) => ({ track: aggregateWinnerGapByTrack(rows, "track"), car: aggregateWinnerGapByTrack(rows, "car") });
+    const imsaGapRows = winnerGapRows.filter((row) => ["GTP", "LMP2"].includes(classByCar.get(row.car_name ?? "") ?? ""));
     const winnerGapBySegment = {
       sf: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => /super formula/i.test(row.car_name ?? ""))),
-      gt3: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => classByCar.get(row.car_name ?? "") === "GT3")),
-      imsa: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => ["GTP", "LMP2"].includes(classByCar.get(row.car_name ?? "") ?? ""))),
+      gt3: gapPair(winnerGapRows.filter((row) => classByCar.get(row.car_name ?? "") === "GT3")),
+      imsa: {
+        all: gapPair(imsaGapRows),
+        GTP: gapPair(imsaGapRows.filter((row) => classByCar.get(row.car_name ?? "") === "GTP")),
+        LMP2: gapPair(imsaGapRows.filter((row) => classByCar.get(row.car_name ?? "") === "LMP2")),
+      },
     };
 
     function streakStats(rows: { irating_delta: number }[]) {

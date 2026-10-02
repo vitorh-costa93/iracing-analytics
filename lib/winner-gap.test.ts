@@ -80,3 +80,27 @@ describe("aggregateWinnerGapByTrack", () => {
     expect(monza.worstGapSeconds).toBeCloseTo(1);
   });
 });
+
+describe("aggregateWinnerGapByTrack outliers and car grouping", () => {
+  it("drops races whose gap is implausible (>5%)", () => {
+    const result = aggregateWinnerGapByTrack([
+      { track_name: "Imola", fastest_lap_time: "1:30.000", winner_fastest_lap_time: "1:29.000" },
+      { track_name: "Imola", fastest_lap_time: "2:26.000", winner_fastest_lap_time: "1:29.000" },
+    ]);
+    expect(result[0].races).toBe(1);
+    expect(result[0].avgGapSeconds).toBeCloseTo(1);
+  });
+
+  it("can group by car", () => {
+    const result = aggregateWinnerGapByTrack(
+      [
+        { track_name: "A", car_name: "X", fastest_lap_time: "1:30.000", winner_fastest_lap_time: "1:29.000" },
+        { track_name: "B", car_name: "X", fastest_lap_time: "1:30.000", winner_fastest_lap_time: "1:28.000" },
+      ],
+      "car"
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].track).toBe("X");
+    expect(result[0].races).toBe(2);
+  });
+});

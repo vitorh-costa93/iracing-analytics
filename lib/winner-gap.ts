@@ -65,18 +65,24 @@ export function raceWinnerGap(ownLap: string | null, winnerLap: string | null): 
   return { seconds, pct: (seconds / winner) * 100 };
 }
 
+/** A best lap more than 5% from the winner's is a damaged/aborted race, not pace (e.g. +56 s at
+ * Imola) and would swamp the averages, so such races are left out of the gap statistics. */
+export const MAX_PLAUSIBLE_GAP_PCT = 5;
+
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
-/** Sorted by average gap in seconds, smallest (most negative = you were faster) first. The
+/** `by: "car"` groups by car name instead (the label still comes out in `track`). Sorted by average gap in seconds, smallest (most negative = you were faster) first. The
  * percentage stays on each item for display. */
-export function aggregateWinnerGapByTrack(rows: WinnerGapRace[]): WinnerGapByTrack[] {
+export function aggregateWinnerGapByTrack(rows: WinnerGapRace[], by: "track" | "car" = "track"): WinnerGapByTrack[] {
   const byTrack = new Map<string, Array<{ seconds: number; pct: number }>>();
   for (const row of rows) {
     const gap = raceWinnerGap(row.fastest_lap_time, row.winner_fastest_lap_time);
-    if (!gap) continue;
-    const list = byTrack.get(row.track_name) ?? [];
+    if (!gap || Math.abs(gap.pct) > MAX_PLAUSIBLE_GAP_PCT) continue;
+    const key = by === "car" ? row.car_name : row.track_name;
+    if (!key) continue;
+    const list = byTrack.get(key) ?? [];
     list.push(gap);
-    byTrack.set(row.track_name, list);
+    byTrack.set(key, list);
   }
   return [...byTrack.entries()]
     .map(([track, gaps]) => ({

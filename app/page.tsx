@@ -91,7 +91,11 @@ type DashboardData = {
     sports_car: { current: number; best: number };
   };
   winnerGapByTrack?: WinnerGapItem[];
-  winnerGapBySegment?: { sf: WinnerGapItem[]; gt3: WinnerGapItem[]; imsa: WinnerGapItem[] };
+  winnerGapBySegment?: {
+    sf: WinnerGapItem[];
+    gt3: { track: WinnerGapItem[]; car: WinnerGapItem[] };
+    imsa: Record<"all" | "GTP" | "LMP2", { track: WinnerGapItem[]; car: WinnerGapItem[] }>;
+  };
 };
 
 type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
@@ -362,7 +366,10 @@ export default function Home() {
   const perfItems = activePerfTab === "sf" ? rankings.tracks : activePerfTab === "gt3" ? rankings.gt3 : rankings.imsa;
   const perfLabel = activePerfTab === "sf" ? "SUPER FORMULA 23" : activePerfTab === "gt3" ? "GT3" : "IMSA GTP / LMP2";
   const perfTabOptions = ([{ value: "sf", label: "Super Formula" }, { value: "gt3", label: "GT3" }, { value: "imsa", label: "IMSA GTP / LMP2" }] as const).filter((option) => perfTabsAvailable.includes(option.value));
-  const gapItems = data.winnerGapBySegment?.[activePerfTab] ?? [];
+  const gapSegments = data.winnerGapBySegment;
+  const gapItems = (activePerfTab === "sf" ? gapSegments?.sf
+    : activePerfTab === "gt3" ? gapSegments?.gt3?.[gt3Mode]
+    : gapSegments?.imsa?.[imsaMode === "track" ? imsaClass : "all"]?.[imsaMode]) ?? [];
   const seasonWeek = data.kpis.formula.irating.week;
 
   return (
@@ -471,9 +478,9 @@ export default function Home() {
               ) : undefined}>
               <DeltaByContext items={perfItems} kind={perfMode as RankingMode} />
             </Panel>
-            <Panel kicker={`MEDIDA 2 · ${perfLabel} · GAP PARA O VENCEDOR`} title="Sua melhor volta vs. a do vencedor" titleSize="sm" as="article"
-              subtitle={<>Vencedor da sua classe · 5 menores e 5 maiores gaps em segundos, pistas com 2+ corridas{gapItems.length ? ` · média do segmento ${percentText(gapOverall(gapItems))}` : ""}</>}>
-              <GapToWinner items={gapItems} />
+            <Panel kicker={`MEDIDA 2 · ${perfLabel} · GAP PARA O VENCEDOR`} title={`Sua melhor volta vs. a do vencedor, por ${perfMode === "car" ? "carro" : "pista"}`} titleSize="sm" as="article"
+              subtitle={<>Vencedor da sua classe · 5 menores e 5 maiores gaps em segundos, 2+ corridas por item, sem voltas fora do ritmo (acima de 5%){gapItems.length ? ` · média do segmento ${percentText(gapOverall(gapItems))}` : ""}</>}>
+              <GapToWinner items={gapItems} kind={perfMode as RankingMode} />
             </Panel>
           </div>
         </section>
