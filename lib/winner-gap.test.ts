@@ -65,7 +65,7 @@ describe("raceWinnerGap", () => {
 });
 
 describe("aggregateWinnerGapByTrack", () => {
-  it("averages per track, skips races without both laps, and sorts smallest gap first", () => {
+  it("averages per track, skips races without both laps, and sorts by smallest gap in seconds first", () => {
     const result = aggregateWinnerGapByTrack([
       { track_name: "Monza", fastest_lap_time: "1:22.000", winner_fastest_lap_time: "1:21.000" },
       { track_name: "Monza", fastest_lap_time: "1:21.500", winner_fastest_lap_time: "1:21.000" },

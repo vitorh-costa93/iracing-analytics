@@ -66,17 +66,21 @@ export function gapOverall(items: WinnerGapItem[]) {
   return races ? items.reduce((s, i) => s + i.avgGapPct * i.races, 0) / races : 0;
 }
 
-/** Medida 2: gap percentual para a melhor volta do vencedor, por pista (menor para maior). */
+/** Medida 2: gap em segundos para a melhor volta do vencedor, por pista. Negativo (verde) = você foi
+ * mais rápido que o vencedor; positivo (vermelho) = mais lento. Ordenado do menor para o maior gap. */
 export function GapToWinner({ items }: { items: WinnerGapItem[] }) {
   if (!items.length) return <div className="ngo-empty">Ainda sem corridas com a volta do vencedor. Ela passa a ser capturada nas próximas importações do iRStats.</div>;
-  const maxPct = Math.max(...items.map((i) => Math.abs(i.avgGapPct)), 0.01);
-  const overall = gapOverall(items);
+  const min = Math.min(...items.map((i) => i.avgGapSeconds), 0);
+  const max = Math.max(...items.map((i) => i.avgGapSeconds), 0);
+  const range = Math.max(max - min, 0.001);
+  const zero = (-min / range) * 100;
   return (
     <div className="ngo-rank">
-      <div className="ngo-rank-axis"><span /><span><span>MAIS PERTO</span><span>MAIS LONGE</span></span><span /></div>
+      <div className="ngo-rank-axis"><span /><span><span>VOCÊ MAIS RÁPIDO</span><span>VENCEDOR MAIS RÁPIDO</span></span><span /></div>
       {items.map((item) => {
-        const tone = item.avgGapPct <= overall ? "var(--ng-gain)" : "var(--ng-loss)";
-        const w = Math.max((Math.abs(item.avgGapPct) / maxPct) * 100, 2);
+        const faster = item.avgGapSeconds <= 0;
+        const tone = faster ? "var(--ng-gain)" : "var(--ng-loss)";
+        const w = Math.max((Math.abs(item.avgGapSeconds) / range) * 100, 1);
         return (
           <div className="ngo-rank-row" key={item.track}>
             <div className="ngo-rank-label">
@@ -86,7 +90,10 @@ export function GapToWinner({ items }: { items: WinnerGapItem[] }) {
                 <div className="ngo-rank-sub">{item.races} corr. · melhor {seconds(item.bestGapSeconds)} · pior {seconds(item.worstGapSeconds)}</div>
               </div>
             </div>
-            <div className="ngo-rank-bar"><span style={{ background: tone, left: 0, width: `${w}%` }} /></div>
+            <div className="ngo-rank-bar">
+              {min < 0 && <i className="ngo-rank-center" style={{ left: `${zero}%` }} />}
+              <span style={{ background: tone, left: faster ? `${zero - w}%` : `${zero}%`, width: `${w}%` }} />
+            </div>
             <div className="ngo-rank-value ngo-rank-value-2" style={{ color: tone }}>média {seconds(item.avgGapSeconds)}<span>{percent(item.avgGapPct)}</span></div>
           </div>
         );

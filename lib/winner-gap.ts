@@ -67,8 +67,8 @@ export function raceWinnerGap(ownLap: string | null, winnerLap: string | null): 
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 
-/** Gap is ranked by percentage, since a 0.8s gap means something different at Le Mans than at
- * the Red Bull Ring. Sorted smallest gap first. */
+/** Sorted by average gap in seconds, smallest (most negative = you were faster) first. The
+ * percentage stays on each item for display. */
 export function aggregateWinnerGapByTrack(rows: WinnerGapRace[]): WinnerGapByTrack[] {
   const byTrack = new Map<string, Array<{ seconds: number; pct: number }>>();
   for (const row of rows) {
@@ -87,5 +87,5 @@ export function aggregateWinnerGapByTrack(rows: WinnerGapRace[]): WinnerGapByTra
       bestGapSeconds: round3(Math.min(...gaps.map((gap) => gap.seconds))),
       worstGapSeconds: round3(Math.max(...gaps.map((gap) => gap.seconds))),
     }))
-    .sort((a, b) => a.avgGapPct - b.avgGapPct);
+    .sort((a, b) => a.avgGapSeconds - b.avgGapSeconds);
 }

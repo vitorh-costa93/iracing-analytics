@@ -16,9 +16,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, x-import-key",
 };
 
-// Season 3 2026 (iRacing season boundaries: 9 Jun - 8 Sep).
-const WINNER_BACKFILL_FROM = "2026-06-09T00:00:00Z";
-const WINNER_BACKFILL_TO = "2026-09-08T00:00:00Z";
+// Backfill limit per request; the whole history (~1.4k races) is covered by one bookmarklet run.
+const WINNER_BACKFILL_LIMIT = 1500;
 
 type IncomingRace = { raceId: number; html: string };
 
@@ -68,17 +67,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: "error", message: roadCountError.message }, { status: 500, headers: CORS_HEADERS });
   }
 
-  // One-time Season 3 2026 backfill of the class winner's best lap: races imported before that
-  // column existed are re-sent by the browser script (same parser/upsert, so idempotent). Bounded
-  // to the season window and to rows still missing the value; no extra scan of old history.
+  // One-time backfill of the class winner's best lap: races imported before that column existed
+  // are re-sent by the browser script (same parser/upsert, so idempotent). Bounded to rows still
+  // missing the value and by WINNER_BACKFILL_LIMIT.
   const { data: missingRows, error: missingError } = await supabaseAdmin
     .from("race_results")
     .select("irstats_race_id")
     .eq("driver_id", driver.id)
     .is("winner_fastest_lap_time", null)
-    .gte("raced_at", WINNER_BACKFILL_FROM)
-    .lt("raced_at", WINNER_BACKFILL_TO)
-    .limit(300);
+    .order("raced_at", { ascending: false })
+    .limit(WINNER_BACKFILL_LIMIT);
   if (missingError) {
     return NextResponse.json({ status: "error", message: missingError.message }, { status: 500, headers: CORS_HEADERS });
   }

@@ -471,7 +471,7 @@ export default function Home() {
               <DeltaByContext items={perfItems} kind={perfMode as RankingMode} />
             </Panel>
             <Panel kicker={`MEDIDA 2 · ${perfLabel} · GAP PARA O VENCEDOR`} title="Sua melhor volta vs. a do vencedor" titleSize="sm" as="article"
-              subtitle={<>Vencedor da sua classe, por pista · do menor para o maior gap percentual{gapItems.length ? ` · média do segmento ${percentText(gapOverall(gapItems))}` : ""}</>}>
+              subtitle={<>Vencedor da sua classe, por pista · do menor para o maior gap em segundos{gapItems.length ? ` · média do segmento ${percentText(gapOverall(gapItems))}` : ""}</>}>
               <GapToWinner items={gapItems} />
             </Panel>
           </div>
