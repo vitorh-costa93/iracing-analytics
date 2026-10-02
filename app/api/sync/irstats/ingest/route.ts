@@ -16,6 +16,10 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, x-import-key",
 };
 
+// Season 3 2026 (iRacing season boundaries: 9 Jun - 8 Sep).
+const WINNER_BACKFILL_FROM = "2026-06-09T00:00:00Z";
+const WINNER_BACKFILL_TO = "2026-09-08T00:00:00Z";
+
 type IncomingRace = { raceId: number; html: string };
 
 export async function OPTIONS() {
@@ -64,7 +68,23 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: "error", message: roadCountError.message }, { status: 500, headers: CORS_HEADERS });
   }
 
-  return NextResponse.json({ status: "ok", knownIds, roadCount: roadCount ?? 0 }, { headers: CORS_HEADERS });
+  // One-time Season 3 2026 backfill of the class winner's best lap: races imported before that
+  // column existed are re-sent by the browser script (same parser/upsert, so idempotent). Bounded
+  // to the season window and to rows still missing the value; no extra scan of old history.
+  const { data: missingRows, error: missingError } = await supabaseAdmin
+    .from("race_results")
+    .select("irstats_race_id")
+    .eq("driver_id", driver.id)
+    .is("winner_fastest_lap_time", null)
+    .gte("raced_at", WINNER_BACKFILL_FROM)
+    .lt("raced_at", WINNER_BACKFILL_TO)
+    .limit(300);
+  if (missingError) {
+    return NextResponse.json({ status: "error", message: missingError.message }, { status: 500, headers: CORS_HEADERS });
+  }
+  const missingWinnerIds = (missingRows ?? []).map((row) => row.irstats_race_id as number);
+
+  return NextResponse.json({ status: "ok", knownIds, roadCount: roadCount ?? 0, missingWinnerIds }, { headers: CORS_HEADERS });
 }
 
 export async function POST(request: NextRequest) {
