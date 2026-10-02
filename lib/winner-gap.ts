@@ -46,6 +46,8 @@ export type WinnerGapRace = {
   car_name?: string | null;
   fastest_lap_time: string | null;
   winner_fastest_lap_time: string | null;
+  series_name?: string | null;
+  laps?: number | null;
 };
 
 export type WinnerGapByTrack = {
@@ -68,6 +70,35 @@ export function raceWinnerGap(ownLap: string | null, winnerLap: string | null): 
 /** A best lap more than 5% from the winner's is a damaged/aborted race, not pace (e.g. +56 s at
  * Imola) and would swamp the averages, so such races are left out of the gap statistics. */
 export const MAX_PLAUSIBLE_GAP_PCT = 5;
+
+/** A race where you completed under this share of the usual distance (same track, car and series)
+ * ended early (crash/DNF): its best lap is a few cold-tyre laps, not comparable pace. */
+export const MIN_RACE_COMPLETION = 0.6;
+
+function percentile75(sorted: number[]) {
+  const pos = (sorted.length - 1) * 0.75;
+  const lo = Math.floor(pos);
+  return sorted[lo] + (sorted[Math.ceil(pos)] - sorted[lo]) * (pos - lo);
+}
+
+/** Drops early-exit races. "Usual distance" is the 75th percentile of your lap counts for that
+ * track + car + series, so sprint series aren't mistaken for DNFs. Rows without a lap count stay. */
+export function dropEarlyExitRaces<T extends WinnerGapRace>(rows: T[]): T[] {
+  const groups = new Map<string, number[]>();
+  const keyOf = (row: T) => `${row.track_name}|${row.car_name ?? ""}|${row.series_name ?? ""}`;
+  for (const row of rows) {
+    if (typeof row.laps !== "number" || row.laps <= 0) continue;
+    const list = groups.get(keyOf(row)) ?? [];
+    list.push(row.laps);
+    groups.set(keyOf(row), list);
+  }
+  const usual = new Map<string, number>();
+  for (const [key, laps] of groups) usual.set(key, percentile75(laps.sort((a, b) => a - b)));
+  return rows.filter((row) => {
+    if (typeof row.laps !== "number" || row.laps <= 0) return true;
+    return row.laps >= MIN_RACE_COMPLETION * (usual.get(keyOf(row)) ?? 0);
+  });
+}
 
 const round3 = (value: number) => Math.round(value * 1000) / 1000;
 

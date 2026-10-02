@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateWinnerGapByTrack, classWinnerFastestLap, normalizeRaceClass, parseLapTimeSeconds, raceWinnerGap } from "./winner-gap";
+import { aggregateWinnerGapByTrack, dropEarlyExitRaces, classWinnerFastestLap, normalizeRaceClass, parseLapTimeSeconds, raceWinnerGap } from "./winner-gap";
 
 const classes: Record<string, string> = {
   "Acura ARX-06 GTP": "GTP",
@@ -102,5 +102,24 @@ describe("aggregateWinnerGapByTrack outliers and car grouping", () => {
     expect(result).toHaveLength(1);
     expect(result[0].track).toBe("X");
     expect(result[0].races).toBe(2);
+  });
+});
+
+describe("dropEarlyExitRaces", () => {
+  const base = { track_name: "Spa", car_name: "SF23", series_name: "SF", fastest_lap_time: "1:54.000", winner_fastest_lap_time: "1:52.000" };
+  it("drops races finished under 60% of the usual distance, keeps full ones", () => {
+    const rows = [
+      { ...base, laps: 19 }, { ...base, laps: 19 }, { ...base, laps: 20 }, { ...base, laps: 19 },
+      { ...base, laps: 5 },
+    ];
+    expect(dropEarlyExitRaces(rows).map((r) => r.laps)).toEqual([19, 19, 20, 19]);
+  });
+  it("does not compare across series or when laps are unknown", () => {
+    const rows = [
+      { ...base, laps: 19 }, { ...base, laps: 19 },
+      { ...base, series_name: "Sprint", laps: 6 },
+      { ...base, laps: null },
+    ];
+    expect(dropEarlyExitRaces(rows)).toHaveLength(4);
   });
 });

@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
-import { aggregateWinnerGapByTrack, parseLapTimeSeconds, type WinnerGapRace } from "@/lib/winner-gap";
+import { aggregateWinnerGapByTrack, dropEarlyExitRaces, parseLapTimeSeconds, type WinnerGapRace } from "@/lib/winner-gap";
 
 // 31/08/2026: "o iRating segue desatualizado... a tabela no fim dessa aba já contém as duas corridas
 // que fiz hoje" -- without this, the route has no dynamic-only API call to force Next.js to treat it
@@ -576,22 +576,23 @@ export async function GET(request: Request) {
 
     // Gap to the class winner's best lap, per track. Only races imported after the column existed
     // carry winner_fastest_lap_time, so this set is small and grows forward.
-    const winnerGapRows: WinnerGapRace[] = [];
+    const winnerGapAllRows: WinnerGapRace[] = [];
     {
       const pageSize = 1000;
       for (let offset = 0; ; offset += pageSize) {
         const { data: page, error: pageError } = await supabaseAdmin
           .from("race_results")
-          .select("track_name,car_name,fastest_lap_time,winner_fastest_lap_time")
+          .select("track_name,car_name,series_name,laps,fastest_lap_time,winner_fastest_lap_time")
           .eq("driver_id", driver.id)
           .not("winner_fastest_lap_time", "is", null)
           .order("raced_at", { ascending: true })
           .range(offset, offset + pageSize - 1);
         if (pageError) throwSupabaseError("race_results (winner gap)", pageError);
-        winnerGapRows.push(...((page ?? []) as WinnerGapRace[]));
+        winnerGapAllRows.push(...((page ?? []) as WinnerGapRace[]));
         if (!page || page.length < pageSize) break;
       }
     }
+    const winnerGapRows = dropEarlyExitRaces(winnerGapAllRows);
     const winnerGapByTrack = aggregateWinnerGapByTrack(winnerGapRows);
     // Mesmos recortes do "Performance por contexto" (Super Formula, GT3, IMSA GTP/LMP2): a classe de cada
     // corrida vem do mesmo car_class do histórico, para as duas medidas falarem dos mesmos contextos.
@@ -601,7 +602,7 @@ export async function GET(request: Request) {
     const gapPair = (rows: WinnerGapRace[]) => ({ track: aggregateWinnerGapByTrack(rows, "track"), car: aggregateWinnerGapByTrack(rows, "car") });
     const imsaGapRows = winnerGapRows.filter((row) => ["GTP", "LMP2"].includes(classByCar.get(row.car_name ?? "") ?? ""));
     const winnerGapBySegment = {
-      sf: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => /super formula/i.test(row.car_name ?? ""))),
+      sf: aggregateWinnerGapByTrack(winnerGapRows.filter((row) => /super formula sf23/i.test(row.car_name ?? ""))),
       gt3: gapPair(winnerGapRows.filter((row) => classByCar.get(row.car_name ?? "") === "GT3")),
       imsa: {
         all: gapPair(imsaGapRows),

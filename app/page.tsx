@@ -240,7 +240,7 @@ export default function Home() {
   const rankings = useMemo(() => {
     if (!data) return null;
 
-    const trackRows = data.historical.filter((row) => /super formula/i.test(row.car));
+    const trackRows = data.historical.filter((row) => /super formula sf23/i.test(row.car));
     const gt3Rows = data.historical.filter((row) => row.carClass === "GT3");
     const imsaRows = data.historical.filter((row) => (row.carClass === "GTP" || row.carClass === "LMP2") && (imsaMode !== "track" || imsaClass === "all" || row.carClass === imsaClass));
 
