@@ -67,9 +67,12 @@ export function gapOverall(items: WinnerGapItem[]) {
 }
 
 /** Medida 2: gap em segundos para a melhor volta do vencedor, por pista. Negativo (verde) = você foi
- * mais rápido que o vencedor; positivo (vermelho) = mais lento. Ordenado do menor para o maior gap. */
-export function GapToWinner({ items }: { items: WinnerGapItem[] }) {
-  if (!items.length) return <div className="ngo-empty">Ainda sem corridas com a volta do vencedor. Ela passa a ser capturada nas próximas importações do iRStats.</div>;
+ * mais rápido que o vencedor; positivo (vermelho) = mais lento. Só pistas com mais de uma corrida; 5 menores e 5 maiores gaps. */
+export function GapToWinner({ items: allItems }: { items: WinnerGapItem[] }) {
+  // Só pistas com mais de uma corrida; até 5 menores e 5 maiores gaps (mesma seleção da Medida 1).
+  const eligible = allItems.filter((i) => i.races > 1).sort((a, b) => a.avgGapSeconds - b.avgGapSeconds);
+  const items = eligible.length > 10 ? [...eligible.slice(0, 5), ...eligible.slice(-5)] : eligible;
+  if (!items.length) return <div className="ngo-empty">Ainda sem pistas com mais de uma corrida com a volta do vencedor.</div>;
   const min = Math.min(...items.map((i) => i.avgGapSeconds), 0);
   const max = Math.max(...items.map((i) => i.avgGapSeconds), 0);
   const range = Math.max(max - min, 0.001);

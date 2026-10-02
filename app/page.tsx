@@ -464,6 +464,7 @@ export default function Home() {
           </div>
           <div className="ngo-perf-grid">
             <Panel kicker={`MEDIDA 1 · ${perfLabel}`} title={`Média de Δ iRating por ${perfMode === "car" ? "carro" : "pista"}`} titleSize="sm" as="article"
+              subtitle="5 maiores ganhos e 5 maiores perdas, por média de iRating por corrida"
               actions={activePerfTab === "imsa" && imsaMode === "track" ? (
                 <SegmentedControl ariaLabel="Classe IMSA" value={imsaClass} onChange={setImsaClass}
                   options={[{ value: "all", label: "Todos" }, { value: "GTP", label: "GTP" }, { value: "LMP2", label: "LMP2" }]} />
@@ -471,7 +472,7 @@ export default function Home() {
               <DeltaByContext items={perfItems} kind={perfMode as RankingMode} />
             </Panel>
             <Panel kicker={`MEDIDA 2 · ${perfLabel} · GAP PARA O VENCEDOR`} title="Sua melhor volta vs. a do vencedor" titleSize="sm" as="article"
-              subtitle={<>Vencedor da sua classe, por pista · do menor para o maior gap em segundos{gapItems.length ? ` · média do segmento ${percentText(gapOverall(gapItems))}` : ""}</>}>
+              subtitle={<>Vencedor da sua classe · 5 menores e 5 maiores gaps em segundos, pistas com 2+ corridas{gapItems.length ? ` · média do segmento ${percentText(gapOverall(gapItems))}` : ""}</>}>
               <GapToWinner items={gapItems} />
             </Panel>
           </div>

@@ -52,6 +52,7 @@
 .ngo-perf-controls { display: flex; gap: 12px; flex-wrap: wrap; }
 .ngo-perf-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
 .ngo-perf-grid .ng-kicker { color: var(--ng-soft); }
+.ngo-perf-grid .ng-panel-subtitle { min-height: 34px; }
 .ngo-perf-grid .ng-panel-title { font-size: 17px; margin-bottom: 4px; }
 .ngo-rank { display: flex; flex-direction: column; }
 /* 200px no mockup; 240px aqui porque nomes reais de carro ("Aston Martin Vantage GT3 EVO") quebravam em 3 linhas. */
