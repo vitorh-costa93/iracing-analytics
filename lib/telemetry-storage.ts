@@ -88,6 +88,7 @@ export async function readOrFetchTelemetryText(lapId: string, trackId: number | 
     const stored = await readTelemetryText(telemetryPath);
     if (stored) return stored;
   }
+  if (lapId.startsWith('ira_')) return null;
   const token = process.env.GARAGE61_API_TOKEN;
   if (!token) return null;
   try {

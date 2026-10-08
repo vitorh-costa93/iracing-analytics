@@ -58,23 +58,27 @@ export default function DebriefsView({ initialScope, initialSegment }: { initial
       setReport(parsed);
     } catch { setReport(null); }
     const slowTimer = window.setTimeout(() => { if (!dead) setSlow(true); }, 6000);
-    fetch("/api/dashboard/report?scope=" + scope + "&segment=" + segment, { cache: retry ? "no-store" : "default" })
+    const load = (attempt: number): Promise<DebriefReport> => fetch("/api/dashboard/report?scope=" + scope + "&segment=" + segment, { cache: retry || attempt ? "no-store" : "default" })
       .then(async (response) => {
         const raw = await response.text();
         let data: unknown;
         try { data = JSON.parse(raw); } catch { throw new Error("O servidor não conseguiu concluir a análise desta vez."); }
-        if (!response.ok) throw new Error(data && typeof data === "object" && "message" in data && typeof data.message === "string" ? data.message : "Não foi possível montar o debrief.");
+        if (!response.ok) throw Object.assign(new Error(data && typeof data === "object" && "message" in data && typeof data.message === "string" ? data.message : "Não foi possível montar o debrief."), { retryable: response.status >= 500 });
         return data as DebriefReport;
       })
+      // Falha transitória (Supabase/Vercel a frio): uma nova tentativa automática antes de mostrar erro.
+      .catch((reason) => (attempt < 1 && !dead && (reason instanceof TypeError || (reason as { retryable?: boolean })?.retryable) ? load(attempt + 1) : Promise.reject(reason)));
+    load(0)
       .then((data) => {
         if (dead) return;
         setReport(data);
         setSlow(false);
         try { window.localStorage.setItem(cacheKey, JSON.stringify(data)); } catch { /* sem espaço: segue sem cache */ }
       })
-      .catch(() => {
+      .catch((reason) => {
         if (dead) return;
-        setError(hadCache ? "A atualização falhou; mostrando a última análise salva." : "A análise demorou mais que o esperado e não foi concluída.");
+        const detail = reason instanceof Error && reason.message ? " (" + reason.message + ")" : "";
+        setError((hadCache ? "A atualização falhou; mostrando a última análise salva." : "A análise não foi concluída.") + detail);
         setSlow(false);
       })
       .finally(() => window.clearTimeout(slowTimer));

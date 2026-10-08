@@ -104,7 +104,8 @@ async function matchSessions(driverId: string, races: RaceRow[]) {
     const racedAt = new Date(race.raced_at).getTime();
     const candidates = sessions.filter((session) => session.car_id === race.car_id && session.track_id === race.track_id && Math.abs(new Date(session.started_at).getTime() - racedAt) <= SESSION_MATCH_WINDOW_MS);
     if (!candidates.length) continue;
-    result.set(race.id, candidates.reduce((best, session) => (Math.abs(new Date(session.started_at).getTime() - racedAt) < Math.abs(new Date(best.started_at).getTime() - racedAt) ? session : best)));
+    const native = candidates.find(session => session.garage61_event_id === `iracing:${race.irstats_race_id}`);
+    result.set(race.id, native ?? candidates.reduce((best, session) => (Math.abs(new Date(session.started_at).getTime() - racedAt) < Math.abs(new Date(best.started_at).getTime() - racedAt) ? session : best)));
   }
   return result;
 }
