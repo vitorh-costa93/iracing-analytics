@@ -1,5 +1,9 @@
 # Racing Analytics — contexto do projeto
 
+## Prova de resultado oficial via aplicativo — 08/10/2026
+
+O iRacing UI autenticado exportou CSV e JSON da subsessão 89199619. O JSON foi importado administrativamente em `race_results` após inspeção do schema real e comparação com a linha existente; identidade preservada, sem duplicação. Acrescentou `race_fastest_lap_time = 1:49.396`; resultado e delta +51 coincidiram com o histórico. Detalhes em `docs/IRACING_AGENTE_PROVA.md`. Isso comprova entrada oficial sem consulta ao iRStats para esta corrida; agente, endpoint recorrente, proveniência no schema e proteção contra sobrescrita pelo importador antigo continuam propostos. O tipo externo Race=6 exige conversão para o contrato interno Race=3; IDs de catálogos e posições com índice zero exigem normalização. Operação sem tomar foco não foi demonstrada.
+
 Documento vivo para continuidade técnica. Ele consolida as decisões tomadas até 19 de agosto de 2026. Antes de implementar, confirme nomes e tipos no schema e no código atuais: parte do histórico foi construída de forma iterativa no Supabase e algumas estruturas podem ter evoluído.
 
 ## Objetivo

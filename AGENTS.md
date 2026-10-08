@@ -1,6 +1,6 @@
 # AGENTS.md — Racing Analytics
 
-Estas instruções valem para todo o repositório (fonte das regras). Leia `PROJECT_CONTEXT.md` apenas sob demanda, quando a tarefa exigir contexto profundo, antes de alterar código, SQL, sincronização ou regras de negócio.
+Estas instruções valem para todo o repositório (fonte das regras). Consulte as seções pertinentes de `PROJECT_CONTEXT.md` quando a tarefa exigir contexto profundo; use `docs/CODEX_CONTEXTO.md` como índice antes de carregar o documento inteiro.
 
 ## Princípios de trabalho
 
@@ -31,8 +31,8 @@ Estas instruções valem para todo o repositório (fonte das regras). Leia `PROJ
 ## Validação antes de commit
 
 1. Revise `git diff` e confirme que o escopo é o solicitado.
-2. Rode os testes disponíveis (`npm test`, ou o comando definido em `package.json`).
-3. Rode `npm run build` e corrija erros de TypeScript, lint e build.
+2. Para código, rode os testes disponíveis (`npm test`, ou o comando definido em `package.json`); agentes intermediários podem rodar testes focados, com a suíte final sob responsabilidade da integração.
+3. Para código, rode `npm run build` na integração final e corrija erros; não repita builds já aprovados para o mesmo estado relevante.
 4. Para mudanças de dados, valide a query/view no schema real e compare amostras antes/depois, incluindo reexecução do sync para testar idempotência.
 5. Não faça commit/push com testes ou build falhando sem documentar e obter autorização explícita.
 
@@ -41,3 +41,16 @@ Estas instruções valem para todo o repositório (fonte das regras). Leia `PROJ
 - Atualize `PROJECT_CONTEXT.md` no mesmo diff sempre que houver decisão arquitetural, mudança de schema/view, nova integração, alteração de regra de negócio, mudança relevante de UI ou reordenação do roadmap.
 - Registre claramente o que está implementado, o que foi apenas proposto, limitações conhecidas e evidência usada para decisões externas.
 - Se o código ou schema real divergir deste documento, confirme a realidade no repositório/banco, corrija a implementação com cuidado e atualize a documentação.
+
+## Mapa e limites
+- UI em `app/` e `components/`; dados/telemetria em `lib/` e `app/api/`; banco em `supabase/migrations/`.
+- Preserve plano free e guardas de cache, tamanho, Storage, backfill e frequência de cron. Consulte `CLAUDE.md` nas seções correspondentes para contratos detalhados.
+- Histórico em `docs/HISTORY.md` é consulta, não leitura obrigatória por tarefa.
+
+## Execução econômica
+- Leia `docs/CODEX_CONTINUIDADE.md` somente ao retomar trabalho; atualize-o ao fechar uma etapa, sem copiar histórico ou segredos.
+- Busque arquivos e seções relevantes antes de carregar documentos inteiros. Seções históricas são contexto sob demanda.
+- Tarefas pequenas são diretas; delegue apenas trabalho independente extenso ou revisão de risco, com escopo e critério de aceite.
+- Um responsável integra e valida o estado final. Subagentes fazem testes focados e devolvem evidência; não repetem toda a suíte/build por hábito.
+- Alterações somente em instruções/documentação exigem revisão de diff e links, sem build de aplicação. Para código, cumpra as verificações abaixo; repita se o estado relevante mudar.
+- Consulte `docs/CODEX_CONTEXTO.md` quando existir para localizar seções de contexto.
