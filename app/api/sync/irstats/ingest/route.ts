@@ -50,6 +50,9 @@ export async function GET(request: NextRequest) {
       .from("race_results")
       .select("irstats_race_id")
       .eq("driver_id", driver.id)
+      // Agent estimates (SessionInfo, iRating estimated) are not "known": the bookmarklet
+      // re-imports them so the real iRStats delta replaces the estimate.
+      .neq("result_source", "iracing_ibt")
       .range(offset, offset + pageSize - 1);
     if (idsError) {
       return NextResponse.json({ status: "error", message: idsError.message }, { status: 500, headers: CORS_HEADERS });

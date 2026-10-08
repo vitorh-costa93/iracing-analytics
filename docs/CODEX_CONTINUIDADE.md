@@ -1,5 +1,10 @@
 # Continuidade — iracing-analytics
 
+## Agente: gravação automática + resultado do SessionInfo — 08/10/2026
+- Agente lê a memória compartilhada do SDK (`agent/SimMonitor.cs`), pede início de gravação por broadcast oficial (TelemCommand=**10**, Start=1; o valor 7 é ReloadTextures) e captura a Race do SessionInfo ao vivo (`agent/SessionResult.cs`). Contrato `ibt_result` em `agent/README.md`.
+- Servidor: `lib/agent-ibt-result.ts` + `app/api/agent/ingest/route.ts`; migration `20261008150000_agent_ibt_result.sql`. `irating_delta` é ESTIMATIVA (official_irating_* null). Precedência: iracing_agent > irstats > iracing_ibt; o bookmarklet do iRStats reimporta linhas estimadas (knownIds exclui `iracing_ibt`; upsert grava `result_source='irstats'`).
+- Achados reais (24 .ibt): SessionInfo do .ibt é snapshot da abertura do arquivo, nenhum com Race oficial; `Position` base 1, `ClassPosition` base 0; `RaceWeek` base 0; DriverInfo usa `UserID`. `IsDiskLogging*` não verificados ao vivo.
+
 ## Agente: revisão e teste local — 08/10/2026
 - Migration renomeada para `20261008131811` (igual ao remoto). Correções da revisão: upload só tolera 409, `Road` -> `road`, resultados primeiro na fila do agente, retry do debrief só em rede/5xx.
 - Teste local (next dev + `--dev-url`, Supabase de produção): resultado de Motegi enviado pelo agente (result_source=iracing_agent, iRating 3370->3421) e 2 voltas com telemetria. Token provisionado (device 475549f8), guardado por DPAPI no estado Dev.

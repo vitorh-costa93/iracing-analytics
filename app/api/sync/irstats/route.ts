@@ -147,6 +147,9 @@ export async function importRaceFromHtml(raceId: number, html: string, driverId:
     incidents: parsed.incidents,
     points: parsed.points,
     sof: parsed.sof,
+    // Real iRStats data replaces an agent estimate ('iracing_ibt'); an official agent row
+    // ('iracing_agent') stays protected by the protect_native_result trigger.
+    result_source: "irstats",
   };
   const { error } = await supabaseAdmin.from("race_results").upsert(row, { onConflict: "irstats_race_id" });
   if (error) throw error;

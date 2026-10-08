@@ -47,6 +47,14 @@ Uma volta por request, `kind: "telemetry"`, `key` = SHA-256 UTF-8 de `subsession
 
 Resultado: `{version:1,kind:"result",key,export:<JSON original>}`. A chave é SHA-256 da serialização UTF-8 compacta com propriedades ordenadas ordinalmente de forma recursiva; arrays conservam ordem e valores conservam seu JSON numérico original. O backend adapta o JSON original.
 
+Resultado do SessionInfo (`kind: "ibt_result"`, ≤128 KiB): `{version:1,kind:"ibt_result",key,result}`, `key` = SHA-256 UTF-8 de `ibt_result:subsessionId:customerId` (um por subsessão; o agente também deduplica por subsessão em `state.json`). `result` contém origin (`live`|`ibt`), resultsOfficial, official (sempre true; eventos não oficiais não são enviados), customerId, subsessionId, seriesId, seasonId, category (`SportsCar`|`FormulaCar`|`Road`; oval/dirt não), raceWeek (base 0), racedAt (início da sessão Race, ISO UTC), trackId/trackName/trackConfig, `driver{carIdx,carId,carName,licLevel,licSubLevel,lapsLed,incidents,gridPosition}` e `entrants[]` (≤128, só humanos: carIdx, classId, irating, started, position, classPosition, lapsComplete, fastestTime). Nunca contém nomes, UserIDs de terceiros, setup (`CarSetup`) ou o YAML bruto. No SessionInfo real `ResultsPositions.Position` é base 1 e `ClassPosition`/`QualifyResultsInfo.Position` são base 0; o servidor reordena por posição e tolera lacunas.
+
+O servidor grava `race_results` com `result_source='iracing_ibt'`, `points` e `official_irating_*` nulos e `irating_delta` **estimado** (fórmula Elo-like da comunidade, calculada só dentro da classe do piloto; não é o valor oficial). Série: nome da série já conhecida para o mesmo carro/pista em ±7 dias, senão `iRacing série <id>`. Precedência por subsessão: JSON oficial (`iracing_agent`) > iRStats (`irstats`, deltas reais) > estimativa (`iracing_ibt`). A estimativa só insere quando a linha não existe e só atualiza a própria linha; o JSON oficial e o bookmarklet do iRStats a substituem; uma linha `iracing_agent` nunca é rebaixada (trigger `protect_native_result`).
+
+Origem: o SessionInfo dentro do `.ibt` é um snapshot de quando o arquivo abriu (`sessionInfoUpdate=0`), então raramente contém a Race final; o `.ibt` só é usado se a Race estiver com `ResultsOfficial: 1`. A fonte normal é a memória compartilhada oficial do SDK (`Local\IRSDKMemMapFileName`, somente leitura) enquanto o simulador está aberto: o resultado é enviado quando fica oficial; se o piloto sair da sessão/fechar o sim após a bandeirada antes da oficialização, envia o último snapshot como provisório (o servidor trata igual: estimativa).
+
+Gravação automática (opção da UI, ligada por padrão): com o carro na pista, fora de replay, gravação em disco habilitada no iRacing e `IsDiskLoggingActive=0`, envia a broadcast oficial `RegisterWindowMessage("IRSDK_BROADCASTMSG")` via `SendNotifyMessage(HWND_BROADCAST)` com `irsdk_BroadcastTelemCommand=10` e `irsdk_TelemCommand_Start=1` (wParam `0x0001000A`), no máximo a cada 30 s. Não altera `app.ini`, não toma foco e não injeta teclas. O status na UI mostra apenas estado (conectado/gravando/aguardando), sem dados pessoais.
+
 ## Desenvolvimento e validação
 
 ```powershell
@@ -55,6 +63,8 @@ dotnet run --project agent/RacingAgent.csproj -- --self-test "$env:TEMP\racing-a
 dotnet run --project agent/RacingAgent.csproj -- --self-test "$env:TEMP\racing-agent-checks.txt" --ibt "C:\caminho\privado.ibt"
 dotnet publish agent/RacingAgent.csproj -c Release -r win-x64 --self-contained true -o "$env:LOCALAPPDATA\RacingAnalyticsAgent\releases\win-x64"
 ```
+
+`--scan-ibt [pasta]` (padrão `Documentos\iRacing\telemetry`) lê os `.ibt` locais somente para contar quantos teriam resultado extraível e os motivos de recusa; nada é enfileirado nem enviado. O self-test também cobre SessionInfo/IBT sintéticos, memória compartilhada sintética (broadcast stub) e dedupe por subsessão.
 
 O self-test usa dados sintéticos para DPAPI, canonicalização, fila/restart, checkpoint e respostas HTTP 200/401/422/429/500; `--ibt` opcional verifica arquivo privado por streaming sem salvar seus payloads. `--result caminho.json` opcional valida o envelope real e sua fila em diretório temporário removido ao final. O relatório contém somente checks e contagem de voltas. Build exige SDK .NET 9; publicação self-contained não exige runtime instalado no PC de destino.
 

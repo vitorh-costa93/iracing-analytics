@@ -21,6 +21,8 @@ sealed class State
     public bool AuthPaused { get; set; }
     public bool ExperimentalExport { get; set; }
     public bool PendingResult { get; set; }
+    public bool AutoRecord { get; set; } = true;
+    public HashSet<long> ResultSubsessions { get; set; } = [];
     public Dictionary<string, Attempt> Attempts { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
@@ -56,7 +58,7 @@ sealed class Store
         State.AuthPaused = false; State.Next = default; Save();
     }
     string? Token() => File.Exists(Path.Combine(Root, "credential.bin")) ? Encoding.UTF8.GetString(Dpapi.Protect(File.ReadAllBytes(Path.Combine(Root, "credential.bin")), true)) : null;
-    static bool IsResult(string file) { try { using var s = File.OpenRead(file); var b = new byte[48]; var n = s.Read(b, 0, b.Length); return Encoding.UTF8.GetString(b, 0, n).Contains("\"kind\":\"result\""); } catch { return false; } }
+    static bool IsResult(string file) { try { using var s = File.OpenRead(file); var b = new byte[48]; var n = s.Read(b, 0, b.Length); var head = Encoding.UTF8.GetString(b, 0, n); return head.Contains("\"kind\":\"result\"") || head.Contains("\"kind\":\"ibt_result\""); } catch { return false; } }
     public int Backlog => Directory.GetFiles(Path.Combine(Root, "queue"), "*.json").Length;
     public int Quarantined => Directory.GetFiles(Path.Combine(Root, "quarantine"), "*.json").Length;
     public void Enqueue(byte[] payload)
@@ -64,11 +66,22 @@ sealed class Store
         using var doc = JsonDocument.Parse(payload);
         var key = doc.RootElement.GetProperty("key").GetString()!;
         if (key.Length != 64 || key.Any(c => !char.IsAsciiHexDigit(c))) throw new InvalidDataException("queue_key");
-        if (payload.Length > (doc.RootElement.GetProperty("kind").GetString() == "result" ? 1024 * 1024 : 512 * 1024)) throw new InvalidDataException("payload_size");
+        if (payload.Length > (doc.RootElement.GetProperty("kind").GetString() switch { "result" => 1024 * 1024, "ibt_result" => SessionResult.MaxPayload, _ => 512 * 1024 })) throw new InvalidDataException("payload_size");
         var path = Path.Combine(Root, "queue", key + ".json");
         if (File.Exists(path) || File.Exists(Path.Combine(Root, "quarantine", key + ".json"))) return;
         if (Directory.EnumerateFiles(Path.Combine(Root, "queue")).Concat(Directory.EnumerateFiles(Path.Combine(Root, "quarantine"))).Sum(p => new FileInfo(p).Length) + payload.Length > 100L * 1024 * 1024) throw new IOException("queue_full");
         Atomic(path, payload);
+    }
+    /// <summary>One estimated result per subsession (live SessionInfo or official .ibt block);
+    /// the first captured snapshot wins so the server never sees a conflicting body.</summary>
+    public bool EnqueueResult(SessionResult.Snapshot snapshot)
+    {
+        lock (persistGate)
+        {
+            if (State.ResultSubsessions.Contains(snapshot.SubsessionId)) return false;
+            Enqueue(snapshot.Payload); State.ResultSubsessions.Add(snapshot.SubsessionId); State.PendingResult = false;
+        }
+        Save(); Status = snapshot.ResultsOfficial ? "Resultado oficial capturado" : "Resultado provisório capturado"; return true;
     }
     public void Collect(string path, bool backfill = false)
     {
@@ -85,6 +98,11 @@ sealed class Store
         stream.Position = 0;
         try
         {
+            if (path.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase))
+            {
+                var result = SessionResult.FromIbt(stream, out _); stream.Position = 0;
+                if (result is not null) EnqueueResult(result);
+            }
             if (path.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase)) foreach (var payload in Ibt.Read(stream))
             {
                 Enqueue(payload);

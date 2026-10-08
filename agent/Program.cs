@@ -1,5 +1,7 @@
 using Microsoft.Win32;
+using System.Buffers.Binary;
 using System.Diagnostics;
+using System.IO.MemoryMappedFiles;
 using System.Text;
 using System.Text.Json;
 
@@ -36,10 +38,12 @@ static class Program
 }
 sealed class AgentForm : Form
 {
-    readonly Store store; readonly ResultExporter exporter = new(); readonly NotifyIcon tray; readonly System.Windows.Forms.Timer timer = new() { Interval = 15000 }; readonly Label status = new() { AutoSize = true, MaximumSize = new Size(510, 0) }; bool busy, exiting; readonly CancellationTokenSource cancellation = new();
+    readonly Store store; readonly ResultExporter exporter = new(); readonly SimMonitor monitor; readonly System.Windows.Forms.Timer simTimer = new() { Interval = 2000 }; readonly NotifyIcon tray; readonly System.Windows.Forms.Timer timer = new() { Interval = 15000 }; readonly Label status = new() { AutoSize = true, MaximumSize = new Size(510, 0) }; bool busy, exiting; readonly CancellationTokenSource cancellation = new();
     public AgentForm(Store store, bool startHidden)
     {
-        this.store = store; Text = "Racing Analytics — Agente"; ClientSize = new Size(550, 480); FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
+        this.store = store;
+        monitor = new SimMonitor(() => store.State.AutoRecord, snapshot => { try { store.EnqueueResult(snapshot); } catch (Exception e) when (e is IOException or InvalidDataException or UnauthorizedAccessException) { } });
+        Text = "Racing Analytics — Agente"; ClientSize = new Size(550, 480); FormBorderStyle = FormBorderStyle.FixedDialog; MaximizeBox = false;
         var panel = new FlowLayoutPanel { Dock = DockStyle.Fill, FlowDirection = FlowDirection.TopDown, Padding = new Padding(16), WrapContents = false, AutoScroll = true }; Controls.Add(panel);
         panel.Controls.Add(new Label { Text = "Token pessoal do Racing Analytics (armazenamento DPAPI)", AutoSize = true });
         var token = new TextBox { Width = 505, UseSystemPasswordChar = true }; panel.Controls.Add(token);
@@ -55,12 +59,14 @@ sealed class AgentForm : Form
             if (path is null) { status.Text = "iRacing UI não localizado. Abra o aplicativo e selecione Results."; return; }
             try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); status.Text = "Abra Results no iRacing UI e exporte o resultado."; } catch { status.Text = "Não foi possível abrir o iRacing UI; abra-o manualmente."; }
         }; panel.Controls.Add(open);
+        var record = new CheckBox { Text = "Ligar gravação .ibt automaticamente ao entrar na pista (SDK oficial)", AutoSize = true, Checked = store.State.AutoRecord }; panel.Controls.Add(record);
+        record.CheckedChanged += (_, _) => { store.State.AutoRecord = record.Checked; store.Save(); };
         var experimental = new CheckBox { Text = "Tentar exportação sem foco (experimental)", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
         experimental.CheckedChanged += (_, _) => { store.State.ExperimentalExport = experimental.Checked; store.Save(); };
-        panel.Controls.Add(new Label { Text = "Exporte o resultado no iRacing para Downloads. Exportação automática ainda indisponível.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
+        panel.Controls.Add(new Label { Text = "O resultado da corrida é lido do SessionInfo ao vivo (iRating estimado). O JSON exportado do iRacing para Downloads continua sendo a fonte oficial e substitui a estimativa.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
         tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
-        FormClosing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } else { cancellation.Cancel(); timer.Stop(); tray.Dispose(); } };
-        Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start();
+        FormClosing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } else { cancellation.Cancel(); timer.Stop(); simTimer.Stop(); monitor.Dispose(); tray.Dispose(); } };
+        Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start(); simTimer.Tick += (_, _) => monitor.Poll(); simTimer.Start();
     }
     async Task Tick()
     {
@@ -70,7 +76,7 @@ sealed class AgentForm : Form
             await Task.Run(() => { foreach (var file in Program.Sources()) { try { store.Collect(file); } catch (IOException) { } catch (UnauthorizedAccessException) { } } }, cancellation.Token);
             var exportStatus = store.State.ExperimentalExport && store.State.PendingResult ? await exporter.TryExportLatestAsync(cancellation.Token) : "";
             await store.Send(cancellation.Token);
-            status.Text = $"{store.Status}\nFila: {store.Backlog} | Sucessos: {store.State.Successes} | Quarentena: {store.Quarantined}\nHoje: {store.State.Requests}/{store.State.DailyLimit} requests, {store.State.Bytes / 1024} KiB/10240\n{exportStatus}";
+            status.Text = $"{store.Status}\niRacing: {monitor.Status}\nFila: {store.Backlog} | Sucessos: {store.State.Successes} | Quarentena: {store.Quarantined}\nHoje: {store.State.Requests}/{store.State.DailyLimit} requests, {store.State.Bytes / 1024} KiB/10240\n{exportStatus}";
         }
         catch (OperationCanceledException) { }
         catch { status.Text = "Falha local; fila preservada. Verifique armazenamento/credencial."; }
@@ -108,10 +114,222 @@ static class SelfTest
                 if (resultStore.Backlog != 1 || resultStore.State.Files.Count != 1) throw new Exception("private result envelope");
                 checks.Add("Private event_result envelope/queue: OK, temporary payload deleted after test");
             }
+            SessionChecks(root, checks);
+            var scan = Array.IndexOf(args, "--scan-ibt"); if (scan >= 0) checks.Add(ScanIbt(scan + 1 < args.Length && !args[scan + 1].StartsWith("--") ? args[scan + 1] : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "iRacing", "telemetry")));
             File.WriteAllLines(output, checks.Append("PASS"));
         }
         catch (Exception e) { File.WriteAllLines(output, checks.Append("FAIL: " + e.GetType().Name + " " + e.Message)); Environment.ExitCode = 1; }
         finally { Directory.Delete(root, true); }
+    }
+    // Synthetic SessionInfo: 3 human cars (car 1 = driver, class 10), pace car, a non-starter;
+    // ResultsPositions.Position 1-based / ClassPosition 0-based as in real files.
+    internal static string Yaml(int official = 1, int resultsOfficial = 1, string category = "SportsCar", bool classified = true) => $"""
+        ---
+        WeekendInfo:
+         TrackName: synthetic gp
+         TrackID: 8
+         TrackDisplayName: Synthetic Ring
+         TrackConfigName: Grand Prix
+         SeriesID: 447
+         SeasonID: 5900
+         SubSessionID: 777
+         Official: {official}
+         RaceWeek: 3
+         EventType: Race
+         Category: {category}
+         TeamRacing: 0
+         WeekendOptions:
+          NumStarters: 0
+
+        SessionInfo:
+         Sessions:
+         - SessionNum: 0
+           SessionType: Practice
+           ResultsPositions:
+           - Position: 1
+             ClassPosition: 0
+             CarIdx: 1
+         - SessionNum: 2
+           SessionType: Race
+           ResultsPositions:
+        {(classified ? """
+           - Position: 1
+             ClassPosition: 0
+             CarIdx: 0
+             LapsComplete: 20
+             FastestTime: 89.5000
+             LapsLed: 20
+             Incidents: 0
+           - Position: 2
+             ClassPosition: 1
+             CarIdx: 1
+             LapsComplete: 20
+             FastestTime: 89.9000
+             LapsLed: 0
+             Incidents: 4
+        """ : "")}
+           - Position: 3
+             ClassPosition: 0
+             CarIdx: 2
+             LapsComplete: 19
+             FastestTime: 95.2000
+             LapsLed: 0
+             Incidents: 2
+           ResultsOfficial: {resultsOfficial}
+
+        QualifyResultsInfo:
+         Results:
+         - Position: 4
+           ClassPosition: 4
+           CarIdx: 1
+
+        DriverInfo:
+         DriverCarIdx: 1
+         DriverUserID: 42
+         Drivers:
+         - CarIdx: 0
+           UserName: Synthetic Rival
+           UserID: 43
+           CarID: 196
+           CarClassID: 10
+           CarScreenName: Synthetic P
+           CarIsPaceCar: 0
+           CarIsAI: 0
+           IsSpectator: 0
+           IRating: 2000
+         - CarIdx: 1
+           UserName: Synthetic Driver
+           UserID: 42
+           CarID: 196
+           CarClassID: 10
+           CarScreenName: Synthetic P
+           CarIsPaceCar: 0
+           CarIsAI: 0
+           IsSpectator: 0
+           IRating: 2000
+           LicLevel: 18
+           LicSubLevel: 281
+         - CarIdx: 2
+           UserName: Synthetic Other
+           UserID: 44
+           CarID: 100
+           CarClassID: 20
+           CarScreenName: Synthetic GT
+           CarIsPaceCar: 0
+           CarIsAI: 0
+           IsSpectator: 0
+           IRating: 1500
+         - CarIdx: 3
+           UserName: Synthetic Late
+           UserID: 45
+           CarID: 196
+           CarClassID: 10
+           CarScreenName: Synthetic P
+           CarIsPaceCar: 0
+           CarIsAI: 0
+           IsSpectator: 0
+           IRating: 2100
+         - CarIdx: 9
+           UserName: Pace Car
+           UserID: -1
+           CarIsPaceCar: 1
+        CarSetup:
+         UpdateCount: 1
+         Secret: do-not-send
+        ...
+        """;
+
+    static void SessionChecks(string root, List<string> checks)
+    {
+        var at = new DateTimeOffset(2026, 10, 7, 21, 40, 0, TimeSpan.Zero);
+        var snap = SessionResult.Build(Yaml(), at, "live", out _) ?? throw new Exception("session result");
+        var text = Encoding.UTF8.GetString(snap.Payload);
+        using (var doc = JsonDocument.Parse(snap.Payload))
+        {
+            var r = doc.RootElement.GetProperty("result"); var e = r.GetProperty("entrants");
+            if (doc.RootElement.GetProperty("kind").GetString() != "ibt_result" || snap.SubsessionId != 777 || !snap.ResultsOfficial || r.GetProperty("customerId").GetInt32() != 42 || r.GetProperty("racedAt").GetString() != "2026-10-07T21:40:00Z" || r.GetProperty("raceWeek").GetInt32() != 3) throw new Exception("result fields");
+            if (e.GetArrayLength() != 4 || e[3].GetProperty("started").GetBoolean() || e[1].GetProperty("position").GetInt32() != 2 || e[1].GetProperty("classPosition").GetInt32() != 1 || r.GetProperty("driver").GetProperty("gridPosition").GetInt32() != 5) throw new Exception("result grid");
+            if (doc.RootElement.GetProperty("key").GetString() != Ibt.Hash(Encoding.UTF8.GetBytes("ibt_result:777:42"))) throw new Exception("result key");
+        }
+        if (text.Contains("Synthetic Driver") || text.Contains("Synthetic Rival") || text.Contains("do-not-send") || text.Contains("UserName") || snap.Payload.Length > SessionResult.MaxPayload) throw new Exception("result privacy");
+        checks.Add("SessionInfo result extraction (positions, class, grid, no names/setup): OK");
+        var provisional = SessionResult.Build(Yaml(resultsOfficial: 0), at, "live", out _);
+        if (provisional is null || provisional.ResultsOfficial || SessionResult.Build(Yaml(official: 0), at, "live", out _) is not null || SessionResult.Build(Yaml(category: "Oval"), at, "live", out _) is not null || SessionResult.Build(Yaml(classified: false), at, "live", out _) is not null) throw new Exception("result gating");
+        checks.Add("Result gating (official event, category, driver classified): OK");
+
+        static byte[] SyntheticIbt(string yaml)
+        {
+            var y = Encoding.Latin1.GetBytes(yaml); const int varAt = 144, bufAt = varAt + 2 * 144, size = 16, records = 4;
+            var yamlAt = bufAt + size * records; var bytes = new byte[yamlAt + y.Length];
+            void I(int at, int v) => BinaryPrimitives.WriteInt32LittleEndian(bytes.AsSpan(at), v);
+            I(0, 2); I(8, 60); I(16, y.Length); I(20, yamlAt); I(24, 2); I(28, varAt); I(32, 1); I(36, size); I(52, bufAt); I(140, records);
+            BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(112), new DateTimeOffset(2026, 10, 7, 21, 0, 0, TimeSpan.Zero).ToUnixTimeSeconds());
+            void Var(int n, int type, int offset, string name) { I(varAt + n * 144, type); I(varAt + n * 144 + 4, offset); I(varAt + n * 144 + 8, 1); Encoding.ASCII.GetBytes(name).CopyTo(bytes, varAt + n * 144 + 16); }
+            Var(0, 2, 0, "SessionNum"); Var(1, 5, 8, "SessionTime");
+            for (var r = 0; r < records; r++) { I(bufAt + r * size, r < 2 ? 0 : 2); BinaryPrimitives.WriteInt64LittleEndian(bytes.AsSpan(bufAt + r * size + 8), BitConverter.DoubleToInt64Bits(r < 2 ? 500 + r / 60.0 : 10 + (r - 2) / 60.0)); }
+            y.CopyTo(bytes, yamlAt); return bytes;
+        }
+        using (var ibt = new MemoryStream(SyntheticIbt(Yaml())))
+        {
+            var fromIbt = SessionResult.FromIbt(ibt, out var why) ?? throw new Exception("ibt result " + why);
+            using var doc = JsonDocument.Parse(fromIbt.Payload);
+            // record 2 at 2/60 s after the disk start, Race SessionTime 10 s => start 21:00:00 - 9.97 s.
+            if (doc.RootElement.GetProperty("result").GetProperty("racedAt").GetString() != "2026-10-07T20:59:50Z" || doc.RootElement.GetProperty("result").GetProperty("origin").GetString() != "ibt") throw new Exception("ibt raced_at");
+        }
+        using (var stale = new MemoryStream(SyntheticIbt(Yaml(resultsOfficial: 0)))) if (SessionResult.FromIbt(stale, out _) is not null) throw new Exception("ibt stale snapshot accepted");
+        checks.Add("Synthetic IBT result (official only, race start from records): OK");
+
+        if (SimMonitor.TelemStartWParam != 0x0001000A) throw new Exception("broadcast wParam");
+        var name = "Local\\RacingAgentSelfTest-" + Guid.NewGuid().ToString("N");
+        using var mmf = MemoryMappedFile.CreateNew(name, 1 << 20); using var view = mmf.CreateViewAccessor();
+        var vars = new[] { ("IsOnTrack", 1, 0), ("IsDiskLoggingEnabled", 1, 1), ("IsDiskLoggingActive", 1, 2), ("IsReplayPlaying", 1, 3), ("SessionNum", 2, 4), ("SessionState", 2, 8), ("SessionTime", 5, 16) };
+        const int bufOffset = 4096, yamlOffset = 8192;
+        view.Write(0, 2); view.Write(4, 1); view.Write(8, 60); view.Write(24, vars.Length); view.Write(28, 144); view.Write(32, 1); view.Write(36, 64); view.Write(48, 1); view.Write(52, bufOffset);
+        for (var n = 0; n < vars.Length; n++) { view.Write(144 + n * 144, vars[n].Item2); view.Write(144 + n * 144 + 4, vars[n].Item3); view.Write(144 + n * 144 + 8, 1); var bytes = Encoding.ASCII.GetBytes(vars[n].Item1); view.WriteArray(144 + n * 144 + 16, bytes, 0, bytes.Length); }
+        var update = 0;
+        void Info(string yaml) { var b = Encoding.Latin1.GetBytes(yaml); view.WriteArray(yamlOffset, b, 0, b.Length); view.Write(yamlOffset + b.Length, (byte)0); view.Write(16, b.Length); view.Write(20, yamlOffset); view.Write(12, ++update); }
+        void Row(bool onTrack, bool active, int session, int state, double time) { view.Write(bufOffset, (byte)(onTrack ? 1 : 0)); view.Write(bufOffset + 1, (byte)1); view.Write(bufOffset + 2, (byte)(active ? 1 : 0)); view.Write(bufOffset + 3, (byte)0); view.Write(bufOffset + 4, session); view.Write(bufOffset + 8, state); view.Write(bufOffset + 16, time); view.Write(48, view.ReadInt32(48) + 1); }
+        var sent = new List<nint>(); var results = new List<SessionResult.Snapshot>(); var now = at; var auto = true;
+        using (var monitor = new SimMonitor(() => auto, results.Add, name, sent.Add, () => now))
+        {
+            Info(Yaml(resultsOfficial: 0)); Row(true, false, 0, 4, 100); monitor.Poll(); monitor.Poll();
+            if (sent.Count != 1 || sent[0] != SimMonitor.TelemStartWParam) throw new Exception("auto record request");
+            now = now.AddSeconds(31); Row(true, true, 0, 4, 130); monitor.Poll(); auto = false; Row(true, false, 0, 4, 140); monitor.Poll();
+            if (sent.Count != 1) throw new Exception("auto record repeat/opt-out");
+            Row(true, true, 2, 4, 600); monitor.Poll(); if (results.Count != 0) throw new Exception("result before checkered");
+            Row(true, true, 2, 5, 1800); Info(Yaml(resultsOfficial: 0)); monitor.Poll(); if (results.Count != 0) throw new Exception("provisional sent early");
+            Info(Yaml()); monitor.Poll(); monitor.Poll();
+            if (results.Count != 1 || !results[0].ResultsOfficial) throw new Exception("official live result");
+            using var doc = JsonDocument.Parse(results[0].Payload);
+            if (doc.RootElement.GetProperty("result").GetProperty("racedAt").GetString() != at.AddSeconds(31 - 600).ToString("yyyy-MM-ddTHH:mm:ssZ")) throw new Exception("live raced_at");
+        }
+        results.Clear(); now = at;
+        using (var monitor = new SimMonitor(() => true, results.Add, name, sent.Add, () => now))
+        {
+            Row(true, true, 2, 5, 1800); Info(Yaml(resultsOfficial: 0)); monitor.Poll(); monitor.Poll();
+            if (results.Count != 0) throw new Exception("provisional before leaving");
+            view.Write(4, 0); monitor.Poll();
+            if (results.Count != 1 || results[0].ResultsOfficial) throw new Exception("provisional on disconnect");
+        }
+        checks.Add("SDK shared memory: auto-record broadcast (TelemCommand=10/Start=1, opt-out), live official/provisional capture: OK");
+        var store = new Store(Path.Combine(root, "results"), "http://localhost:1/api/agent/ingest");
+        store.EnqueueResult(snap); store.EnqueueResult(SessionResult.Build(Yaml(resultsOfficial: 0), at, "ibt", out _)!);
+        if (store.Backlog != 1 || !store.State.ResultSubsessions.Contains(777) || new Store(store.Root, store.Endpoint).State.ResultSubsessions.Count != 1) throw new Exception("result dedupe");
+        checks.Add("One result per subsession (durable): OK");
+    }
+
+    // Read-only diagnostic over local .ibt files: counts only, nothing queued or sent.
+    static string ScanIbt(string folder)
+    {
+        var reasons = new Dictionary<string, int>(); var files = 0;
+        foreach (var file in Directory.Exists(folder) ? Directory.EnumerateFiles(folder, "*.ibt") : [])
+        {
+            files++; string reason;
+            try { using var f = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); reason = SessionResult.FromIbt(f, out var why) is null ? why : "resultado extraído"; }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or EndOfStreamException) { reason = "arquivo em uso/ilegível"; }
+            reasons[reason] = reasons.GetValueOrDefault(reason) + 1;
+        }
+        return $"IBT scan (read-only): {files} files; " + string.Join("; ", reasons.Select(kv => $"{kv.Key}: {kv.Value}"));
     }
     sealed class FixedResponse(int code) : HttpMessageHandler
     {
