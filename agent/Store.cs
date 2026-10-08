@@ -26,6 +26,10 @@ sealed class State
     public string ExportDay { get; set; } = "";
     public int Exports { get; set; }
     public DateTimeOffset LastScan { get; set; }
+    /// <summary>Most recent official-result subsession ids handled by the idle exporter (newest first, max 20).</summary>
+    public List<long> LastResultIds { get; set; } = [];
+    /// <summary>Fingerprint of the newest "Recent Races" row at the end of the last scan; unchanged = nothing new, no modal is opened.</summary>
+    public string LastTopRace { get; set; } = "";
     public Dictionary<string, Attempt> Attempts { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }

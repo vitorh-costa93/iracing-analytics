@@ -24,6 +24,23 @@ static class Program
                 if (tokenFile + 1 >= args.Length || new FileInfo(args[tokenFile + 1]).Length > 8192) throw new ArgumentException("Arquivo de token inválido");
                 store.Token(File.ReadAllText(args[tokenFile + 1])); return;
             }
+            var dumpUi = Array.IndexOf(args, "--dump-ui");
+            if (dumpUi >= 0 && dumpUi + 1 < args.Length) { File.WriteAllText(args[dumpUi + 1], ResultExporter.DumpUi(args.Skip(dumpUi + 2).ToArray())); return; }
+            var exportTest = Array.IndexOf(args, "--export-test");
+            if (exportTest >= 0)
+            {
+                // Dev check: N newest results, ignoring server-known ids, isolated state dir, nothing is sent.
+                ResultExporter.SkipIdleGate = true;
+                ResultExporter.TestCount = Math.Clamp(int.TryParse(args.ElementAtOrDefault(exportTest + 1), out var n) ? n : 11, 1, 20);
+                // --send: end-to-end against the real store/token; the server upserts by key (overwrites existing rows).
+                var testStore = args.Contains("--send") ? store : new Store(Path.Combine(Path.GetTempPath(), "RacingAnalyticsAgent.ExportTest"), endpoint);
+                var result = new ResultExporter().TryExportAsync(testStore).GetAwaiter().GetResult();
+                if (args.Contains("--send")) { for (var guard = 0; guard < 30 && testStore.Backlog > 0; guard++) { testStore.Send(CancellationToken.None).GetAwaiter().GetResult(); Thread.Sleep(7000); } result += $" Após envio, fila: {testStore.Backlog}; status: {testStore.Status}."; }
+                var report = $"{result}\nIds: {string.Join(", ", ResultExporter.TestIds)}\nFila de teste: {testStore.Backlog}\n";
+                var outPath = args.ElementAtOrDefault(exportTest + 2);
+                if (outPath is not null && !outPath.StartsWith("--")) File.WriteAllText(outPath, report); else Console.WriteLine(report);
+                return;
+            }
             var once = Array.IndexOf(args, "--export-once");
             if (once >= 0)
             {

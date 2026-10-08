@@ -19,6 +19,9 @@ internal sealed class ResultExporter
     const int MaxPerRun = 5, MaxPerDay = 20;
     static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(10), ScanInterval = TimeSpan.FromHours(6);
     internal static bool SkipIdleGate;
+    // Dev check only (--export-test N): export the N newest results regardless of what the server knows.
+    internal static int TestCount;
+    internal static readonly List<long> TestIds = new();
     readonly object gate = new();
     Stopwatch? sinceAttempt;
     bool running;
@@ -34,15 +37,14 @@ internal sealed class ResultExporter
             if (!SafeToOperate()) return "Exportação pausada: simulador aberto ou usuário ativo (mínimo 60 s).";
             var today = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
             if (store.State.ExportDay != today) { store.State.ExportDay = today; store.State.Exports = 0; }
-            if (store.State.Exports >= MaxPerDay) return "Exportação: limite diário de downloads atingido.";
             sinceAttempt = Stopwatch.StartNew(); running = true;
         }
         try
         {
-            var known = await store.KnownResults(cancellation);
+            var known = TestCount > 0 ? new HashSet<long>() : await store.KnownResults(cancellation);
             if (known is null) return "Exportação: servidor indisponível para conferir corridas conhecidas.";
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-            timeout.CancelAfter(TimeSpan.FromSeconds(120));
+            timeout.CancelAfter(TimeSpan.FromSeconds(TestCount > 0 ? 600 : 120));
             return await Task.Run(() => Export(store, known, timeout.Token), CancellationToken.None).WaitAsync(timeout.Token);
         }
         catch (OperationCanceledException) { return "Exportação: verificação cancelada ou tempo excedido."; }
@@ -56,32 +58,102 @@ internal sealed class ResultExporter
         if (window is null) return "Exportação: abra o aplicativo iRacing (uma janela).";
         if (ResultModal(window) is not null) return "Exportação: um resultado está aberto no iRacing; não vou interferir.";
         if (SaveDialogs(window).Count > 0) return "Exportação: há um diálogo Salvar aberto no iRacing; não vou interferir.";
-        var raceRows = RaceButtons(window).Count;
-        if (raceRows == 0) return "Exportação: abra Results no iRacing (lista de corridas).";
-        int exported = 0; var stop = "";
-        for (var i = 0; i < raceRows && exported < MaxPerRun; i++)
+        var rows = RecentRaces(window);
+        if (rows.Count == 0)
+        {
+            // Profile > Stats is where the last 10 races live; navigate there only when idle and nothing is open.
+            foreach (var name in new[] { "Profile", "Stats" })
+            {
+                var link = WaitFor(() => window.FindAll(TreeScope.Descendants, new AndCondition(
+                    new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Hyperlink),
+                    new PropertyCondition(AutomationElement.NameProperty, name))).Cast<AutomationElement>().FirstOrDefault(e => !e.Current.IsOffscreen), cancellation, 3000);
+                if (link is null || !Invoke(link)) break;
+                Thread.Sleep(2500);
+            }
+            rows = WaitFor(() => RecentRaces(window) is { Count: > 0 } r ? r : null, cancellation, 8000) ?? [];
+        }
+        if (rows.Count == 0) return "Exportação: não achei 'Recent Races' (Perfil > Stats) no iRacing.";
+        // Unchanged newest row = no new race since the last scan: nothing is opened, nothing is downloaded.
+        if (TestCount == 0 && store.State.LastTopRace == rows[0].Fingerprint)
+        {
+            store.State.LastScan = DateTimeOffset.UtcNow; store.Save();
+            return "Exportação: nenhuma corrida nova em Recent Races.";
+        }
+        int exported = 0; var stop = ""; var reachedKnown = false; var runIds = new List<long>();
+        var limit = TestCount > 0 ? TestCount : MaxPerRun;
+        for (var i = 0; i < rows.Count && exported < limit; i++)
         {
             cancellation.ThrowIfCancellationRequested();
             if (!SafeToOperate()) { stop = " Pausada: usuário ativo."; break; }
-            if (store.State.Exports >= MaxPerDay) { stop = " Limite diário."; break; }
-            var buttons = RaceButtons(window); if (i >= buttons.Count) break;
-            if (!Invoke(buttons[i])) { stop = " Falha ao abrir resultado."; break; }
+            var current = RecentRaces(window); if (i >= current.Count) break;
+            ScrollIntoView(current[i].Row);
+            if (!Invoke(current[i].Button)) { stop = " Falha ao abrir resultado."; break; }
             try
             {
                 var modal = WaitFor(() => ResultModal(window), cancellation);
                 if (modal is null) { stop = " Resultado não abriu."; break; }
+                // The modal header shows the subsession id: decide before spending a download.
+                var shown = ModalSubsessionId(window);
+                if (TestCount == 0 && shown is not null && (known.Contains(shown.Value) || store.State.LastResultIds.Contains(shown.Value)))
+                { stop = " Alcançou corrida já conhecida."; reachedKnown = true; break; }
+                if (store.State.Exports >= MaxPerDay) { stop = " Limite diário de downloads atingido."; break; }
                 var json = DownloadJson(window, modal, cancellation);
                 store.State.Exports++; store.Save();
                 if (json is null) { stop = " Download JSON indisponível."; break; }
                 var id = store.EnqueueOfficial(json, known);
                 if (id is null) { stop = " JSON inesperado."; break; }
-                if (known.Contains(id.Value)) { stop = " Alcançou corrida já conhecida."; break; }
+                if (known.Contains(id.Value) && TestCount == 0) { stop = " Alcançou corrida já conhecida."; reachedKnown = true; break; }
+                runIds.Add(id.Value);
+                if (TestCount > 0) TestIds.Add(id.Value);
                 exported++;
             }
             finally { CloseModal(window, cancellation); }
         }
+        // Newest first, bounded: the durable record of which result ids were already exported.
+        store.State.LastResultIds = runIds.Concat(store.State.LastResultIds.Where(x => !runIds.Contains(x))).Take(20).ToList();
+        // Only a scan that reached an already-known race (or exhausted the list) proves the newer rows were all handled.
+        if (TestCount == 0 && (reachedKnown || (stop.Length == 0 && exported < limit))) store.State.LastTopRace = rows[0].Fingerprint;
         store.State.LastScan = DateTimeOffset.UtcNow; store.Save();
         return $"Exportação: {exported} resultado(s) novo(s) enfileirado(s).{stop}{(LastError.Length > 0 ? " [" + LastError + "]" : "")}";
+    }
+
+    // The header text can sit outside the dialog node, so search the whole window (onscreen only; the page behind has no 7+ digit text).
+    static long? ModalSubsessionId(AutomationElement window)
+    {
+        var top = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>()
+            .Select(e => (Name: e.Current.Name, R: e.Current.BoundingRectangle))
+            .Where(t => t.Name.Length is >= 7 and <= 10 && t.Name.All(char.IsDigit) && t.R.Height > 0 && t.R.Top > 0 && t.R.Top < 400)
+            .OrderBy(t => t.R.Top).ThenBy(t => t.R.Left).FirstOrDefault();
+        return top.Name is not null && long.TryParse(top.Name, out var id) ? id : null;
+    }
+
+    // Profile > Stats > "Recent Races": the last 10 races only (no practice/qualifying), newest first.
+    // Each row is a DataItem sibling group; the row's "Results" button shares its vertical band.
+    // Offscreen rows stay in the accessibility tree, so no scrolling by coordinates is needed.
+    internal static List<(AutomationElement Row, AutomationElement Button, string Fingerprint)> RecentRaces(AutomationElement window)
+    {
+        var card = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, "member-profile-last10-stats-card"));
+        var rows = new List<(AutomationElement, AutomationElement, string)>();
+        if (card is null) return rows;
+        var cells = card.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.DataItem)).Cast<AutomationElement>()
+            .Select(e => (E: e, R: e.Current.BoundingRectangle, N: e.Current.Name)).Where(c => c.R.Height > 0).ToList();
+        foreach (var button in card.FindAll(TreeScope.Descendants, new AndCondition(
+            new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button),
+            new PropertyCondition(AutomationElement.NameProperty, "Results"))).Cast<AutomationElement>().OrderBy(b => b.Current.BoundingRectangle.Top))
+        {
+            var mid = button.Current.BoundingRectangle.Top + button.Current.BoundingRectangle.Height / 2;
+            var band = cells.Where(c => c.R.Top <= mid && mid <= c.R.Bottom && c.R.Height < 80).OrderBy(c => c.R.Left).ToList();
+            if (band.Count == 0) continue;
+            // date | series | season | car | track | start | finish | inc | sof (skip winner and points)
+            var fp = string.Join("|", band.Select(c => c.N).Where(n => n.Length > 0 && n != "Results"));
+            rows.Add((band[0].E, button, fp));
+        }
+        return rows;
+    }
+
+    static void ScrollIntoView(AutomationElement element)
+    {
+        try { if (element.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var p)) ((ScrollItemPattern)p).ScrollIntoView(); } catch { }
     }
 
     // Race rows only: the type column ("R") shares the row with its "Results" button.
@@ -193,6 +265,41 @@ internal sealed class ResultExporter
         catch (Exception e) { LastError = e.GetType().Name + ": " + e.Message; }
     }
     internal static string LastError = "";
+
+    // Dev diagnostic (--dump-ui): visible, non-text-input elements of the iRacing UI, no personal data beyond control names.
+    internal static string DumpUi(string[] invokeNames)
+    {
+        var window = ExistingWindow(); if (window is null) return "janela iRacingUI não encontrada (ou mais de uma)";
+        var sb = new StringBuilder();
+        foreach (var name in invokeNames)
+        {
+            if (name == "@id") { sb.AppendLine("ID lido do modal: " + (ModalSubsessionId(window)?.ToString() ?? "NULL")); continue; }
+            if (name == "@close") { CloseModal(window, CancellationToken.None); continue; }
+            if (name == "@recent0")
+            {
+                var first = RecentRaces(window).FirstOrDefault(); if (first.Button is null) return "Recent Races não encontrado";
+                ScrollIntoView(first.Row); Invoke(first.Button); Thread.Sleep(3500); continue;
+            }
+            var target = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, name)).Cast<AutomationElement>()
+                .FirstOrDefault(e => !e.Current.IsOffscreen && e.TryGetCurrentPattern(InvokePattern.Pattern, out _) || !e.Current.IsOffscreen && e.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
+            if (target is null) return $"não achei '{name}'";
+            if (target.TryGetCurrentPattern(InvokePattern.Pattern, out var p)) ((InvokePattern)p).Invoke(); else ((SelectionItemPattern)target.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            Thread.Sleep(3500);
+        }
+        foreach (AutomationElement e in window.FindAll(TreeScope.Descendants, Condition.TrueCondition))
+        {
+            try
+            {
+                var c = e.Current;
+                var type = c.ControlType.ProgrammaticName.Replace("ControlType.", "");
+                if (type is "Pane" or "Group" or "Custom" && c.Name.Length == 0 && c.AutomationId.Length == 0) continue;
+                var r = c.BoundingRectangle;
+                sb.AppendLine($"{type}|{c.Name.Replace('\n', ' ')}|{c.AutomationId}|{(int)r.Left},{(int)r.Top},{(int)r.Width}x{(int)r.Height}{(c.IsOffscreen ? "|off" : "")}");
+            }
+            catch { }
+        }
+        return sb.ToString();
+    }
 
     static bool Invoke(AutomationElement element)
     {
