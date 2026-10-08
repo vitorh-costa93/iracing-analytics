@@ -100,14 +100,15 @@ sealed class SimMonitor : IDisposable
         }
         else if (raceSessionNum >= 0 && session == raceSessionNum && sessionTime is >= 0 && raceStart is null) { raceStart = now.AddSeconds(-sessionTime.Value); infoUpdate = -1; }
         if (provisional is not null && session != raceSessionNum) FlushProvisional();
-        Status = $"Simulador conectado; {record}" + (provisional is not null ? "; resultado aguardando oficialização" : "");
+        Status = $"Simulador conectado; {record}" + (provisional is not null ? "; aguardando oficialização (só o oficial é enviado)" : "");
     }
     static long ParseSub(string yaml) => SessionYaml.Parse(yaml).M("WeekendInfo").I("SubSessionID") ?? 0;
     static int RaceSessionNum(string yaml) { var races = SessionYaml.Parse(yaml).M("SessionInfo").L("Sessions").Where(s => s.S("SessionType") == "Race").ToList(); return races.Count == 1 ? races[0].I("SessionNum") ?? -1 : -1; }
     void Deliver(SessionResult.Snapshot snapshot) { if (captured.Add(snapshot.SubsessionId)) onResult(snapshot); }
-    // The driver left before results became official: the last checkered snapshot is sent as
-    // provisional (still an estimate on the server; the official JSON replaces it).
-    void FlushProvisional() { if (provisional is not null) { Deliver(provisional); provisional = null; } }
+    // Policy: only the official result is ever sent. If the driver leaves before it becomes
+    // official, the snapshot is discarded; the pending Race flag in the store keeps the idle
+    // exporter polling Recent Races, which delivers the official JSON.
+    void FlushProvisional() { provisional = null; }
     void Close() { FlushProvisional(); view?.Dispose(); map?.Dispose(); view = null; map = null; infoUpdate = -1; }
     public void Dispose() => Close();
 

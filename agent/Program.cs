@@ -337,9 +337,9 @@ static class SelfTest
             Row(true, true, 2, 5, 1800); Info(Yaml(resultsOfficial: 0)); monitor.Poll(); monitor.Poll();
             if (results.Count != 0) throw new Exception("provisional before leaving");
             view.Write(4, 0); monitor.Poll();
-            if (results.Count != 1 || results[0].ResultsOfficial) throw new Exception("provisional on disconnect");
+            if (results.Count != 0) throw new Exception("provisional must never be sent");
         }
-        checks.Add("SDK shared memory: auto-record broadcast (TelemCommand=10/Start=1, opt-out), live official/provisional capture: OK");
+        checks.Add("SDK shared memory: auto-record broadcast (TelemCommand=10/Start=1, opt-out), live official-only capture (provisional discarded): OK");
         var store = new Store(Path.Combine(root, "results"), "http://localhost:1/api/agent/ingest");
         store.EnqueueResult(snap); store.EnqueueResult(SessionResult.Build(Yaml(resultsOfficial: 0), at, "ibt", out _)!);
         if (store.Backlog != 1 || !store.State.ResultSubsessions.Contains(777) || new Store(store.Root, store.Endpoint).State.ResultSubsessions.Count != 1) throw new Exception("result dedupe");
