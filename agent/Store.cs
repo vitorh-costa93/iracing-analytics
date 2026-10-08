@@ -30,6 +30,7 @@ sealed class State
     public List<long> LastResultIds { get; set; } = [];
     /// <summary>Fingerprint of the newest "Recent Races" row at the end of the last scan; unchanged = nothing new, no modal is opened.</summary>
     public string LastTopRace { get; set; } = "";
+    public bool StartupInit { get; set; }
     public Dictionary<string, Attempt> Attempts { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
