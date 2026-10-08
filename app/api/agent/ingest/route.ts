@@ -32,11 +32,26 @@ async function seriesName(driverId:string,car:number,track:number,racedAt:string
  const names=[...new Set((data??[]).map(row=>String(row.series_name)))];
  return names.length===1?names[0]:`iRacing série ${seriesId}`;
 }
+async function authorize(request:NextRequest){
+ const auth=request.headers.get('authorization'); if(!auth||!/^Bearer [A-Za-z0-9_-]{43,128}$/.test(auth))return null;
+ const {data:device,error}=await db.from('agent_devices').select('id,driver_id,customer_id').eq('token_hash',agentHash(auth.slice(7))).eq('enabled',true).maybeSingle();
+ if(error)throw new Error('auth');return device;
+}
+// Subsessions whose official result is already stored (iRStats import or official JSON), so the
+// agent exports only new races from the iRacing UI. Bounded: ids only, 120 days, 400 rows.
+export async function GET(request:NextRequest){
+ try {
+  const device=await authorize(request);if(!device)return reply(401,'unauthorized');
+  const since=new Date(Date.now()-120*86400000).toISOString();
+  const {data,error}=await db.from('race_results').select('irstats_race_id').eq('driver_id',device.driver_id).gte('raced_at',since)
+   .or('result_source.eq.irstats,official_irating_after.not.is.null').order('raced_at',{ascending:false}).limit(400);
+  if(error)throw new Error('known');
+  return NextResponse.json({known:(data??[]).map(r=>Number(r.irstats_race_id)).filter(Number.isFinite)},{headers:{'Cache-Control':'no-store'}});
+ }catch{return reply(503,'temporarily_unavailable',120);}
+}
 export async function POST(request:NextRequest){
  try {
-  const auth=request.headers.get('authorization'); if(!auth||!/^Bearer [A-Za-z0-9_-]{43,128}$/.test(auth))return reply(401,'unauthorized');
-  const {data:device,error}=await db.from('agent_devices').select('id,driver_id,customer_id').eq('token_hash',agentHash(auth.slice(7))).eq('enabled',true).maybeSingle();
-  if(error)throw new Error('auth');if(!device)return reply(401,'unauthorized');
+  const device=await authorize(request);if(!device)return reply(401,'unauthorized');
   const {body,size}=await boundedBody(request);if(body.version!==1||!['result','telemetry','ibt_result'].includes(String(body.kind)))throw new AgentValidationError();
   let key:string,hash:string,bytes=0,row:Record<string,unknown>,session:Record<string,unknown>|null=null,gzip:Buffer|null=null;
   if(body.kind==='result'){

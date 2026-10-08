@@ -24,6 +24,14 @@ static class Program
                 if (tokenFile + 1 >= args.Length || new FileInfo(args[tokenFile + 1]).Length > 8192) throw new ArgumentException("Arquivo de token inválido");
                 store.Token(File.ReadAllText(args[tokenFile + 1])); return;
             }
+            var once = Array.IndexOf(args, "--export-once");
+            if (once >= 0)
+            {
+                // Dev check of the idle exporter: skips only the 60 s idle gate; every other guard-rail applies.
+                ResultExporter.SkipIdleGate = true;
+                var line = new ResultExporter().TryExportAsync(store).GetAwaiter().GetResult();
+                if (once + 1 < args.Length) File.WriteAllText(args[once + 1], $"{line}\nFila: {store.Backlog}\nDownloads hoje: {store.State.Exports}\n"); return;
+            }
             if (args.Contains("--backfill")) { foreach (var file in Sources()) { try { store.Collect(file, true); } catch (IOException) { } } return; }
             ApplicationConfiguration.Initialize(); Application.Run(new AgentForm(store, args.Contains("--tray")));
         }
@@ -61,7 +69,7 @@ sealed class AgentForm : Form
         }; panel.Controls.Add(open);
         var record = new CheckBox { Text = "Ligar gravação .ibt automaticamente ao entrar na pista (SDK oficial)", AutoSize = true, Checked = store.State.AutoRecord }; panel.Controls.Add(record);
         record.CheckedChanged += (_, _) => { store.State.AutoRecord = record.Checked; store.Save(); };
-        var experimental = new CheckBox { Text = "Tentar exportação sem foco (experimental)", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
+        var experimental = new CheckBox { Text = "Exportar resultados oficiais em momento ocioso (sem foco, só corridas novas)", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
         experimental.CheckedChanged += (_, _) => { store.State.ExperimentalExport = experimental.Checked; store.Save(); };
         panel.Controls.Add(new Label { Text = "O resultado da corrida é lido do SessionInfo ao vivo (iRating estimado). O JSON exportado do iRacing para Downloads continua sendo a fonte oficial e substitui a estimativa.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
         tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
@@ -74,7 +82,7 @@ sealed class AgentForm : Form
         try
         {
             await Task.Run(() => { foreach (var file in Program.Sources()) { try { store.Collect(file); } catch (IOException) { } catch (UnauthorizedAccessException) { } } }, cancellation.Token);
-            var exportStatus = store.State.ExperimentalExport && store.State.PendingResult ? await exporter.TryExportLatestAsync(cancellation.Token) : "";
+            var exportStatus = store.State.ExperimentalExport && exporter.Due(store) ? await exporter.TryExportAsync(store, cancellation.Token) : "";
             await store.Send(cancellation.Token);
             status.Text = $"{store.Status}\niRacing: {monitor.Status}\nFila: {store.Backlog} | Sucessos: {store.State.Successes} | Quarentena: {store.Quarantined}\nHoje: {store.State.Requests}/{store.State.DailyLimit} requests, {store.State.Bytes / 1024} KiB/10240\n{exportStatus}";
         }
@@ -97,6 +105,8 @@ static class SelfTest
             using var a = JsonDocument.Parse("{\"z\":2,\"a\":1}"); using var b = JsonDocument.Parse("{\"a\":1,\"z\":2}"); if (!Store.Canonical(a.RootElement).SequenceEqual(Store.Canonical(b.RootElement))) throw new Exception("canonical"); checks.Add("Canonical object ordering: OK");
             var store = new Store(root, "http://localhost:1/api/agent/ingest");
             var payload = JsonSerializer.SerializeToUtf8Bytes(new { version = 1, kind = "result", key = Ibt.Hash("synthetic"u8), export = new { type = "event_result", data = new { } } }); store.Enqueue(payload); store.Enqueue(payload); if (store.Backlog != 1) throw new Exception("dedupe"); if (new Store(root, store.Endpoint).Backlog != 1) throw new Exception("durability"); checks.Add("Queue dedupe/restart: OK");
+            var official = Encoding.UTF8.GetBytes("{\"type\":\"event_result\",\"data\":{\"subsession_id\":777}}"); var officialStore = new Store(Path.Combine(root, "official"), store.Endpoint);
+            if (officialStore.EnqueueOfficial(official, new HashSet<long> { 777 }) != 777 || officialStore.Backlog != 0) throw new Exception("official known skipped"); if (officialStore.EnqueueOfficial(official, new HashSet<long>()) != 777 || officialStore.EnqueueOfficial(official, new HashSet<long>()) != 777 || officialStore.Backlog != 1) throw new Exception("official dedupe"); checks.Add("Official export known-skip/dedupe: OK");
             using var bad = new MemoryStream(new byte[144]); try { Ibt.Read(bad).ToArray(); throw new Exception("accepted malformed"); } catch (InvalidDataException) { } checks.Add("Malformed IBT rejected: OK");
             var codes = new[] { 500, 429, 401, 422, 200 };
             foreach (var code in codes)

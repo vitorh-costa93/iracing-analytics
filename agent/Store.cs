@@ -23,6 +23,9 @@ sealed class State
     public bool PendingResult { get; set; }
     public bool AutoRecord { get; set; } = true;
     public HashSet<long> ResultSubsessions { get; set; } = [];
+    public string ExportDay { get; set; } = "";
+    public int Exports { get; set; }
+    public DateTimeOffset LastScan { get; set; }
     public Dictionary<string, Attempt> Attempts { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
@@ -82,6 +85,35 @@ sealed class Store
             Enqueue(snapshot.Payload); State.ResultSubsessions.Add(snapshot.SubsessionId); State.PendingResult = false;
         }
         Save(); Status = snapshot.ResultsOfficial ? "Resultado oficial capturado" : "Resultado provisório capturado"; return true;
+    }
+    /// <summary>Queues an official event_result JSON exported by the idle exporter (no file left in
+    /// Downloads). Returns the subsession id, or null when the payload is not an event_result.</summary>
+    public long? EnqueueOfficial(byte[] json, HashSet<long>? known = null)
+    {
+        if (json.Length > 1024 * 1024) return null;
+        using var doc = JsonDocument.Parse(json);
+        if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("type", out var type) || type.GetString() != "event_result"
+            || !doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
+            || !data.TryGetProperty("subsession_id", out var sub) || !sub.TryGetInt64(out var id)) return null;
+        if (known?.Contains(id) == true) return id;
+        Enqueue(JsonSerializer.SerializeToUtf8Bytes(new { version = 1, kind = "result", key = Ibt.Hash(Canonical(doc.RootElement)), export = doc.RootElement }));
+        lock (persistGate) { State.PendingResult = false; }
+        Save(); Status = "Resultado oficial exportado"; return id;
+    }
+    /// <summary>Subsessions whose official result the server already has (bounded GET, ids only).</summary>
+    public async Task<HashSet<long>?> KnownResults(CancellationToken cancellation)
+    {
+        var token = Token(); if (token is null || State.AuthPaused) return null;
+        using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        try
+        {
+            using var response = await http.SendAsync(request, cancellation);
+            if (response.StatusCode == HttpStatusCode.Unauthorized) { State.AuthPaused = true; Save(); return null; }
+            if (!response.IsSuccessStatusCode) return null;
+            using var doc = JsonDocument.Parse(await response.Content.ReadAsByteArrayAsync(cancellation));
+            return doc.RootElement.GetProperty("known").EnumerateArray().Select(e => e.GetInt64()).ToHashSet();
+        }
+        catch (Exception e) when (e is HttpRequestException or JsonException or KeyNotFoundException or TaskCanceledException) { return null; }
     }
     public void Collect(string path, bool backfill = false)
     {
