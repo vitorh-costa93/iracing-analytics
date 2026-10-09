@@ -20,6 +20,7 @@ sealed class State
     public DateTimeOffset Next { get; set; }
     public bool AuthPaused { get; set; }
     public bool ExperimentalExport { get; set; }
+    public bool ExportMigrated { get; set; }
     public bool PendingResult { get; set; }
     public bool AutoRecord { get; set; } = true;
     public HashSet<long> ResultSubsessions { get; set; } = [];

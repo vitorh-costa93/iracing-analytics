@@ -75,6 +75,8 @@ sealed class AgentForm : Form
         var save = new Button { Text = "Salvar token", AutoSize = true }; save.Click += (_, _) => { try { store.Token(token.Text); token.Clear(); status.Text = "Token salvo"; } catch { status.Text = "Token inválido ou armazenamento indisponível"; } }; panel.Controls.Add(save);
         var limit = new NumericUpDown { Minimum = 1, Maximum = 128, Value = Math.Clamp(store.State.DailyLimit, 1, 128), Width = 80 }; panel.Controls.Add(new Label { Text = "Máximo de requests por dia UTC (padrão 60)", AutoSize = true }); panel.Controls.Add(limit); limit.ValueChanged += (_, _) => { store.State.DailyLimit = (int)limit.Value; store.Save(); };
         if (!store.State.StartupInit) { store.State.StartupInit = true; store.Save(); using var first = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"); first.SetValue("RacingAnalyticsAgent", $"\"{Environment.ProcessPath}\" --tray"); }
+        // Official-only policy depends on the idle exporter, so it is on by default (one-time migration for installs that had it off).
+        if (!store.State.ExportMigrated) { store.State.ExportMigrated = true; store.State.ExperimentalExport = true; store.Save(); }
         using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         var startup = new CheckBox { Text = "Iniciar com Windows", AutoSize = true, Checked = run?.GetValue("RacingAnalyticsAgent") is not null }; panel.Controls.Add(startup);
         startup.CheckedChanged += (_, _) => { using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"); if (startup.Checked) key.SetValue("RacingAnalyticsAgent", $"\"{Environment.ProcessPath}\" --tray"); else key.DeleteValue("RacingAnalyticsAgent", false); };
@@ -87,7 +89,7 @@ sealed class AgentForm : Form
         }; panel.Controls.Add(open);
         var record = new CheckBox { Text = "Ligar gravação .ibt automaticamente ao entrar na pista (SDK oficial)", AutoSize = true, Checked = store.State.AutoRecord }; panel.Controls.Add(record);
         record.CheckedChanged += (_, _) => { store.State.AutoRecord = record.Checked; store.Save(); };
-        var experimental = new CheckBox { Text = "Exportar resultados oficiais em momento ocioso (sem foco, só corridas novas)", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
+        var experimental = new CheckBox { Text = "Exportar resultados oficiais em momento ocioso (sem foco, só corridas novas) — necessário para enviar o resultado oficial", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
         experimental.CheckedChanged += (_, _) => { store.State.ExperimentalExport = experimental.Checked; store.Save(); };
         panel.Controls.Add(new Label { Text = "O resultado da corrida é lido do SessionInfo ao vivo (iRating estimado). O JSON exportado do iRacing para Downloads continua sendo a fonte oficial e substitui a estimativa.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
         tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
