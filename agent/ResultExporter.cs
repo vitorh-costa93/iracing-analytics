@@ -34,7 +34,7 @@ internal sealed class ResultExporter
         {
             if (running) return "Exportação: verificação em andamento.";
             if (sinceAttempt is not null && sinceAttempt.Elapsed < MinInterval) return "Exportação: aguardando intervalo de dez minutos.";
-            if (!SafeToOperate()) return "Exportação pausada: simulador aberto ou usuário ativo (mínimo 60 s).";
+            if (!SafeToOperate()) return "Exportação pausada: simulador aberto.";
             var today = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
             if (store.State.ExportDay != today) { store.State.ExportDay = today; store.State.Exports = 0; }
             sinceAttempt = Stopwatch.StartNew(); running = true;
@@ -84,7 +84,7 @@ internal sealed class ResultExporter
         for (var i = 0; i < rows.Count && exported < limit; i++)
         {
             cancellation.ThrowIfCancellationRequested();
-            if (!SafeToOperate()) { stop = " Pausada: usuário ativo."; break; }
+            if (!SafeToOperate()) { stop = " Pausada: simulador aberto."; break; }
             var current = RecentRaces(window); if (i >= current.Count) break;
             ScrollIntoView(current[i].Row);
             if (!Invoke(current[i].Button)) { stop = " Falha ao abrir resultado."; break; }
@@ -350,8 +350,8 @@ internal sealed class ResultExporter
                     || process.ProcessName.Equals("LockApp", StringComparison.OrdinalIgnoreCase)) return false;
             }
         }
-        var input = new LastInputInfo { Size = (uint)Marshal.SizeOf<LastInputInfo>() };
-        return SkipIdleGate || GetLastInputInfo(ref input) && unchecked((uint)Environment.TickCount - input.Time) >= 60000;
+        // Runs in the background whenever the simulator is closed; no user-idle requirement (decided 09/10/2026).
+        return true;
     }
 
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
