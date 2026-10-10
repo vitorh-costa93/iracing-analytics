@@ -45,10 +45,10 @@ internal sealed class ResultExporter
             if (known is null) return "Exportação: servidor indisponível para conferir corridas conhecidas.";
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             timeout.CancelAfter(TimeSpan.FromSeconds(TestCount > 0 ? 600 : 120));
-            return await Task.Run(() => Export(store, known, timeout.Token), CancellationToken.None).WaitAsync(timeout.Token);
+            return await Task.Run(() => { try { return Export(store, known, timeout.Token); } finally { RestoreWindowState(); } }, CancellationToken.None).WaitAsync(timeout.Token);
         }
         catch (OperationCanceledException) { return "Exportação: verificação cancelada ou tempo excedido."; }
-        catch { return "Exportação indisponível: provedor de acessibilidade não respondeu."; }
+        catch (Exception e) { return $"Exportação indisponível: provedor de acessibilidade não respondeu ({e.GetType().Name}: {e.Message} @ {string.Join(" < ", (e.StackTrace ?? "").Split('\n').Take(3).Select(l => l.Trim()))})."; }
         finally { lock (gate) running = false; }
     }
 
@@ -80,11 +80,12 @@ internal sealed class ResultExporter
             return "Exportação: nenhuma corrida nova em Recent Races.";
         }
         int exported = 0; var stop = ""; var reachedKnown = false; var runIds = new List<long>();
-        var limit = TestCount > 0 ? TestCount : MaxPerRun;
+        var limit = TestCount > 0 ? TestCount : MaxPerRun; var staleRetries = 0;
         for (var i = 0; i < rows.Count && exported < limit; i++)
         {
             cancellation.ThrowIfCancellationRequested();
             if (!SafeToOperate()) { stop = " Pausada: simulador aberto."; break; }
+            try {
             var current = RecentRaces(window); if (i >= current.Count) break;
             ScrollIntoView(current[i].Row);
             if (!Invoke(current[i].Button)) { stop = " Falha ao abrir resultado."; break; }
@@ -95,19 +96,22 @@ internal sealed class ResultExporter
                 // The modal header shows the subsession id: decide before spending a download.
                 var shown = ModalSubsessionId(window);
                 if (TestCount == 0 && shown is not null && (known.Contains(shown.Value) || store.State.LastResultIds.Contains(shown.Value)))
-                { stop = " Alcançou corrida já conhecida."; reachedKnown = true; break; }
+                { reachedKnown = true; continue; } // checked id by id: skip known races, keep going down the list
                 if (store.State.Exports >= MaxPerDay) { stop = " Limite diário de downloads atingido."; break; }
                 var json = DownloadJson(window, modal, cancellation);
                 store.State.Exports++; store.Save();
                 if (json is null) { stop = " Download JSON indisponível."; break; }
                 var id = store.EnqueueOfficial(json, known);
                 if (id is null) { stop = " JSON inesperado."; break; }
-                if (known.Contains(id.Value) && TestCount == 0) { stop = " Alcançou corrida já conhecida."; reachedKnown = true; break; }
+                if (known.Contains(id.Value) && TestCount == 0) { reachedKnown = true; continue; }
                 runIds.Add(id.Value);
                 if (TestCount > 0) TestIds.Add(id.Value);
                 exported++;
             }
             finally { CloseModal(window, cancellation); }
+            }
+            // The page re-renders after a modal closes; stale elements get one more attempt on the same row.
+            catch (ElementNotAvailableException) when (staleRetries++ < 4) { Thread.Sleep(2000); i--; }
         }
         // Newest first, bounded: the durable record of which result ids were already exported.
         store.State.LastResultIds = runIds.Concat(store.State.LastResultIds.Where(x => !runIds.Contains(x))).Take(20).ToList();
@@ -330,8 +334,21 @@ internal sealed class ResultExporter
                 if (handle != IntPtr.Zero) handles.Add(handle);
             }
         }
-        return handles.Count == 1 ? AutomationElement.FromHandle(handles[0]) : null;
+        if (handles.Count != 1) return null;
+        // A minimized window exposes no UI tree: restore it without taking focus; the caller re-minimizes it afterwards.
+        windowHandle = handles[0]; restoredFromMinimized = false;
+        if (IsIconic(windowHandle)) { ShowWindow(windowHandle, 4); restoredFromMinimized = true; Thread.Sleep(1500); }
+        // The embedded Chromium only exposes its UI tree while the window is not occluded: raise it for the scan (sim is closed).
+        if (GetForegroundWindow() != windowHandle) { SetForegroundWindow(windowHandle); Thread.Sleep(2500); }
+        return AutomationElement.FromHandle(windowHandle);
     }
+    [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetForegroundWindow(IntPtr hwnd);
+
+    static IntPtr windowHandle; static bool restoredFromMinimized;
+    static void RestoreWindowState() { if (restoredFromMinimized && windowHandle != IntPtr.Zero) ShowWindow(windowHandle, 7); restoredFromMinimized = false; }
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool IsIconic(IntPtr hwnd);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool ShowWindow(IntPtr hwnd, int command);
 
     static AutomationElement? ResultModal(AutomationElement window)
     {
