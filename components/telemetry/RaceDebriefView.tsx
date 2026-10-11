@@ -9,6 +9,7 @@ import type { Variation } from "@/lib/self-consistency";
 import type { BestPass } from "@/lib/debrief-best-pass";
 import { consistencyTone, SECTOR_CONSISTENCY_LIMITS, type SectorConsistency } from "@/lib/sector-consistency";
 import BestPassDetail from "@/components/telemetry/BestPassDetail";
+import RaceFieldView from "@/components/telemetry/RaceFieldView";
 
 /**
  * Race Debrief no Night Grid (redesign etapa 4, 26/09/2026; mockup docs/redesign-mockup/Debrief.dc.html).
@@ -24,7 +25,7 @@ type SectionPayload = {
 };
 type Debrief = {
   race: {
-    id: string; label: string; car: string | null; track: string | null; carId: number | null; trackId: number | null; category: string | null;
+    id: string; irstatsRaceId?: number; label: string; car: string | null; track: string | null; carId: number | null; trackId: number | null; category: string | null;
     grid: number | null; finish: number | null; incidents: number | null; laps: number | null;
     iratingDelta: number | null; iratingBefore: number | null; iratingAfter: number | null;
   };
@@ -170,6 +171,8 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
         <Panel kicker="Pontos fortes" title="O que manter"><Bullets items={debrief.strengths} tone="gain" /></Panel>
         <Panel kicker="Pontos de melhoria" title="Onde focar no treino"><Bullets items={debrief.improvements} tone="loss" /></Panel>
       </div>
+
+      {race.irstatsRaceId !== undefined && <RaceFieldView subsessionId={race.irstatsRaceId} category={race.category} />}
 
       <div className="ngr-pace-row">
         <Panel kicker="Ritmo" title="Quanto você está da sua melhor volta" subtitle="Uma volta de referência, sem volta a volta: o que importa é a distância até ela">

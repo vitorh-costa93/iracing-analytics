@@ -256,3 +256,70 @@
   .ngr-best { grid-template-columns: minmax(0, 1fr); }
   .ngr-best-map { height: 200px; }
 }
+
+/* ------------------------------------------------------------------ Campo da corrida (.ngf-) */
+.ngf { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; min-width: 0; }
+.ngf-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.ngf-stat { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.ngf-stat-label { font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-muted); }
+.ngf-stat-value { font-family: var(--ng-font-display); font-weight: 700; font-size: 22px; line-height: 1.15; color: var(--ng-text); overflow-wrap: anywhere; }
+.ngf-stat-value[data-tone="gain"] { color: var(--ng-gain); }
+.ngf-stat-value[data-tone="loss"] { color: var(--ng-loss); }
+.ngf-stat-value[data-tone="caution"] { color: var(--ng-caution); }
+.ngf-stat-sub { font-size: 12px; color: var(--ng-soft); line-height: 1.4; }
+.ngf-section { border-top: 1px solid var(--ng-line); padding-top: 8px; }
+.ngf-section > summary { display: flex; align-items: center; gap: 12px; cursor: pointer; min-height: 36px; list-style: none; flex-wrap: wrap; }
+.ngf-section > summary::-webkit-details-marker { display: none; }
+.ngf-section > summary:focus-visible { outline: 2px solid var(--ng-text); outline-offset: 2px; }
+.ngf-n { width: 22px; height: 22px; border-radius: 5px; background: var(--ng-selected); display: inline-flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; }
+.ngf-section-title { font-family: var(--ng-font-display); font-weight: 700; font-size: 16px; }
+.ngf-section-summary { font-size: 13px; color: var(--ng-muted); margin-left: auto; }
+.ngf-section[open] > summary .ngf-section-summary::after { content: " ▾"; }
+.ngf-section:not([open]) > summary .ngf-section-summary::after { content: " ▸"; }
+.ngf-body { display: flex; flex-direction: column; gap: 12px; padding: 8px 0 12px; min-width: 0; }
+.ngf-text { margin: 0; font-size: 14px; line-height: 1.55; color: var(--ng-text-2); }
+.ngf-facts { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--ng-muted); }
+.ngf-facts strong { color: var(--ng-text); font-weight: 600; margin-right: 6px; }
+.ngf-sub-title { font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: var(--ng-soft); margin-bottom: 4px; }
+.ngf-table { display: flex; flex-direction: column; min-width: 0; }
+.ngf-row { display: grid; grid-template-columns: 36px minmax(0, 1.6fr) 1fr 1fr; gap: 12px; align-items: center; min-height: 36px; padding: 0 8px; border-top: 1px solid var(--ng-line); font-size: 13px; text-align: left; }
+.ngf-row.ngf-3 { grid-template-columns: minmax(0, 1.6fr) 1fr 1fr; }
+.ngf-row.ngf-5 { grid-template-columns: 60px minmax(0, 1.6fr) 1fr 70px 70px; }
+.ngf-row.ngf-rival { grid-template-columns: minmax(0, 1.8fr) 90px 100px 100px 80px 70px; }
+.ngf-row[data-me="true"] { background: var(--ng-card-2); }
+.ngf-head { border-top: 0; font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); min-height: 28px; }
+.ngf-row [data-tone="gain"] { color: var(--ng-gain); }
+.ngf-row [data-tone="loss"] { color: var(--ng-loss); }
+.ngf-name { display: flex; align-items: center; gap: 8px; min-width: 0; font-weight: 600; overflow-wrap: anywhere; }
+.ngf-name em { font-style: normal; font-weight: 400; font-size: 11px; color: var(--ng-soft); }
+.ngf-button { width: 100%; background: transparent; border: 0; border-top: 1px solid var(--ng-line); color: var(--ng-text); font-family: var(--ng-font-body); cursor: pointer; }
+.ngf-button:hover { background: var(--ng-card-2); }
+.ngf-button:focus-visible { outline: 2px solid var(--ng-text); outline-offset: -2px; }
+.ngf-detail { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 12px 14px; margin: 4px 0 8px; }
+.ngf-bars { display: flex; align-items: center; gap: 4px; height: 44px; margin-bottom: 8px; }
+.ngf-bar { flex: 1; max-width: 28px; height: 18px; border-radius: 3px; }
+.ngf-bar[data-ahead="up"] { background: var(--ng-gain); align-self: flex-start; }
+.ngf-bar[data-ahead="down"] { background: var(--ng-loss); align-self: flex-end; }
+.ngf-two { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
+.ngf-scatter, .ngf-trend-chart { width: 100%; height: auto; display: block; }
+.ngf-axis { stroke: var(--ngr-track); stroke-width: 1; }
+.ngf-axis-text { font-size: 9px; fill: var(--ng-soft); }
+.ngf-pt { fill: var(--ng-soft); opacity: .8; }
+.ngf-me, .ngf-dot[data-last="true"] { fill: var(--ng-reference); }
+.ngf-dot { fill: var(--ng-muted); }
+.ngf-line { fill: none; stroke: var(--ng-muted); stroke-width: 1.5; }
+.ngf-trend { max-width: 520px; }
+.ngf-trend strong[data-trend="melhorando"] { color: var(--ng-gain); }
+.ngf-trend strong[data-trend="piorando"] { color: var(--ng-loss); }
+.ngf-scenarios { display: flex; gap: 8px; flex-wrap: wrap; }
+.ngf-scenario { background: var(--ng-card-2); border-radius: var(--ng-radius-control); padding: 8px 12px; display: flex; flex-direction: column; gap: 2px; min-width: 84px; border: 1px solid transparent; }
+.ngf-scenario strong { font-family: var(--ng-font-display); font-size: 18px; }
+.ngf-scenario[data-tag="actual"] { border-color: var(--ng-gain); }
+.ngf-scenario[data-tag="expected"] { border-color: var(--ng-reference); }
+@media (max-width: 900px) {
+  .ngf-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ngf-two { grid-template-columns: minmax(0, 1fr); }
+  .ngf-row.ngf-rival { grid-template-columns: minmax(0, 1.6fr) 60px 80px 80px; }
+  .ngf-row.ngf-rival > :nth-child(n+5) { display: none; }
+  .ngf-section-summary { margin-left: 0; width: 100%; }
+}

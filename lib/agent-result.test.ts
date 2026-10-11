@@ -85,3 +85,44 @@ describe("parseAgentResult", () => {
     expect(() => parseAgentResult(null, 42)).toThrow(AgentValidationError);
   });
 });
+
+describe("parseAgentResult field/event", () => {
+  const withField = () => { const p = fixture(); Object.assign(p.data, { series_id: 55, num_drivers: 4, num_cautions: 1, num_caution_laps: 2, num_lead_changes: 3,
+    event_average_lap: 920000, event_best_lap_time: 800000, weather: { skies: 2, temp_value: 25, secret: "x" }, track_state: { race_rubber: -1, leave_marbles: true },
+    session_splits: [{ subsession_id: 123, event_strength_of_field: 2200 }, { subsession_id: 124, event_strength_of_field: -1 }] });
+    p.data.session_results.unshift({ simsession_type: 4, results: [entrant({ cust_id: 43, display_name: "Pilot B", starting_position: -1, best_lap_time: -1, interval: -1 })] } as never);
+    return p; };
+  it("returns event and humans of practice/qualify/race, normalizing sentinels, without AI or unknown keys", () => {
+    const { event, field } = parseAgentResult(withField(), 42);
+    expect(event).toMatchObject({ subsession_id: 123, series_id: 55, race_week: 4, track_id: 8, license_category: "sports_car", sof: 2200, num_cautions: 1,
+      event_average_lap: 920000, weather: { skies: 2, temp_value: 25 }, track_state: { race_rubber: -1, leave_marbles: true },
+      session_splits: [{ subsession_id: 123, event_strength_of_field: 2200 }, { subsession_id: 124, event_strength_of_field: null }] });
+    expect(event.weather).not.toHaveProperty("secret");
+    expect(field.map(f => [f.sim_session_type, f.cust_id])).toEqual([["qualify", 43], ["practice", 42], ["race", 42], ["race", 43], ["race", 44]]);
+    expect(field[0]).toMatchObject({ display_name: "Pilot B", starting_position: null, best_lap_time: null, interval: null, is_me: false });
+    expect(field[2]).toMatchObject({ is_me: true, finish_position: 2, best_lap_time: 910123, newi_rating: 2040 });
+    expect(field.some(f => f.cust_id === 45)).toBe(false);
+  });
+  it("is deterministic so a re-send hashes identically (idempotent upsert key)", () => {
+    expect(JSON.stringify(parseAgentResult(withField(), 42))).toBe(JSON.stringify(parseAgentResult(withField(), 42)));
+  });
+  it("cleans display names instead of failing the whole result", () => {
+    const p = withField(); (p.data.session_results[0].results[0] as Record<string, unknown>).display_name = "  AB  ";
+    expect(parseAgentResult(p, 42).field[0].display_name).toBe("AB");
+  });
+  it.each([
+    (p: ReturnType<typeof fixture>) => { p.data.session_results[1].results.push(entrant()); },
+    (p: ReturnType<typeof fixture>) => { p.data.session_results[2].results.push(entrant({ cust_id: 43 })); },
+    (p: ReturnType<typeof fixture>) => { p.data.session_results.unshift({ simsession_type: 3, results: [] }); },
+    (p: ReturnType<typeof fixture>) => { delete (p.data.session_results[0].results[0] as Record<string, unknown>).ai; },
+    (p: ReturnType<typeof fixture>) => { p.data.session_results[0].results[0].car_id = 0; },
+    (p: ReturnType<typeof fixture>) => { p.data.session_results[0].results[0].incidents = -1; },
+    (p: ReturnType<typeof fixture>) => { (p.data.session_results[0].results[0] as Record<string, unknown>).oldi_rating = "2000"; },
+    (p: ReturnType<typeof fixture>) => { (p.data as Record<string, unknown>).session_splits = Array.from({ length: 65 }, () => ({ subsession_id: 1 })); },
+    (p: ReturnType<typeof fixture>) => { (p.data as Record<string, unknown>).weather = { skies: "cloudy" }; },
+    (p: ReturnType<typeof fixture>) => { p.data.session_results[1].results = Array.from({ length: 129 }, (_, i) => entrant({ cust_id: 1000 + i })); p.data.session_results[1].results.push(entrant()); },
+  ])("rejects invalid field data", mutate => {
+    const p = withField(); mutate(p);
+    expect(() => parseAgentResult(p, 42)).toThrow(AgentValidationError);
+  });
+});

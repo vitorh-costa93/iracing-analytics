@@ -323,7 +323,7 @@ async function composeDebrief(race: RaceRow, analysis: Analysis) {
   });
   return {
     race: {
-      id: race.id, racedAt: race.raced_at, label: raceLabel(race), series: race.series_name,
+      id: race.id, irstatsRaceId: race.irstats_race_id, racedAt: race.raced_at, label: raceLabel(race), series: race.series_name,
       car: race.car_name, track: race.track_name, carId: race.car_id, trackId: race.track_id, category: race.category,
       grid: race.grid_position, finish: race.finish_position, incidents: race.incidents, laps: race.laps,
       iratingDelta: race.irating_delta, iratingBefore: rating?.irating_before ?? null, iratingAfter: rating?.irating_after ?? null,
