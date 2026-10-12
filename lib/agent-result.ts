@@ -168,8 +168,10 @@ export function parseAgentResult(payload: unknown, customerId: number) {
   const classEntrants = humans.filter(entrant => integer(entrant.car_class_id, 1) === classId);
   const classWinners = classEntrants.filter(entrant => integer(entrant.finish_position_in_class) === 0);
   if (classWinners.length > 1) invalid();
-  const before = integer(pilot.oldi_rating, 0, 2147483647);
-  const after = integer(pilot.newi_rating, 0, 2147483647);
+  // iRating -1 = piloto ainda sem iRating (corridas antigas): mantém a representação já gravada (display "-1", delta 0, oficiais nulos).
+  const unrated = pilot.oldi_rating === -1 && pilot.newi_rating === -1;
+  const before = unrated ? -1 : integer(pilot.oldi_rating, 0, 2147483647);
+  const after = unrated ? -1 : integer(pilot.newi_rating, 0, 2147483647);
   const grid = integer(pilot.starting_position, 0, 2147483646) + 1;
   const finish = integer(pilot.finish_position, 0, 2147483646) + 1;
   const laps = integer(pilot.laps_complete);
@@ -193,7 +195,7 @@ export function parseAgentResult(payload: unknown, customerId: number) {
       raced_at: racedAt, series_name: seriesName, track_name: trackName, car_name: carName,
       category, season_week: seasonWeek, license_class: license(pilot.new_license_level),
       safety_rating: integer(pilot.new_sub_level, 0, 499) / 100,
-      irating_display: String(after), irating_delta: after - before,
+      irating_display: String(after), irating_delta: unrated ? 0 : after - before,
       grid_position: grid, finish_position: finish, class_finish_position: integer(pilot.finish_position_in_class, 0, 2147483646) + 1,
       position_change: grid - finish, laps, laps_led: lapsLed,
       fastest_lap_time: lapTime(lapTicks(pilot.best_lap_time)),
@@ -201,7 +203,7 @@ export function parseAgentResult(payload: unknown, customerId: number) {
       winner_fastest_lap_time: lapTime(classWinners.length ? lapTicks(classWinners[0].best_lap_time) : null),
       class_fastest_lap_time: lapTime(minimum(classEntrants.map(entrant => lapTicks(entrant.best_lap_time)))),
       incidents: integer(pilot.incidents), points: integer(pilot.champ_points),
-      sof: integer(data.event_strength_of_field), official_irating_before: before, official_irating_after: after,
+      sof: integer(data.event_strength_of_field), official_irating_before: unrated ? null : before, official_irating_after: unrated ? null : after,
     },
   };
 }

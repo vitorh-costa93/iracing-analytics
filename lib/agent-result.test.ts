@@ -33,6 +33,10 @@ describe("parseAgentResult", () => {
       laps: 12, laps_led: 0, fastest_lap_time: "1:31.012", race_fastest_lap_time: "1:20.000",
       class_fastest_lap_time: "1:30.000", winner_fastest_lap_time: "1:30.000", incidents: 2, points: 88, sof: 2200 });
   });
+  it("keeps unrated (-1) iRating as already stored: display -1, delta 0, official null", () => {
+    const payload = fixture(); Object.assign(payload.data.session_results[1].results[0], { oldi_rating: -1, newi_rating: -1 });
+    expect(parseAgentResult(payload, 42).row).toMatchObject({ irating_display: "-1", irating_delta: 0, official_irating_before: null, official_irating_after: null });
+  });
   it.each([[2, "Rookie"], [5, "Rookie"], [6, "D"], [9, "D"], [10, "C"], [13, "C"], [14, "B"], [17, "B"], [18, "A"], [21, "A"], [22, "Pro"]])("maps license level %s to %s", (level, expected) => {
     const payload = fixture(); payload.data.session_results[1].results[0].new_license_level = level as number;
     expect(parseAgentResult(payload, 42).row.license_class).toBe(expected);
