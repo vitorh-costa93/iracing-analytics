@@ -14,7 +14,7 @@ namespace RacingAgent;
 /// at the first race the server already has, and is capped per run and per day. The JSON that
 /// the UI drops in Downloads as a GUID .tmp is read, queued and deleted immediately.
 /// </summary>
-internal sealed class ResultExporter
+internal sealed partial class ResultExporter
 {
     const int MaxPerRun = 5, MaxPerDay = 20;
     static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(10), ScanInterval = TimeSpan.FromHours(6);
@@ -41,6 +41,11 @@ internal sealed class ResultExporter
         }
         try
         {
+            if (!store.State.FieldMigrated)
+            {
+                // The server now treats a race as known only once its field is stored: forget the local "already exported" memory once.
+                store.State.FieldMigrated = true; store.State.LastResultIds = []; store.State.LastTopRace = ""; store.Save();
+            }
             var known = TestCount > 0 ? new HashSet<long>() : await store.KnownResults(cancellation);
             if (known is null) return "Exportação: servidor indisponível para conferir corridas conhecidas.";
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -95,7 +100,7 @@ internal sealed class ResultExporter
                 if (modal is null) { stop = " Resultado não abriu."; break; }
                 // The modal header shows the subsession id: decide before spending a download.
                 var shown = ModalSubsessionId(window);
-                if (TestCount == 0 && shown is not null && (known.Contains(shown.Value) || store.State.LastResultIds.Contains(shown.Value)))
+                if (TestCount == 0 && shown is not null && known.Contains(shown.Value))
                 { reachedKnown = true; continue; } // checked id by id: skip known races, keep going down the list
                 if (store.State.Exports >= MaxPerDay) { stop = " Limite diário de downloads atingido."; break; }
                 var json = DownloadJson(window, modal, cancellation);
@@ -122,7 +127,7 @@ internal sealed class ResultExporter
     }
 
     // The header text can sit outside the dialog node, so search the whole window (onscreen only; the page behind has no 7+ digit text).
-    static long? ModalSubsessionId(AutomationElement window)
+    internal static long? ModalSubsessionId(AutomationElement window)
     {
         var top = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text)).Cast<AutomationElement>()
             .Select(e => (Name: e.Current.Name, R: e.Current.BoundingRectangle))
@@ -155,7 +160,7 @@ internal sealed class ResultExporter
         return rows;
     }
 
-    static void ScrollIntoView(AutomationElement element)
+    internal static void ScrollIntoView(AutomationElement element)
     {
         try { if (element.TryGetCurrentPattern(ScrollItemPattern.Pattern, out var p)) ((ScrollItemPattern)p).ScrollIntoView(); } catch { }
     }
@@ -174,7 +179,7 @@ internal sealed class ResultExporter
             .OrderBy(b => b.Current.BoundingRectangle.Top).ToList();
     }
 
-    static byte[]? DownloadJson(AutomationElement window, AutomationElement modal, CancellationToken cancellation)
+    internal static byte[]? DownloadJson(AutomationElement window, AutomationElement modal, CancellationToken cancellation)
     {
         // The unnamed download icon is the lowest unnamed menu-button of the modal footer.
         // Anchor on the modal's own "Share Results" button: the list page has a similar unnamed
@@ -236,7 +241,7 @@ internal sealed class ResultExporter
     // The UI's download opens a native Save dialog (#32770, titled with the blob URL) while the
     // complete payload already sits in Downloads as a GUID .tmp. Cancelling it with BM_CLICK
     // (no focus) lets the browser discard the file, so nothing is left behind locally.
-    static List<AutomationElement> SaveDialogs(AutomationElement window) =>
+    internal static List<AutomationElement> SaveDialogs(AutomationElement window) =>
         window.FindAll(TreeScope.Descendants, new AndCondition(
             new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window),
             new PropertyCondition(AutomationElement.ClassNameProperty, "#32770"))).Cast<AutomationElement>()
@@ -255,7 +260,7 @@ internal sealed class ResultExporter
         Thread.Sleep(400);
     }
 
-    static void CloseModal(AutomationElement window, CancellationToken cancellation)
+    internal static void CloseModal(AutomationElement window, CancellationToken cancellation)
     {
         // Menu popups are dismissed together with the modal. Failing to close is non-fatal.
         try
@@ -278,16 +283,43 @@ internal sealed class ResultExporter
         foreach (var name in invokeNames)
         {
             if (name == "@id") { sb.AppendLine("ID lido do modal: " + (ModalSubsessionId(window)?.ToString() ?? "NULL")); continue; }
+            if (name.StartsWith("@patterns:"))
+            {
+                var el = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, name[(name.IndexOf(':') + 1)..]));
+                if (el is null) return "não achei " + name;
+                sb.AppendLine("Padrões: " + string.Join(",", el.GetSupportedPatterns().Select(x => x.ProgrammaticName)));
+                continue;
+            }
+            if (name.StartsWith("@focus:"))
+            {
+                var el = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, name[7..]));
+                if (el is null) return "não achei " + name;
+                try { el.SetFocus(); } catch (Exception e) { return "SetFocus falhou: " + e.Message; }
+                Thread.Sleep(2500); continue;
+            }
+            if (name.StartsWith("@set:"))
+            {
+                var parts = name[5..].Split('=', 2);
+                var edit = window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.AutomationIdProperty, parts[0]));
+                if (edit is null) return $"não achei {parts[0]}";
+                try { ((ValuePattern)edit.GetCurrentPattern(ValuePattern.Pattern)).SetValue(parts[1]); } catch (Exception e) { return "SetValue falhou: " + e.Message; }
+                Thread.Sleep(2500); continue;
+            }
             if (name == "@close") { CloseModal(window, CancellationToken.None); continue; }
             if (name == "@recent0")
             {
                 var first = RecentRaces(window).FirstOrDefault(); if (first.Button is null) return "Recent Races não encontrado";
                 ScrollIntoView(first.Row); Invoke(first.Button); Thread.Sleep(3500); continue;
             }
-            var target = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.NameProperty, name)).Cast<AutomationElement>()
-                .FirstOrDefault(e => !e.Current.IsOffscreen && e.TryGetCurrentPattern(InvokePattern.Pattern, out _) || !e.Current.IsOffscreen && e.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _));
+            // "#id" matches by AutomationId. Pattern order: Invoke, SelectionItem, Toggle, ExpandCollapse.
+            var byId = name.StartsWith('#');
+            var target = window.FindAll(TreeScope.Descendants, new PropertyCondition(byId ? AutomationElement.AutomationIdProperty : AutomationElement.NameProperty, byId ? name[1..] : name)).Cast<AutomationElement>()
+                .OrderBy(e => e.Current.IsOffscreen).FirstOrDefault(e => (e.TryGetCurrentPattern(InvokePattern.Pattern, out _) || e.TryGetCurrentPattern(SelectionItemPattern.Pattern, out _) || e.TryGetCurrentPattern(TogglePattern.Pattern, out _) || e.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out _)));
             if (target is null) return $"não achei '{name}'";
-            if (target.TryGetCurrentPattern(InvokePattern.Pattern, out var p)) ((InvokePattern)p).Invoke(); else ((SelectionItemPattern)target.GetCurrentPattern(SelectionItemPattern.Pattern)).Select();
+            if (target.TryGetCurrentPattern(InvokePattern.Pattern, out var p)) ((InvokePattern)p).Invoke();
+            else if (target.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var sip)) ((SelectionItemPattern)sip).Select();
+            else if (target.TryGetCurrentPattern(TogglePattern.Pattern, out var tgp)) ((TogglePattern)tgp).Toggle();
+            else ((ExpandCollapsePattern)target.GetCurrentPattern(ExpandCollapsePattern.Pattern)).Expand();
             Thread.Sleep(3500);
         }
         foreach (AutomationElement e in window.FindAll(TreeScope.Descendants, Condition.TrueCondition))
@@ -298,20 +330,25 @@ internal sealed class ResultExporter
                 var type = c.ControlType.ProgrammaticName.Replace("ControlType.", "");
                 if (type is "Pane" or "Group" or "Custom" && c.Name.Length == 0 && c.AutomationId.Length == 0) continue;
                 var r = c.BoundingRectangle;
-                sb.AppendLine($"{type}|{c.Name.Replace('\n', ' ')}|{c.AutomationId}|{(int)r.Left},{(int)r.Top},{(int)r.Width}x{(int)r.Height}{(c.IsOffscreen ? "|off" : "")}");
+                var state = "";
+                if (e.TryGetCurrentPattern(TogglePattern.Pattern, out var tp)) state = "|toggle=" + ((TogglePattern)tp).Current.ToggleState;
+                else if (e.TryGetCurrentPattern(SelectionItemPattern.Pattern, out var sp)) state = "|selected=" + ((SelectionItemPattern)sp).Current.IsSelected;
+                else if (type == "Edit" && e.TryGetCurrentPattern(ValuePattern.Pattern, out var vp)) state = "|value=" + ((ValuePattern)vp).Current.Value;
+                if (e.TryGetCurrentPattern(ExpandCollapsePattern.Pattern, out var xp)) state += "|exp=" + ((ExpandCollapsePattern)xp).Current.ExpandCollapseState;
+                sb.AppendLine($"{type}|{c.Name.Replace('\n', ' ')}|{c.AutomationId}|{(int)r.Left},{(int)r.Top},{(int)r.Width}x{(int)r.Height}{state}{(c.IsOffscreen ? "|off" : "")}{(c.IsEnabled ? "" : "|dis")}");
             }
             catch { }
         }
         return sb.ToString();
     }
 
-    static bool Invoke(AutomationElement element)
+    internal static bool Invoke(AutomationElement element)
     {
         if (!element.Current.IsEnabled || !element.TryGetCurrentPattern(InvokePattern.Pattern, out var pattern)) return false;
         ((InvokePattern)pattern).Invoke(); return true;
     }
 
-    static T? WaitFor<T>(Func<T?> find, CancellationToken cancellation, int millis = 6000) where T : class
+    internal static T? WaitFor<T>(Func<T?> find, CancellationToken cancellation, int millis = 6000) where T : class
     {
         for (var waited = 0; waited < millis; waited += 250)
         {
@@ -322,7 +359,7 @@ internal sealed class ResultExporter
         return null;
     }
 
-    static AutomationElement? ExistingWindow()
+    internal static AutomationElement? ExistingWindow()
     {
         var handles = new List<IntPtr>();
         foreach (var process in Process.GetProcesses())
@@ -346,18 +383,18 @@ internal sealed class ResultExporter
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetForegroundWindow(IntPtr hwnd);
 
     static IntPtr windowHandle; static bool restoredFromMinimized;
-    static void RestoreWindowState() { if (restoredFromMinimized && windowHandle != IntPtr.Zero) ShowWindow(windowHandle, 7); restoredFromMinimized = false; }
+    internal static void RestoreWindowState() { if (restoredFromMinimized && windowHandle != IntPtr.Zero) ShowWindow(windowHandle, 7); restoredFromMinimized = false; }
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool IsIconic(IntPtr hwnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool ShowWindow(IntPtr hwnd, int command);
 
-    static AutomationElement? ResultModal(AutomationElement window)
+    internal static AutomationElement? ResultModal(AutomationElement window)
     {
         var modals = window.FindAll(TreeScope.Descendants,
             new PropertyCondition(AutomationElement.AutomationIdProperty, "modal-results-modal-dialog"));
         return modals.Count == 1 ? modals[0] : null;
     }
 
-    static bool SafeToOperate()
+    internal static bool SafeToOperate()
     {
         foreach (var process in Process.GetProcesses())
         {

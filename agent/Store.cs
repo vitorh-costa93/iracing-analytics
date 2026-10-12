@@ -32,11 +32,20 @@ sealed class State
     /// <summary>Fingerprint of the newest "Recent Races" row at the end of the last scan; unchanged = nothing new, no modal is opened.</summary>
     public string LastTopRace { get; set; } = "";
     public bool StartupInit { get; set; }
+    /// <summary>One-time reset (field-of-race release): the server now defines "known" (race has its field stored); local LastResultIds/LastTopRace no longer suppress re-sends.</summary>
+    public bool FieldMigrated { get; set; }
+    /// <summary>Historical backfill: finished "year-season" targets (e.g. "2026-3"), and the resume cursor of the one in progress.</summary>
+    public HashSet<string> BackfillDone { get; set; } = [];
+    public string BackfillKey { get; set; } = "";
+    public int BackfillIndex { get; set; }
+    public int BackfillTotal { get; set; }
     public Dictionary<string, Attempt> Attempts { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
 sealed class Store
 {
+    // Excepcional: só durante --backfill-results real (janela de backfill do servidor, 3000 req/dia). Resultados usam p_bytes=0 no servidor.
+    public static volatile bool BackfillMode;
     public readonly string Root;
     public State State { get; }
     public string Status { get; private set; } = "Aguardando arquivos";
@@ -97,6 +106,7 @@ sealed class Store
     public long? EnqueueOfficial(byte[] json, HashSet<long>? known = null)
     {
         if (json.Length > 1024 * 1024) return null;
+        json = ResultReducer.Reduce(json); // same envelope, only useless keys removed (cuts the daily byte budget)
         using var doc = JsonDocument.Parse(json);
         if (doc.RootElement.ValueKind != JsonValueKind.Object || !doc.RootElement.TryGetProperty("type", out var type) || type.GetString() != "event_result"
             || !doc.RootElement.TryGetProperty("data", out var data) || data.ValueKind != JsonValueKind.Object
@@ -107,10 +117,11 @@ sealed class Store
         Save(); Status = "Resultado oficial exportado"; return id;
     }
     /// <summary>Subsessions whose official result the server already has (bounded GET, ids only).</summary>
-    public async Task<HashSet<long>?> KnownResults(CancellationToken cancellation)
+    public async Task<HashSet<long>?> KnownResults(CancellationToken cancellation, bool all = false)
     {
         var token = Token(); if (token is null || State.AuthPaused) return null;
-        using var request = new HttpRequestMessage(HttpMethod.Get, Endpoint); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
+        // scope=all: every stored result, not just the recent window (historical backfill).
+        using var request = new HttpRequestMessage(HttpMethod.Get, all ? Endpoint + (Endpoint.Contains('?') ? "&" : "?") + "scope=all" : Endpoint); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
         try
         {
             using var response = await http.SendAsync(request, cancellation);
@@ -179,13 +190,13 @@ sealed class Store
         if (State.Next > now) { Status = "Aguardando janela de retry"; return; }
         var token = Token(); if (token is null) { Status = "Configure seu token para enviar"; return; }
         while (recent.TryPeek(out var t) && t < now.AddMinutes(-1)) recent.Dequeue();
-        if (recent.Count >= 10 || State.Requests >= Math.Clamp(State.DailyLimit, 1, 128)) { Status = "Limite de requests atingido"; return; }
+        if (recent.Count >= 10 || State.Requests >= (BackfillMode ? 3000 : Math.Clamp(State.DailyLimit, 1, 128))) { Status = "Limite de requests atingido"; return; }
         foreach (var file in Directory.EnumerateFiles(Path.Combine(Root, "queue"), "*.json").OrderBy(f => IsResult(f) ? 0 : 1).ThenBy(f => new FileInfo(f).CreationTimeUtc))
         {
             var key = Path.GetFileNameWithoutExtension(file);
             var attempt = State.Attempts.GetValueOrDefault(key) ?? new(); if (attempt.Next > now) continue;
             var payload = await File.ReadAllBytesAsync(file, cancellation);
-            if (State.Bytes + payload.Length > 10L * 1024 * 1024) { Status = "Limite de 10 MiB/dia atingido"; return; }
+            if (!BackfillMode && State.Bytes + payload.Length > 10L * 1024 * 1024) { Status = "Limite de 10 MiB/dia atingido"; return; }
             State.Requests++; State.Bytes += payload.Length; State.Next = now.AddSeconds(6); Save(); recent.Enqueue(now);
             using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = new ByteArrayContent(payload) };
             request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json"); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);

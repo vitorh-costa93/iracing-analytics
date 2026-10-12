@@ -10,7 +10,9 @@ static class Program
 {
     [STAThread] static void Main(string[] args)
     {
-        using var singleton = new Mutex(true, "Local\\RacingAnalyticsAgent", out var owner); if (!owner) return;
+        // Dev one-shot tools (UI dumps, export tests, result backfill) must run while the tray instance holds the main mutex.
+        var devTool = args.Any(a => a is "--dump-ui" or "--export-test") || args.Contains("--backfill-results") && args.Contains("--dry-run");
+        using var singleton = new Mutex(true, devTool ? "Local\\RacingAnalyticsAgent.DevTool" : "Local\\RacingAnalyticsAgent", out var owner); if (!owner) return;
         try
         {
             if (args.Contains("--self-test")) { SelfTest.Run(args); return; }
@@ -39,6 +41,19 @@ static class Program
                 var report = $"{result}\nIds: {string.Join(", ", ResultExporter.TestIds)}\nFila de teste: {testStore.Backlog}\n";
                 var outPath = args.ElementAtOrDefault(exportTest + 2);
                 if (outPath is not null && !outPath.StartsWith("--")) File.WriteAllText(outPath, report); else Console.WriteLine(report);
+                return;
+            }
+            var backfillResults = Array.IndexOf(args, "--backfill-results");
+            if (backfillResults >= 0)
+            {
+                // Explicit historical backfill of official race results (never automatic). Close the tray instance first (real runs).
+                var from = (args.SkipWhile(a => a != "--from").Skip(1).FirstOrDefault() ?? "2023-4").Split('-');
+                var to = (args.SkipWhile(a => a != "--to").Skip(1).FirstOrDefault() ?? "9999-4").Split('-');
+                var limit = int.TryParse(args.SkipWhile(a => a != "--limit").Skip(1).FirstOrDefault(), out var lim) ? lim : int.MaxValue;
+                var options = new ResultExporter.BackfillOptions(args.Contains("--dry-run"), args.Contains("--probe-ids"), int.Parse(from[0]), from.Length > 1 ? int.Parse(from[1]) : 1, limit, int.Parse(to[0]), to.Length > 1 ? int.Parse(to[1]) : 4);
+                var summary = new ResultExporter().BackfillAsync(store, options, _ => { }, CancellationToken.None).GetAwaiter().GetResult();
+                var outFile = args.SkipWhile(a => a != "--out").Skip(1).FirstOrDefault();
+                if (outFile is not null) File.WriteAllText(outFile, summary + Environment.NewLine);
                 return;
             }
             var once = Array.IndexOf(args, "--export-once");
@@ -92,9 +107,21 @@ sealed class AgentForm : Form
         var experimental = new CheckBox { Text = "Exportar resultados oficiais em momento ocioso (sem foco, só corridas novas) — necessário para enviar o resultado oficial", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
         experimental.CheckedChanged += (_, _) => { store.State.ExperimentalExport = experimental.Checked; store.Save(); };
         panel.Controls.Add(new Label { Text = "O resultado da corrida é lido do SessionInfo ao vivo (iRating estimado). O JSON exportado do iRacing para Downloads continua sendo a fonte oficial e substitui a estimativa.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
-        tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
+        tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Backfill histórico de resultados (2023 S4 em diante)...", null, async (_, _) => await RunBackfill()); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
         FormClosing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } else { cancellation.Cancel(); timer.Stop(); simTimer.Stop(); monitor.Dispose(); tray.Dispose(); } };
         Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start(); simTimer.Tick += (_, _) => monitor.Poll(); simTimer.Start();
+    }
+    async Task RunBackfill()
+    {
+        if (busy) { status.Text = "Aguarde a verificação em andamento e tente de novo."; return; }
+        if (MessageBox.Show("Baixa os resultados oficiais de todas as corridas desde 2023 S4 pelo iRacing UI (simulador fechado), em segundo plano e retomável. Envia no máximo 8 por minuto e para ao atingir a cota diária. Continuar?", "Backfill histórico", MessageBoxButtons.YesNo, MessageBoxIcon.Question) != DialogResult.Yes) return;
+        busy = true;
+        try
+        {
+            var result = await exporter.BackfillAsync(store, new ResultExporter.BackfillOptions(false, false, 2023, 4), s => BeginInvoke(() => status.Text = "Backfill: " + s), cancellation.Token);
+            status.Text = result;
+        }
+        finally { busy = false; }
     }
     async Task Tick()
     {
@@ -127,6 +154,13 @@ static class SelfTest
             var payload = JsonSerializer.SerializeToUtf8Bytes(new { version = 1, kind = "result", key = Ibt.Hash("synthetic"u8), export = new { type = "event_result", data = new { } } }); store.Enqueue(payload); store.Enqueue(payload); if (store.Backlog != 1) throw new Exception("dedupe"); if (new Store(root, store.Endpoint).Backlog != 1) throw new Exception("durability"); checks.Add("Queue dedupe/restart: OK");
             var official = Encoding.UTF8.GetBytes("{\"type\":\"event_result\",\"data\":{\"subsession_id\":777}}"); var officialStore = new Store(Path.Combine(root, "official"), store.Endpoint);
             if (officialStore.EnqueueOfficial(official, new HashSet<long> { 777 }) != 777 || officialStore.Backlog != 0) throw new Exception("official known skipped"); if (officialStore.EnqueueOfficial(official, new HashSet<long>()) != 777 || officialStore.EnqueueOfficial(official, new HashSet<long>()) != 777 || officialStore.Backlog != 1) throw new Exception("official dedupe"); checks.Add("Official export known-skip/dedupe: OK");
+            var bulky = Encoding.UTF8.GetBytes("{\"type\":\"event_result\",\"data\":{\"subsession_id\":5,\"allowed_licenses\":[1],\"session_results\":[{\"simsession_type\":5,\"results\":[]},{\"simsession_type\":6,\"weather_result\":{},\"results\":[{\"cust_id\":1,\"ai\":false,\"livery\":{\"a\":1},\"helmet\":{},\"flair_id\":3,\"newi_rating\":1500,\"reason_out\":\"Running\"},{\"cust_id\":2,\"ai\":true}]}]}}");
+            using (var reduced = JsonDocument.Parse(ResultReducer.Reduce(bulky)))
+            {
+                var data = reduced.RootElement.GetProperty("data"); var sessions = data.GetProperty("session_results"); var row = sessions[0].GetProperty("results")[0];
+                if (data.TryGetProperty("allowed_licenses", out _) || sessions.GetArrayLength() != 1 || sessions[0].GetProperty("results").GetArrayLength() != 1 || row.TryGetProperty("livery", out _) || row.TryGetProperty("flair_id", out _) || row.GetProperty("newi_rating").GetInt32() != 1500 || row.GetProperty("reason_out").GetString() != "Running" || reduced.RootElement.GetProperty("type").GetString() != "event_result") throw new Exception("reducer");
+            }
+            checks.Add("Result reducer keeps validated fields, drops cosmetics/AI/other sessions: OK");
             using var bad = new MemoryStream(new byte[144]); try { Ibt.Read(bad).ToArray(); throw new Exception("accepted malformed"); } catch (InvalidDataException) { } checks.Add("Malformed IBT rejected: OK");
             var codes = new[] { 500, 429, 401, 422, 200 };
             foreach (var code in codes)
