@@ -35,7 +35,7 @@ static class Ibt
         stream.Position = H(20); var yaml = Encoding.UTF8.GetString(reader.ReadBytes(H(16))).TrimEnd('\0');
         string? Get(string text, string key) => Regex.Match(text, @"(?m)^\s*" + key + @":\s*(.+?)\r?$") is { Success: true } m ? m.Groups[1].Value.Trim().Trim('"', '\'') : null;
         int Required(string key) => int.TryParse(Get(yaml, key), out var v) && v > 0 ? v : throw new InvalidDataException("ibt_metadata");
-        var sub = Required("SubSessionID"); var customer = Required("DriverUserID"); var driverIndex = Get(yaml, "DriverCarIdx");
+        var customer = Required("DriverUserID"); var driverIndex = Get(yaml, "DriverCarIdx");
         var driverInfo = yaml[(yaml.IndexOf("DriverInfo:", StringComparison.Ordinal) is var driverAt && driverAt >= 0 ? driverAt : throw new InvalidDataException("ibt_driver"))..];
         var driver = Regex.Match(driverInfo, @"(?ms)^\s*- CarIdx: " + Regex.Escape(driverIndex ?? "missing") + @"\r?\n(?<body>.*?)(?=^\s*- CarIdx:|\z)").Groups["body"].Value;
         var car = Get(driver, "CarScreenName") ?? throw new InvalidDataException("ibt_car");
@@ -43,6 +43,10 @@ static class Ibt
         var trackLength = Get(yaml, "TrackLength");
         if (trackLength is null || !double.TryParse(trackLength.Replace(" km", ""), CultureInfo.InvariantCulture, out var km) || km <= 0 || km > 100) throw new InvalidDataException("ibt_length");
         var epoch = BinaryPrimitives.ReadInt64LittleEndian(header.AsSpan(112, 8));
+        // Offline Test Drive sessions have SubSessionID 0: use the recording start (epoch seconds, far above real ids) as a
+        // stable surrogate so their laps are still deduplicated per file. Only Practice may use it (see sessionType below).
+        var offlineSub = !(int.TryParse(Get(yaml, "SubSessionID"), out var realSub) && realSub > 0);
+        var sub = offlineSub ? (epoch is > 0 and < int.MaxValue ? (int)epoch : throw new InvalidDataException("ibt_metadata")) : realSub;
         DateTimeOffset origin;
         try { origin = DateTimeOffset.FromUnixTimeSeconds(epoch); } catch { throw new InvalidDataException("ibt_date"); }
         if (origin.Year < 2000 || origin.Year > DateTime.UtcNow.Year + 1) throw new InvalidDataException("ibt_date");
@@ -57,7 +61,7 @@ static class Ibt
         stream.Position = start; stream.ReadExactly(row);
         var initialTime = V("SessionTime"); if (!double.IsFinite(initialTime)) throw new InvalidDataException("ibt_time");
         origin = origin.AddSeconds(-initialTime);
-        var csv = new StringBuilder(); int lap = -1, session = -1, samples = 0; double first = 0, firstDist = 1, lastDist = 0, fuelStart = double.NaN, fuelEnd = double.NaN, incStart = double.NaN, incEnd = double.NaN, sampled = double.NegativeInfinity; bool pit = false, invalid = false;
+        var csv = new StringBuilder(); int lap = -1, session = -1, samples = 0; double first = 0, firstDist = 1, lastDist = 0, fuelStart = double.NaN, fuelEnd = double.NaN, incStart = double.NaN, incEnd = double.NaN, sampled = double.NegativeInfinity; bool pit = false, invalid = false, overtake = false;
         byte[]? Finish(double boundaryTime, bool crossed)
         {
             if (!crossed || samples < 30 || firstDist > .03 || lastDist < .97 || boundaryTime - first < 10 || invalid) return null;
@@ -77,13 +81,15 @@ static class Ibt
             metadata["sampleRateHz"] = 20.0 / stride;
             var sessionBlock = Regex.Match(yaml, @"(?ms)^\s*- SessionNum: " + session + @"\r?\n(?<body>.*?)(?=^\s*- SessionNum:|\z)").Groups["body"].Value;
             var kind = Get(sessionBlock, "SessionType");
-            metadata["sessionType"] = kind is "Practice" or "Race" ? kind : kind is "Qualify" or "Lone Qualify" or "Open Qualify" ? "Qualify" : throw new InvalidDataException("ibt_session_type");
+            if (offlineSub && kind is not ("Practice" or "Offline Testing")) throw new InvalidDataException("ibt_offline_session");
+            metadata["sessionType"] = kind is "Practice" or "Offline Testing" ? "Practice" : kind is "Race" ? kind : kind is "Qualify" or "Lone Qualify" or "Open Qualify" ? "Qualify" : throw new InvalidDataException("ibt_session_type");
             foreach (var k in new[] { "SeasonYear", "SeasonQuarter" }) if (int.TryParse(Get(yaml, k), out var val) && val > 0) metadata[char.ToLowerInvariant(k[0]) + k[1..]] = val;
             if (int.TryParse(Get(yaml, "TrackID"), out var trackId) && trackId > 0) metadata["nativeTrackId"] = trackId;
             if (int.TryParse(Get(driver, "CarID"), out var carId) && carId > 0) metadata["nativeCarId"] = carId;
+            if (Get(driver, "CarPath") is { Length: > 0 } carPath) metadata["carPath"] = carPath;
             int? incidents = double.IsFinite(incStart) && incEnd >= incStart ? (int)(incEnd - incStart) : null;
             double? Finite(double x) => double.IsFinite(x) ? x : null;
-            return JsonSerializer.SerializeToUtf8Bytes(new { version = 1, kind = "telemetry", key = Hash(Encoding.UTF8.GetBytes($"{sub}:{customer}:{session}:{lap}")), metadata, lap = new { number = lap, time = boundaryTime - first, clean = !pit && fields.ContainsKey("OnPitRoad") && incidents == 0, incidents, fuelLevel = Finite(fuelEnd), fuelUsed = fuelStart >= fuelEnd ? Finite(fuelStart - fuelEnd) : null, csvGzipBase64 = Convert.ToBase64String(compressed) } });
+            return JsonSerializer.SerializeToUtf8Bytes(new { version = 1, kind = "telemetry", key = Hash(Encoding.UTF8.GetBytes($"{sub}:{customer}:{session}:{lap}")), metadata, lap = new { number = lap, time = boundaryTime - first, clean = !pit && fields.ContainsKey("OnPitRoad") && incidents == 0, overtake, incidents, fuelLevel = Finite(fuelEnd), fuelUsed = fuelStart >= fuelEnd ? Finite(fuelStart - fuelEnd) : null, csvGzipBase64 = Convert.ToBase64String(compressed) } });
         }
         stream.Position = start;
         for (var n = 0; n < records; n++)
@@ -93,10 +99,10 @@ static class Ibt
             if (nextLap != lap || nextSession != session)
             {
                 var output = Finish(time, nextSession == session && nextLap == lap + 1); if (output is not null) yield return output;
-                lap = nextLap; session = nextSession; first = time; firstDist = dist; samples = 0; sampled = double.NegativeInfinity; pit = invalid = false; fuelStart = V("FuelLevel"); incStart = V("PlayerCarMyIncidentCount");
+                lap = nextLap; session = nextSession; first = time; firstDist = dist; samples = 0; sampled = double.NegativeInfinity; pit = invalid = overtake = false; fuelStart = V("FuelLevel"); incStart = V("PlayerCarMyIncidentCount");
                 csv.Clear().Append("LapDistPct,").AppendJoin(',', Channels).Append('\n');
             }
-            lastDist = dist; pit |= V("OnPitRoad") == 1; invalid |= V("LapCurrentLapTime") < 0; fuelEnd = V("FuelLevel"); incEnd = V("PlayerCarMyIncidentCount");
+            lastDist = dist; pit |= V("OnPitRoad") == 1; overtake |= V("PushToPass") == 1 || V("P2P_Status") > 0; invalid |= V("LapCurrentLapTime") < 0; fuelEnd = V("FuelLevel"); incEnd = V("PlayerCarMyIncidentCount");
             if (time - sampled < .05 - 1e-8) continue;
             sampled = time; samples++;
             csv.Append(dist.ToString("R", CultureInfo.InvariantCulture));

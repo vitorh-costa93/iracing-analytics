@@ -12,6 +12,17 @@ function name(value: unknown, empty = false) { if (typeof value !== 'string' || 
 function instant(value: unknown) { if (typeof value !== 'string' || !/^\d{4}-\d\d-\d\dT.*(?:Z|[+-]\d\d:\d\d)$/.test(value)) invalid(); const date=new Date(value); if (!Number.isFinite(date.getTime()) || date.getUTCFullYear()<2008 || date.getTime()>Date.now()+86400000) invalid(); return date.toISOString(); }
 export const agentHash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 
+/** Shared by laps and reference laps: bounded base64+gzip, then a full-lap trace with the channels the UI needs. */
+export function parseLapCsv(csvGzipBase64: unknown) {
+ if(typeof csvGzipBase64!=='string'||csvGzipBase64.length>174764||! /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(csvGzipBase64)) invalid();
+ const gzip=Buffer.from(csvGzipBase64,'base64'); if(gzip.length<20||gzip.length>131072||gzip[0]!==31||gzip[1]!==139) invalid();
+ let csv:string; try { csv=gunzipSync(gzip,{maxOutputLength:2097152}).toString('utf8'); } catch { invalid(); }
+ if(!csv.startsWith('LapDistPct,')||csv.includes('\0')||csv.split('\n').length>30002) invalid();
+ let trace;try {trace=parseTelemetryCsv(csv,{maxPoints:30000});}catch{invalid();}
+ if(trace.points.length<30||trace.points.length>30000||trace.points[0].distance>3||trace.points.at(-1)!.distance<97||!trace.channels.includes('Speed')||!trace.channels.includes('Brake')||!trace.channels.includes('Throttle')) invalid();
+ return {gzip,csv,trace};
+}
+
 export function parseAgentTelemetry(payload: unknown, customerId: number) {
  const body=object(payload), m=object(body.metadata), lap=object(body.lap);
  if (m.customerId!==customerId) invalid();
@@ -29,12 +40,7 @@ export function parseAgentTelemetry(payload: unknown, customerId: number) {
  const carName=name(m.carName), trackName=name(m.trackName), trackConfig=name(m.trackConfig,true);
  const nativeCarId=m.nativeCarId===undefined?null:integer(m.nativeCarId,1,2147483647);
  const nativeTrackId=m.nativeTrackId===undefined?null:integer(m.nativeTrackId,1,2147483647);
- if(typeof lap.csvGzipBase64!=='string'||lap.csvGzipBase64.length>174764||! /^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(lap.csvGzipBase64)) invalid();
- const gzip=Buffer.from(lap.csvGzipBase64,'base64'); if(gzip.length<20||gzip.length>131072||gzip[0]!==31||gzip[1]!==139) invalid();
- let csv:string; try { csv=gunzipSync(gzip,{maxOutputLength:2097152}).toString('utf8'); } catch { invalid(); }
- if(!csv.startsWith('LapDistPct,')||csv.includes('\0')||csv.split('\n').length>30002) invalid();
- let trace;try {trace=parseTelemetryCsv(csv,{maxPoints:30000});}catch{invalid();}
- if(trace.points.length<30||trace.points.length>30000||trace.points[0].distance>3||trace.points.at(-1)!.distance<97||!trace.channels.includes('Speed')||!trace.channels.includes('Brake')||!trace.channels.includes('Throttle')) invalid();
+ const {gzip,csv}=parseLapCsv(lap.csvGzipBase64);
  const season=getActiveSeason(new Date(startedAt)); if(!season) invalid();
  return {sub,session,number,time,kind,startedAt,endedAt,incidents,clean:lap.clean,fuelLevel,fuelUsed,trackLength,carName,trackName,trackConfig,nativeCarId,nativeTrackId,season,gzip,
    key:agentHash(`${sub}:${customerId}:${session}:${number}`), sessionType:kind==='Race'?3:kind==='Qualify'?2:1};

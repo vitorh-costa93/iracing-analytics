@@ -40,6 +40,8 @@ sealed class State
     public int BackfillIndex { get; set; }
     public int BackfillTotal { get; set; }
     public Dictionary<string, Attempt> Attempts { get; set; } = [];
+    /// <summary>Reference .ibt searches per "carPath|trackId|season": next time a search may run again (a found reference is parked for years).</summary>
+    public Dictionary<string, DateTimeOffset> References { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
 sealed class Store
@@ -152,10 +154,12 @@ sealed class Store
                 var result = SessionResult.FromIbt(stream, out _); stream.Position = 0;
                 if (result is not null) EnqueueResult(result);
             }
+            var targets = new Dictionary<string, (string car, int track, int? year, int? quarter)>();
             if (path.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase)) foreach (var payload in Ibt.Read(stream))
             {
                 Enqueue(payload);
                 using var telemetry = JsonDocument.Parse(payload);
+                CollectReferenceTarget(telemetry.RootElement.GetProperty("metadata"), targets);
                 if (telemetry.RootElement.GetProperty("metadata").GetProperty("sessionType").GetString() == "Race") State.PendingResult = true;
             }
             else
@@ -166,11 +170,32 @@ sealed class Store
                 Enqueue(JsonSerializer.SerializeToUtf8Bytes(new { version = 1, kind = "result", key = Ibt.Hash(canonical), export = doc.RootElement }));
                 State.PendingResult = false;
             }
+            foreach (var target in targets.Values) QueueReference(target.car, target.track, target.year, target.quarter);
             lock (persistGate) { State.Files.Add(hash); Save(); }
             observed[path] = (info.Length, info.LastWriteTimeUtc); Status = "Arquivo coletado";
         }
         catch (InvalidDataException) { observed[path] = (info.Length, info.LastWriteTimeUtc); Status = "Arquivo incompatível; intervenção necessária"; }
         catch (JsonException) { observed[path] = (info.Length, info.LastWriteTimeUtc); Status = "Exportação inválida; intervenção necessária"; }
+    }
+    static void CollectReferenceTarget(JsonElement metadata, Dictionary<string, (string car, int track, int? year, int? quarter)> targets)
+    {
+        if (!metadata.TryGetProperty("carPath", out var car) || car.ValueKind != JsonValueKind.String || !metadata.TryGetProperty("nativeTrackId", out var track) || !track.TryGetInt32(out var trackId)) return;
+        int? Optional(string name) => metadata.TryGetProperty(name, out var v) && v.TryGetInt32(out var n) ? n : null;
+        var year = Optional("seasonYear"); var quarter = Optional("seasonQuarter");
+        targets[$"{car.GetString()}|{trackId}|{year}S{quarter}"] = (car.GetString()!, trackId, year, quarter);
+    }
+    /// <summary>Looks for the reference .ibt of this car/track/season (at most one search per day while none is found; never again once queued).</summary>
+    void QueueReference(string carPath, int trackId, int? year, int? quarter)
+    {
+        var key = $"{carPath}|{trackId}|{year}S{quarter}"; var now = DateTimeOffset.UtcNow;
+        if (State.References.TryGetValue(key, out var next) && next > now) return;
+        try
+        {
+            var payload = ReferenceFinder.Find(ReferenceFinder.SetupsRoot, carPath, trackId, year, quarter);
+            if (payload is not null) Enqueue(payload);
+            lock (persistGate) { State.References[key] = payload is null ? now.AddDays(1) : now.AddYears(5); Save(); }
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException) { }
     }
     public static byte[] Canonical(JsonElement value)
     {

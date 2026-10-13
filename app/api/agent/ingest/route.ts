@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as db } from '@/lib/supabase-admin';
 import { parseAgentResult, AgentValidationError } from '@/lib/agent-result';
 import { parseAgentTelemetry, agentHash } from '@/lib/agent-telemetry';
+import { parseAgentReference, AGENT_REFERENCE_PREFIX } from '@/lib/agent-reference';
 import { parseAgentIbtResult, IBT_RESULT_MAX_BYTES } from '@/lib/agent-ibt-result';
 export const runtime='nodejs';
 export const maxDuration=30;
@@ -63,8 +64,8 @@ export async function GET(request:NextRequest){
 export async function POST(request:NextRequest){
  try {
   const device=await authorize(request);if(!device)return reply(401,'unauthorized');
-  const {body,size}=await boundedBody(request);if(body.version!==1||!['result','telemetry','ibt_result'].includes(String(body.kind)))throw new AgentValidationError();
-  let key:string,hash:string,bytes=0,row:Record<string,unknown>,session:Record<string,unknown>|null=null,gzip:Buffer|null=null;
+  const {body,size}=await boundedBody(request);if(body.version!==1||!['result','telemetry','ibt_result','reference'].includes(String(body.kind)))throw new AgentValidationError();
+  let key:string,hash:string,bytes=0,row:Record<string,unknown>,session:Record<string,unknown>|null=null,gzip:Buffer|null=null,referenceCsv:string|null=null;
   if(body.kind==='result'){
    const result=parseAgentResult(body.export,Number(device.customer_id));
    // New key (not `result:`): receipts of results stored before the field existed keep their old hash,
@@ -79,6 +80,16 @@ export async function POST(request:NextRequest){
    key=`ibt_result:${result.subsessionId}`;hash=agentHash(JSON.stringify(result));
    const [car,track]=await Promise.all([catalog('cars',result.nativeCarId,result.carName),catalog('tracks',result.nativeTrackId,result.trackName,result.trackConfig)]);
    row={...result.row,series_name:await seriesName(String(device.driver_id),car,track,result.row.raced_at,result.seriesId),driver_id:device.driver_id,irstats_race_id:result.subsessionId,car_id:car,track_id:track};
+  }else if(body.kind==='reference'){
+   const ref=parseAgentReference(body);key=`reference:${agentHash(JSON.stringify(body.key))}`;
+   const [car,track]=await Promise.all([catalog('cars',ref.nativeCarId,ref.carName),catalog('tracks',ref.nativeTrackId,ref.trackName,ref.trackConfig)]);
+   // A reference uploaded by hand is never replaced by the agent (it also owns the same Storage path).
+   const {data:existing,error:existingError}=await db.from('telemetry_references').select('original_filename').eq('driver_id',device.driver_id).eq('car_id',car).eq('track_id',track).maybeSingle();
+   if(existingError)throw new Error('reference');
+   if(existing && !String(existing.original_filename).startsWith(AGENT_REFERENCE_PREFIX))return reply(200,'kept_manual');
+   const path=`${device.driver_id}/${car}/${track}/reference.csv`;
+   row={driver_id:device.driver_id,car_id:car,track_id:track,storage_path:path,original_filename:ref.filename,file_size:Buffer.byteLength(ref.csv),channels:ref.channels,sample_count:ref.sampleCount};
+   hash=agentHash(JSON.stringify(row)+agentHash(ref.gzip));bytes=ref.gzip.length;referenceCsv=ref.csv;
   }else{
    const t=parseAgentTelemetry(body,Number(device.customer_id));key=`lap:${t.key}`;
    const [car,track]=await Promise.all([catalog('cars',t.nativeCarId,t.carName),catalog('tracks',t.nativeTrackId,t.trackName,t.trackConfig)]);
@@ -94,6 +105,12 @@ export async function POST(request:NextRequest){
   if(admission.status==='conflict')return reply(422,'identity_conflict');
   if(admission.status!=='accepted')return reply(429,admission.status,admission.status==='busy'?120:admission.status==='storage'?86400:3600);
   if(gzip){const {error:uploadError}=await db.storage.from('telemetry').upload(String(row.telemetry_path),gzip,{contentType:'application/gzip',upsert:false});if(uploadError && !['409'].includes(String('statusCode' in uploadError?uploadError.statusCode:'')))throw new Error('upload');}
+  if(referenceCsv!==null){
+   const {error:refUploadError}=await db.storage.from('telemetry-references').upload(String(row.storage_path),new Blob([referenceCsv],{type:'text/csv'}),{upsert:true,contentType:'text/csv'});
+   if(refUploadError)throw new Error('upload');
+   const {error:refCommitError}=await db.rpc('agent_commit_reference',{p_device:device.id,p_key:key,p_lease:admission.lease,p_row:row});
+   if(refCommitError)throw new Error('commit');return reply(200,'stored');
+  }
   const {error:commitError}=await db.rpc('agent_commit',{p_device:device.id,p_key:key,p_lease:admission.lease,p_kind:body.kind,p_row:row,p_session:session});
   if(commitError)throw new Error('commit');return reply(200,'stored');
  }catch(error){if(error instanceof AgentValidationError)return reply(422,'invalid_payload');return reply(503,'temporarily_unavailable',120);}

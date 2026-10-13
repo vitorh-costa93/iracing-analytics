@@ -47,6 +47,11 @@ Somente JSON com `type: "event_result"` e `data` é coletado. O servidor valida 
 
 No IBT são incluídas todas as voltas com início próximo de 0%, fim próximo de 100% e mudança observada para a volta seguinte na mesma sessão. A primeira volta parcial e a última sem cruzamento observado são omitidas. Voltas com boxes/incidentes são enviadas com `clean=false`; incidentes ausentes são `null` e nunca contam como volta limpa. O tempo decorre da passagem observada, com precisão limitada à frequência original do simulador. A origem UTC usa o timestamp de início de gravação do cabeçalho menos o primeiro `SessionTime`; season ausente no YAML é omitida. GPS vem exclusivamente de `Lat`/`Lon`, sem geometria sintética. Dados de sessões sem identificação de piloto, carro ou sessão são recusados.
 
+### Sessões offline e referências de outro piloto (13/10/2026)
+
+- **Test Drive:** `SessionType: Offline Testing` é tratado como Practice. Esses arquivos têm `SubSessionID` 0; o agente usa o instante de início da gravação como id substituto (só para Practice; Race offline é recusada com `ibt_offline_session`). Precisa ser confirmado com um `.ibt` real de Test Drive. A regra de prevalência (corrida > prática, qualify fora) continua sendo do servidor (`active-week`).
+- **Referências:** ao coletar uma volta própria com `CarPath` e `TrackID`, o agente procura `Documents\iRacing\setups\<CarPath>\<YYSQ>\*.ibt` (só `.ibt`; nunca abre `.sto`). Compara o `TrackID` do YAML de cada arquivo, lê só as voltas desse arquivo e envia **uma** volta (a mais rápida limpa, sem P2P/Overtake) como `kind: "reference"` com `sourceFile` (só o nome do arquivo). Uma busca por carro/pista/temporada; sem arquivo, tenta de novo no máximo 1x/dia. O servidor guarda uma referência por carro/pista (upsert) e **nunca sobrescreve uma referência enviada manualmente**: o nome da do agente começa com `agent:`.
+
 ## Segurança, limites e recuperação
 
 - Endpoint fixo: `https://iracing-analytics.vercel.app/api/agent/ingest`, POST com Bearer token. Redirecionamentos HTTP não são seguidos.
