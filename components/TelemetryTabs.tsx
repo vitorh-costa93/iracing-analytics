@@ -4,10 +4,11 @@ import { useState } from "react";
 import ActiveWeekTelemetry from "@/components/ActiveWeekTelemetry";
 import RaceDebriefView from "@/components/telemetry/RaceDebriefView";
 import CarCompareView from "@/components/telemetry/CarCompareView";
+import TrainingPlan from "@/components/telemetry/TrainingPlan";
 import { PageTitle, SegmentedControl } from "@/components/ui";
 import { trackUiEvent } from "@/lib/track-ui-event";
 
-type Mode = "lap" | "debrief" | "cars";
+type Mode = "lap" | "debrief" | "cars" | "plan";
 
 // Redesign etapa 3 (25/09/2026): título e seletor do Telemetry.dc.html. Etapa 4 (26/09/2026): Race
 // Debrief (Debrief.dc.html) e Comparação de carros (Compare.dc.html) no Night Grid. Os componentes
@@ -16,11 +17,13 @@ const OPTIONS = [
   { value: "lap" as const, label: "Semana ativa" },
   { value: "debrief" as const, label: "Race Debrief" },
   { value: "cars" as const, label: "Comparação de carros" },
+  { value: "plan" as const, label: "Plano e volta" },
 ];
 const TITLES: Record<Mode, { eyebrow: string; title: string }> = {
   lap: { eyebrow: "Telemetry Lab · semana ativa", title: "Telemetria da semana" },
   debrief: { eyebrow: "Telemetry Lab · Race Debrief", title: "Debrief da corrida" },
   cars: { eyebrow: "Telemetry Lab · comparação", title: "Comparação de carros" },
+  plan: { eyebrow: "Telemetry Lab · plano e volta", title: "Plano e volta" },
 };
 
 export default function TelemetryTabs() {
@@ -30,7 +33,7 @@ export default function TelemetryTabs() {
     <>
       <PageTitle eyebrow={TITLES[mode].eyebrow} title={TITLES[mode].title}
         aside={<SegmentedControl options={OPTIONS} value={mode} ariaLabel="Área do Telemetry Lab" onChange={select} />} />
-      {mode === "lap" ? <ActiveWeekTelemetry /> : mode === "debrief" ? <RaceDebriefView onOpenReference={() => select("lap")} /> : <CarCompareView />}
+      {mode === "lap" ? <ActiveWeekTelemetry /> : mode === "debrief" ? <RaceDebriefView onOpenReference={() => select("lap")} /> : mode === "cars" ? <CarCompareView /> : <TrainingPlan />}
     </>
   );
 }
