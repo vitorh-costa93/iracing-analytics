@@ -149,3 +149,4 @@
   .ngo-tools { display: none; margin-top: 0; padding: 10px; background: var(--ng-card); border: 1px solid var(--ng-border); border-radius: var(--ng-radius-control); }
   .ngo-tools[data-open] { display: flex; }
 }
+.ngo-class-split { margin-top: 0; }

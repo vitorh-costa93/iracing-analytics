@@ -6,16 +6,17 @@ import { useRouter } from "next/navigation";
 import { Chip, Panel, PageTitle, SegmentedControl } from "@/components/ui";
 import type { ChipTone } from "@/components/ui";
 import type { DebriefContextRow, DebriefRaceRow, DebriefReport, DebriefSection, PedalSet, RetirementItem, SeasonCompareRow } from "@/lib/debrief-types";
-import { dec, plural, signedInt } from "@/lib/debrief-narrative";
+import { dec, plural, signedDec, signedInt } from "@/lib/debrief-narrative";
 import { weekLabel } from "@/lib/season-week";
 import { DivergingRow, LossTimingBars, PaceScatter, WeekPressureBars } from "./DebriefCharts";
+import { CarsTable, Cascade, CausesTable, GridScatter, fieldTone } from "./DebriefField";
 
 type Scope = "week" | "season";
 type Segment = "formula" | "gt3" | "imsa";
 
-// Versão do cache local: v8 (contextos da week com mínimo de 1 corrida; v7: contextos por média, evidência completa; contrato em lib/debrief-types.ts). Suba ao mudar a
+// Versão do cache local: v9 (13/10/2026: bloco `field` do campo completo, comparação até o mesmo ponto); v8 (contextos da week com mínimo de 1 corrida; v7: contextos por média, evidência completa; contrato em lib/debrief-types.ts). Suba ao mudar a
 // forma do payload, para nenhum navegador carregar um payload antigo direto no estado (bug de 08/09).
-const CACHE_VERSION = "iracing-debrief-v8-";
+const CACHE_VERSION = "iracing-debrief-v9-";
 const SEGMENTS: Array<{ value: Segment; label: string }> = [
   { value: "formula", label: "Super Formula" },
   { value: "gt3", label: "GT3" },
@@ -87,7 +88,7 @@ export default function DebriefsView({ initialScope, initialSegment }: { initial
 
   const section = report?.sections.find((item) => item.segment === segment) ?? null;
   const eyebrow = scope === "season"
-    ? "Race Engineer · " + (report ? report.seasonName + " vs. " + report.previousSeasonName : "season atual vs. anterior")
+    ? "Race Engineer · " + (report ? report.seasonName + " vs. " + (section?.field ? section.field.referenceLabel : report.previousSeasonName) : "season atual vs. anterior")
     : "Race Engineer · " + (section?.week ? weekLabel(section.week) : "semana atual") + " vs. demais semanas";
 
   return (
@@ -113,7 +114,7 @@ export default function DebriefsView({ initialScope, initialSegment }: { initial
         {!section && !error && (
           <Panel><div className="ngd-empty">{slow ? "Ainda cruzando resultados e telemetria das duas seasons. A primeira análise pode levar alguns segundos." : "Montando o debrief…"}</div></Panel>
         )}
-        {section && <Debrief section={section} scope={scope} referenceLabel={scope === "season" ? report!.previousSeasonName : "demais semanas"} />}
+        {section && <Debrief section={section} scope={scope} referenceLabel={scope === "season" ? (section.field?.referenceLabel ?? report!.previousSeasonName) : "demais semanas"} />}
       </main>
     </div>
   );
@@ -133,6 +134,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
   const contextMax = Math.max(1, ...contextRows.map((row) => Math.abs(contextAvg(row))));
   const incidentTone = kpis.incidentsAvg === null || kpis.incidentsRef === null ? "neutral" : kpis.incidentsAvg <= kpis.incidentsRef ? "gain" : kpis.incidentsAvg - kpis.incidentsRef >= 0.5 ? "loss" : "neutral";
   const streak = kpis.streak;
+  const field = section.field && section.field.now.races ? section.field : null;
   return (
     <>
       <section className="ng-panel ngd-quick" aria-label="Leitura rápida">
@@ -146,17 +148,57 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
         <div className="ngd-quick-action"><span>O QUE FAZER</span><p>{narrative.action}</p></div>
       </section>
 
-      <section className="ngd-kpis" aria-label="Indicadores">
+      <section className={"ngd-kpis" + (field ? " ngd-kpis-8" : "")} aria-label="Indicadores">
         <Kpi label="Saldo de iRating" value={signedInt(kpis.net)} tone={toneOf(kpis.net)}
           sub={kpis.referenceNet === null ? "sem referência" : scope === "season" ? "vs. " + referenceLabel + ": " + signedInt(kpis.referenceNet) : "média das outras: " + signedInt(kpis.referenceNet) + "/corrida"} />
-        <Kpi label="Perdas grandes" value={String(kpis.severeCount)} tone={kpis.severeCount ? "loss" : "gain"} sub={"mais de " + kpis.severeThreshold + " pontos numa corrida"} />
-        <Kpi label="Abandonos" value={String(kpis.retirements)} tone="neutral" sub={kpis.retirements ? (kpis.retirementRate ?? 0) + "% das corridas" : scope === "week" ? "nenhum na semana" : "nenhum na season"} />
+        {field && field.now.permanencePct !== null && (
+          <Kpi label="Permanência" value={field.now.permanencePct + "%"} tone={field.now.permanencePct >= 80 ? "gain" : "loss"}
+            sub={field.now.kept + " de " + (field.now.kept + field.now.early) + " com 90% das voltas ou mais" + (field.before.permanencePct !== null ? " · antes: " + field.before.permanencePct + "%" : "")} />
+        )}
+        {field && field.now.residualAvg !== null && (
+          <Kpi label="Resultado vs esperado" value={signedDec(field.now.residualAvg, 1)} tone={fieldTone(field.now.residualAvg)}
+            sub={"iR por corrida contra o que seu iRating previa" + (field.before.residualAvg !== null ? " · antes: " + signedDec(field.before.residualAvg, 1) : "")} />
+        )}
+        {field && field.now.paceTopPct !== null && (
+          <Kpi label="Ritmo vs grid" value={"top " + field.now.paceTopPct + "%"} tone="neutral"
+            sub={"melhor volta na classe" + (field.before.paceTopPct !== null ? " · antes: top " + field.before.paceTopPct + "%" : "")} />
+        )}
+        <Kpi label="Perdas grandes" value={String(kpis.severeCount)} tone={kpis.severeCount ? "loss" : "gain"} sub={"mais de " + kpis.severeThreshold + " pontos numa corrida" + (field && field.before.races ? " · antes: " + referenceSevere(section) : "")} />
+        {field ? (
+          <Kpi label="Pódios" value={String(field.now.podiums)} tone="neutral" sub={"vitórias: " + field.now.wins + (field.before.races ? " · antes: " + field.before.podiums + " (" + field.before.wins + (field.before.wins === 1 ? " vitória)" : " vitórias)") : "")} />
+        ) : (
+          <Kpi label="Abandonos" value={String(kpis.retirements)} tone="neutral" sub={kpis.retirements ? (kpis.retirementRate ?? 0) + "% das corridas" : scope === "week" ? "nenhum na semana" : "nenhum na season"} />
+        )}
         <Kpi label="Incidentes" value={kpis.incidentsAvg === null ? "—" : dec(kpis.incidentsAvg)} unit={kpis.incidentsAvg === null ? undefined : "/ corrida"} tone={incidentTone} sub={kpis.incidentsRef === null ? "sem referência" : "referência: " + dec(kpis.incidentsRef)} />
         <Kpi label="Sequência" value={streak.direction ? streak.length + (streak.direction === "gain" ? " ↑" : " ↓") : "0"} tone={streak.direction === "gain" ? "gain" : streak.direction === "loss" ? "loss" : "neutral"}
           sub={(streak.direction === "gain" ? "ganhando iRating" : streak.direction === "loss" ? "perdendo iRating" : "sem sequência aberta") + " · recorde " + streak.recordGain} />
       </section>
 
-      <div className="ngd-row-2">
+      {field ? (
+        <div className="ngd-row-2">
+          <Panel kicker="RITMO CONTRA O GRID × RESULTADO" title="Seu ritmo no grid virou iRating?"
+            subtitle={"Cada ponto é uma corrida: onde sua melhor volta ficou no grid da classe, contra o iRating ganho. Cinza: " + field.referenceLabel}>
+            {field.scatter.now.length ? <GridScatter now={field.scatter.now} before={field.scatter.before} label={field.referenceLabel} /> : <div className="ngd-empty">Sem melhor volta do campo para montar o gráfico.</div>}
+          </Panel>
+          <Panel kicker={scope === "week" ? "CASCATA DA SEMANA" : "CASCATA DA SEASON"} title={"De onde vêm os " + signedInt(field.now.net) + " iR"}
+            subtitle={"Δ iR por desfecho. Saída antecipada = menos de 90% das voltas da classe. Contagens: agora · " + field.referenceLabel}>
+            <Cascade now={field.now} before={field.before} referenceName={field.referenceLabel} />
+          </Panel>
+        </div>
+      ) : null}
+      {field ? (
+        <div className="ngd-row-2 ngd-row-even">
+          <Panel kicker="CAUSAS DA SAÍDA" title="Por que as corridas acabam cedo" subtitle="Classificação pela assinatura das voltas de corrida. Corridas · iR perdido"
+            actions={<Chip tone="formula">regra automática · evidência média</Chip>}>
+            <CausesTable field={field} referenceName={field.referenceLabel} />
+            <p className="ngd-note">Não há tipo de incidente (contato, off track, perda de controle) nas voltas; só dá para inferir pela assinatura.</p>
+          </Panel>
+          <Panel kicker={section.label.toUpperCase() + " POR CARRO"} title={"Cada carro, agora contra " + (scope === "week" ? "a mesma semana da anterior" : "o mesmo ponto da anterior")} subtitle="Corridas · Δ iR · saída · ritmo no grid · resultado vs esperado. Cinza: menos de 5 corridas">
+            <CarsTable field={field} referenceName={field.referenceLabel} segmentLabel={section.label} />
+          </Panel>
+        </div>
+      ) : null}
+      {!field && <div className="ngd-row-2">
         <Panel kicker="NOVO · RITMO × RESULTADO" title="Você foi perto do seu melhor, mas perdeu iRating?" className="ngd-h340"
           subtitle={(scope === "season" ? "Cada ponto é uma semana" : "Cada ponto é uma corrida") + ": quão longe sua melhor volta ficou da sua melhor volta no mesmo carro e pista, contra o iRating ganho"}>
           {section.pace.points.length ? <PaceScatter pace={section.pace} /> : <div className="ngd-empty">Sem volta de corrida registrada para montar o gráfico.</div>}
@@ -167,7 +209,7 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
           <LossTimingBars current={section.lossTiming.current} reference={section.lossTiming.reference} referenceLabel={refLegend} />
           <p className="ngd-note">{narrative.lossTiming.before}{narrative.lossTiming.strong && <strong>{narrative.lossTiming.strong}</strong>}{narrative.lossTiming.after}</p>
         </Panel>
-      </div>
+      </div>}
 
       <div className="ngd-row-2 ngd-row-even">
         {scope === "season" ? (
@@ -200,6 +242,10 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
       </div>
     </>
   );
+}
+
+function referenceSevere(section: DebriefSection) {
+  return String(section.evidence.severity.referenceCount);
 }
 
 function contextSubtitle(row: DebriefContextRow) {

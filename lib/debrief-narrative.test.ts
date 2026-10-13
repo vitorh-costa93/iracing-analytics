@@ -32,7 +32,7 @@ describe("number formatting", () => {
 describe("quick summary", () => {
   it("season with wins and a clean campaign praises it", () => {
     const text = quickSummary(summary({}));
-    expect(text).toBe("Você teve 3 vitórias nesta season, contra 1 na anterior, e o iRating subiu 214 pontos (na anterior, subiu 71 pontos). Nenhuma perda grande: você ganhou sem sustos. E você correu mais limpo: 3,8 incidentes por corrida, contra 4,4.");
+    expect(text).toBe("Você teve 3 vitórias nesta season, contra 1 no mesmo ponto da anterior, e o iRating subiu 214 pontos (no mesmo ponto da anterior, subiu 71 pontos). Nenhuma perda grande: você ganhou sem sustos. E você correu mais limpo: 3,8 incidentes por corrida, contra 4,4.");
     clean(text);
   });
 
@@ -140,6 +140,6 @@ describe("pace consistency note", () => {
 describe("quick summary without wins", () => {
   it("does not say zero wins", () => {
     const text = quickSummary(summary({ wins: 0, referenceWins: 1, net: 31, referenceNet: 247 }));
-    expect(text).toMatch(/^Ainda sem vitória nesta season \(na anterior, foi uma\), e o iRating subiu 31 pontos/);
+    expect(text).toMatch(/^Ainda sem vitória nesta season \(no mesmo ponto da anterior, foi uma\), e o iRating subiu 31 pontos/);
   });
 });

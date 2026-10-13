@@ -113,3 +113,45 @@
   .ngd-ev-grid { grid-template-columns: minmax(0, 1fr); }
   .ngd-h340, .ngd-h270 { height: auto; }
 }
+
+/* ---- Campo completo da corrida (13/10/2026): KPIs 4x2, cascata, tabelas, pontos da season anterior ---- */
+.ngd-kpis.ngd-kpis-8 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.ngd-scatter circle.g { fill: var(--ng-gain); fill-opacity: .9; }
+.ngd-scatter circle.l { fill: var(--ng-loss); fill-opacity: .9; }
+.ngd-scatter circle.o { fill: #4b5578; fill-opacity: .75; }
+.ngd-scroll-x { overflow-x: auto; }
+.ngd-table { width: 100%; border-collapse: collapse; font-size: 13px; color: var(--ng-text); }
+.ngd-table th { font-weight: 600; font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--ng-muted); text-align: left; padding: 0 8px 8px 0; border-bottom: 1px solid var(--ng-border); white-space: nowrap; }
+.ngd-table td { padding: 8px 8px 8px 0; border-bottom: 1px solid var(--ng-border); vertical-align: top; font-variant-numeric: tabular-nums; }
+.ngd-table tr:last-child td { border-bottom: 0; }
+.ngd-table .r { text-align: right; }
+.ngd-table .sep { border-left: 1px solid var(--ng-border); padding-left: 12px; }
+.ngd-table .grp { text-align: center; border-bottom: 1px solid var(--ng-border); }
+.ngd-table .sub { display: block; color: var(--ng-muted); font-size: 11.5px; font-weight: 400; margin-top: 2px; }
+.ngd-table .muted { color: var(--ng-soft); }
+.ngd-table [data-tone="gain"] { color: var(--ng-gain); }
+.ngd-table [data-tone="loss"] { color: var(--ng-loss); }
+.ngd-table [data-tone="muted"] { color: var(--ng-soft); }
+.ngd-cr { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--ng-border); }
+.ngd-cr:last-child { border-bottom: 0; }
+.ngd-cr-label { color: var(--ng-muted); font-size: 12.5px; }
+.ngd-cr-total .ngd-cr-label { color: var(--ng-text); font-weight: 600; }
+.ngd-cr-bars { display: grid; gap: 5px; }
+.ngd-cr-pair { display: grid; grid-template-columns: minmax(0, 1fr) 60px; gap: 10px; align-items: center; }
+.ngd-cr-track { position: relative; height: 12px; background: color-mix(in srgb, var(--ng-border) 60%, transparent); border-radius: 3px; }
+.ngd-cr-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; }
+.ngd-cr-fill[data-kind="gain"] { background: var(--ng-gain); }
+.ngd-cr-fill[data-kind="loss"] { background: var(--ng-loss); }
+.ngd-cr-fill[data-kind="ref"] { background: #4b5578; }
+.ngd-cr-fill[data-kind="net"] { background: var(--ng-brand); }
+.ngd-cr-value { text-align: right; font-weight: 600; font-size: 12px; font-variant-numeric: tabular-nums; }
+.ngd-cr-value[data-tone="gain"] { color: var(--ng-gain); }
+.ngd-cr-value[data-tone="loss"] { color: var(--ng-loss); }
+.ngd-cr-value[data-tone="muted"] { color: var(--ng-muted); }
+.ngd-cr-legend span[data-kind="gain"] { color: var(--ng-gain); }
+.ngd-cr-legend span[data-kind="loss"] { color: var(--ng-loss); }
+@media (max-width: 980px) {
+  .ngd-kpis.ngd-kpis-8 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ngd-cr { grid-template-columns: 100px minmax(0, 1fr); }
+}
+.ngd-table td.r { white-space: nowrap; }

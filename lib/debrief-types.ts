@@ -1,5 +1,6 @@
 import type { PaceChart } from "@/lib/debrief-charts";
 import type { RichText } from "@/lib/debrief-narrative";
+import type { CarRow, CauseTally, FieldSide, ScatterPoint } from "@/lib/debrief-field";
 
 /** Contrato do GET /api/dashboard/report consumido por app/debriefs (redesign etapa 5). Mudou de
  * forma em 26/09/2026 (contextos por média, evidência completa): o cache local do navegador subiu para v7 (components/debriefs/DebriefsView.tsx). */
@@ -12,10 +13,24 @@ export type SeasonCompareRow = { metric: string; unit: "%" | "pts" | "pos" | "s"
 export type SeverityEvidence = { threshold: number; count: number; rate: number | null; referenceCount: number; referenceRate: number | null; lossTotal: number | null; referenceLossTotal: number | null; shareOfLosses: number | null; referenceShareOfLosses: number | null; worstRunLength: number; worstRunDelta: number | null; referenceWorstRunLength: number; referenceWorstRunDelta: number | null };
 export type PedalSet = { brake: number | null; throttle: number | null; steering: number | null };
 
+/** Bloco novo (13/10/2026): métricas do campo completo da corrida, sempre contra o mesmo ponto da season anterior
+ * (season) ou a mesma semana dela (week). null quando o campo ainda não foi importado. */
+export type DebriefField = {
+  now: FieldSide;
+  before: FieldSide;
+  /** Causas da saída antecipada, pela assinatura das voltas. */
+  causes: { now: CauseTally; before: CauseTally };
+  scatter: { now: ScatterPoint[]; before: ScatterPoint[] };
+  cars: { now: CarRow[]; before: CarRow[] };
+  /** Rótulo da referência: "S3 no mesmo ponto (semanas 1–4)" / "semana 4 da S3". */
+  referenceLabel: string;
+};
+
 export type DebriefSection = {
   segment: string;
   label: string;
   week: number | null;
+  field: DebriefField | null;
   confidence: "alta" | "média" | "baixa";
   races: number;
   referenceRaces: number;

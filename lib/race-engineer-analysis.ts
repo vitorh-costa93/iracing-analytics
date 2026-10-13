@@ -16,6 +16,11 @@ export type RaceInput = {
   incidents: number | null;
   laps?: number | null;
   fastest_lap_time?: string | null;
+  /** subsession_id do iRacing (= race_field_events.subsession_id); só as consultas de campo precisam. */
+  irstats_race_id?: number | null;
+  car_id?: number | null;
+  track_id?: number | null;
+  class_finish_position?: number | null;
 };
 
 type Group = { label: string; races: number; delta: number; avgDelta: number; avgIncidents: number | null; avgPositionChange: number | null; avgSof: number | null };

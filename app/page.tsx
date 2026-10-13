@@ -8,6 +8,7 @@ import { CategoryHeading, KpiCard, Panel, PageTitle, SegmentedControl, SelectPil
 import type { KpiCategory, KpiTone } from "@/components/ui";
 import RaceScatter from "@/components/overview/RaceScatter";
 import LatestRaces from "@/components/overview/LatestRaces";
+import ClassSplit from "@/components/overview/ClassSplit";
 import { type WinnerGapItem, DeltaByContext, GapToWinner, gapOverall } from "@/components/overview/PerformancePanels";
 import { useIsMobile } from "@/lib/use-is-mobile";
 import { signedNumber } from "@/components/overview/format";
@@ -404,6 +405,8 @@ export default function Home() {
             </div>
           ))}
         </section>
+
+        <ClassSplit />
 
         <section className="ngo-row-2">
           <Panel

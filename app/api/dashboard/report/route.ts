@@ -8,17 +8,21 @@ import { retirementEvents } from "@/lib/race-retirement-events";
 import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
 import { paceVsResultInsight } from "@/lib/pace-vs-result-insight";
 import { buildRecommendation } from "@/lib/recommendation";
+import { byCar, scatterPoints, summarizeField, tallyCauses, type RaceForField } from "@/lib/debrief-field";
+import { exitCauses, fieldMetricsFor } from "@/lib/debrief-field-data";
 import { paceConsistencyNote } from "@/lib/pace-consistency-note";
 import { buildPaceChart, currentStreak, inputConsistencyPct, longestStreak, lossTimingBins, PACE_OUTLIER_PCT } from "@/lib/debrief-charts";
 import { dec, lossTimingText, quickSummary, weekPressureSubtitle, weekRacesSubtitle } from "@/lib/debrief-narrative";
-import type { DebriefRaceRow, DebriefReport, DebriefSection, SeasonCompareRow } from "@/lib/debrief-types";
+import type { DebriefField, DebriefRaceRow, DebriefReport, DebriefSection, SeasonCompareRow } from "@/lib/debrief-types";
 
 export const dynamic="force-dynamic";
 export const maxDuration=300;
 const CATEGORIES:Category[]=["formula_car","sports_car"];
+// 13/10/2026: "GT Sprint tem que cair em GT3" -- a GT Sprint Series (Simucube) corre com carros GT3 mas o nome da
+// série não traz "gt3"; sem isso 6 das 21 corridas Sports da S4 ficavam fora de GT3 e de IMSA.
 const SEGMENTS=[
  {id:"formula",label:"Super Formula",category:"formula_car" as Category,match:(_row:{series_name:string})=>true},
- {id:"gt3",label:"GT3",category:"sports_car" as Category,match:(row:{series_name:string})=>row.series_name.toLowerCase().includes("gt3")},
+ {id:"gt3",label:"GT3",category:"sports_car" as Category,match:(row:{series_name:string})=>/gt3|gt sprint/i.test(row.series_name)},
  {id:"imsa",label:"IMSA",category:"sports_car" as Category,match:(row:{series_name:string})=>row.series_name.toLowerCase().includes("imsa")},
 ];
 // PERMANENT GUARD-RAIL (CLAUDE.md "Non-negotiable rules" #7) -- não remover nem aumentar o TTL sem
@@ -40,7 +44,7 @@ const total=(values:number[])=>values.reduce((a,b)=>a+b,0);
 const delta=(row:RaceInput)=>row.irating_after-row.irating_before;
 const round=(value:number|null,decimals=1)=>value===null?null:Number(value.toFixed(decimals));
 function fail(source:string,error:unknown):never{const value=error&&typeof error==="object"?error as Record<string,unknown>:{};throw new Error(source+": "+(typeof value.message==="string"?value.message:String(error)))}
-async function racesFor(driverId:string,start:string,end:string){const all:RaceInput[]=[];for(let from=0;;from+=1000){const{data,error}=await supabaseAdmin.from("v_race_results_irating").select("raced_at,category,series_name,track_name,car_name,season_week,finish_position,grid_position,position_change,irating_after,irating_before,sof,incidents,laps,fastest_lap_time").eq("driver_id",driverId).gte("raced_at",start).lt("raced_at",end).in("category",CATEGORIES).order("raced_at",{ascending:true}).range(from,from+999);if(error)fail("v_race_results_irating",error);all.push(...((data??[])as RaceInput[]));if(!data||data.length<1000)return all}}
+async function racesFor(driverId:string,start:string,end:string){const all:RaceInput[]=[];for(let from=0;;from+=1000){const{data,error}=await supabaseAdmin.from("v_race_results_irating").select("irstats_race_id,car_id,track_id,class_finish_position,raced_at,category,series_name,track_name,car_name,season_week,finish_position,grid_position,position_change,irating_after,irating_before,sof,incidents,laps,fastest_lap_time").eq("driver_id",driverId).gte("raced_at",start).lt("raced_at",end).in("category",CATEGORIES).order("raced_at",{ascending:true}).range(from,from+999);if(error)fail("v_race_results_irating",error);all.push(...((data??[])as RaceInput[]));if(!data||data.length<1000)return all}}
 function historyBefore(driverId:string,before:string){const key=driverId+"|"+before,cached=historyCache.get(key);if(cached&&cached.expiresAt>Date.now())return cached.promise;const promise=(async()=>{const all:HistoryRow[]=[];for(let from=0;;from+=1000){const{data,error}=await supabaseAdmin.from("race_results").select("raced_at,category,series_name,irating_delta").eq("driver_id",driverId).lt("raced_at",before).in("category",CATEGORIES).order("raced_at",{ascending:true}).range(from,from+999);if(error)fail("race_results",error);all.push(...((data??[])as HistoryRow[]));if(!data||data.length<1000)return all}})();historyCache.set(key,{expiresAt:Date.now()+REPORT_CACHE_TTL_MS,promise});promise.catch(()=>historyCache.delete(key));return promise}
 
 const raceRow=(row:RaceInput,lossTotal:number,threshold:number):DebriefRaceRow=>({date:row.raced_at,track:row.track_name,car:row.car_name,grid:row.grid_position,finish:row.finish_position,sof:row.sof,delta:delta(row),lossShare:delta(row)<0&&lossTotal?Math.round(Math.abs(delta(row))/lossTotal*100):null,severe:delta(row)<-threshold});
@@ -56,13 +60,17 @@ export async function GET(request:NextRequest){
   const[rows,history]=await Promise.all([racesFor(driver.id,previousStart,new Date(new Date(currentStart).getTime()+84*86400000).toISOString()),historyBefore(driver.id,previousStart)]);
   const currentRows=rows.filter(x=>new Date(x.raced_at)>=new Date(currentStart)),previousRows=rows.filter(x=>new Date(x.raced_at)<new Date(currentStart));
 
-  const now=currentRows.filter(row=>row.category===segment.category&&segment.match(row)),before=previousRows.filter(row=>row.category===segment.category&&segment.match(row)),latestWeek=currentSeasonWeek(currentRows),selected=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week===latestWeek):now,baseline=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week!==latestWeek):before;
+  const now=currentRows.filter(row=>row.category===segment.category&&segment.match(row)),before=previousRows.filter(row=>row.category===segment.category&&segment.match(row)),latestWeek=currentSeasonWeek(currentRows);
+  // 13/10/2026: "sempre S3 semanas 1 até a season to date" -- a season atual só se compara com a anterior até a mesma
+  // semana (blocos de 7 dias a partir do início oficial, como em lib/season-week.ts); na week, com a mesma semana da anterior.
+  const weekMs=7*86400000,previousStartMs=new Date(previousStart).getTime(),beforeSamePoint=latestWeek===null?before:before.filter(row=>new Date(row.raced_at).getTime()<previousStartMs+latestWeek*weekMs),beforeSameWeek=latestWeek===null?[]:before.filter(row=>{const at=new Date(row.raced_at).getTime();return at>=previousStartMs+(latestWeek-1)*weekMs&&at<previousStartMs+latestWeek*weekMs});
+  const selected=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week===latestWeek):now,baseline=scope==="week"&&latestWeek!==null?now.filter(row=>row.season_week!==latestWeek):beforeSamePoint;
   const contextKey=(row:RaceInput)=>row.car_name+"|"+row.track_name,sharedContexts=new Set([...new Set(selected.map(contextKey))].filter(key=>baseline.some(row=>contextKey(row)===key)));
   const[survival,survivalReference,inputs,inputReference]=await Promise.all([retirementEvents(driver.id,selected,current.season_name),retirementEvents(driver.id,baseline,scope==="week"?current.season_name:previous.season_name),telemetryInputProfile(driver.id,segment.category,selected,current.season_name,scope==="week"?latestWeek:null,sharedContexts),telemetryInputProfile(driver.id,segment.category,baseline,scope==="week"?current.season_name:previous.season_name,null,sharedContexts)]);
   const base=buildEngineerSection(segment.category,selected,baseline,scope,scope==="week"?latestWeek:null,segment.label,segment.id),threshold=base.severity.threshold;
   const ordered=[...selected].sort((a,b)=>new Date(a.raced_at).getTime()-new Date(b.raced_at).getTime());
   const net=total(selected.map(delta)),referenceTotal=total(baseline.map(delta)),gainTotal=total(selected.map(delta).filter(v=>v>0)),lossTotal=Math.abs(total(selected.map(delta).filter(v=>v<0))),severeLossTotal=Math.abs(total(selected.map(delta).filter(v=>v<-threshold)));
-  // Comparação justa: season contra a season anterior inteira (saldo total); week contra a média por
+  // Comparação justa: season contra a season anterior até o mesmo ponto (saldo total); week contra a média por
   // corrida das demais semanas (regra de 09/09/2026: não comparar uma semana com a soma de onze).
   const netCompare=scope==="week"?(selected.length?net/selected.length:0):net,referenceCompare=scope==="week"?(baseline.length?referenceTotal/baseline.length:0):referenceTotal,netBetter=baseline.length>0&&netCompare>referenceCompare,netWorse=baseline.length>0&&netCompare<referenceCompare;
 
@@ -105,9 +113,22 @@ export async function GET(request:NextRequest){
    seasonComparison={improved:[...pick(cmp.improved,"improved"),...extra.filter(x=>x.direction==="improved")],worsened:[...pick(cmp.worsened,"worsened"),...extra.filter(x=>x.direction==="worsened")],stable:[...pick(cmp.stable,"stable"),...extra.filter(x=>x.direction==="stable")]};
   }
   const sev=base.severity;
+  // Campo completo da corrida (race_field_results): permanência, ritmo no grid, resultado vs esperado, cascata e causas.
+  // Referência: season = a anterior até o mesmo ponto; week = a mesma semana da anterior (regra de 13/10/2026).
+  const fieldReference=scope==="week"?beforeSameWeek:beforeSamePoint;
+  let fieldBlock:DebriefField|null=null;
+  try{
+   const fieldMetrics=await fieldMetricsFor([...selected,...fieldReference]);
+   if(fieldMetrics.size){
+    const [causeNow,causeBefore]=await Promise.all([exitCauses(driver.id,selected,fieldMetrics),exitCauses(driver.id,fieldReference,fieldMetrics)]);
+    const toField=(items:RaceInput[],causes:Map<number,import("@/lib/debrief-field").ExitCause|null>):RaceForField[]=>items.map(row=>({subsessionId:row.irstats_race_id??null,date:row.raced_at,car:row.car_name,track:row.track_name,delta:delta(row),classFinish:row.class_finish_position??null,cause:row.irstats_race_id!=null?causes.get(row.irstats_race_id)??null:null}));
+    const nowField=toField(selected,causeNow),beforeField=toField(fieldReference,causeBefore);
+    fieldBlock={now:summarizeField(nowField,fieldMetrics),before:summarizeField(beforeField,fieldMetrics),causes:{now:tallyCauses(nowField,fieldMetrics),before:tallyCauses(beforeField,fieldMetrics)},scatter:{now:scatterPoints(nowField,fieldMetrics),before:scatterPoints(beforeField,fieldMetrics)},cars:{now:byCar(nowField,fieldMetrics),before:byCar(beforeField,fieldMetrics)},referenceLabel:scope==="week"?"semana "+latestWeek+" da "+previous.season_name:previous.season_name+" no mesmo ponto"+(latestWeek?" (semanas 1–"+latestWeek+")":"")};
+   }
+  }catch(error){console.error("debrief field block",error)}
   const splitText=pace.split===null?"":" Hoje o seu normal é "+dec(pace.split,2)+"%.";
   const section:DebriefSection={
-   segment:segment.id,label:segment.label,week:scope==="week"?latestWeek:null,confidence:confidenceLabel,races:selected.length,referenceRaces:baseline.length,
+   segment:segment.id,label:segment.label,week:scope==="week"?latestWeek:null,field:fieldBlock,confidence:confidenceLabel,races:selected.length,referenceRaces:baseline.length,
    narrative:{summary:summaryText,referenceLine,paceVsResult:paceText,action,lossTiming,trendSubtitle},
    kpis:{net,referenceNet:baseline.length?round(referenceCompare,1):null,severeCount:base.severity.count,severeThreshold:threshold,retirements:survival.events.length,retirementRate:selected.length?Math.round(survival.events.length/selected.length*100):null,incidentsAvg:incidentsNow,incidentsRef,streak:{length:streak.length,direction:streak.direction,recordGain:longestStreak(allDeltas,"gain"),recordLoss:longestStreak(allDeltas,"loss")}},
    pace,
@@ -125,7 +146,9 @@ export async function GET(request:NextRequest){
     streaks:{gain:longestStreak(periodDeltas,"gain"),loss:longestStreak(periodDeltas,"loss"),referenceGain:longestStreak(baselineDeltas,"gain"),referenceLoss:longestStreak(baselineDeltas,"loss"),recordGain:longestStreak(allDeltas,"gain")},
     method:[
      "Só corridas oficiais importadas do iRStats. Treino e classificação não entram.",
-     scope==="week"?"Referência: as outras semanas desta season. O saldo delas é comparado por corrida, para ser justo com uma semana só.":"Referência: a season anterior inteira, no mesmo segmento.",
+     scope==="week"?"Referência: as outras semanas desta season. O saldo delas é comparado por corrida, para ser justo com uma semana só. Os indicadores de permanência, ritmo e resultado vs esperado usam a mesma semana da season anterior.":"Referência: a season anterior da semana 1 até o mesmo ponto desta (nunca ela inteira), no mesmo segmento.",
+     "Permanência: corridas em que você completou 90% das voltas do líder da classe ou mais. Saída antecipada: menos que isso (campo completo importado pelo agente).",
+     "Ritmo vs grid: a posição da sua melhor volta entre todos da sua classe (top 0% = a mais rápida). Resultado vs esperado: o Δ de iRating real menos o que a fórmula da comunidade daria para a posição que o seu iRating previa (estimativa).",
      "Perda grande: corrida em que você perdeu mais de "+threshold+" pontos de iRating.",
      "Ritmo: sua melhor volta em cada corrida, comparada à sua melhor volta de corrida no mesmo carro e pista (nesta season e na anterior). Corridas mais de "+PACE_OUTLIER_PCT+"% longe disso ficam de fora.",
      "Rápido ou devagar: comparado à sua distância típica nessas corridas."+splitText,

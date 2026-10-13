@@ -70,8 +70,8 @@ export function quickSummary(input: SummaryInput): string {
   if (!races) return scope === "week" ? "Nenhuma corrida nesta semana ainda." : "Nenhuma corrida nesta season ainda.";
   const sentences: string[] = [];
   if (scope === "season") {
-    const winsText = wins ? "Você teve " + plural(wins, "vitória", "vitórias") + " nesta season, contra " + String(referenceWins) + " na anterior, e " : referenceWins ? "Ainda sem vitória nesta season (na anterior, " + (referenceWins === 1 ? "foi uma" : "foram " + String(referenceWins)) + "), e " : "Em " + plural(races, "corrida", "corridas") + " nesta season, ";
-    const reference = referenceRaces ? " (na anterior, " + (Math.round(referenceNet) === 0 ? "ficou no zero a zero" : Math.round(referenceNet) > 0 ? "subiu " + points(referenceNet) : "caiu " + points(referenceNet)) + ")" : "";
+    const winsText = wins ? "Você teve " + plural(wins, "vitória", "vitórias") + " nesta season, contra " + String(referenceWins) + " no mesmo ponto da anterior, e " : referenceWins ? "Ainda sem vitória nesta season (no mesmo ponto da anterior, " + (referenceWins === 1 ? "foi uma" : "foram " + String(referenceWins)) + "), e " : "Em " + plural(races, "corrida", "corridas") + " nesta season, ";
+    const reference = referenceRaces ? " (no mesmo ponto da anterior, " + (Math.round(referenceNet) === 0 ? "ficou no zero a zero" : Math.round(referenceNet) > 0 ? "subiu " + points(referenceNet) : "caiu " + points(referenceNet)) + ")" : "";
     sentences.push(winsText + movement(net) + reference + ".");
   } else {
     const perRace = net / races, refPerRace = referenceRaces ? referenceNet / referenceRaces : null;
