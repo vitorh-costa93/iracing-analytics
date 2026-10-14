@@ -1,5 +1,13 @@
 # Continuidade — iracing-analytics
 
+## Correção permanente e PRD — 14/10/2026
+- GitHub: 9273f58 (retenção/contrato/referências), d576831 (retry por lease), 11393bd (cache versionado e rotação). PRD Vercel READY em iracing-analytics.vercel.app, deployment dpl_2Nv7wmeHPxBF5C7oygQFFfViLihR. Agente instalado atualizado, bandeja ativa, DPAPI/checkpoints preservados.
+- Migrations preserve_agent_telemetry e agent_reference aplicadas. Replay de dois recibos lap_v2 retornou duplicate. Retenção nativa não remove temporada desconhecida; Garage61 não tenta buscar ira_.
+- Validação final: npm test 507 PASS + 1 skipped; npm run build PASS; .NET publish/self-test PASS, incluindo escopo DriverInfo, fila, HTTP, lease e rotação de combinações.
+- APIs PRD: Semana ativa inclui Imola; referências Corvette/Porsche Indianapolis e SF23 Imola retornam CSV e status ok; resposta no-store. Debrief da primeira Imola tem 15 traces de Race; segunda Imola 24. Todas as oito corridas recentes listadas já têm traces, incluindo 07/10 Ferrari296/Motegi e Ferrari499P/RedBullRing.
+- Recuperação completa adicional ficou na fila persistente: 163 payloads restantes no último snapshot, zero quarentena, 74 requests locais e 9.3 MB usados no dia. Cotas originais mantidas; ao alcançar 10 MiB, agente retoma no próximo dia UTC. Não afirmar que todas as voltas históricas já foram restauradas. Sem cron novo ou monitor por LLM.
+- Arquivos locais anteriores não relacionados continuam sem commit (relatórios, exemplos, migration 20261013130000 redundante com a reparação nova). Nenhum IBT/JSON privado ou token foi publicado.
+
 ## Recuperação SF23 Imola — 14/10/2026
 - Instalação local em Documents/RacingAnalyticsAgent/app atualizada a partir do HEAD 297f030; publish self-contained e self-test PASS, token DPAPI e fila preservados; bandeja reiniciada.
 - Resultado 89364467 confirmado no Supabase PRD: uma linha iracing_agent, P1, 15 voltas, iRating 5147→5196 (+49). Telemetria já tinha 15 voltas Race + 2 Qualify.
