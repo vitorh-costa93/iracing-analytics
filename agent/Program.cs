@@ -185,6 +185,9 @@ static class SelfTest
                 if (code == 401 && !sending.State.AuthPaused || code == 422 && (sending.Quarantined != 1 || sending.Backlog != 0) || code == 200 && (sending.Backlog != 0 || sending.State.Successes != 1) || code == 500 && sending.State.Attempts.Values.Single().Next <= DateTimeOffset.UtcNow || code == 429 && sending.State.Next < DateTimeOffset.UtcNow.AddMinutes(59)) throw new Exception("HTTP state " + code);
             }
             checks.Add("HTTP 200/401/422/429/500 transitions: OK");
+            var leaseStore=new Store(Path.Combine(root,"busy"),store.Endpoint,new FixedResponse(429,"{\"status\":\"busy\"}"));leaseStore.Token("synthetic-token");leaseStore.Enqueue(payload);leaseStore.Send(CancellationToken.None).GetAwaiter().GetResult();
+            if(leaseStore.State.Next>DateTimeOffset.UtcNow.AddMinutes(1)||leaseStore.State.Attempts.Values.Single().Next<DateTimeOffset.UtcNow.AddSeconds(100))throw new Exception("busy blocks unrelated queue");
+            checks.Add("Pending upload lease delays only its payload, not the whole queue: OK");
             var source = Path.Combine(root, "eventresult-synthetic.json"); File.WriteAllText(source, "{\"type\":\"event_result\",\"data\":{}}"); File.SetLastWriteTimeUtc(source, DateTime.UtcNow.AddDays(-1)); store.Collect(source); if (store.State.Files.Count != 0) throw new Exception("historical auto import"); store.Collect(source, true); if (store.State.Files.Count != 1) throw new Exception("backfill checkpoint"); checks.Add("Activation exclusion/explicit backfill/checkpoint: OK");
             var privateIbt = Array.IndexOf(args, "--ibt"); if (privateIbt >= 0) { using var f = File.OpenRead(args[privateIbt + 1]); var laps = Ibt.Read(f).ToArray(); foreach (var lap in laps) { using var doc = JsonDocument.Parse(lap); if (lap.Length > 512 * 1024) throw new Exception("payload cap"); var compressed = Convert.FromBase64String(doc.RootElement.GetProperty("lap").GetProperty("csvGzipBase64").GetString()!); if (compressed.Length > 128 * 1024) throw new Exception("gzip cap"); } checks.Add($"Private IBT streaming: OK ({laps.Length} complete laps), no private payload saved"); }
             var privateResult = Array.IndexOf(args, "--result"); if (privateResult >= 0)
@@ -414,12 +417,14 @@ static class SelfTest
         }
         return $"IBT scan (read-only): {files} files; " + string.Join("; ", reasons.Select(kv => $"{kv.Key}: {kv.Value}"));
     }
-    sealed class FixedResponse(int code) : HttpMessageHandler
+    sealed class FixedResponse(int code, string body = "{}") : HttpMessageHandler
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken token)
         {
             if (request.Headers.Authorization?.Scheme != "Bearer") throw new Exception("authorization");
-            return Task.FromResult(new HttpResponseMessage((System.Net.HttpStatusCode)code));
+            var response=new HttpResponseMessage((System.Net.HttpStatusCode)code){Content=new StringContent(body)};
+            if(code==429)response.Headers.RetryAfter=new System.Net.Http.Headers.RetryConditionHeaderValue(TimeSpan.FromSeconds(120));
+            return Task.FromResult(response);
         }
     }
 }

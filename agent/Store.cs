@@ -272,7 +272,12 @@ sealed class Store
                 else if ((int)response.StatusCode is 400 or 422 || (int)response.StatusCode is >= 300 and < 500 && response.StatusCode != HttpStatusCode.TooManyRequests)
                 { File.Move(file, Path.Combine(Root, "quarantine", key + ".json"), true); State.Attempts.Remove(key); if (State.ReferencePayloads.Remove(key, out var target)) State.References.Remove(target); Status = "Payload em quarentena; revisão manual"; }
                 else if (response.StatusCode == HttpStatusCode.TooManyRequests)
-                { var retry = response.Headers.RetryAfter; State.Next = now + (retry?.Delta ?? (retry?.Date - now) ?? TimeSpan.FromHours(1)); if (State.Next < now.AddHours(1)) State.Next = now.AddHours(1); Status = "Servidor limitou envios"; }
+                {
+                    var retry = response.Headers.RetryAfter; var delay=retry?.Delta??(retry?.Date-now)??TimeSpan.FromHours(1);
+                    var leased=false;try {using var body=JsonDocument.Parse(await response.Content.ReadAsStringAsync(cancellation));leased=body.RootElement.TryGetProperty("status",out var status)&&status.GetString()=="busy";}catch(JsonException){}
+                    if(leased){attempt.Next=now+(delay<TimeSpan.FromSeconds(120)?TimeSpan.FromSeconds(120):delay);State.Attempts[key]=attempt;Status="Outro envio desta volta está em andamento; fila preservada";}
+                    else {State.Next=now+(delay<TimeSpan.FromHours(1)?TimeSpan.FromHours(1):delay);Status="Servidor limitou envios";}
+                }
                 else Retry();
             }
             catch (HttpRequestException) { Retry(); }
