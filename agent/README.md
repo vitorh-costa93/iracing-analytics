@@ -64,6 +64,8 @@ No IBT são incluídas todas as voltas com início próximo de 0%, fim próximo 
 
 ## Contrato v1
 
+Política de referência (14/10/2026): uso sempre Race; Qualify e arquivos identificados como quali são recusados. Uma sessão SDK Race é aceita diretamente. Test Drive/Practice exige nome com indicação Race ou declaração explícita em `setups/<carro>/<season>/reference-race.json`, formato `{"raceFiles":["nome-exato.ibt"]}`. Mudanças nessa declaração invalidam o cache de descoberta. Corvette/Porsche Indianapolis foram declarados para setup Race conforme orientação do usuário; Imola usa `imolasf23telemetry stable race.ibt`. O payload envia `metadata.referenceUse="Race"` e preserva o sessionType real. Referências têm prioridade sobre o backfill histórico, mantendo cotas e a prioridade de resultados oficiais.
+
 Uma volta por request, `kind: "telemetry"`, `key` = SHA-256 UTF-8 de `subsessionId:customerId:sessionNumber:lapNumber`. `metadata` contém subsessionId/customerId, carName/trackName/trackConfig, sessionNumber/sessionType (`Race`, `Practice`, `Qualify`), startedAt/endedAt ISO UTC, trackLengthMeters; nativeCarId/nativeTrackId e seasonYear/seasonQuarter somente quando presentes no YAML. `lap` contém number, time em segundos, clean, incidents nullable, fuelLevel/fuelUsed nullable e csvGzipBase64. Fuel usado não é negativo: aumento de combustível retorna null.
 
 Resultado: `{version:1,kind:"result",key,export:<JSON original>}`. A chave é SHA-256 da serialização UTF-8 compacta com propriedades ordenadas ordinalmente de forma recursiva; arrays conservam ordem e valores conservam seu JSON numérico original. O backend adapta o JSON original.

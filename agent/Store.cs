@@ -82,7 +82,7 @@ sealed class Store
         State.AuthPaused = false; State.Next = default; Save();
     }
     string? Token() => File.Exists(Path.Combine(Root, "credential.bin")) ? Encoding.UTF8.GetString(Dpapi.Protect(File.ReadAllBytes(Path.Combine(Root, "credential.bin")), true)) : null;
-    static bool IsResult(string file) { try { using var s = File.OpenRead(file); var b = new byte[48]; var n = s.Read(b, 0, b.Length); var head = Encoding.UTF8.GetString(b, 0, n); return head.Contains("\"kind\":\"result\"") || head.Contains("\"kind\":\"ibt_result\""); } catch { return false; } }
+    static int Priority(string file) { try { using var s=File.OpenRead(file);var b=new byte[64];var n=s.Read(b,0,b.Length);var head=Encoding.UTF8.GetString(b,0,n);return head.Contains("\"kind\":\"result\"")||head.Contains("\"kind\":\"ibt_result\"")?0:head.Contains("\"kind\":\"reference\"")?1:2;}catch{return 2;} }
     public int Backlog => Directory.GetFiles(Path.Combine(Root, "queue"), "*.json").Length;
     public int Quarantined => Directory.GetFiles(Path.Combine(Root, "quarantine"), "*.json").Length;
     public void Enqueue(byte[] payload)
@@ -258,7 +258,7 @@ sealed class Store
         var token = Token(); if (token is null) { Status = "Configure seu token para enviar"; return; }
         while (recent.TryPeek(out var t) && t < now.AddMinutes(-1)) recent.Dequeue();
         if (recent.Count >= 10 || State.Requests >= (BackfillMode ? 3000 : Math.Clamp(State.DailyLimit, 1, 128))) { Status = "Limite de requests atingido"; return; }
-        foreach (var file in Directory.EnumerateFiles(Path.Combine(Root, "queue"), "*.json").OrderBy(f => IsResult(f) ? 0 : 1).ThenBy(f => new FileInfo(f).CreationTimeUtc))
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(Root, "queue"), "*.json").OrderBy(Priority).ThenBy(f => new FileInfo(f).CreationTimeUtc))
         {
             var key = Path.GetFileNameWithoutExtension(file);
             var attempt = State.Attempts.GetValueOrDefault(key) ?? new(); if (attempt.Next > now) continue;

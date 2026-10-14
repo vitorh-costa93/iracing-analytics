@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef } from "react";
 import { Chip, Panel, SegmentedControl, SelectPill } from "@/components/ui";
 import { formatLapTime } from "@/lib/telemetry-trace";
 import { signedSeconds, type RaceFieldView as FieldPayload, type RivalsSummary, type Rival } from "@/lib/race-field";
@@ -52,14 +52,17 @@ function Stat({ label, value, sub, tone }: { label: string; value: string; sub?:
 }
 
 function TrackTrend({ history, trackName }: { history: NonNullable<FieldPayload["trackHistory"]>; trackName: string | null | undefined }) {
+  const container=useRef<HTMLDivElement>(null);
+  const [chartWidth,setChartWidth]=useState(520);
+  useEffect(()=>{const element=container.current;if(!element)return;const observer=new ResizeObserver(entries=>setChartWidth(Math.max(280,Math.round(entries[0].contentRect.width))));observer.observe(element);return()=>observer.disconnect();},[history.points.length]);
   const points = history.points;
   if (points.length < 2) return <div className="ngr-note">Histórico em {trackName ?? "esta pista"}: ainda só {points.length} corrida com campo importado nesta classe.</div>;
   const values = points.map((point) => point.gapTop5 ?? point.gapTop1);
-  const max = Math.max(...values, 0.1), min = Math.min(...values, 0), W = 320, H = 110, pad = 18;
+  const max = Math.max(...values, 0.1), min = Math.min(...values, 0), W = chartWidth, H = 180, pad = 18;
   const x = (i: number) => pad + (i / (points.length - 1)) * (W - pad * 2), y = (v: number) => H - pad - ((v - min) / (max - min || 1)) * (H - pad * 2);
   const label = history.trend ? `${history.trend.label} (${signedSeconds(history.trend.slope, 2)} por corrida)` : "poucas corridas para tendência";
   return (
-    <div className="ngf-trend">
+    <div className="ngf-trend" ref={container}>
       <div className="ngf-sub-title">Histórico em {trackName ?? "esta pista"} · mesma classe · {points.length} corridas</div>
       <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Diferença da sua melhor volta para a média do top 5 do campo em ${points.length} corridas; tendência ${label}`} className="ngf-trend-chart">
         <line x1={pad} x2={W - pad} y1={y(0)} y2={y(0)} className="ngf-axis" />

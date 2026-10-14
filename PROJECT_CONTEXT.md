@@ -1,5 +1,10 @@
 # Racing Analytics — contexto do projeto
 
+## Histórico largo e referências para Race — 14/10/2026
+- Histórico de ritmo do Campo da corrida usa toda a largura disponível, altura 180 px e ResizeObserver para preservar proporções/pontos em desktop e mobile.
+- Regra explicitada pelo usuário: referências são de Race; Test Drive com setup Race também é permitido, Qualify não. Agente filtra por sessão real e identificação do arquivo; Test Drive sem identificação requer declaração local reference-race.json. Servidor valida referenceUse Race/sessionType e bloqueia nomes de quali nos uploads e leituras.
+- Imola: referência selecionada mudou de quali para stable race (Race real, 1:21.717). Substituição está na fila prioritária: limite local de 10 MiB/dia já atingido; a renovação é à meia-noite UTC (21h em São Paulo). A referência antiga de quali deixa de ser utilizada sem excluir dados. Cotas não ampliadas.
+
 ## Telemetria nativa e referências — correção permanente de 14/10/2026
 - O cron de retenção removia traces nativos sem season no garage61_payload. Retenção agora resolve a temporada pelo calendário oficial para dados nativos e preserva metadados desconhecidos; Qualify não é Race. Backfill Garage61 exclui registros nativos.
 - Ingestão grava id/lapTime/clean/canViewTelemetry/season no contrato consumido pela UI; recibos lap_v2 permitem recuperar arquivos removidos. agent_commit repara somente path/payload de laps nativos com driver/carro/pista correspondentes, mantendo identidade e contagem idempotentes. Migration 20261014183044 aplicada em PRD.

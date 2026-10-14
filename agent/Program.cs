@@ -207,6 +207,8 @@ static class SelfTest
             store.ScanReferences(referenceFiles,true,5,Path.Combine(root,"empty-setups"));if(store.State.ReferenceScanCursor!=5)throw new Exception("reference cursor first batch");
             store.ScanReferences(referenceFiles,true,5,Path.Combine(root,"empty-setups"));if(store.State.ReferenceScanCursor!=2)throw new Exception("reference starvation");
             checks.Add("Reference scan rotates bounded batches without starving older combinations: OK");
+            if(!ReferenceFinder.IsRaceReference("Race","stable race.ibt")||ReferenceFinder.IsRaceReference("Qualify","race.ibt",true)||ReferenceFinder.IsRaceReference("Practice","imola quali.ibt",true)||ReferenceFinder.IsRaceReference("Practice","unknown.ibt")||!ReferenceFinder.IsRaceReference("Practice","coach.ibt",true))throw new Exception("reference race policy");
+            checks.Add("Reference policy: Race or declared race setup Test Drive, never qualifying: OK");
             File.WriteAllLines(output, checks.Append("PASS"));
         }
         catch (Exception e) { File.WriteAllLines(output, checks.Append("FAIL: " + e.GetType().Name + " " + e.Message)); Environment.ExitCode = 1; }

@@ -45,6 +45,7 @@ export async function GET(request: NextRequest) {
       .select("storage_path, original_filename, channels, sample_count, uploaded_at")
       .eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).maybeSingle();
     if (error) throw error;
+    if(reference&&/(?:^|[^a-z])(?:q|qual|quali|qualy|qualify|qualifying)(?:[^a-z]|$)/i.test(reference.original_filename))return NextResponse.json({status:'unavailable',reference:null,message:'Referência de quali não utilizada; aguardando referência de corrida.'},{headers:{'Cache-Control':'no-store'}});
     if (!reference) return NextResponse.json(buildReferenceBody(null, null),{headers:{'Cache-Control':'no-store'}});
     const csv = await readTelemetryText(reference.storage_path, BUCKET, reference.uploaded_at);
     return NextResponse.json(buildReferenceBody(reference, csv),{headers:{'Cache-Control':'no-store'}});
@@ -64,6 +65,7 @@ export async function POST(request: NextRequest) {
     const carId = Number(form.get("carId"));
     const trackId = Number(form.get("trackId"));
     if (!(file instanceof File)) return NextResponse.json({ status: "error", message: "Selecione um arquivo CSV" }, { status: 400 });
+    if(/(?:^|[^a-z])(?:q|qual|quali|qualy|qualify|qualifying)(?:[^a-z]|$)/i.test(file.name))return NextResponse.json({status:'error',message:'Use uma referência de corrida, não de quali.'},{status:400});
     if (!Number.isInteger(carId) || !Number.isInteger(trackId)) return NextResponse.json({ status: "error", message: "Carro e pista inválidos" }, { status: 400 });
     if (file.size <= 0 || file.size > MAX_BYTES) return NextResponse.json({ status: "error", message: "O CSV deve ter no máximo 10 MB" }, { status: 400 });
     const text = await file.text();

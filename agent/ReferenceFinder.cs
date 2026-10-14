@@ -18,13 +18,16 @@ static class ReferenceFinder
     static readonly Regex SafeName = new(@"^[A-Za-z0-9][A-Za-z0-9 _.\-]{0,99}$", RegexOptions.Compiled);
     public static string SetupsRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "iRacing", "setups");
     public static string SeasonFolder(int year, int quarter) => $"{year % 100:00}S{quarter}";
+    internal static bool IsRaceReference(string sessionType,string file,bool declaredRace=false) =>
+        !Regex.IsMatch(file,@"(?:^|[^a-z])(?:q|qual|quali|qualy|qualify|qualifying)(?:[^a-z]|$)",RegexOptions.IgnoreCase)
+        && (sessionType=="Race" || sessionType=="Practice" && (declaredRace||Regex.IsMatch(file,@"(?:^|[^a-z])(?:race|r)(?:[^a-z]|$)",RegexOptions.IgnoreCase)));
     internal static string Fingerprint(string root,string car,int? year,int? quarter)
     {
         if(!SafeName.IsMatch(car)||car.Contains(".."))return "";
         var folder=Path.Combine(root,car);if(!Directory.Exists(folder))return "";
         var season=year is >0&&quarter is >0?Path.Combine(folder,SeasonFolder(year.Value,quarter.Value)):Directory.EnumerateDirectories(folder).Where(d=>Regex.IsMatch(Path.GetFileName(d),@"^\d{2}S[1-4]$")).OrderByDescending(d=>d,StringComparer.OrdinalIgnoreCase).FirstOrDefault();
         if(season is null||!Directory.Exists(season))return "";
-        return Ibt.Hash(Encoding.UTF8.GetBytes(string.Join('|',Directory.EnumerateFiles(season,"*.ibt").OrderBy(p=>p,StringComparer.OrdinalIgnoreCase).Take(MaxFiles).Select(p=>$"{Path.GetFileName(p)}:{new FileInfo(p).Length}:{File.GetLastWriteTimeUtc(p).Ticks}"))));
+        return Ibt.Hash(Encoding.UTF8.GetBytes(string.Join('|',Directory.EnumerateFiles(season,"*.ibt").OrderBy(p=>p,StringComparer.OrdinalIgnoreCase).Take(MaxFiles).Select(p=>$"{Path.GetFileName(p)}:{new FileInfo(p).Length}:{File.GetLastWriteTimeUtc(p).Ticks}"))+":"+File.GetLastWriteTimeUtc(Path.Combine(season,"reference-race.json")).Ticks));
     }
 
     internal static (string car, int track, int? year, int? quarter)? PeekTarget(Stream stream)
@@ -65,6 +68,8 @@ static class ReferenceFinder
         var seasonDir = year is > 0 && quarter is > 0 ? Path.Combine(carDir, SeasonFolder(year.Value, quarter.Value))
             : Directory.EnumerateDirectories(carDir).Where(d => Regex.IsMatch(Path.GetFileName(d), @"^\d{2}S[1-4]$")).OrderByDescending(d => d, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
         if (seasonDir is null || !Directory.Exists(seasonDir)) return null;
+        var declared=new HashSet<string>(StringComparer.OrdinalIgnoreCase);var manifest=Path.Combine(seasonDir,"reference-race.json");
+        if(File.Exists(manifest)&&new FileInfo(manifest).Length<=32768){try{using var declarations=JsonDocument.Parse(File.ReadAllText(manifest));foreach(var entry in declarations.RootElement.GetProperty("raceFiles").EnumerateArray().Take(MaxFiles)){var name=entry.GetString();if(name is not null && Path.GetFileName(name)==name)declared.Add(name);}}catch(Exception e)when(e is JsonException or KeyNotFoundException or InvalidOperationException){diagnostic?.Invoke("reference_manifest_invalid");}}
         byte[]? best = null; var bestTime = double.MaxValue; string? bestFile = null;
         foreach (var file in Directory.EnumerateFiles(seasonDir, "*.ibt").OrderByDescending(File.GetLastWriteTimeUtc).Take(MaxFiles))
         {
@@ -79,6 +84,8 @@ static class ReferenceFinder
                 foreach (var payload in Ibt.Read(stream, reference: true))
                 {
                     using var doc = JsonDocument.Parse(payload); var lap = doc.RootElement.GetProperty("lap");
+                    var sessionType=doc.RootElement.GetProperty("metadata").GetProperty("sessionType").GetString()??"";
+                    if(!IsRaceReference(sessionType,Path.GetFileName(file),declared.Contains(Path.GetFileName(file))))continue;
                     if (!lap.GetProperty("clean").GetBoolean() || (lap.TryGetProperty("overtake", out var ot) && ot.GetBoolean())) continue;
                     var time = lap.GetProperty("time").GetDouble();
                     if (time < bestTime) { bestTime = time; best = payload; bestFile = Path.GetFileName(file); }
@@ -95,6 +102,7 @@ static class ReferenceFinder
         var root = JsonNode.Parse(lapPayload)!.AsObject(); var m = root["metadata"]!.AsObject();
         var lapKey = root["key"]!.GetValue<string>();
         root["kind"] = "reference";
+        m["referenceUse"] = "Race";
         root["key"] = Ibt.Hash(Encoding.UTF8.GetBytes($"reference:{m["nativeCarId"]}:{m["nativeTrackId"]}:{lapKey}"));
         root["sourceFile"] = fileName.Length > 200 ? fileName[..200] : fileName;
         return JsonSerializer.SerializeToUtf8Bytes(root);

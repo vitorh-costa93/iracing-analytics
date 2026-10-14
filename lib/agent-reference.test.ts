@@ -3,9 +3,13 @@ import { gzipSync } from 'node:zlib';
 import { parseAgentReference } from './agent-reference';
 function fixture() {
  const csv = 'LapDistPct,SessionTime,Speed,Brake,Throttle,Lat,Lon\n' + Array.from({ length: 201 }, (_, i) => `${i / 200},${i / 2},40,0,1,-22.1,-43.1`).join('\n') + '\n';
- return { metadata: { customerId: 999, carName: 'Car', trackName: 'Track', trackConfig: 'GP', nativeCarId: 5, nativeTrackId: 7 }, lap: { number: 3, time: 100, clean: true, overtake: false, csvGzipBase64: gzipSync(csv).toString('base64') }, sourceFile: 'coach.ibt' };
+ return { metadata: { customerId: 999, carName: 'Car', trackName: 'Track', trackConfig: 'GP', nativeCarId: 5, nativeTrackId: 7,sessionType:'Race',referenceUse:'Race' }, lap: { number: 3, time: 100, clean: true, overtake: false, csvGzipBase64: gzipSync(csv).toString('base64') }, sourceFile: 'coach.ibt' };
 }
 describe('agent reference boundary', () => {
+ it('rejects qualifying even when declared for Race',()=>{const f=fixture();f.metadata.sessionType='Qualify';expect(()=>parseAgentReference(f)).toThrow();});
+ it('rejects a qualifying filename',()=>{const f=fixture();f.sourceFile='imola quali.ibt';expect(()=>parseAgentReference(f)).toThrow();});
+ it('accepts a Test Drive declared for Race',()=>{const f=fixture();f.metadata.sessionType='Practice';expect(parseAgentReference(f).time).toBe(100);});
+ it('rejects undeclared reference usage',()=>{const f=fixture();f.metadata.referenceUse='Qualify';expect(()=>parseAgentReference(f)).toThrow();});
  it('accepts another driver\'s clean lap and marks the filename as agent-owned', () => {
   const r = parseAgentReference(fixture()); expect(r.filename).toBe('agent:coach.ibt'); expect(r.sampleCount).toBe(201); expect(r.channels).toContain('Speed');
  });

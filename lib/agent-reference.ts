@@ -19,6 +19,7 @@ export function parseAgentReference(payload: unknown) {
  const time = lap.time; if (typeof time !== 'number' || !Number.isFinite(time) || time < 10 || time > 3600) invalid();
  if (lap.clean !== true || lap.overtake === true) invalid();
  const source = typeof body.sourceFile === 'string' && body.sourceFile.length <= 200 && !/[\u0000-\u001f\\/]/.test(body.sourceFile) ? body.sourceFile : invalid();
+ if(m.referenceUse!=='Race'||(m.sessionType!=='Race'&&m.sessionType!=='Practice')||/(?:^|[^a-z])(?:q|qual|quali|qualy|qualify|qualifying)(?:[^a-z]|$)/i.test(source))invalid();
  const { gzip, csv, trace } = parseLapCsv(lap.csvGzipBase64);
  const lines = csv.split('\n').filter((line) => line.trim());
  return {

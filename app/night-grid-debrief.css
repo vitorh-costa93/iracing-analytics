@@ -308,7 +308,8 @@
 .ngf-me, .ngf-dot[data-last="true"] { fill: var(--ng-reference); }
 .ngf-dot { fill: var(--ng-muted); }
 .ngf-line { fill: none; stroke: var(--ng-muted); stroke-width: 1.5; }
-.ngf-trend { max-width: 520px; }
+.ngf-trend { width: 100%; min-width: 0; }
+.ngf-trend-chart { display: block; width: 100%; height: 180px; }
 .ngf-trend strong[data-trend="melhorando"] { color: var(--ng-gain); }
 .ngf-trend strong[data-trend="piorando"] { color: var(--ng-loss); }
 .ngf-scenarios { display: flex; gap: 8px; flex-wrap: wrap; }
