@@ -13,7 +13,7 @@ static class Ibt
     public const long MaxFile = 512L * 1024 * 1024;
     static readonly string[] Channels = ["SessionTime", "Speed", "Brake", "Throttle", "RPM", "SteeringWheelAngle", "Gear", "Clutch", "LatAccel", "LongAccel", "Yaw", "YawRate", "BrakeABSactive", "DRS_Status", "PushToPass", "P2P_Status", "P2P_Count", "Lat", "Lon"];
     public static string Hash(ReadOnlySpan<byte> bytes) => Convert.ToHexString(SHA256.HashData(bytes)).ToLowerInvariant();
-    public static IEnumerable<byte[]> Read(Stream stream)
+    public static IEnumerable<byte[]> Read(Stream stream, bool reference = false)
     {
         if (stream.Length > MaxFile || stream.Length < 144) throw new InvalidDataException("ibt_size");
         using var reader = new BinaryReader(stream, Encoding.UTF8, true);
@@ -81,7 +81,7 @@ static class Ibt
             metadata["sampleRateHz"] = 20.0 / stride;
             var sessionBlock = Regex.Match(yaml, @"(?ms)^\s*- SessionNum: " + session + @"\r?\n(?<body>.*?)(?=^\s*- SessionNum:|\z)").Groups["body"].Value;
             var kind = Get(sessionBlock, "SessionType");
-            if (offlineSub && kind is not ("Practice" or "Offline Testing")) throw new InvalidDataException("ibt_offline_session");
+            if (!reference && offlineSub && kind is not ("Practice" or "Offline Testing")) throw new InvalidDataException("ibt_offline_session");
             metadata["sessionType"] = kind is "Practice" or "Offline Testing" ? "Practice" : kind is "Race" ? kind : kind is "Qualify" or "Lone Qualify" or "Open Qualify" ? "Qualify" : throw new InvalidDataException("ibt_session_type");
             foreach (var k in new[] { "SeasonYear", "SeasonQuarter" }) if (int.TryParse(Get(yaml, k), out var val) && val > 0) metadata[char.ToLowerInvariant(k[0]) + k[1..]] = val;
             if (int.TryParse(Get(yaml, "TrackID"), out var trackId) && trackId > 0) metadata["nativeTrackId"] = trackId;

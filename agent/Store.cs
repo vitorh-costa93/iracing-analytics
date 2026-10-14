@@ -40,8 +40,11 @@ sealed class State
     public int BackfillIndex { get; set; }
     public int BackfillTotal { get; set; }
     public Dictionary<string, Attempt> Attempts { get; set; } = [];
-    /// <summary>Reference .ibt searches per "carPath|trackId|season": next time a search may run again (a found reference is parked for years).</summary>
+    /// <summary>Reference searches per car/track/season, retried daily including previously queued references.</summary>
     public Dictionary<string, DateTimeOffset> References { get; set; } = [];
+    public DateTimeOffset LastReferenceScan { get; set; }
+    public Dictionary<string, string> ReferencePayloads { get; set; } = [];
+    public Dictionary<string, string> ReferenceFingerprints { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
 sealed class Store
@@ -184,18 +187,54 @@ sealed class Store
         var year = Optional("seasonYear"); var quarter = Optional("seasonQuarter");
         targets[$"{car.GetString()}|{trackId}|{year}S{quarter}"] = (car.GetString()!, trackId, year, quarter);
     }
-    /// <summary>Looks for the reference .ibt of this car/track/season (at most one search per day while none is found; never again once queued).</summary>
-    void QueueReference(string carPath, int trackId, int? year, int? quarter)
+    /// <summary>Reads only recent own IBT headers, including checkpointed files; never queues own telemetry.</summary>
+    public string ScanReferences(IEnumerable<string> sources, bool force = false, int limit = 5, string? setupsRoot = null)
+    {
+        var now = DateTimeOffset.UtcNow;
+        if (!force && State.LastReferenceScan > now.AddHours(-1)) return "";
+        var targets = new Dictionary<string, (string car, int track, int? year, int? quarter)>(); var errors = 0;
+        foreach (var path in sources.Where(p => p.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase))
+            .Where(p => File.GetLastWriteTimeUtc(p) >= now.AddDays(-30).UtcDateTime)
+            .OrderByDescending(File.GetLastWriteTimeUtc).Take(40))
+        {
+            try
+            {
+                if (File.GetLastWriteTimeUtc(path) > now.AddSeconds(-30).UtcDateTime) continue;
+                using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
+                if (ReferenceFinder.PeekTarget(stream) is { } target)
+                    targets.TryAdd($"{target.car}|{target.track}|{target.year}S{target.quarter}", target);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException) { errors++; }
+        }
+        var queued = 0; var scanned = 0;
+        foreach (var target in targets.Values.Take(Math.Clamp(limit, 1, 20)))
+        { scanned++; if (QueueReference(target.car, target.track, target.year, target.quarter, force, setupsRoot)) queued++; }
+        State.LastReferenceScan = now; Save();
+        return $"Referências: {scanned} combinações recentes verificadas; {queued} elegíveis na fila; {errors} arquivos indisponíveis. {Status}";
+    }
+    bool QueueReference(string carPath, int trackId, int? year, int? quarter, bool force = false, string? setupsRoot = null)
     {
         var key = $"{carPath}|{trackId}|{year}S{quarter}"; var now = DateTimeOffset.UtcNow;
-        if (State.References.TryGetValue(key, out var next) && next > now) return;
+        // Old releases parked queued payloads for five years before server acceptance. Migrate those timestamps lazily.
         try
         {
-            var payload = ReferenceFinder.Find(ReferenceFinder.SetupsRoot, carPath, trackId, year, quarter);
-            if (payload is not null) Enqueue(payload);
-            lock (persistGate) { State.References[key] = payload is null ? now.AddDays(1) : now.AddYears(5); Save(); }
+            var fingerprint=ReferenceFinder.Fingerprint(setupsRoot??ReferenceFinder.SetupsRoot,carPath,year,quarter);
+            if(!force&&State.ReferenceFingerprints.GetValueOrDefault(key)==fingerprint&&State.References.TryGetValue(key,out var next)&&next>now&&next<=now.AddDays(1))return false;
+            string? reason = null;
+            var payload = ReferenceFinder.Find(setupsRoot ?? ReferenceFinder.SetupsRoot, carPath, trackId, year, quarter, r => reason = r);
+            if (payload is not null)
+            {
+                using var doc = JsonDocument.Parse(payload); var payloadKey = doc.RootElement.GetProperty("key").GetString()!;
+                if (File.Exists(Path.Combine(Root, "quarantine", payloadKey + ".json")))
+                { Status = "Referência recusada em quarentena; revisão manual"; return false; }
+                Enqueue(payload); State.ReferencePayloads[payloadKey] = key;
+            }
+            lock (persistGate) { State.References[key] = now.AddDays(1); State.ReferenceFingerprints[key]=fingerprint; Save(); }
+            Status = payload is not null ? "Referência elegível na fila" : reason is not null ? $"Referência incompatível: {reason}" : "Sem referência limpa elegível";
+            return payload is not null;
         }
-        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException) { }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException)
+        { Status = e is InvalidDataException ? $"Referência incompatível: {e.Message}" : "Referência indisponível; fila preservada"; return false; }
     }
     public static byte[] Canonical(JsonElement value)
     {
@@ -228,10 +267,10 @@ sealed class Store
             try
             {
                 using var response = await http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellation);
-                if (response.IsSuccessStatusCode) { File.Delete(file); State.Attempts.Remove(key); State.Successes++; Status = "Envio confirmado"; }
+                if (response.IsSuccessStatusCode) { File.Delete(file); State.Attempts.Remove(key); State.ReferencePayloads.Remove(key); State.Successes++; Status = "Envio confirmado"; }
                 else if (response.StatusCode == HttpStatusCode.Unauthorized) { State.AuthPaused = true; Status = "Token expirado/revogado; configure novamente"; }
                 else if ((int)response.StatusCode is 400 or 422 || (int)response.StatusCode is >= 300 and < 500 && response.StatusCode != HttpStatusCode.TooManyRequests)
-                { File.Move(file, Path.Combine(Root, "quarantine", key + ".json"), true); State.Attempts.Remove(key); Status = "Payload em quarentena; revisão manual"; }
+                { File.Move(file, Path.Combine(Root, "quarantine", key + ".json"), true); State.Attempts.Remove(key); if (State.ReferencePayloads.Remove(key, out var target)) State.References.Remove(target); Status = "Payload em quarentena; revisão manual"; }
                 else if (response.StatusCode == HttpStatusCode.TooManyRequests)
                 { var retry = response.Headers.RetryAfter; State.Next = now + (retry?.Delta ?? (retry?.Date - now) ?? TimeSpan.FromHours(1)); if (State.Next < now.AddHours(1)) State.Next = now.AddHours(1); Status = "Servidor limitou envios"; }
                 else Retry();

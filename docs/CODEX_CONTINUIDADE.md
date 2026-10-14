@@ -1,5 +1,11 @@
 # Continuidade — iracing-analytics
 
+## Recuperação SF23 Imola — 14/10/2026
+- Instalação local em Documents/RacingAnalyticsAgent/app atualizada a partir do HEAD 297f030; publish self-contained e self-test PASS, token DPAPI e fila preservados; bandeja reiniciada.
+- Resultado 89364467 confirmado no Supabase PRD: uma linha iracing_agent, P1, 15 voltas, iRating 5147→5196 (+49). Telemetria já tinha 15 voltas Race + 2 Qualify.
+- A varredura --export-once retornou zero novos mesmo com Imola ausente no banco. Recuperação por exportação assistida do JSON no iRacing UI para Downloads; agente enviou com sucesso, fila vazia, PendingResult=false. Não tratar esta recuperação como prova de exportação automática corrigida.
+- Referências: Corvette Indianapolis TrackID448 agora disponível na pasta 26S4; Imola SF23 disponível; Porsche Indianapolis localizado no ZIP Downloads. Reprocessamento de referências já coletadas e diagnóstico da varredura automática continuam pendentes. Alterações locais do endpoint/migration de outro trabalho preservadas.
+
 ## Exportação ociosa de JSON — implementada e validada ao vivo 08/10/2026
 - Controle correto: primeiro ícone do rodapé do modal de resultado (botão `menu-button-` à esquerda de "Share Results") -> item "Download JSON". O botão sem nome da lista (~1742;342) baixa outro JSON (lista de sessões), nunca usar. Localizador: `menu-button-` na mesma linha de "Share*" e à esquerda dele. Nomes de botões/links têm caracteres invisíveis: casar por `Contains`/AutomationId, não por `==`.
 - Fluxo: Invoke (UIA, sem foco, janela minimizada) -> Download JSON gera `<GUID>.tmp` completo em Downloads e abre diálogo Salvar nativo (#32770, sem título "blob:"; detectar por `FileNameControlHost`). Ler o .tmp com `FileShare.ReadWrite|Delete`, depois BM_CLICK no Cancelar (AutomationId `2`): o Chromium apaga o .tmp, nada fica local.

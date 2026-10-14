@@ -42,6 +42,7 @@ export function parseAgentTelemetry(payload: unknown, customerId: number) {
  const nativeTrackId=m.nativeTrackId===undefined?null:integer(m.nativeTrackId,1,2147483647);
  const {gzip,csv}=parseLapCsv(lap.csvGzipBase64);
  const season=getActiveSeason(new Date(startedAt)); if(!season) invalid();
- return {sub,session,number,time,kind,startedAt,endedAt,incidents,clean:lap.clean,fuelLevel,fuelUsed,trackLength,carName,trackName,trackConfig,nativeCarId,nativeTrackId,season,gzip,
+ if(lap.overtake!==undefined&&typeof lap.overtake!=='boolean')invalid();
+ return {sub,session,number,time,kind,startedAt,endedAt,incidents,clean:lap.clean,overtake:lap.overtake===true,fuelLevel,fuelUsed,trackLength,carName,trackName,trackConfig,nativeCarId,nativeTrackId,season,gzip,
    key:agentHash(`${sub}:${customerId}:${session}:${number}`), sessionType:kind==='Race'?3:kind==='Qualify'?2:1};
 }

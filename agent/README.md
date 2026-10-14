@@ -78,6 +78,10 @@ Gravação automática (opção da UI, ligada por padrão): com o carro na pista
 
 ## Desenvolvimento e validação
 
+Correção de 14/10/2026: referências são verificadas também a partir dos cabeçalhos dos IBTs recentes já processados, no máximo uma vez por hora (40 arquivos, cinco combinações por passada). Arquivos novos ou alterados invalidam o cache de busca; sem mudança, a repetição é diária. Arquivos de referência offline aceitam SubSessionID zero em um modo separado, sem permitir corridas próprias offline. A identificação do carro é restrita a DriverInfo, nunca ResultsPositions. Referências manuais permanecem protegidas no servidor.
+
+Recuperação explícita, com a bandeja fechada: `--scan-references --out resumo.txt` enfileira referências para até 12 combinações recentes; `--requeue-telemetry arquivo.ibt` reenfileira voltas desse arquivo sem apagar checkpoints. Reabra a bandeja para enviar, respeitando a mesma cota. O servidor usa recibos v2 e repara apenas registros nativos de identidade correspondente. A retenção usa o calendário oficial quando falta season no payload; ausência de metadados não autoriza exclusão.
+
 ```powershell
 dotnet build agent/RacingAgent.csproj
 dotnet run --project agent/RacingAgent.csproj -- --self-test "$env:TEMP\racing-agent-checks.txt"

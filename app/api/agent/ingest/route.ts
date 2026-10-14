@@ -91,10 +91,10 @@ export async function POST(request:NextRequest){
    row={driver_id:device.driver_id,car_id:car,track_id:track,storage_path:path,original_filename:ref.filename,file_size:Buffer.byteLength(ref.csv),channels:ref.channels,sample_count:ref.sampleCount};
    hash=agentHash(JSON.stringify(row)+agentHash(ref.gzip));bytes=ref.gzip.length;referenceCsv=ref.csv;
   }else{
-   const t=parseAgentTelemetry(body,Number(device.customer_id));key=`lap:${t.key}`;
+   const t=parseAgentTelemetry(body,Number(device.customer_id));key=`lap_v2:${t.key}`;
    const [car,track]=await Promise.all([catalog('cars',t.nativeCarId,t.carName),catalog('tracks',t.nativeTrackId,t.trackName,t.trackConfig)]);
    const lapId=`ira_${agentHash(`${device.driver_id}:${t.key}`)}`,event=`iracing:${t.sub}`,nativeSession=String(t.session);
-   row={id:lapId,driver_id:device.driver_id,car_id:car,track_id:track,lap_number:t.number,lap_time:t.time,clean:t.clean,fuel_level:t.fuelLevel,fuel_used:t.fuelUsed,created_at:t.startedAt,telemetry_path:`laps/${track}/${lapId}.csv.gz`,garage61_payload:{event,nativeSession,sessionType:t.sessionType,startTime:t.startedAt,trackLengthMeters:t.trackLength,incidents:t.incidents,source:'iracing_agent'}};
+   row={id:lapId,driver_id:device.driver_id,car_id:car,track_id:track,lap_number:t.number,lap_time:t.time,clean:t.clean,fuel_level:t.fuelLevel,fuel_used:t.fuelUsed,created_at:t.startedAt,telemetry_path:`laps/${track}/${lapId}.csv.gz`,garage61_payload:{id:lapId,event,nativeSession,sessionType:t.sessionType,startTime:t.startedAt,trackLengthMeters:t.trackLength,incidents:t.incidents,pushToPass:t.overtake,source:'iracing_agent',lapTime:t.time,clean:t.clean,canViewTelemetry:true,season:{id:Number(t.season.id),name:t.season.name}}};
    session={driver_id:device.driver_id,car_id:car,track_id:track,garage61_event_id:event,garage61_session_id:nativeSession,session_type:t.sessionType,started_at:t.startedAt,ended_at:t.endedAt,season_id:t.season.id,season_name:t.season.name};
    hash=agentHash(JSON.stringify(row)+agentHash(t.gzip));bytes=t.gzip.length;gzip=t.gzip;
   }

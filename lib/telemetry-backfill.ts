@@ -1,6 +1,7 @@
 import { gzipSync } from "node:zlib";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { downloadTelemetryBytes } from "@/lib/telemetry-storage";
+import { keepTelemetry } from './telemetry-retention';
 
 const BUCKET = "telemetry";
 // PERMANENT GUARD-RAIL (see CLAUDE.md "Non-negotiable rules" #7): the Supabase project is on the
@@ -20,16 +21,15 @@ const PAGE = 500;
 
 type Entry = { id?: string | null; name: string; metadata?: { size?: number } | null };
 type Payload = { season?: { name?: string }; sessionType?: number; session_type?: number; session?: string };
-type Candidate = { id: string; track_id: number | null; telemetry_path?: string | null; garage61_payload?: Payload };
+type Candidate = { id: string; track_id: number | null; telemetry_path?: string | null; garage61_payload?: Payload; data_source?: string; created_at?: string };
 
 const pathOf = (prefix: string, name: string) => prefix ? prefix + "/" + name : name;
 const isRace = (p: Payload) => {
   const type = p.sessionType ?? p.session_type;
-  return p.session === "Race" || type === 2 || type === 3;
+  return p.session === "Race" || type === 3;
 };
 const keep = (lap: Candidate, current: string, previous: string) => {
-  const season = lap.garage61_payload?.season?.name;
-  return season === current || (season === previous && isRace(lap.garage61_payload ?? {}));
+  return keepTelemetry(lap,current,previous);
 };
 
 async function used(prefix = ""): Promise<number> {
@@ -46,7 +46,7 @@ async function rotateExpiredTelemetry(current: string, previous: string) {
   let from = 0, removedFiles = 0;
   while (true) {
     const q = await supabaseAdmin.from("laps")
-      .select("id,telemetry_path,garage61_payload")
+      .select("id,telemetry_path,garage61_payload,data_source,created_at")
       .not("telemetry_path", "is", null)
       .order("id", { ascending: true })
       .range(from, from + PAGE - 1);
@@ -121,6 +121,7 @@ async function pendingTelemetry(current: string, previous: string) {
     const q = await supabaseAdmin.from("laps")
       .select("id,track_id,garage61_payload")
       .eq("can_view_telemetry", true)
+      .neq("data_source", "iracing_agent")
       .eq("telemetry_skip", false)
       .is("telemetry_path", null)
       .order("id", { ascending: true })

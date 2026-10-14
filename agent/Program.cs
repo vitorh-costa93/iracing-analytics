@@ -65,6 +65,20 @@ static class Program
                 if (once + 1 < args.Length) File.WriteAllText(args[once + 1], $"{line}\nFila: {store.Backlog}\nDownloads hoje: {store.State.Exports}\n"); return;
             }
             if (args.Contains("--backfill")) { foreach (var file in Sources()) { try { store.Collect(file, true); } catch (IOException) { } } return; }
+            if (args.Contains("--scan-references")) { var report=store.ScanReferences(Sources(),force:true,limit:12); var output=Array.IndexOf(args,"--out"); if(output>=0&&output+1<args.Length)File.WriteAllText(args[output+1],report); return; }
+            var requeue=Array.IndexOf(args,"--requeue-telemetry");
+            if(requeue>=0) {
+                if(requeue+1>=args.Length)throw new ArgumentException("Arquivo obrigatório"); using var input=File.OpenRead(args[requeue+1]);
+                byte[]? best=null;var bestTime=double.MaxValue;
+                foreach(var payload in Ibt.Read(input)){
+                    if(!args.Contains("--representative-only")){store.Enqueue(payload);continue;}
+                    using var doc=JsonDocument.Parse(payload);var lap=doc.RootElement.GetProperty("lap");
+                    if(lap.GetProperty("clean").GetBoolean()&&lap.GetProperty("number").GetInt32()>1&&(!lap.TryGetProperty("overtake",out var boost)||!boost.GetBoolean())&&lap.GetProperty("time").GetDouble()<bestTime){best=payload;bestTime=lap.GetProperty("time").GetDouble();}
+                }
+                if(best is not null)store.Enqueue(best);return;
+            }
+            var inspect=Array.IndexOf(args,"--inspect-reference");
+            if(inspect>=0&&inspect+1<args.Length) { using var input=File.OpenRead(args[inspect+1]); var laps=Ibt.Read(input,reference:true).Select(b=>JsonSerializer.Deserialize<JsonElement>(b).GetProperty("lap")).ToList(); var output=Array.IndexOf(args,"--out"); if(output>=0&&output+1<args.Length)File.WriteAllText(args[output+1],JsonSerializer.Serialize(laps.Select(l=>new {time=l.GetProperty("time").GetDouble(),clean=l.GetProperty("clean").GetBoolean(),incidents=l.GetProperty("incidents").ToString(),overtake=l.GetProperty("overtake").GetBoolean()}))); return; }
             ApplicationConfiguration.Initialize(); Application.Run(new AgentForm(store, args.Contains("--tray")));
         }
         catch { MessageBox.Show("Não foi possível iniciar. Verifique o armazenamento local e a configuração do agente.", "Racing Analytics"); }
@@ -129,6 +143,7 @@ sealed class AgentForm : Form
         try
         {
             await Task.Run(() => { foreach (var file in Program.Sources()) { try { store.Collect(file); } catch (IOException) { } catch (UnauthorizedAccessException) { } } }, cancellation.Token);
+            await Task.Run(() => store.ScanReferences(Program.Sources()), cancellation.Token);
             var exportStatus = store.State.ExperimentalExport && exporter.Due(store) ? await exporter.TryExportAsync(store, cancellation.Token) : "";
             await store.Send(cancellation.Token);
             status.Text = $"{store.Status}\niRacing: {monitor.Status}\nFila: {store.Backlog} | Sucessos: {store.State.Successes} | Quarentena: {store.Quarantined}\nHoje: {store.State.Requests}/{store.State.DailyLimit} requests, {store.State.Bytes / 1024} KiB/10240\n{exportStatus}";
@@ -180,6 +195,10 @@ static class SelfTest
             }
             SessionChecks(root, checks);
             var scan = Array.IndexOf(args, "--scan-ibt"); if (scan >= 0) checks.Add(ScanIbt(scan + 1 < args.Length && !args[scan + 1].StartsWith("--") ? args[scan + 1] : Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "iRacing", "telemetry")));
+            var referenceYaml=Encoding.UTF8.GetBytes("TrackID: 448\nDriverCarIdx: 1\nSessionInfo:\n - CarIdx: 1\n   Position: 1\nDriverInfo:\n - CarIdx: 1\n   CarPath: testcar\n");
+            var referenceHeader=new byte[144+referenceYaml.Length];BitConverter.GetBytes(referenceYaml.Length).CopyTo(referenceHeader,16);BitConverter.GetBytes(144).CopyTo(referenceHeader,20);referenceYaml.CopyTo(referenceHeader,144);
+            using(var referenceStream=new MemoryStream(referenceHeader))if(ReferenceFinder.PeekTarget(referenceStream)?.car!="testcar")throw new Exception("reference driver scope");
+            checks.Add("Reference identity ignores result-position CarIdx blocks: OK");
             File.WriteAllLines(output, checks.Append("PASS"));
         }
         catch (Exception e) { File.WriteAllLines(output, checks.Append("FAIL: " + e.GetType().Name + " " + e.Message)); Environment.ExitCode = 1; }

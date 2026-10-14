@@ -1,5 +1,11 @@
 # Racing Analytics — contexto do projeto
 
+## Telemetria nativa e referências — correção permanente de 14/10/2026
+- O cron de retenção removia traces nativos sem season no garage61_payload. Retenção agora resolve a temporada pelo calendário oficial para dados nativos e preserva metadados desconhecidos; Qualify não é Race. Backfill Garage61 exclui registros nativos.
+- Ingestão grava id/lapTime/clean/canViewTelemetry/season no contrato consumido pela UI; recibos lap_v2 permitem recuperar arquivos removidos. agent_commit repara somente path/payload de laps nativos com driver/carro/pista correspondentes, mantendo identidade e contagem idempotentes. Migration 20261014183044 aplicada em PRD.
+- O agente procura referências também para arquivos próprios já processados: até 40 cabeçalhos recentes por hora e cinco combinações; arquivos novos/alterados invalidam o cache, sem mudança a busca repete diariamente. Modo de referência aceita sessões offline sem flexibilizar Race própria; identificação do carro só em DriverInfo. Referências manuais continuam protegidas.
+- Recuperação é explícita por arquivo (--requeue-telemetry) e mantém fila/cotas atuais; não é backfill histórico no sync recorrente. CLI --scan-references recupera até 12 combinações recentes. IBTs privados não são publicados.
+
 ## Prova de resultado oficial via aplicativo — 08/10/2026
 
 O iRacing UI autenticado exportou CSV e JSON da subsessão 89199619. O JSON foi importado administrativamente em `race_results` após inspeção do schema real e comparação com a linha existente; identidade preservada, sem duplicação. Acrescentou `race_fastest_lap_time = 1:49.396`; resultado e delta +51 coincidiram com o histórico. Detalhes em `docs/IRACING_AGENTE_PROVA.md`. Isso comprova entrada oficial sem consulta ao iRStats para esta corrida; agente, endpoint recorrente, proveniência no schema e proteção contra sobrescrita pelo importador antigo continuam propostos. O tipo externo Race=6 exige conversão para o contrato interno Race=3; IDs de catálogos e posições com índice zero exigem normalização. Operação sem tomar foco não foi demonstrada.
