@@ -39,6 +39,14 @@ beforeEach(() => {
 });
 
 describe("telemetry-storage", () => {
+  it("reloads an updated reference while caching the same uploaded version", async () => {
+    const path='references/versioned.csv';state.objects.set(path,Buffer.from('old'));
+    expect(await mod.readTelemetryText(path,'telemetry-references','v1')).toBe('old');
+    state.objects.set(path,Buffer.from('new'));
+    expect(await mod.readTelemetryText(path,'telemetry-references','v2')).toBe('new');
+    expect(await mod.readTelemetryText(path,'telemetry-references','v2')).toBe('new');
+    expect(state.downloads).toEqual([path,path]);
+  });
   it("gunzips .csv.gz laps (routes used to parse the raw gzip bytes as text)", async () => {
     state.objects.set("laps/1/a.csv.gz", gzipSync(Buffer.from("t,x\n1,2\n")));
     expect(await mod.readTelemetryText("laps/1/a.csv.gz")).toBe("t,x\n1,2\n");

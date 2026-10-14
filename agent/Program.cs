@@ -202,6 +202,11 @@ static class SelfTest
             var referenceHeader=new byte[144+referenceYaml.Length];BitConverter.GetBytes(referenceYaml.Length).CopyTo(referenceHeader,16);BitConverter.GetBytes(144).CopyTo(referenceHeader,20);referenceYaml.CopyTo(referenceHeader,144);
             using(var referenceStream=new MemoryStream(referenceHeader))if(ReferenceFinder.PeekTarget(referenceStream)?.car!="testcar")throw new Exception("reference driver scope");
             checks.Add("Reference identity ignores result-position CarIdx blocks: OK");
+            var referenceFiles=new List<string>();
+            for(var i=0;i<8;i++){var yaml=Encoding.UTF8.GetBytes("TrackID: 448\nDriverCarIdx: 1\nDriverInfo:\n - CarIdx: 1\n   CarPath: car"+i+"\n");var bytes=new byte[144+yaml.Length];BitConverter.GetBytes(yaml.Length).CopyTo(bytes,16);BitConverter.GetBytes(144).CopyTo(bytes,20);yaml.CopyTo(bytes,144);var path=Path.Combine(root,"reference"+i+".ibt");File.WriteAllBytes(path,bytes);File.SetLastWriteTimeUtc(path,DateTime.UtcNow.AddMinutes(-2));referenceFiles.Add(path);}
+            store.ScanReferences(referenceFiles,true,5,Path.Combine(root,"empty-setups"));if(store.State.ReferenceScanCursor!=5)throw new Exception("reference cursor first batch");
+            store.ScanReferences(referenceFiles,true,5,Path.Combine(root,"empty-setups"));if(store.State.ReferenceScanCursor!=2)throw new Exception("reference starvation");
+            checks.Add("Reference scan rotates bounded batches without starving older combinations: OK");
             File.WriteAllLines(output, checks.Append("PASS"));
         }
         catch (Exception e) { File.WriteAllLines(output, checks.Append("FAIL: " + e.GetType().Name + " " + e.Message)); Environment.ExitCode = 1; }

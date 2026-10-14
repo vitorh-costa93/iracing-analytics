@@ -52,8 +52,8 @@ export async function downloadTelemetryBytes(path: string, bucket = "telemetry")
 
 // CSV text for a stored lap, transparently gunzipping .csv.gz objects. Before this, most routes read
 // file.text() directly, which turned every compressed lap into binary garbage.
-export async function readTelemetryText(path: string, bucket = "telemetry"): Promise<string | null> {
-  const key = `${bucket}/${path}`;
+export async function readTelemetryText(path: string, bucket = "telemetry", version?: string): Promise<string | null> {
+  const key = `${bucket}/${path}${version ? `?version=${version}` : ''}`;
   const hit = textCache.get(key);
   if (hit !== undefined) { remember(key, hit); return hit; }
   const bytes = await downloadTelemetryBytes(path, bucket);

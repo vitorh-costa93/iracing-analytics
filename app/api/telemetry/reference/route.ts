@@ -4,6 +4,7 @@ import { readTelemetryText } from "@/lib/telemetry-storage";
 import { buildReferenceBody } from "@/lib/telemetry-reference-response";
 
 const BUCKET = "telemetry-references";
+export const dynamic = 'force-dynamic';
 const MAX_BYTES = 10 * 1024 * 1024;
 
 function parseIds(request: NextRequest) {
@@ -44,9 +45,9 @@ export async function GET(request: NextRequest) {
       .select("storage_path, original_filename, channels, sample_count, uploaded_at")
       .eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).maybeSingle();
     if (error) throw error;
-    if (!reference) return NextResponse.json(buildReferenceBody(null, null));
-    const csv = await readTelemetryText(reference.storage_path, BUCKET);
-    return NextResponse.json(buildReferenceBody(reference, csv));
+    if (!reference) return NextResponse.json(buildReferenceBody(null, null),{headers:{'Cache-Control':'no-store'}});
+    const csv = await readTelemetryText(reference.storage_path, BUCKET, reference.uploaded_at);
+    return NextResponse.json(buildReferenceBody(reference, csv),{headers:{'Cache-Control':'no-store'}});
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

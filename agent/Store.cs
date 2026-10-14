@@ -45,6 +45,7 @@ sealed class State
     public DateTimeOffset LastReferenceScan { get; set; }
     public Dictionary<string, string> ReferencePayloads { get; set; } = [];
     public Dictionary<string, string> ReferenceFingerprints { get; set; } = [];
+    public int ReferenceScanCursor { get; set; }
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
 sealed class Store
@@ -207,8 +208,10 @@ sealed class Store
             catch (Exception e) when (e is IOException or UnauthorizedAccessException or InvalidDataException) { errors++; }
         }
         var queued = 0; var scanned = 0;
-        foreach (var target in targets.Values.Take(Math.Clamp(limit, 1, 20)))
+        var values=targets.Values.ToArray();var cursor=values.Length==0?0:Math.Abs((long)State.ReferenceScanCursor)%values.Length;
+        foreach (var target in values.Skip((int)cursor).Concat(values.Take((int)cursor)).Take(Math.Clamp(limit, 1, 20)))
         { scanned++; if (QueueReference(target.car, target.track, target.year, target.quarter, force, setupsRoot)) queued++; }
+        State.ReferenceScanCursor=values.Length==0?0:(int)((cursor+scanned)%values.Length);
         State.LastReferenceScan = now; Save();
         return $"Referências: {scanned} combinações recentes verificadas; {queued} elegíveis na fila; {errors} arquivos indisponíveis. {Status}";
     }

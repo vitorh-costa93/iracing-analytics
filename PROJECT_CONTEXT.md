@@ -5,6 +5,7 @@
 - Ingestão grava id/lapTime/clean/canViewTelemetry/season no contrato consumido pela UI; recibos lap_v2 permitem recuperar arquivos removidos. agent_commit repara somente path/payload de laps nativos com driver/carro/pista correspondentes, mantendo identidade e contagem idempotentes. Migration 20261014183044 aplicada em PRD.
 - O agente procura referências também para arquivos próprios já processados: até 40 cabeçalhos recentes por hora e cinco combinações; arquivos novos/alterados invalidam o cache, sem mudança a busca repete diariamente. Modo de referência aceita sessões offline sem flexibilizar Race própria; identificação do carro só em DriverInfo. Referências manuais continuam protegidas.
 - Recuperação é explícita por arquivo (--requeue-telemetry) e mantém fila/cotas atuais; não é backfill histórico no sync recorrente. CLI --scan-references recupera até 12 combinações recentes. IBTs privados não são publicados.
+- Dependência agent_commit_reference (migration 20261013120000) aplicada em PRD durante a recuperação; estava ausente. Respostas de referência não cacheiam ausência; o cache de CSV usa uploaded_at para que uma substituição no mesmo caminho seja visível sem downloads repetidos da mesma versão. Resposta busy/lease aplica retry somente ao payload, sem bloquear a fila inteira.
 
 ## Prova de resultado oficial via aplicativo — 08/10/2026
 
