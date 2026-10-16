@@ -34,6 +34,12 @@ export function cachedQuery<T>(keyParts: (string | number | null | undefined)[],
 /** Invalidate Data Cache + Vercel CDN by tag. Never throws: a failed invalidation must not break a write route. */
 export async function invalidate(...tags: CacheTag[]) {
   const unique = [...new Set(tags)];
+  // Keep the last successful response available while new data is calculated.
+  try {
+    const { supabaseAdmin } = await import("@/lib/supabase-admin");
+    const { error } = await supabaseAdmin.rpc("invalidate_analytics_cache", { p_tags: unique });
+    if (error) console.warn("durable cache invalidation failed", error.code);
+  } catch { console.warn("durable cache invalidation unavailable"); }
   for (const tag of unique) {
     try { revalidateTag(tag); } catch (error) { console.warn("revalidateTag failed", tag, error instanceof Error ? error.message : error); }
   }
@@ -43,6 +49,11 @@ export async function invalidate(...tags: CacheTag[]) {
   } catch (error) {
     console.warn("invalidateByTag failed", error instanceof Error ? error.message : error);
   }
+  try {
+    const { waitUntil } = await import("@vercel/functions");
+    const { warmAnalytics } = await import("@/lib/analytics-warm");
+    waitUntil(warmAnalytics().catch(() => console.warn("analytics warm unavailable")));
+  } catch { /* local/test runtimes need no background warming */ }
 }
 
 /** Wraps a write handler: after a successful (2xx) response, invalidates the given tags. Invalidation failures never affect the response. */

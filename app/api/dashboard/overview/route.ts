@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withDurableCache } from "@/lib/durable-cache";
+import { analyticsValidUntil, nextAnalyticsBoundary } from "@/lib/analytics-validity";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedJson, invalidate, noStoreJson } from "@/lib/cache";
 import { aggregateWinnerGapByTrack, dropEarlyExitRaces, parseLapTimeSeconds, type WinnerGapRace } from "@/lib/winner-gap";
@@ -25,6 +27,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 let overviewCache: { expiresAt: number; payload: unknown } | null = null;
+function resetOverviewCache() { overviewCache = null; }
 const OVERVIEW_CACHE_TTL_MS = 120_000;
 // CDN lifetime: bounded by the in-memory expiry (which stops at the next weekly boundary), max 300s.
 const overviewSMaxAge = (expiresAt: number) => Math.min(300, Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)));
@@ -216,7 +219,8 @@ function throwSupabaseError(
   );
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
+  resetOverviewCache(); // The durable wrapper enforces TTL; never re-persist an invalidated Map.
   const refresh = new URL(request.url).searchParams.has("refresh");
   // ?refresh=1 is the explicit bypass: it also drops the shared (CDN/Data Cache) copy.
   if (refresh) await invalidate(CACHE_TAGS.results);
@@ -893,6 +897,7 @@ export async function GET(request: Request) {
 
     const payload = {
       status: "ok",
+      cacheValidUntil: nextAnalyticsBoundary(seasonCalendar.map(row => row.season_start)),
 
       driver: {
         id:
@@ -1128,3 +1133,5 @@ export async function GET(request: Request) {
     return noStoreJson({ status: "error", message }, 500);
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "overview-v1", tags: [CACHE_TAGS.results], ttlSeconds: 120, validUntil: analyticsValidUntil });

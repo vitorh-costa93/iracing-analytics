@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { withDurableCache } from "@/lib/durable-cache";
+import { analyticsValidUntil, nextAnalyticsBoundary } from "@/lib/analytics-validity";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 import { normalizeRaceClass } from "@/lib/winner-gap";
@@ -21,6 +23,7 @@ export const maxDuration = 60;
 // sem Storage e sem chamar Garage61/iRStats (só lê o que os syncs já gravaram).
 const CACHE_TTL_MS = 120_000;
 let cache: { expiresAt: number; payload: unknown } | null = null;
+function resetPlanCache() { cache = null; }
 const PAGE = 1000;
 const WEEK_MS = 7 * 86_400_000;
 const MAX_ACTIVE_CONTEXTS = 6;
@@ -52,7 +55,8 @@ type Session = { car_id: number | null; track_id: number | null; session_type: n
 type Catalog = { id: number; name: string; variant?: string | null };
 type ContextRow = { week_number: number; context_key: ContextKind; series_name: string; track_name: string; track_match_terms: string[] };
 
-export async function GET() {
+async function handleGet() {
+  resetPlanCache();
   try {
     if (cache && cache.expiresAt > Date.now()) {
       return cachedJson(cache.payload, { sMaxAge: 120, swr: 300, tags: [CACHE_TAGS.laps, CACHE_TAGS.results] });
@@ -64,6 +68,8 @@ export async function GET() {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "plan-v1", tags: [CACHE_TAGS.laps, CACHE_TAGS.results], ttlSeconds: 120, validUntil: analyticsValidUntil });
 
 async function build() {
   const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).maybeSingle();
@@ -233,6 +239,7 @@ async function build() {
   return {
     status: "ok",
     generatedAt: new Date().toISOString(),
+    cacheValidUntil: nextAnalyticsBoundary([current.start]),
     season: { id: current.id, name: current.name, week: currentWeek, source: calendar.source_file_name, importedAt: calendar.source_uploaded_at },
     plan: { exercises, leak: leak ? { car: leak.carName, leakIrating: leak.leakIrating, races: leak.races, exits: leak.exits } : null, fieldRaces: exits.size },
     calendar: { rows: calendarRowsOut },

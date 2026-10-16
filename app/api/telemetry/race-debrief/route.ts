@@ -1,4 +1,5 @@
 import { CACHE_TAGS, cachedJson } from "@/lib/cache";
+import { withDurableCache } from "@/lib/durable-cache";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { readOrFetchTelemetryText, readTelemetryText } from "@/lib/telemetry-storage";
@@ -346,7 +347,7 @@ async function composeDebrief(race: RaceRow, analysis: Analysis) {
   };
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     const driverId = await currentDriverId();
     const params = new URL(request.url).searchParams;
@@ -394,3 +395,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "race-debrief-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 300 });

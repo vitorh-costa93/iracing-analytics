@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withDurableCache } from "@/lib/durable-cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedQuery, invalidate } from "@/lib/cache";
 
@@ -18,14 +19,16 @@ async function context() {
   return { driverId: driver.id, seasonId: String(current.season_id), seasonName: current.season_name, seasonStart: current.season_start, seasonEnd };
 }
 
-export async function GET() {
+async function handleGet() {
   try {
     const payload = await cachedQuery(["setup-inventory"], buildInventory, { tags: [CACHE_TAGS.results, CACHE_TAGS.laps], revalidate: 120 });
-    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=60" } });
+    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=300" } });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "setup-inventory-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 120, visibility: "private" });
 
 // Lists setup filenames: Data Cache only (server-side), never a public/CDN header.
 async function buildInventory() {

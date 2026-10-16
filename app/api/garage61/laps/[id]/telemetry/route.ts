@@ -4,6 +4,13 @@ import { readTelemetryText, storeTelemetryCsv } from "@/lib/telemetry-storage";
 
 const BASE_URL = "https://garage61.net/api/v1";
 
+// Lap telemetry by id never changes: cache at the CDN/browser for a year. Only real 200 payloads use this.
+const IMMUTABLE_HEADERS = {
+  "Content-Type": "text/csv; charset=utf-8",
+  "Cache-Control": "public, s-maxage=31536000, max-age=31536000, immutable",
+  "Vercel-Cache-Tag": "laps",
+};
+
 /**
  * Storage-first: the recurring sync (app/api/sync/incremental) is meant to be the ONLY place that
  * fetches lap telemetry CSV from Garage61 -- every page view of the Telemetry tab used to call this
@@ -28,13 +35,13 @@ export async function GET(
     if (lapRow?.telemetry_path) {
       const text = await readTelemetryText(lapRow.telemetry_path);
       if (text) {
-        return new NextResponse(text, { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "X-Telemetry-Source": "storage" } });
+        return new NextResponse(text, { status: 200, headers: { ...IMMUTABLE_HEADERS, "X-Telemetry-Source": "storage" } });
       }
     }
 
     const token = process.env.GARAGE61_API_TOKEN;
     if (!token) {
-      return NextResponse.json({ status: "error", message: "GARAGE61_API_TOKEN não configurado" }, { status: 500 });
+      return NextResponse.json({ status: "error", message: "GARAGE61_API_TOKEN não configurado" }, { status: 500, headers: { "Cache-Control": "no-store" } });
     }
 
     const response = await fetch(`${BASE_URL}/laps/${encodeURIComponent(id)}/csv`, {
@@ -43,13 +50,14 @@ export async function GET(
     });
     const data = await response.text();
     if (!response.ok) {
-      return NextResponse.json({ status: "error", httpStatus: response.status, message: data }, { status: response.status });
+      return NextResponse.json({ status: "error", httpStatus: response.status, message: data }, { status: response.status, headers: { "Cache-Control": "no-store" } });
     }
 
     if (lapRow?.track_id && !lapRow.telemetry_path) await storeTelemetryCsv(lapRow.track_id, id, data);
 
-    return new NextResponse(data, { status: 200, headers: { "Content-Type": "text/csv; charset=utf-8", "X-Telemetry-Source": "live" } });
+    const headers = data.trim() ? IMMUTABLE_HEADERS : { "Content-Type": "text/csv; charset=utf-8", "Cache-Control": "no-store" };
+    return new NextResponse(data, { status: 200, headers: { ...headers, "X-Telemetry-Source": "live" } });
   } catch (error) {
-    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500, headers: { "Cache-Control": "no-store" } });
   }
 }

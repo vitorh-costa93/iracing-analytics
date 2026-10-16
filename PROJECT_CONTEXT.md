@@ -1,5 +1,10 @@
 # Racing Analytics — contexto do projeto
 
+## Cache persistente e latência — 16/10/2026
+- Continuação da base de cache 54535d6: respostas analíticas pré-calculadas em Supabase (`analytics_response_cache`), servidas por `lib/durable-cache.ts`, sobrevivem a publicação/evicção da CDN. Atualização em segundo plano com lease, invalidação por tag com barreira contra cálculos anteriores à escrita, preparação limitada após sync e script explícito de preparação/medição de seletores reais (`scripts/warm-analytics.mjs`).
+- Contratos, limites e operação: `docs/CACHE.md`. Limites novos: 512 variantes/64 MiB, 128 atualizações normais + 64 reservadas para escritas/dia, sem novo cron; cotas existentes intactas. Setup inventory/library permanecem privados e conversa não entra nesse cache. Semana oficial limita validade.
+- Meta: até 3s nas superfícies preparadas, inclusive navegador novo. Uma combinação ainda não preparada precisa de cálculo inicial; tempos e abrangência devem ser registrados na continuidade após validação PRD, sem afirmar garantia absoluta de rede.
+
 ## Histórico largo e referências para Race — 14/10/2026
 - Histórico de ritmo do Campo da corrida usa toda a largura disponível, altura 180 px e ResizeObserver para preservar proporções/pontos em desktop e mobile.
 - Regra explicitada pelo usuário: referências são de Race; Test Drive com setup Race também é permitido, Qualify não. Agente filtra por sessão real e identificação do arquivo; Test Drive sem identificação requer declaração local reference-race.json. Servidor valida referenceUse Race/sessionType e bloqueia nomes de quali nos uploads e leituras.

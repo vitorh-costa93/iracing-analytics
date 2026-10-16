@@ -1,4 +1,5 @@
-import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
+import { CACHE_TAGS as T, cachedJson, noStoreJson, withInvalidate } from "@/lib/cache";
+import { withDurableCache } from "@/lib/durable-cache";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { readTelemetryText } from "@/lib/telemetry-storage";
@@ -38,7 +39,7 @@ function inspectCsv(text: string) {
   return { channels, sampleCount: lines.length - 1 };
 }
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   try {
     const { carId, trackId } = parseIds(request);
     const driverId = await currentDriverId();
@@ -46,14 +47,19 @@ export async function GET(request: NextRequest) {
       .select("storage_path, original_filename, channels, sample_count, uploaded_at")
       .eq("driver_id", driverId).eq("car_id", carId).eq("track_id", trackId).maybeSingle();
     if (error) throw error;
-    if(reference&&/(?:^|[^a-z])(?:q|qual|quali|qualy|qualify|qualifying)(?:[^a-z]|$)/i.test(reference.original_filename))return NextResponse.json({status:'unavailable',reference:null,message:'Referência de quali não utilizada; aguardando referência de corrida.'},{headers:{'Cache-Control':'no-store'}});
-    if (!reference) return NextResponse.json(buildReferenceBody(null, null),{headers:{'Cache-Control':'no-store'}});
+    if(reference&&/(?:^|[^a-z])(?:q|qual|quali|qualy|qualify|qualifying)(?:[^a-z]|$)/i.test(reference.original_filename))return cachedJson({status:'unavailable',reference:null,message:'Referência de quali não utilizada; aguardando referência de corrida.'},{sMaxAge:60,swr:300,tags:[T.telemetryRef]});
+    if (!reference) return cachedJson(buildReferenceBody(null, null),{sMaxAge:60,swr:300,tags:[T.telemetryRef]});
     const csv = await readTelemetryText(reference.storage_path, BUCKET, reference.uploaded_at);
-    return NextResponse.json(buildReferenceBody(reference, csv),{headers:{'Cache-Control':'no-store'}});
+    const body = buildReferenceBody(reference, csv);
+    // Empty/unreadable payload (e.g. Storage budget reached) must not stick: short TTL. Real reference: long TTL, POST invalidates.
+    const hasData = Boolean(csv) && (body as { status?: string }).status === "ok";
+    return cachedJson(body,hasData?{sMaxAge:3600,swr:86400,tags:[T.telemetryRef]}:{sMaxAge:60,swr:300,tags:[T.telemetryRef]});
   } catch (error) {
-    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return noStoreJson({ status: "error", message: error instanceof Error ? error.message : String(error) }, 500);
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "reference-v1", tags: [T.telemetryRef], ttlSeconds: 3600 });
 
 async function handlePost(request: NextRequest) {
   try {

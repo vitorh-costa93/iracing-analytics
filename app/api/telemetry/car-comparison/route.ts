@@ -1,4 +1,5 @@
 import { CACHE_TAGS, cachedJson } from "@/lib/cache";
+import { withDurableCache } from "@/lib/durable-cache";
 import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -1370,7 +1371,7 @@ async function buildComparison(driverId: string, trackId: number, category: Cate
   };
 }
 
-export async function GET(request: Request) {
+async function handleGet(request: Request) {
   try {
     const { data: driver } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (!driver) throw new Error("Piloto não encontrado");
@@ -1394,3 +1395,5 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "comparison-v1", tags: [CACHE_TAGS.laps, CACHE_TAGS.results], ttlSeconds: 300 });

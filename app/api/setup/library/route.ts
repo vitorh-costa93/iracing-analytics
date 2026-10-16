@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withDurableCache } from "@/lib/durable-cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedQuery } from "@/lib/cache";
 
@@ -21,15 +22,17 @@ const FOLDER_ALIASES: Record<string, string> = {
   bmwlmdh: "BMW M Hybrid V8 (Evo)",
 };
 
-export async function GET() {
+async function handleGet() {
   try {
     // Manifest comes from private Storage: Data Cache only (server-side), response stays private.
     const payload = await cachedQuery(["setup-library"], buildLibrary, { tags: [CACHE_TAGS.results], revalidate: 300 });
-    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=60" } });
+    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=300" } });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "setup-library-v1", tags: [CACHE_TAGS.results], ttlSeconds: 300, visibility: "private" });
 
 async function buildLibrary() {
   {

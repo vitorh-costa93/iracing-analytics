@@ -135,7 +135,7 @@ export default function ActiveWeekTelemetry() {
     setOpenId(null);
     if (!selected?.bestLap) return () => { active = false; };
     setTraceLoading(true);
-    fetch(selected.bestLap.telemetryUrl, { cache: "no-store" })
+    fetch(selected.bestLap.telemetryUrl)
       .then(async (response) => {
         const text = await response.text();
         if (!response.ok) throw new Error("A telemetria dessa volta ainda não foi trazida para o app. Use \"Atualizar dados\" no cabeçalho para buscá-la e depois toque em Tentar novamente.");
@@ -154,7 +154,7 @@ export default function ActiveWeekTelemetry() {
     setReferenceMessageError(false);
     if (!selected) return () => { active = false; };
     setReferenceLoading(true);
-    fetch(`/api/telemetry/reference?carId=${selected.car.id}&trackId=${selected.track.id}`, { cache: "no-store" })
+    fetch(`/api/telemetry/reference?carId=${selected.car.id}&trackId=${selected.track.id}`)
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.message ?? "Erro ao carregar referência");

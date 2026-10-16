@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withDurableCache } from "@/lib/durable-cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 
@@ -106,7 +107,7 @@ async function resolveCarContext(carIds: number[], cars: CatalogRow[]): Promise<
   return result;
 }
 
-export async function GET() {
+async function handleGet() {
   try {
     const { data: driver, error: driverError } = await supabaseAdmin
       .from("drivers")
@@ -271,3 +272,7 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "active-week-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 120,
+  validUntil: payload => { const end = (payload as { week?: { end?: string } }).week?.end; return end ? Date.parse(end) : null; },
+});

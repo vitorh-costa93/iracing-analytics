@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { withDurableCache } from "@/lib/durable-cache";
+import { analyticsValidUntil, nextAnalyticsBoundary } from "@/lib/analytics-validity";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedJson, noStoreJson } from "@/lib/cache";
 import { buildEngineerSection, Category, RaceInput } from "@/lib/race-engineer-analysis";
@@ -50,7 +52,8 @@ function historyBefore(driverId:string,before:string){const key=driverId+"|"+bef
 
 const raceRow=(row:RaceInput,lossTotal:number,threshold:number):DebriefRaceRow=>({date:row.raced_at,track:row.track_name,car:row.car_name,grid:row.grid_position,finish:row.finish_position,sof:row.sof,delta:delta(row),lossShare:delta(row)<0&&lossTotal?Math.round(Math.abs(delta(row))/lossTotal*100):null,severe:delta(row)<-threshold});
 
-export async function GET(request:NextRequest){
+async function handleGet(request:NextRequest){
+ reportCache.clear(); historyCache.clear();
  try{
   const scope=request.nextUrl.searchParams.get("scope")==="week"?"week":"season",requestedSegment=request.nextUrl.searchParams.get("segment")??"formula",segment=SEGMENTS.find(item=>item.id===requestedSegment)??SEGMENTS[0];
   const cacheKey=scope+"|"+segment.id,cached=reportCache.get(cacheKey);
@@ -161,6 +164,8 @@ export async function GET(request:NextRequest){
   };
   const payload:DebriefReport={status:"ok",scope,seasonName:current.season_name,previousSeasonName:previous.season_name,generatedAt:new Date().toISOString(),sections:[section]};
   reportCache.set(cacheKey,{expiresAt:Date.now()+REPORT_CACHE_TTL_MS,payload});
-  return cachedJson(payload,{sMaxAge:300,swr:3600,tags:[CACHE_TAGS.results]});
+  return cachedJson({...payload,cacheValidUntil:nextAnalyticsBoundary([currentStart])},{sMaxAge:300,swr:3600,tags:[CACHE_TAGS.results]});
  }catch(error){return noStoreJson({status:"error",message:error instanceof Error?error.message:String(error)},500)}
 }
+
+export const GET = withDurableCache(handleGet, { version: "report-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 300, validUntil: analyticsValidUntil });

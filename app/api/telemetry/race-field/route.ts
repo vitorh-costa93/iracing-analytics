@@ -1,4 +1,5 @@
 import { CACHE_TAGS, cachedJson } from "@/lib/cache";
+import { withDurableCache } from "@/lib/durable-cache";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { buildRaceFieldView, raceClassRows, recurringRivals, trackHistory, type FieldEvent, type FieldRow, type RivalEvent, type RivalRow, type TrackRow } from "@/lib/race-field";
@@ -105,7 +106,8 @@ async function rivalsView(category: string, weeks: number) {
   return payload;
 }
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
+  cache.clear();
   try {
     const params = request.nextUrl.searchParams;
     if (params.get("view") === "rivals") {
@@ -120,3 +122,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : "Erro ao montar o campo da corrida." }, { status: 500 });
   }
 }
+
+export const GET = withDurableCache(handleGet, { version: "race-field-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 300 });

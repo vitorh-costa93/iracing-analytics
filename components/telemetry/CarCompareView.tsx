@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, SelectPill } from "@/components/ui";
 import SectionPopup from "@/components/telemetry/SectionPopup";
 import SectorWinnerMap, { type MapSegment, type OutlinePoint } from "@/components/telemetry/SectorWinnerMap";
@@ -61,7 +61,7 @@ function shortLap(seconds: number) {
 }
 
 async function loadTrace(lapId: string) {
-  const response = await fetch(`/api/garage61/laps/${encodeURIComponent(lapId)}/telemetry`, { cache: "no-store" });
+  const response = await fetch(`/api/garage61/laps/${encodeURIComponent(lapId)}/telemetry`);
   const text = await response.text();
   if (!response.ok) throw new Error("A telemetria da volta mais rápida de um dos carros ainda não foi trazida para o app. Use \"Atualizar dados\" no cabeçalho para buscá-la.");
   return parseTelemetryCsv(text);
@@ -71,6 +71,7 @@ export default function CarCompareView() {
   const [category, setCategory] = useState<Category>("gt3");
   const [season, setSeason] = useState("auto");
   const [week, setWeek] = useState("all");
+  const resolvedListKey = useRef<string | null>(null);
   const [list, setList] = useState<ListPayload | null>(null);
   const [trackId, setTrackId] = useState<number | null>(null);
   const [data, setData] = useState<ComparisonPayload | null>(null);
@@ -85,6 +86,8 @@ export default function CarCompareView() {
   const [hoveredGapSectionId, setHoveredGapSectionId] = useState<string | null>(null);
 
   useEffect(() => {
+    // Resolving "auto" to the real season id changes `season`; the list for that id is the one just loaded, so skip the refetch.
+    if (season !== "auto" && resolvedListKey.current === `${category}|${season}`) return;
     let active = true;
     setLoadingList(true);
     setError(null);
@@ -94,6 +97,7 @@ export default function CarCompareView() {
         if (!active) return;
         if (result.status !== "ok") throw new Error(result.message ?? "Erro ao buscar temporadas e pistas");
         setList(result);
+        resolvedListKey.current = `${category}|${season === "auto" ? result.selectedSeasonId : season}`;
         if (season === "auto" && result.selectedSeasonId) setSeason(result.selectedSeasonId);
         setTrackId((current) => (current !== null && result.tracks.some((track) => track.trackId === current) ? current : result.tracks[0]?.trackId ?? null));
       })

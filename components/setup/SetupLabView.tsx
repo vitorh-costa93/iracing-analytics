@@ -82,7 +82,7 @@ export default function SetupLabView() {
   const activeSetup = uploads.find((item) => item.id === activeSetupId) ?? null;
 
   const loadThread = useCallback(async (context: SetupContext) => {
-    const response = await fetch(`/api/setup/engineer/chat?carId=${context.car.id}&trackId=${context.track.id}`, { cache: "no-store" });
+    const response = await fetch(`/api/setup/engineer/chat?carId=${context.car.id}&trackId=${context.track.id}`);
     const data = await response.json();
     return data.status === "ok" ? (data.messages as ChatMessage[]) : [];
   }, []);
