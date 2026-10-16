@@ -75,7 +75,9 @@ async function request(route) {
     const response = await fetch(new URL(route, base), {
       headers: force ? { "x-analytics-warm": secret } : {}, signal: AbortSignal.timeout(120_000), cache: "no-store",
     });
-    const text = await response.text(); bytes += Buffer.byteLength(text);
+    const text = await response.text();
+    // Only origin work counts toward the byte budget: CDN HITs cost no Supabase egress.
+    if (response.headers.get("x-vercel-cache") !== "HIT") bytes += Buffer.byteLength(text);
     const row = { route, ms: Math.round(performance.now() - start), status: response.status, bytes: Buffer.byteLength(text), cdn: response.headers.get("x-vercel-cache"), cache: response.headers.get("x-analytics-cache") };
     results.push(row);
     if (response.headers.get("content-type")?.includes("json")) { try { discover(route, JSON.parse(text)); } catch {} }
