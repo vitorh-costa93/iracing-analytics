@@ -11,19 +11,21 @@ for (const filename of [".env.local", ".env.production.local"]) {
 const arg = name => { const index = process.argv.indexOf(name); return index < 0 ? null : process.argv[index + 1]; };
 const base = new URL(arg("--base") || "https://iracing-analytics.vercel.app");
 if (!["iracing-analytics.vercel.app", "localhost", "127.0.0.1"].includes(base.hostname)) throw new Error("Untrusted warm target");
+if (base.username || base.password || (base.hostname === "iracing-analytics.vercel.app" && base.protocol !== "https:")) throw new Error("Unsafe warm target");
 const manifest = arg("--manifest") || ".vercel/analytics-warm.json";
 const verify = process.argv.includes("--verify");
 const limit = Math.min(512, Math.max(1, Number(arg("--limit") || 256)));
 const secret = process.env.IMPORT_KEY || process.env.CRON_SECRET;
 const force = process.argv.includes("--refresh");
 if (force && !secret) throw new Error("Warm secret unavailable");
-const queue = [], seen = new Set(), results = [];
+const queue = [], seen = new Set(), results = []; let capped = false;
 const add = value => {
-  if (!value || seen.size >= limit) return;
+  if (!value) return;
   const url = new URL(value, base);
   if (url.origin !== base.origin || !/^\/api\/(dashboard\/(overview|report)|telemetry\/(active-week|plan|race-debrief|race-field|car-comparison|reference)|garage61\/laps\/[^/]+\/telemetry|setup\/(inventory|library))$/.test(url.pathname)) return;
   url.searchParams.sort();
   const route = url.pathname + url.search;
+  if (!seen.has(route) && seen.size >= limit) { capped = true; return; }
   if (!seen.has(route)) { seen.add(route); queue.push(route); }
 };
 const comparison = (category, season, trackId, week) => {
@@ -59,7 +61,8 @@ function discover(route, body) {
   }
 }
 if (verify) {
-  for (const row of JSON.parse(await fs.readFile(manifest, "utf8")).results) add(row.route);
+  const previous = JSON.parse(await fs.readFile(manifest, "utf8"));
+  for (const route of previous.discoveredRoutes ?? previous.results.map(row => row.route)) add(route);
 } else {
   for (const route of ["/api/dashboard/overview", "/api/telemetry/active-week", "/api/telemetry/race-debrief", "/api/telemetry/plan", "/api/setup/inventory", "/api/setup/library"]) add(route);
   for (const scope of ["week", "season"]) for (const segment of ["formula", "gt3", "imsa"]) add(`/api/dashboard/report?scope=${scope}&segment=${segment}`);
@@ -83,9 +86,9 @@ while (queue.length && bytes < 32 * 1024 * 1024 && Date.now() - started < 20 * 6
   await Promise.all(queue.splice(0, 2).map(request));
 }
 const times = results.map(row => row.ms).sort((a, b) => a - b);
-const summary = { count: results.length, pending: queue.length, bytes, p95: times[Math.max(0, Math.ceil(times.length * .95) - 1)], max: times.at(-1), over3s: results.filter(row => row.ms > 3000).length, errors: results.filter(row => row.status !== 200).length };
+const summary = { count: results.length, pending: queue.length, capped, bytes, p95: times[Math.max(0, Math.ceil(times.length * .95) - 1)], max: times.at(-1), over3s: results.filter(row => row.ms > 3000).length, errors: results.filter(row => row.status !== 200).length };
 const output = verify ? manifest.replace(/\.json$/, "-verify.json") : manifest;
 await fs.mkdir(path.dirname(output), { recursive: true });
-await fs.writeFile(output, JSON.stringify({ measuredAt: new Date().toISOString(), summary, results }, null, 2));
+await fs.writeFile(output, JSON.stringify({ measuredAt: new Date().toISOString(), summary, discoveredRoutes: [...seen], results }, null, 2));
 console.log(JSON.stringify({ summary, manifest: output }));
-if (summary.errors || (verify && (summary.over3s || summary.pending))) process.exitCode = 1;
+if (summary.errors || summary.pending || summary.capped || (verify && summary.over3s)) process.exitCode = 1;

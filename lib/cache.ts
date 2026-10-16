@@ -51,8 +51,8 @@ export async function invalidate(...tags: CacheTag[]) {
   }
   try {
     const { waitUntil } = await import("@vercel/functions");
-    const { warmAnalytics } = await import("@/lib/analytics-warm");
-    waitUntil(warmAnalytics().catch(() => console.warn("analytics warm unavailable")));
+    const { scheduleAnalyticsWarm } = await import("@/lib/analytics-warm");
+    waitUntil(scheduleAnalyticsWarm().catch(() => console.warn("analytics warm unavailable")));
   } catch { /* local/test runtimes need no background warming */ }
 }
 

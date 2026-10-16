@@ -1,0 +1,29 @@
+name: Prepare production analytics
+
+on:
+  deployment_status:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-production-analytics
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.deployment.sha }}
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      # Fixed origin in the script; no credentials, packages, extra cron or paid service.
+      - name: Prepare actual selector options within response and time budgets
+        run: node scripts/warm-analytics.mjs --limit 512
+      - name: Verify prepared responses against the three-second target
+        run: node scripts/warm-analytics.mjs --verify --limit 512
