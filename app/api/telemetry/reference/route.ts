@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { readTelemetryText } from "@/lib/telemetry-storage";
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   try {
     const origin = request.headers.get("origin");
     if (!origin || origin !== request.nextUrl.origin) {
@@ -86,3 +87,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "error", message }, { status: message.includes("precisa") ? 400 : 500 });
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.telemetryRef, T.laps]);

@@ -88,7 +88,7 @@ export default function CarCompareView() {
     let active = true;
     setLoadingList(true);
     setError(null);
-    fetch(`/api/telemetry/car-comparison?category=${category}${season !== "auto" ? `&season=${season}` : ""}`, { cache: "no-store" })
+    fetch(`/api/telemetry/car-comparison?category=${category}${season !== "auto" ? `&season=${season}` : ""}`)
       .then((response) => response.json())
       .then((result: ListPayload) => {
         if (!active) return;
@@ -112,7 +112,7 @@ export default function CarCompareView() {
     if (trackId === null) return;
     let active = true;
     setLoadingData(true);
-    fetch(`/api/telemetry/car-comparison?trackId=${trackId}&category=${category}&compact=1${season !== "auto" ? `&season=${season}` : ""}${week !== "all" ? `&week=${week}` : ""}`, { cache: "no-store" })
+    fetch(`/api/telemetry/car-comparison?trackId=${trackId}&category=${category}&compact=1${season !== "auto" ? `&season=${season}` : ""}${week !== "all" ? `&week=${week}` : ""}`)
       .then((response) => response.json())
       .then((result: ComparisonPayload) => {
         if (!active) return;

@@ -1,3 +1,4 @@
+import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { readOrFetchTelemetryText, readTelemetryText } from "@/lib/telemetry-storage";
@@ -350,7 +351,7 @@ export async function GET(request: Request) {
     const driverId = await currentDriverId();
     const params = new URL(request.url).searchParams;
     const races = await loadRaces(driverId);
-    if (!races.length) return NextResponse.json({ status: "ok", races: [], selectedId: null, debrief: null, message: `Nenhuma corrida com pelo menos ${MIN_RACE_LAPS} voltas importada do iRStats ainda.` });
+    if (!races.length) return cachedJson({ status: "ok", races: [], selectedId: null, debrief: null, message: `Nenhuma corrida com pelo menos ${MIN_RACE_LAPS} voltas importada do iRStats ainda.` }, { sMaxAge: 60, tags: [CACHE_TAGS.results, CACHE_TAGS.laps] });
     const sessionsByRace = await matchSessions(driverId, races);
     const allLaps = await loadRaceLaps(driverId, [...sessionsByRace.values()]);
 
@@ -388,7 +389,7 @@ export async function GET(request: Request) {
     if (memoryCache.size > 40) memoryCache.delete(memoryCache.keys().next().value!);
 
     const debrief = await composeDebrief(selected, analysis);
-    return NextResponse.json({ status: "ok", races: list, selectedId: selected.id, debrief });
+    return cachedJson({ status: "ok", races: list, selectedId: selected.id, debrief }, { sMaxAge: 300, swr: 3600, tags: [CACHE_TAGS.results, CACHE_TAGS.laps] });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

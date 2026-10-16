@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { CACHE_TAGS, cachedQuery } from "@/lib/cache";
 import { readTelemetryText } from "@/lib/telemetry-storage";
 import { detectCornersFromGps, estimateLapLengthMeters, type DetectedCorner } from "@/lib/corner-detection";
 import { computeCornerBaselines, type CoachSample, type CoachCorner } from "@/lib/local-coach-baselines";
@@ -82,7 +83,6 @@ function traceCoveragePct(points: TracePoint[]) {
 // up to CANDIDATE_LAPS*3 CSVs from Supabase Storage per request; without a cache, repeated polling from
 // the live-coach desktop app for the same car+track would hit that same Storage egress pattern. Keyed
 // by car+track since that's this route's own natural cache key.
-const baselineCache = new Map<string, { expiresAt: number; payload: unknown }>();
 const BASELINE_CACHE_TTL_MS = 120_000;
 const CACHE_CONTROL_HEADER = "private, max-age=120, stale-while-revalidate=300";
 
@@ -104,13 +104,18 @@ export async function GET(request: Request) {
     return NextResponse.json({ status: "error", message: "car e track são obrigatórios" }, { status: 400 });
   }
 
-  const cacheKey = `${carId}:${trackId}`;
-  const cached = baselineCache.get(cacheKey);
-  if (cached && cached.expiresAt > Date.now()) {
-    return NextResponse.json(cached.payload, { headers: { "Cache-Control": CACHE_CONTROL_HEADER } });
-  }
-
   try {
+    // Secret-gated (x-import-key): Data Cache only, never a public CDN header.
+    const payload = await cachedQuery(["baselines", carId, trackId], () => buildBaselines(carId, trackId), { tags: [CACHE_TAGS.laps], revalidate: BASELINE_CACHE_TTL_MS / 1000 });
+    return NextResponse.json(payload, { headers: { "Cache-Control": CACHE_CONTROL_HEADER } });
+  } catch (error) {
+    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+
+type BaselinePayload = { status: "ok"; trackLengthMeters: number | null; corners: unknown[]; gearModel?: unknown };
+async function buildBaselines(carId: number, trackId: number): Promise<BaselinePayload> {
+  {
     const { data: driver, error: driverError } = await supabaseAdmin.from("drivers").select("id").order("updated_at", { ascending: false }).limit(1).single();
     if (driverError || !driver) throw new Error("Piloto não encontrado");
 
@@ -133,7 +138,7 @@ export async function GET(request: Request) {
     const lapRows = (rawLapRows ?? [])
       .filter((row) => Number(row.lap_time) > MIN_PLAUSIBLE_LAP_SECONDS && !row.off_track && !row.pit_lane && !row.pit_in && !row.pit_out && !row.missing)
       .slice(0, CANDIDATE_LAPS);
-    if (!lapRows.length) return NextResponse.json({ status: "ok", trackLengthMeters: null, corners: [] });
+    if (!lapRows.length) return { status: "ok", trackLengthMeters: null, corners: [] };
 
     const traces = await Promise.all(lapRows.map(async (row) => {
       const text = await readTelemetryText(row.telemetry_path!);
@@ -141,7 +146,7 @@ export async function GET(request: Request) {
       return { points: parseLapCsv(text), lapTimeSeconds: Number(row.lap_time) };
     }));
     const valid = traces.filter((trace): trace is { points: TracePoint[]; lapTimeSeconds: number } => !!trace && trace.points.length > 20);
-    if (!valid.length) return NextResponse.json({ status: "ok", trackLengthMeters: null, corners: [] });
+    if (!valid.length) return { status: "ok", trackLengthMeters: null, corners: [] };
 
     // GPS traces must have credible coverage before trusting them for corner geometry (CLAUDE.md:
     // "Reject broken/partial laps by GPS path coverage, not only by reported lap_time or clean flag").
@@ -149,7 +154,7 @@ export async function GET(request: Request) {
     // valid[0] (the most-recently-synced lap, chosen for no quality reason).
     const bestForCorners = [...valid].sort((a, b) => traceCoveragePct(b.points) - traceCoveragePct(a.points))[0];
     if (traceCoveragePct(bestForCorners.points) < MIN_LAP_COVERAGE_PCT) {
-      return NextResponse.json({ status: "ok", trackLengthMeters: null, corners: [] });
+      return { status: "ok", trackLengthMeters: null, corners: [] };
     }
 
     const detectedCorners: DetectedCorner[] = detectCornersFromGps(
@@ -175,10 +180,6 @@ export async function GET(request: Request) {
     })));
     const baselines = computeCornerBaselines(samples, corners, valid.map((trace) => trace.lapTimeSeconds));
 
-    const payload = { status: "ok", trackLengthMeters, corners: baselines.corners, gearModel: baselines.gearModel };
-    baselineCache.set(cacheKey, { expiresAt: Date.now() + BASELINE_CACHE_TTL_MS, payload });
-    return NextResponse.json(payload, { headers: { "Cache-Control": CACHE_CONTROL_HEADER } });
-  } catch (error) {
-    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return { status: "ok" as const, trackLengthMeters, corners: baselines.corners, gearModel: baselines.gearModel };
   }
 }

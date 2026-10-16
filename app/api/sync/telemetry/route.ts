@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { runTelemetryBackfill } from "@/lib/telemetry-backfill";
@@ -21,7 +22,7 @@ import { runTelemetryBackfill } from "@/lib/telemetry-backfill";
 // cron already runs, instead of a second, ungoverned copy of it.
 export const maxDuration = 300;
 
-export async function POST() {
+async function handlePost() {
   const startedAt = new Date().toISOString();
   const { data: syncRun } = await supabaseAdmin
     .from("sync_runs")
@@ -49,3 +50,5 @@ export async function POST() {
     return NextResponse.json({ status: "error", message }, { status: 500 });
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.laps, T.syncStatus]);

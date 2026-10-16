@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -105,7 +106,7 @@ function chunkArray<T>(
   return chunks;
 }
 
-export async function POST(
+async function handlePost(
   request: NextRequest
 ) {
   try {
@@ -775,3 +776,5 @@ export async function POST(
     );
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.laps, T.syncStatus]);

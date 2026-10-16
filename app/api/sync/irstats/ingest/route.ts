@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { importRaceFromHtml, resolveCarTrackIds } from "@/app/api/sync/irstats/route";
@@ -88,7 +89,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ status: "ok", knownIds, roadCount: roadCount ?? 0, missingBackfillIds }, { headers: CORS_HEADERS });
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   try {
     const secret = process.env.IRSTATS_IMPORT_SECRET;
     if (!secret || request.headers.get("x-import-key") !== secret) {
@@ -134,3 +135,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.results, T.laps, T.syncStatus]);

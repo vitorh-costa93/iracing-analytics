@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 // app/api/sync/irstats/route.ts
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -324,7 +325,7 @@ export async function GET(request: NextRequest) {
 // unauthenticated POST runs the same incremental sync directly — mirroring the existing
 // unauthenticated POST pattern used by app/api/sync/incremental/route.ts and
 // app/api/sync/rating-history/route.ts for the same "manual button" use case.
-export async function POST() {
+async function handlePost() {
   try {
     const result = await runSync("incremental");
     return NextResponse.json(result);
@@ -335,3 +336,5 @@ export async function POST() {
     );
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.results, T.laps, T.syncStatus]);

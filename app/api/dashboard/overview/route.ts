@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { CACHE_TAGS, cachedJson, invalidate, noStoreJson } from "@/lib/cache";
 import { aggregateWinnerGapByTrack, dropEarlyExitRaces, parseLapTimeSeconds, type WinnerGapRace } from "@/lib/winner-gap";
 
 // 31/08/2026: "o iRating segue desatualizado... a tabela no fim dessa aba já contém as duas corridas
@@ -25,6 +26,8 @@ export const maxDuration = 60;
 
 let overviewCache: { expiresAt: number; payload: unknown } | null = null;
 const OVERVIEW_CACHE_TTL_MS = 120_000;
+// CDN lifetime: bounded by the in-memory expiry (which stops at the next weekly boundary), max 300s.
+const overviewSMaxAge = (expiresAt: number) => Math.min(300, Math.max(1, Math.floor((expiresAt - Date.now()) / 1000)));
 
 function overviewCacheExpiresAt(calendar: SeasonCalendarRow[], now: number) {
   // The regular cache is intentionally short, but it must never straddle an iRacing reset.
@@ -215,8 +218,10 @@ function throwSupabaseError(
 
 export async function GET(request: Request) {
   const refresh = new URL(request.url).searchParams.has("refresh");
+  // ?refresh=1 is the explicit bypass: it also drops the shared (CDN/Data Cache) copy.
+  if (refresh) await invalidate(CACHE_TAGS.results);
   if (!refresh && overviewCache && overviewCache.expiresAt > Date.now()) {
-    return NextResponse.json(overviewCache.payload, { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } });
+    return cachedJson(overviewCache.payload, { sMaxAge: overviewSMaxAge(overviewCache.expiresAt), tags: [CACHE_TAGS.results] });
   }
   try {
     // =====================================================
@@ -1072,7 +1077,8 @@ export async function GET(request: Request) {
       },
     };
     overviewCache = { expiresAt: overviewCacheExpiresAt(seasonCalendar, Date.now()), payload };
-    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } });
+    // s-maxage never crosses the weekly boundary (same limit as the in-memory cache), hence no SWR.
+    return refresh ? noStoreJson(payload, 200) : cachedJson(payload, { sMaxAge: overviewSMaxAge(overviewCache.expiresAt), tags: [CACHE_TAGS.results] });
   } catch (error) {
     console.error(
       "Dashboard overview error:",
@@ -1119,14 +1125,6 @@ export async function GET(request: Request) {
         String(error);
     }
 
-    return NextResponse.json(
-      {
-        status: "error",
-        message,
-      },
-      {
-        status: 500,
-      }
-    );
+    return noStoreJson({ status: "error", message }, 500);
   }
 }

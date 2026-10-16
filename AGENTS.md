@@ -54,3 +54,6 @@ Estas instruções valem para todo o repositório (fonte das regras). Consulte a
 - Um responsável integra e valida o estado final. Subagentes fazem testes focados e devolvem evidência; não repetem toda a suíte/build por hábito.
 - Alterações somente em instruções/documentação exigem revisão de diff e links, sem build de aplicação. Para código, cumpra as verificações abaixo; repita se o estado relevante mudar.
 - Consulte `docs/CODEX_CONTEXTO.md` quando existir para localizar seções de contexto.
+
+## Cache compartilhado
+- Mapa tag -> rotas/TTLs e regras de invalidação em `docs/CACHE.md` (`lib/cache.ts`). Nova rota GET pesada ou nova rota de escrita deve usar `cachedJson`/`cachedQuery` e `withInvalidate`; nunca coloque conteúdo de setup ou rota protegida por segredo em cache público de CDN.

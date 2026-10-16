@@ -53,7 +53,7 @@ export default function SetupLabView() {
   useEffect(() => { contextRef.current = contextKey; }, [contextKey]);
 
   const loadInventory = useCallback(() => {
-    fetch("/api/setup/inventory", { cache: "no-store" })
+    fetch("/api/setup/inventory")
       .then((response) => response.json())
       .then((data) => {
         if (data.status !== "ok") throw new Error(data.message ?? "Erro ao carregar setups");
@@ -68,7 +68,7 @@ export default function SetupLabView() {
 
   useEffect(() => {
     loadInventory();
-    fetch("/api/setup/library", { cache: "no-store" })
+    fetch("/api/setup/library")
       .then((response) => response.json())
       .then((data) => { if (data.status === "ok") { setLibrary({ total: data.total ?? 0, importedAt: data.importedAt ?? null, items: data.items ?? [] }); setCarNames(data.carNames ?? {}); } })
       .catch(() => undefined);

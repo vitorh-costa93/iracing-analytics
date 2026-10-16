@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin as db } from '@/lib/supabase-admin';
 import { parseAgentResult, AgentValidationError } from '@/lib/agent-result';
@@ -61,7 +62,7 @@ export async function GET(request:NextRequest){
   return NextResponse.json({known:ids.filter(id=>withField.has(id))},{headers:{'Cache-Control':'no-store'}});
  }catch{return reply(503,'temporarily_unavailable',120);}
 }
-export async function POST(request:NextRequest){
+async function handlePost(request:NextRequest){
  try {
   const device=await authorize(request);if(!device)return reply(401,'unauthorized');
   const {body,size}=await boundedBody(request);if(body.version!==1||!['result','telemetry','ibt_result','reference'].includes(String(body.kind)))throw new AgentValidationError();
@@ -115,3 +116,5 @@ export async function POST(request:NextRequest){
   if(commitError)throw new Error('commit');return reply(200,'stored');
  }catch(error){if(error instanceof AgentValidationError)return reply(422,'invalid_payload');return reply(503,'temporarily_unavailable',120);}
 }
+
+export const POST = withInvalidate(handlePost, [T.results, T.laps, T.telemetryRef, T.syncStatus]);

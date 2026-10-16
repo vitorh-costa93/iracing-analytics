@@ -20,7 +20,7 @@ let pending: Promise<SyncStatusPayload | null> | null = null;
 const listeners = new Set<(payload: SyncStatusPayload | null) => void>();
 
 function load() {
-  pending ??= fetch("/api/sync/status", { cache: "no-store" })
+  pending ??= fetch("/api/sync/status")
     .then((response) => response.json() as Promise<SyncStatusPayload>)
     .then((payload) => (payload.status === "ok" ? payload : null))
     .catch(() => null);

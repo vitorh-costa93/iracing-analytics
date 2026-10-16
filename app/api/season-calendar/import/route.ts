@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { validateImportedSeasonCalendar } from "@/lib/season-calendar-import";
@@ -14,7 +15,7 @@ function sameOrigin(request: Request) {
   }
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: Request) {
   if (!sameOrigin(request)) return NextResponse.json({ message: "Origem não autorizada." }, { status: 403 });
   try {
     const calendar = validateImportedSeasonCalendar(await request.json());
@@ -42,3 +43,5 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: error instanceof Error ? error.message : "Não foi possível importar o calendário." }, { status: 400 });
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.results, T.laps]);

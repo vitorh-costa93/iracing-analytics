@@ -94,7 +94,7 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
     let active = true;
     setLoading(true);
     setError(null);
-    fetch(`/api/telemetry/race-debrief${raceId ? `?raceId=${encodeURIComponent(raceId)}` : ""}`, { cache: "no-store" })
+    fetch(`/api/telemetry/race-debrief${raceId ? `?raceId=${encodeURIComponent(raceId)}` : ""}`)
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok || result.status !== "ok") throw new Error(result.message ?? "Erro ao montar o debrief");

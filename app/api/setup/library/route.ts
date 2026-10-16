@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { CACHE_TAGS, cachedQuery } from "@/lib/cache";
 
 // 02/09/2026 P2 fix: "o Laboratory mostra slugs crus (acuraarx06gtp) em vez do nome real do carro" --
 // carFolder is iRacing's own local setup-folder naming (lowercase, no spaces/punctuation): perfect for
@@ -22,13 +23,23 @@ const FOLDER_ALIASES: Record<string, string> = {
 
 export async function GET() {
   try {
+    // Manifest comes from private Storage: Data Cache only (server-side), response stays private.
+    const payload = await cachedQuery(["setup-library"], buildLibrary, { tags: [CACHE_TAGS.results], revalidate: 300 });
+    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=60" } });
+  } catch (error) {
+    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+
+async function buildLibrary() {
+  {
     const { data: seasons, error: seasonError } = await supabaseAdmin.from("v_season_summary").select("season_id,season_name");
     if (seasonError) throw seasonError;
     const current = [...(seasons ?? [])].sort((a, b) => Number(b.season_id) - Number(a.season_id))[0];
     const seasonParts = String(current?.season_name ?? "").match(/(\d{4}) Season (\d)/);
     const code = seasonParts ? `${seasonParts[1].slice(2)}S${seasonParts[2]}` : "26S3";
     const { data, error } = await supabaseAdmin.storage.from("private-setups").download(`local-library/${code}/manifest.json`);
-    if (error || !data) return NextResponse.json({ status: "ok", seasonCode: code, total: 0, items: [], importedAt: null, carNames: {} });
+    if (error || !data) return { status: "ok" as const, seasonCode: code, total: 0, items: [] as unknown[], importedAt: null, carNames: {} as Record<string, string> };
     const manifest = JSON.parse(await data.text()) as { items?: { carFolder: string }[] };
     const folders = [...new Set((manifest.items ?? []).map((item) => item.carFolder))];
     const carNames: Record<string, string> = {};
@@ -49,8 +60,6 @@ export async function GET() {
         if (resolved) carNames[folder] = resolved;
       }
     }
-    return NextResponse.json({ status: "ok", ...manifest, carNames });
-  } catch (error) {
-    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return { status: "ok" as const, ...manifest, carNames };
   }
 }

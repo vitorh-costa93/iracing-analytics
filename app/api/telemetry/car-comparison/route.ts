@@ -1,3 +1,4 @@
+import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
@@ -1383,12 +1384,12 @@ export async function GET(request: Request) {
     const trackIdParam = params.get("trackId");
     if (!trackIdParam) {
       const result = await listSeasonsAndTracks(driver.id, categoryParam, seasonParam);
-      return NextResponse.json({ status: "ok", ...result });
+      return cachedJson({ status: "ok", ...result }, { sMaxAge: 300, swr: 3600, tags: [CACHE_TAGS.laps] });
     }
     const trackId = Number(trackIdParam);
     if (!Number.isFinite(trackId)) return NextResponse.json({ status: "error", message: "trackId inválido" }, { status: 400 });
     const result = await buildComparison(driver.id, trackId, categoryParam, seasonParam, weekParam, params.get("compact") === "1");
-    return NextResponse.json(result);
+    return cachedJson(result, { sMaxAge: 300, swr: 3600, tags: [CACHE_TAGS.laps] });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

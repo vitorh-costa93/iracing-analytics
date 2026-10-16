@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { CACHE_TAGS, cachedQuery, invalidate } from "@/lib/cache";
 
 type Payload = { id?: string; startTime?: string; season?: { id?: string | number }; sessionType?: number; canViewSetup?: boolean };
 
@@ -17,8 +18,18 @@ async function context() {
   return { driverId: driver.id, seasonId: String(current.season_id), seasonName: current.season_name, seasonStart: current.season_start, seasonEnd };
 }
 
-export async function GET(request: NextRequest) {
+export async function GET() {
   try {
+    const payload = await cachedQuery(["setup-inventory"], buildInventory, { tags: [CACHE_TAGS.results, CACHE_TAGS.laps], revalidate: 120 });
+    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=60" } });
+  } catch (error) {
+    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+  }
+}
+
+// Lists setup filenames: Data Cache only (server-side), never a public/CDN header.
+async function buildInventory() {
+  {
     const { driverId, seasonId, seasonName, seasonStart, seasonEnd } = await context();
     const [sessionsResult, setupsResult, lapsResult] = await Promise.all([
       supabaseAdmin.from("race_results").select("car_id,track_id,raced_at").eq("driver_id", driverId).gte("raced_at", seasonStart).lt("raced_at", seasonEnd),
@@ -72,9 +83,7 @@ export async function GET(request: NextRequest) {
         uploads,
       };
     }).sort((a, b) => (b.lastRace ?? "").localeCompare(a.lastRace ?? ""));
-    return NextResponse.json({ status: "ok", season: { id: seasonId, name: seasonName }, contexts });
-  } catch (error) {
-    return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
+    return { status: "ok" as const, season: { id: seasonId, name: seasonName }, contexts };
   }
 }
 
@@ -95,6 +104,7 @@ export async function POST(request: NextRequest) {
     if (storageError) throw storageError;
     const { data, error } = await supabaseAdmin.from("setup_files").upsert({ driver_id: driverId, season_id: seasonId, car_id: carId, track_id: trackId, source: setupKind === "commercial" ? "manual_commercial" : "manual_upload", setup_kind: setupKind, filename: file.name, storage_path: path, file_size: file.size, decoded_params: null, decoded_at: null, decoder: null, external_decode_consent_at: null, updated_at: new Date().toISOString() }, { onConflict: "driver_id,season_id,car_id,track_id,filename" }).select("id,filename,file_size,setup_kind,created_at").single();
     if (error) { await supabaseAdmin.storage.from("private-setups").remove([path]); throw error; }
+    await invalidate(CACHE_TAGS.results, CACHE_TAGS.laps);
     return NextResponse.json({ status: "ok", setup: data });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400 });

@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -41,7 +42,7 @@ type IncomingSector = { lapId: string; sectorNumber: number; sectorTime: number 
 
 const CHUNK = 500;
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   try {
     const secret = process.env.GARAGE61_IMPORT_SECRET;
     if (!secret || request.headers.get("x-import-key") !== secret) {
@@ -135,3 +136,5 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 400, headers: CORS_HEADERS });
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.laps, T.syncStatus]);

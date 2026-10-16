@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 
 // 28/09/2026: GET() abaixo não lê nada do Request (sem searchParams, sem headers), então o Next.js
 // tenta tratar esse handler como estático -- calculado uma vez e servido congelado até o próximo
@@ -130,7 +131,7 @@ export async function GET() {
         const start = new Date(row.season_start).getTime();
         return now >= start && now < start + 84 * 86_400_000;
       });
-    if (!calendarRow) return NextResponse.json({ status: "ok", week: null, combinations: [] });
+    if (!calendarRow) return cachedJson({ status: "ok", week: null, combinations: [] }, { sMaxAge: 60, tags: [CACHE_TAGS.laps] });
 
     const weekNumber = Math.floor((now - new Date(calendarRow.season_start).getTime()) / (7 * 86_400_000)) + 1;
     const weekStart = new Date(new Date(calendarRow.season_start).getTime() + (weekNumber - 1) * 7 * 86_400_000);
@@ -258,11 +259,11 @@ export async function GET() {
     }).filter((combination) => combination.bestLap !== null);
 
     combinations.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
-    return NextResponse.json({
+    return cachedJson({
       status: "ok",
       week: { seasonId: week.season_id, seasonName: week.season_name, number: week.week_number, start: week.week_start, end: week.week_end },
       combinations,
-    });
+    }, { sMaxAge: 120, tags: [CACHE_TAGS.laps, CACHE_TAGS.results] });
   } catch (error) {
     return NextResponse.json(
       { status: "error", message: error instanceof Error ? error.message : String(error) },

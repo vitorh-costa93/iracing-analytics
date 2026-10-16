@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -14,7 +15,7 @@ type Garage61CarGroupsResponse = {
   total: number;
 };
 
-export async function POST() {
+async function handlePost() {
   try {
     const response =
       await garage61Get<Garage61CarGroupsResponse>(
@@ -160,3 +161,5 @@ export async function POST() {
     );
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.results, T.laps, T.syncStatus]);

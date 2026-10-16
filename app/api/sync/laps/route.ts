@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -129,7 +130,7 @@ async function getTelemetryCsv(lapId: string) {
   return await response.arrayBuffer();
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
@@ -545,3 +546,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.laps, T.syncStatus]);

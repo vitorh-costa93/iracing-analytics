@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -75,7 +76,7 @@ function extractItems<T>(
   return [];
 }
 
-export async function POST() {
+async function handlePost() {
   const startedAt = new Date().toISOString();
 
   const { data: syncRun } = await supabaseAdmin
@@ -300,3 +301,5 @@ export async function POST() {
     );
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.results, T.laps, T.syncStatus]);

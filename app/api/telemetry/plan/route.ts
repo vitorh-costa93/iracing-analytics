@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 import { normalizeRaceClass } from "@/lib/winner-gap";
 import { shortCarName } from "@/lib/car-short-name";
 import {
@@ -54,11 +55,11 @@ type ContextRow = { week_number: number; context_key: ContextKind; series_name: 
 export async function GET() {
   try {
     if (cache && cache.expiresAt > Date.now()) {
-      return NextResponse.json(cache.payload, { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } });
+      return cachedJson(cache.payload, { sMaxAge: 120, swr: 300, tags: [CACHE_TAGS.laps, CACHE_TAGS.results] });
     }
     const payload = await build();
     cache = { expiresAt: Date.now() + CACHE_TTL_MS, payload };
-    return NextResponse.json(payload, { headers: { "Cache-Control": "private, max-age=120, stale-while-revalidate=300" } });
+    return cachedJson(payload, { sMaxAge: 120, swr: 300, tags: [CACHE_TAGS.laps, CACHE_TAGS.results] });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }

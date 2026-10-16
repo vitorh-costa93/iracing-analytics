@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { garage61Get } from "@/lib/garage61";
 import { supabaseAdmin } from "@/lib/supabase-admin";
@@ -31,7 +32,7 @@ type AccountsResponse = {
   items: Account[];
 };
 
-export async function POST() {
+async function handlePost() {
   try {
     // ----------------------------------------
     // GARAGE61
@@ -234,3 +235,5 @@ export async function POST() {
     );
   }
 }
+
+export const POST = withInvalidate(handlePost, [T.results, T.syncStatus]);

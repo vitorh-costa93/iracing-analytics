@@ -1,3 +1,4 @@
+import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { POST as syncCatalogAndStatistics } from "@/app/api/sync/all/route";
 import { POST as syncIncrementalSessions } from "@/app/api/sync/incremental/route";
@@ -21,7 +22,7 @@ async function readStep(name: string, response: Response) {
 // unrelated to the iRating migration; SR still has no iRStats equivalent, so Garage61 stays its
 // only source). rating_history had silently gone stale before this: nothing in this cron called
 // it, and it turned out nothing else did either.
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest) {
   const secret = process.env.CRON_SECRET;
   if (!secret || request.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ status: "error", message: "Unauthorized" }, { status: 401 });
@@ -40,3 +41,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withInvalidate(handleGet, [T.results, T.laps, T.telemetryRef, T.syncStatus]);

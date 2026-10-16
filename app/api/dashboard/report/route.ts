@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { CACHE_TAGS, cachedJson, noStoreJson } from "@/lib/cache";
 import { buildEngineerSection, Category, RaceInput } from "@/lib/race-engineer-analysis";
 import { compareSeasons } from "@/lib/season-comparison";
 import { buildContexts } from "@/lib/debrief-contexts";
@@ -53,7 +54,7 @@ export async function GET(request:NextRequest){
  try{
   const scope=request.nextUrl.searchParams.get("scope")==="week"?"week":"season",requestedSegment=request.nextUrl.searchParams.get("segment")??"formula",segment=SEGMENTS.find(item=>item.id===requestedSegment)??SEGMENTS[0];
   const cacheKey=scope+"|"+segment.id,cached=reportCache.get(cacheKey);
-  if(cached&&cached.expiresAt>Date.now())return NextResponse.json(cached.payload,{headers:{"Cache-Control":"private, max-age=120, stale-while-revalidate=300"}});
+  if(cached&&cached.expiresAt>Date.now())return cachedJson(cached.payload,{sMaxAge:300,swr:3600,tags:[CACHE_TAGS.results]});
   const{data:driver,error:driverError}=await supabaseAdmin.from("drivers").select("id").order("updated_at",{ascending:false}).limit(1).maybeSingle();if(driverError)fail("drivers",driverError);if(!driver)throw new Error("Nenhum piloto encontrado no Supabase.");
   const{data:summary,error:summaryError}=await supabaseAdmin.from("v_season_summary").select("season_id,season_name");if(summaryError)fail("v_season_summary",summaryError);const seasons=[...(summary??[])].sort((a,b)=>Number(b.season_id)-Number(a.season_id)),current=seasons[0],previous=seasons[1];if(!current||!previous)throw new Error("São necessárias duas seasons para comparar.");
   const{data:calendar,error:calendarError}=await supabaseAdmin.from("v_season_calendar").select("season_id,season_start").in("season_id",[String(current.season_id),String(previous.season_id)]);if(calendarError)fail("v_season_calendar",calendarError);const byId=new Map((calendar??[]).map(x=>[String(x.season_id),x])),currentStart=byId.get(String(current.season_id))?.season_start,previousStart=byId.get(String(previous.season_id))?.season_start;if(!currentStart||!previousStart)throw new Error("Calendário sem início das seasons.");
@@ -160,6 +161,6 @@ export async function GET(request:NextRequest){
   };
   const payload:DebriefReport={status:"ok",scope,seasonName:current.season_name,previousSeasonName:previous.season_name,generatedAt:new Date().toISOString(),sections:[section]};
   reportCache.set(cacheKey,{expiresAt:Date.now()+REPORT_CACHE_TTL_MS,payload});
-  return NextResponse.json(payload,{headers:{"Cache-Control":"private, max-age=120, stale-while-revalidate=300"}});
- }catch(error){return NextResponse.json({status:"error",message:error instanceof Error?error.message:String(error)},{status:500})}
+  return cachedJson(payload,{sMaxAge:300,swr:3600,tags:[CACHE_TAGS.results]});
+ }catch(error){return noStoreJson({status:"error",message:error instanceof Error?error.message:String(error)},500)}
 }

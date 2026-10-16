@@ -1,3 +1,4 @@
+import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { buildRaceFieldView, raceClassRows, recurringRivals, trackHistory, type FieldEvent, type FieldRow, type RivalEvent, type RivalRow, type TrackRow } from "@/lib/race-field";
@@ -30,7 +31,7 @@ function remember(key: string, payload: unknown, ttl: number) {
   if (cache.size >= CACHE_MAX_ENTRIES) { const oldest = cache.keys().next().value; if (oldest !== undefined) cache.delete(oldest); }
   cache.set(key, { expiresAt: Date.now() + ttl, payload });
 }
-const respond = (payload: unknown, ttl: number) => NextResponse.json(payload, { headers: { "Cache-Control": `private, max-age=${Math.floor(ttl / 1000)}` } });
+const respond = (payload: unknown, ttl: number) => { const ok = (payload as { status?: string } | null)?.status === "ok"; return cachedJson(payload, { sMaxAge: ok ? Math.floor(ttl / 1000) : 60, swr: ok ? 3600 : 0, tags: [CACHE_TAGS.laps, CACHE_TAGS.results] }); };
 function fail(source: string, error: unknown): never {
   const value = error && typeof error === "object" ? error as Record<string, unknown> : {};
   throw new Error(`${source}: ${typeof value.message === "string" ? value.message : String(error)}`);

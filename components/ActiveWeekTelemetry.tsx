@@ -110,7 +110,7 @@ export default function ActiveWeekTelemetry() {
     let active = true;
     setLoading(true);
     setError(null);
-    fetch("/api/telemetry/active-week", { cache: "no-store" })
+    fetch("/api/telemetry/active-week")
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.message ?? "Erro ao carregar telemetria");

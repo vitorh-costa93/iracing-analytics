@@ -1,3 +1,4 @@
+import { CACHE_TAGS, cachedJson } from "@/lib/cache";
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 
@@ -34,7 +35,7 @@ export async function GET() {
     ) ?? null;
     // Falha ao ler o piloto não derruba o estado das fontes: o cabeçalho só omite a identidade.
     const driver = driverResult.error || !driverResult.data ? null : { name: driverResult.data.name as string, iracingId: driverResult.data.platform_driver_id == null ? null : String(driverResult.data.platform_driver_id) };
-    return NextResponse.json({ status: "ok", driver, sources: {
+    return cachedJson({ status: "ok", driver, sources: {
       garage61: {
         lastSuccessAt: success?.finished_at ?? null,
         latestStatus: attempt?.status ?? "unknown",
@@ -43,7 +44,7 @@ export async function GET() {
       },
       irstats: { lastImportAt: resultsResult.data?.imported_at ?? null },
       setups: { lastImportAt: setupsResult.data?.created_at ?? null },
-    } });
+    } }, { sMaxAge: 30, swr: 60, tags: [CACHE_TAGS.syncStatus] });
   } catch (error) {
     return NextResponse.json({ status: "error", message: error instanceof Error ? error.message : String(error) }, { status: 500 });
   }
