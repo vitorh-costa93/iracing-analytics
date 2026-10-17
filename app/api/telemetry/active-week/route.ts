@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { withDurableCache } from "@/lib/durable-cache";
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedJson } from "@/lib/cache";
+import { lapUsedOvertake } from "@/lib/lap-overtake";
 
 // 28/09/2026: GET() abaixo não lê nada do Request (sem searchParams, sem headers), então o Next.js
 // tenta tratar esse handler como estático -- calculado uma vez e servido congelado até o próximo
@@ -50,6 +51,7 @@ type Garage61LapPayload = {
   canViewTelemetry?: boolean;
   pushToPass?: boolean | number;
   p2pStatus?: boolean | number;
+  p2p?: boolean;
   p2pCount?: number;
 };
 
@@ -218,7 +220,8 @@ async function handleGet() {
       const eligibleLaps = currentWeekLaps.filter((lap) => isEligibleLap(lap, weekStart, weekEnd));
       const car = cars.get(pair.carId);
       const isSuperFormula = /super formula sf23/i.test(car?.name ?? "");
-      const usedOvertake = (lap: Garage61LapPayload) => Boolean(lap.pushToPass) || Boolean(lap.p2pStatus) || Number(lap.p2pCount ?? 0) > 0;
+      // `p2p: true` é o sinal direto do Garage61; p2pCount é cumulativo da sessão e não conta.
+      const usedOvertake = (lap: Garage61LapPayload) => lapUsedOvertake(lap);
       // 28/09/2026: a estatística por mediana+desvio que existia aqui (excluir a volta "rápida
       // demais" como suspeita de overtake sem sinalizador) foi removida -- confirmado num caso real
       // (SF23 em Interlagos) que ela cortava uma volta genuinamente limpa e rápida por estar cerca de
@@ -227,8 +230,11 @@ async function handleGet() {
       // direto do Garage61 (pushToPass/p2pStatus/p2pCount), não dá para adivinhar com segurança -- é
       // preferível arriscar raramente mostrar uma volta com P2P não sinalizado a descartar sempre a
       // volta boa do piloto.
-      const raceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && (!isSuperFormula || !usedOvertake(lap)));
-      const practiceLaps = eligibleLaps.filter((lap) => lap.sessionType === 1);
+      const noOvertake = (lap: Garage61LapPayload) => !isSuperFormula || !usedOvertake(lap);
+      const raceLaps = eligibleLaps.filter((lap) => lap.sessionType === 3 && noOvertake(lap));
+      const practiceLaps = eligibleLaps.filter((lap) => lap.sessionType === 1 && noOvertake(lap));
+      const onlyOvertakeLaps = isSuperFormula && !raceLaps.length && !practiceLaps.length
+        && eligibleLaps.some((lap) => (lap.sessionType === 1 || lap.sessionType === 3) && usedOvertake(lap));
       // Race pace is the representative reference once a race exists; otherwise practice is the
       // best way to prepare for a scheduled race. 28/09/2026: no fallback to qualifying (or to
       // offline data, already filtered out above) anymore -- without an online race or practice
@@ -254,10 +260,11 @@ async function handleGet() {
           selectionReason: raceLaps.length ? (isSuperFormula ? "race_best_lap_without_p2p" : "race_best_lap") : "practice_best_lap",
           telemetryUrl: `/api/garage61/laps/${encodeURIComponent(bestLap.id)}/telemetry`,
         } : null,
+        noBestLapReason: !bestLap && onlyOvertakeLaps ? "only_overtake_laps" : null,
       };
     // Sem corrida nem prática online, o combo não tem uma volta representativa confiável --
     // não cai pra qualifying nem pra offline (já filtrados acima): o contexto simplesmente não aparece.
-    }).filter((combination) => combination.bestLap !== null);
+    }).filter((combination) => combination.bestLap !== null || combination.noBestLapReason !== null);
 
     combinations.sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
     return cachedJson({
@@ -273,6 +280,6 @@ async function handleGet() {
   }
 }
 
-export const GET = withDurableCache(handleGet, { version: "active-week-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 120,
+export const GET = withDurableCache(handleGet, { version: "active-week-v2", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 120,
   validUntil: payload => { const end = (payload as { week?: { end?: string } }).week?.end; return end ? Date.parse(end) : null; },
 });

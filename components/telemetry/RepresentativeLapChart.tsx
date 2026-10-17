@@ -18,13 +18,13 @@ import { interpolate, type Trace, type TracePoint } from "@/lib/telemetry-trace"
  * não acontecem em algum tamanho de tela. Com W = largura real em pixels e H fixo, viewBox e caixa
  * renderizada ficam SEMPRE 1:1 -- sem transformação de escala, logo sem distorção nem margem, e o
  * texto (font-size em px) sempre no tamanho real pretendido, não escalado junto com o desenho.
+ *
+ * A altura (H) também é medida (wrapper .ngt-chart-wrap, que cresce até a altura do card no desktop):
+ * a altura extra além de 320px é repartida entre delta (40%), acelerador (30%) e freio (30%), sem
+ * escalar texto nem linhas. Abaixo de 1100px o wrapper tem altura fixa de 320px (layout original).
  */
-const H = 320, X0 = 44, MARGIN_RIGHT = 16;
-const DELTA_TOP = 24, DELTA_BOTTOM = 96;
-const THR_TOP = 131, THR_BOTTOM = 182;
-const BRK_TOP = 205, BRK_BOTTOM = 256;
-const CHART_BOTTOM = 286;
-const X_TICKS_Y = 306;
+const BASE_H = 320, X0 = 44, MARGIN_RIGHT = 16;
+const DELTA_TOP = 24;
 const MIN_W = 320; // largura mínima antes da primeira medição, ou se o card ficar comprimido demais
 
 function pedalLine(points: TracePoint[], field: "throttle" | "brake", top: number, bottom: number, xOf: (distance: number) => number) {
@@ -57,19 +57,27 @@ export default function RepresentativeLapChart({ trace, referenceTrace, comparis
   hover: number | null;
   onHover: (distance: number | null) => void;
 }) {
-  const svgRef = useRef<SVGSVGElement | null>(null);
-  const [width, setWidth] = useState(MIN_W);
+  const wrapRef = useRef<HTMLDivElement | null>(null);
+  const [size, setSize] = useState({ w: MIN_W, h: BASE_H });
   useEffect(() => {
-    const el = svgRef.current;
+    const el = wrapRef.current;
     if (!el) return;
     const observer = new ResizeObserver((entries) => {
-      const measured = entries[0]?.contentRect.width;
-      if (measured) setWidth(Math.max(MIN_W, Math.round(measured)));
+      const rect = entries[0]?.contentRect;
+      if (!rect?.width) return;
+      const w = Math.max(MIN_W, Math.round(rect.width)), h = Math.max(BASE_H, Math.round(rect.height));
+      setSize((previous) => (previous.w === w && previous.h === h ? previous : { w, h }));
     });
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  const W = width;
+  const W = size.w, H = size.h;
+  const extra = H - BASE_H;
+  const DELTA_BOTTOM = 96 + 0.4 * extra;
+  const THR_TOP = 131 + 0.4 * extra, THR_BOTTOM = 182 + 0.7 * extra;
+  const BRK_TOP = 205 + 0.7 * extra, BRK_BOTTOM = 256 + extra;
+  const CHART_BOTTOM = 286 + extra;
+  const X_TICKS_Y = 306 + extra;
   const X1 = W - MARGIN_RIGHT;
   const xOf = (distance: number) => X0 + (distance / 100) * (X1 - X0);
 
@@ -147,7 +155,8 @@ export default function RepresentativeLapChart({ trace, referenceTrace, comparis
   }
 
   return (
-    <svg ref={svgRef} className="ngt-chart" viewBox={`0 0 ${W} ${H}`} role="img" tabIndex={0}
+    <div ref={wrapRef} className="ngt-chart-wrap">
+    <svg className="ngt-chart" viewBox={`0 0 ${W} ${H}`} role="img" tabIndex={0}
       aria-label="Tempo perdido acumulado contra a referência, acelerador e freio ao longo da volta. Setas esquerda e direita percorrem a pista."
       onMouseMove={onMove} onMouseLeave={() => onHover(null)} onTouchStart={onTouch} onTouchMove={onTouch} onKeyDown={onKey}>
       {comparison.sections.map((section) => {
@@ -183,6 +192,7 @@ export default function RepresentativeLapChart({ trace, referenceTrace, comparis
       {xTicks.map((tick) => <text key={tick.x} x={tick.x} y={X_TICKS_Y} textAnchor="middle" className="ngt-axis-label">{tick.label}</text>)}
       {cursor}
     </svg>
+    </div>
   );
 }
 

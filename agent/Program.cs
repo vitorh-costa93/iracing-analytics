@@ -32,7 +32,6 @@ static class Program
             if (exportTest >= 0)
             {
                 // Dev check: N newest results, ignoring server-known ids, isolated state dir, nothing is sent.
-                ResultExporter.SkipIdleGate = true;
                 ResultExporter.TestCount = Math.Clamp(int.TryParse(args.ElementAtOrDefault(exportTest + 1), out var n) ? n : 11, 1, 20);
                 // --send: end-to-end against the real store/token; the server upserts by key (overwrites existing rows).
                 var testStore = args.Contains("--send") ? store : new Store(Path.Combine(Path.GetTempPath(), "RacingAnalyticsAgent.ExportTest"), endpoint);
@@ -59,8 +58,7 @@ static class Program
             var once = Array.IndexOf(args, "--export-once");
             if (once >= 0)
             {
-                // Dev check of the idle exporter: skips only the 60 s idle gate; every other guard-rail applies.
-                ResultExporter.SkipIdleGate = true;
+                // Dev check of the background exporter: one normal pass, every guard-rail applies.
                 var line = new ResultExporter().TryExportAsync(store).GetAwaiter().GetResult();
                 if (once + 1 < args.Length) File.WriteAllText(args[once + 1], $"{line}\nFila: {store.Backlog}\nDownloads hoje: {store.State.Exports}\n"); return;
             }
@@ -81,7 +79,7 @@ static class Program
             if(inspect>=0&&inspect+1<args.Length) { using var input=File.OpenRead(args[inspect+1]); var laps=Ibt.Read(input,reference:true).Select(b=>JsonSerializer.Deserialize<JsonElement>(b).GetProperty("lap")).ToList(); var output=Array.IndexOf(args,"--out"); if(output>=0&&output+1<args.Length)File.WriteAllText(args[output+1],JsonSerializer.Serialize(laps.Select(l=>new {time=l.GetProperty("time").GetDouble(),clean=l.GetProperty("clean").GetBoolean(),incidents=l.GetProperty("incidents").ToString(),overtake=l.GetProperty("overtake").GetBoolean()}))); return; }
             ApplicationConfiguration.Initialize(); Application.Run(new AgentForm(store, args.Contains("--tray")));
         }
-        catch { MessageBox.Show("Não foi possível iniciar. Verifique o armazenamento local e a configuração do agente.", "Racing Analytics"); }
+        catch (Exception e) { AgentLog.Error("startup", e); MessageBox.Show("Não foi possível iniciar. Verifique o armazenamento local e a configuração do agente.", "Racing Analytics"); }
         finally { singleton.ReleaseMutex(); }
     }
     internal static IEnumerable<string> Sources()
@@ -118,12 +116,13 @@ sealed class AgentForm : Form
         }; panel.Controls.Add(open);
         var record = new CheckBox { Text = "Ligar gravação .ibt automaticamente ao entrar na pista (SDK oficial)", AutoSize = true, Checked = store.State.AutoRecord }; panel.Controls.Add(record);
         record.CheckedChanged += (_, _) => { store.State.AutoRecord = record.Checked; store.Save(); };
-        var experimental = new CheckBox { Text = "Exportar resultados oficiais em momento ocioso (sem foco, só corridas novas) — necessário para enviar o resultado oficial", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
+        var experimental = new CheckBox { Text = "Exportar resultados oficiais em segundo plano (confere as últimas 10 corridas, só envia as que faltam) — necessário para enviar o resultado oficial", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
         experimental.CheckedChanged += (_, _) => { store.State.ExperimentalExport = experimental.Checked; store.Save(); };
         panel.Controls.Add(new Label { Text = "O resultado da corrida é lido do SessionInfo ao vivo (iRating estimado). O JSON exportado do iRacing para Downloads continua sendo a fonte oficial e substitui a estimativa.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
         tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Backfill histórico de resultados (2023 S4 em diante)...", null, async (_, _) => await RunBackfill()); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
         FormClosing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } else { cancellation.Cancel(); timer.Stop(); simTimer.Stop(); monitor.Dispose(); tray.Dispose(); } };
-        Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start(); simTimer.Tick += (_, _) => monitor.Poll(); simTimer.Start();
+        Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start(); simTimer.Tick += (_, _) => { monitor.Poll(); try { WatchProcesses(); } catch (Exception e) { AgentLog.Error("WatchProcesses", e); } }; simTimer.Start();
+        AgentLog.Write("Agente iniciado");
     }
     async Task RunBackfill()
     {
@@ -137,19 +136,48 @@ sealed class AgentForm : Form
         }
         finally { busy = false; }
     }
+    int watchTick; bool uiWas, simWas; string lastLogged = "";
+    // Event-driven scan triggers for the result exporter (checked every ~10 s): iRacing UI opened (including
+    // already open when the agent starts) and simulator closed. The exporter itself still refuses to run with the sim open.
+    void WatchProcesses()
+    {
+        if (++watchTick % 5 != 1) return;
+        bool ui = false, sim = false;
+        foreach (var process in Process.GetProcesses())
+        {
+            using (process)
+            {
+                var name = process.ProcessName;
+                if (name.Equals("iRacingUI", StringComparison.OrdinalIgnoreCase)) ui = true;
+                else if (name.StartsWith("iRacingSim", StringComparison.OrdinalIgnoreCase)) sim = true;
+            }
+        }
+        if (ui && !uiWas) ResultExporter.RequestScan(watchTick == 1 ? "agente iniciado com iRacing UI aberto" : "iRacing UI aberto");
+        if (simWas && !sim) ResultExporter.RequestScan("simulador fechado");
+        uiWas = ui; simWas = sim;
+    }
+    // One failing step must not stop the others (a Collect error used to skip Send entirely): each step logs and continues.
+    async Task Step(string name, Func<Task> action)
+    {
+        try { await action(); }
+        catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { throw; }
+        catch (Exception e) { AgentLog.Error(name, e); status.Text = "Falha local em " + name + "; fila preservada. Veja agent.log."; }
+    }
     async Task Tick()
     {
         if (busy) return; busy = true;
         try
         {
-            await Task.Run(() => { foreach (var file in Program.Sources()) { try { store.Collect(file); } catch (IOException) { } catch (UnauthorizedAccessException) { } } }, cancellation.Token);
-            await Task.Run(() => store.ScanReferences(Program.Sources()), cancellation.Token);
-            var exportStatus = store.State.ExperimentalExport && exporter.Due(store) ? await exporter.TryExportAsync(store, cancellation.Token) : "";
-            await store.Send(cancellation.Token);
+            var exportStatus = "";
+            await Step("coleta", () => Task.Run(() => { foreach (var file in Program.Sources()) { try { store.Collect(file, deleteSource: true); } catch (IOException) { } catch (UnauthorizedAccessException) { } } }, cancellation.Token));
+            await Step("referências", () => Task.Run(() => store.ScanReferences(Program.Sources()), cancellation.Token));
+            await Step("exportação", async () => { if (store.State.ExperimentalExport && exporter.Due(store)) exportStatus = await exporter.TryExportAsync(store, cancellation.Token); });
+            await Step("envio", () => store.Send(cancellation.Token));
+            if (store.Status != lastLogged) { lastLogged = store.Status; AgentLog.Write($"Status: {store.Status} | fila {store.Backlog} | quarentena {store.Quarantined} | sucessos {store.State.Successes}"); }
             status.Text = $"{store.Status}\niRacing: {monitor.Status}\nFila: {store.Backlog} | Sucessos: {store.State.Successes} | Quarentena: {store.Quarantined}\nHoje: {store.State.Requests}/{store.State.DailyLimit} requests, {store.State.Bytes / 1024} KiB/10240\n{exportStatus}";
         }
         catch (OperationCanceledException) { }
-        catch { status.Text = "Falha local; fila preservada. Verifique armazenamento/credencial."; }
+        catch (Exception e) { AgentLog.Error("Tick", e); status.Text = "Falha local; fila preservada. Verifique agent.log."; }
         finally { busy = false; }
     }
 }

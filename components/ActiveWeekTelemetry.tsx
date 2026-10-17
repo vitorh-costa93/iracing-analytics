@@ -38,6 +38,7 @@ type Combination = {
   sessionTypes: number[];
   lapsFound: number;
   bestLap: null | { id: string; lapTime: number; startTime: string; sessionType: number | null; selectionReason: string; telemetryUrl: string };
+  noBestLapReason?: "only_overtake_laps" | null;
 };
 
 type ActiveWeekData = {
@@ -332,7 +333,7 @@ export default function ActiveWeekTelemetry() {
             actions={comparison ? <div className="ngt-legend"><span><i />Sua volta</span><span><i data-line="ref" />Referência</span></div> : undefined}>
             {traceLoading || (referenceLoading && trace) ? <div className="ngt-empty-chart">Carregando a telemetria da volta…</div>
               : error ? <div className="ngt-empty-chart" role="alert">{error}<button type="button" className="ngt-link-button" onClick={retry}>Tentar novamente</button></div>
-              : !selected.bestLap ? <div className="ngt-empty-chart">Ainda não há uma volta limpa com telemetria para este carro e pista nesta semana.</div>
+              : !selected.bestLap ? <div className="ngt-empty-chart">{selected.noBestLapReason === "only_overtake_laps" ? "Todas as voltas limpas desta semana usaram P2P/Overtake, então nenhuma foi escolhida como representativa. Faça uma volta limpa sem Overtake." : "Ainda não há uma volta limpa com telemetria para este carro e pista nesta semana."}</div>
               : !referenceTrace ? <div className="ngt-empty-chart">Ainda não há volta de referência para este carro e pista. Envie um CSV ou IBT do iRacing (uma volta limpa, sem P2P) para ver onde você perde tempo.{uploadButton("Enviar referência")}</div>
               : trace && comparison ? <RepresentativeLapChart trace={trace} referenceTrace={referenceTrace} comparison={comparison} sectionName={(d) => sectionNameAt(comparison, d)} hover={hover} onHover={setHover} />
               : trace ? <div className="ngt-empty-chart">Não foi possível alinhar amostras suficientes entre a sua volta e a referência.</div>

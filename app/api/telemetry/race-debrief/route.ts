@@ -113,8 +113,13 @@ async function matchSessions(driverId: string, races: RaceRow[]) {
 }
 
 /** Voltas de corrida (sessionType 3) dos eventos, paginadas. */
-async function loadRaceLaps(driverId: string, sessions: SessionRow[]) {
-  const eventIds = [...new Set(sessions.map((session) => session.garage61_event_id).filter((id): id is string => !!id))];
+async function loadRaceLaps(driverId: string, sessions: SessionRow[], races: RaceRow[] = []) {
+  // Também os eventos nativos do agente (`iracing:<irstats_race_id>`) de cada corrida, mesmo quando a
+  // sessão escolhida é a do Garage61 (ou quando a sessão nativa ainda não foi gravada).
+  const eventIds = [...new Set([
+    ...sessions.map((session) => session.garage61_event_id),
+    ...races.map((race) => `iracing:${race.irstats_race_id}`),
+  ].filter((id): id is string => !!id))];
   const rows: (RaceLapRow & { event: string; car_id: number })[] = [];
   if (!eventIds.length) return rows;
   for (let offset = 0; ; offset += LAPS_PAGE) {
@@ -132,9 +137,19 @@ async function loadRaceLaps(driverId: string, sessions: SessionRow[]) {
   return rows;
 }
 
-function lapsOfSession(allLaps: (RaceLapRow & { event: string; car_id: number })[], session: SessionRow | undefined) {
-  if (!session) return [];
-  return allLaps.filter((lap) => lap.event === session.garage61_event_id && lap.car_id === session.car_id);
+/**
+ * Voltas da corrida: as da sessão escolhida; se for a sessão do Garage61 e o agente (evento
+ * `iracing:<id>`) tiver mais voltas com telemetria, usa as do agente. Sem sessão casada, usa as do
+ * agente se existirem. Nunca soma as duas fontes (seriam a mesma volta duplicada).
+ */
+function lapsOfSession(allLaps: (RaceLapRow & { event: string; car_id: number })[], session: SessionRow | undefined, race?: RaceRow) {
+  const sessionLaps = session ? allLaps.filter((lap) => lap.event === session.garage61_event_id && lap.car_id === session.car_id) : [];
+  if (!race) return sessionLaps;
+  const nativeEvent = `iracing:${race.irstats_race_id}`;
+  if (session?.garage61_event_id === nativeEvent) return sessionLaps;
+  const nativeLaps = allLaps.filter((lap) => lap.event === nativeEvent && (!race.car_id || lap.car_id === race.car_id));
+  const withTelemetry = (laps: { telemetry_path: string | null }[]) => laps.filter((lap) => lap.telemetry_path).length;
+  return withTelemetry(nativeLaps) > withTelemetry(sessionLaps) ? nativeLaps : sessionLaps;
 }
 
 function raceLabel(race: RaceRow) {
@@ -271,7 +286,7 @@ async function buildAnalysis(driverId: string, race: RaceRow, session: SessionRo
   const sections = self?.sections ?? [];
   const telemetryLaps = traces.length;
   let selfNote: string | null = null;
-  if (!session) selfNote = "Não achei a sessão desta corrida no Garage61, então não há voltas nem telemetria para comparar você com você mesmo.";
+  if (!session && !raceLaps.length) selfNote = "Não achei a sessão desta corrida no Garage61, então não há voltas nem telemetria para comparar você com você mesmo.";
   else if (telemetryLaps < 3) selfNote = `${telemetryLaps === 0 ? "Nenhuma volta limpa desta corrida tem" : telemetryLaps === 1 ? "Só 1 volta limpa desta corrida tem" : `Só ${telemetryLaps} voltas limpas desta corrida têm`} telemetria armazenada. Preciso de pelo menos 3 para comparar você com você mesmo.${lapsWithoutTelemetry ? ` ${lapsWithoutTelemetry} voltas limpas ainda estão sem telemetria no Storage.` : ""}`;
   else if (!self || !sections.length) selfNote = "Não consegui separar os trechos de curva desta pista com a telemetria disponível.";
   else if (!self.canCompareFastSlow) selfNote = `Com ${telemetryLaps} voltas com telemetria dá para medir quanto você varia, mas ainda não para separar as voltas rápidas das lentas (preciso de 5).`;
@@ -354,18 +369,18 @@ async function handleGet(request: Request) {
     const races = await loadRaces(driverId);
     if (!races.length) return cachedJson({ status: "ok", races: [], selectedId: null, debrief: null, message: `Nenhuma corrida com pelo menos ${MIN_RACE_LAPS} voltas importada do iRStats ainda.` }, { sMaxAge: 60, tags: [CACHE_TAGS.results, CACHE_TAGS.laps] });
     const sessionsByRace = await matchSessions(driverId, races);
-    const allLaps = await loadRaceLaps(driverId, [...sessionsByRace.values()]);
+    const allLaps = await loadRaceLaps(driverId, [...sessionsByRace.values()], races);
 
     const list = races.map((race) => {
-      const laps = lapsOfSession(allLaps, sessionsByRace.get(race.id));
-      return { id: race.id, label: raceLabel(race), category: race.category, hasSession: sessionsByRace.has(race.id), telemetryLaps: laps.filter((lap) => lap.telemetry_path).length };
+      const laps = lapsOfSession(allLaps, sessionsByRace.get(race.id), race);
+      return { id: race.id, label: raceLabel(race), category: race.category, hasSession: sessionsByRace.has(race.id) || laps.length > 0, telemetryLaps: laps.filter((lap) => lap.telemetry_path).length };
     });
     const requested = params.get("raceId");
     const selected = races.find((race) => race.id === requested)
       ?? races.find((race) => (list.find((item) => item.id === race.id)?.telemetryLaps ?? 0) >= 3)
       ?? races[0];
     const session = sessionsByRace.get(selected.id);
-    const raceLaps = lapsOfSession(allLaps, session);
+    const raceLaps = lapsOfSession(allLaps, session, selected);
     const key = `${CACHE_PREFIX}${selected.irstats_race_id}`;
     const setKey = lapSetKey(raceLaps);
 
@@ -379,8 +394,9 @@ async function handleGet(request: Request) {
     if (!analysis) {
       const payload: Analysis = { ...(await buildAnalysis(driverId, selected, session, raceLaps)), lapSetKey: setKey };
       analysis = payload;
-      if (process.env.NODE_ENV === "production" && session) {
-        await supabaseAdmin.from("race_debriefs").upsert({ driver_id: driverId, rating_category: key, session_id: session.id, payload, computed_at: new Date().toISOString() }, { onConflict: "driver_id,rating_category" });
+      if (process.env.NODE_ENV === "production" && (session || raceLaps.length > 0)) {
+        // Agent-only races have no matched Garage61 session: session_id 0 (column is NOT NULL; the read check normalizes null to 0).
+        await supabaseAdmin.from("race_debriefs").upsert({ driver_id: driverId, rating_category: key, session_id: session?.id ?? 0, payload, computed_at: new Date().toISOString() }, { onConflict: "driver_id,rating_category" });
         const { data: rows } = await supabaseAdmin.from("race_debriefs").select("id").eq("driver_id", driverId).like("rating_category", `${CACHE_PREFIX}%`).order("computed_at", { ascending: false });
         const stale = (rows ?? []).slice(MAX_CACHED_RACES).map((row) => row.id);
         if (stale.length) await supabaseAdmin.from("race_debriefs").delete().in("id", stale);
@@ -396,4 +412,4 @@ async function handleGet(request: Request) {
   }
 }
 
-export const GET = withDurableCache(handleGet, { version: "race-debrief-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 300 });
+export const GET = withDurableCache(handleGet, { version: "race-debrief-v2", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 300 });

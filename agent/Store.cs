@@ -29,10 +29,10 @@ sealed class State
     public DateTimeOffset LastScan { get; set; }
     /// <summary>Most recent official-result subsession ids handled by the idle exporter (newest first, max 20).</summary>
     public List<long> LastResultIds { get; set; } = [];
-    /// <summary>Fingerprint of the newest "Recent Races" row at the end of the last scan; unchanged = nothing new, no modal is opened.</summary>
-    public string LastTopRace { get; set; } = "";
+    /// <summary>Fingerprints of "Recent Races" rows already confirmed (server knew the subsession, or its JSON was queued). Rows in this set are never reopened; any other visible row (up to 10) is checked id by id.</summary>
+    public HashSet<string> SentRaces { get; set; } = [];
     public bool StartupInit { get; set; }
-    /// <summary>One-time reset (field-of-race release): the server now defines "known" (race has its field stored); local LastResultIds/LastTopRace no longer suppress re-sends.</summary>
+    /// <summary>One-time reset (field-of-race release): the server now defines "known" (race has its field stored); local LastResultIds no longer suppress re-sends.</summary>
     public bool FieldMigrated { get; set; }
     /// <summary>Historical backfill: finished "year-season" targets (e.g. "2026-3"), and the resume cursor of the one in progress.</summary>
     public HashSet<string> BackfillDone { get; set; } = [];
@@ -63,7 +63,7 @@ sealed class Store
     public Store(string root, string endpoint, HttpMessageHandler? handler = null)
     {
         Root = root; Endpoint = endpoint;
-        Directory.CreateDirectory(root); Directory.CreateDirectory(Path.Combine(root, "queue")); Directory.CreateDirectory(Path.Combine(root, "quarantine"));
+        Directory.CreateDirectory(root); AgentLog.Init(root); Directory.CreateDirectory(Path.Combine(root, "queue")); Directory.CreateDirectory(Path.Combine(root, "quarantine"));
         State = File.Exists(Path.Combine(root, "state.json")) ? JsonSerializer.Deserialize<State>(File.ReadAllBytes(Path.Combine(root, "state.json"))) ?? throw new InvalidDataException("state_invalid") : new();
         http = new HttpClient(handler ?? new HttpClientHandler { AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(40) };
         Save();
@@ -74,7 +74,11 @@ sealed class Store
         using (var f = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None, 4096, FileOptions.WriteThrough)) { f.Write(bytes); f.Flush(true); }
         File.Move(temp, path, true);
     }
-    public void Save() { lock (persistGate) Atomic(Path.Combine(Root, "state.json"), JsonSerializer.SerializeToUtf8Bytes(State)); }
+    public void Save()
+    {
+        try { lock (persistGate) Atomic(Path.Combine(Root, "state.json"), JsonSerializer.SerializeToUtf8Bytes(State)); }
+        catch (Exception e) { AgentLog.Error("Save(state.json)", e); throw; }
+    }
     public void Token(string token)
     {
         if (string.IsNullOrWhiteSpace(token) || token.Length > 4096 || token.Any(char.IsControl)) throw new ArgumentException("Token inválido");
@@ -138,18 +142,32 @@ sealed class Store
         }
         catch (Exception e) when (e is HttpRequestException or JsonException or KeyNotFoundException or TaskCanceledException) { return null; }
     }
-    public void Collect(string path, bool backfill = false)
+    /// <summary>Collects one source file. With deleteSource, a manual Downloads event_result JSON is removed once it is
+    /// validated as event_result, queued and its hash checkpointed (or its hash was already checkpointed). .ibt and anything
+    /// not validated are never deleted.</summary>
+    public void Collect(string path, bool backfill = false, bool deleteSource = false)
     {
+        var deletable = CollectCore(path, backfill);
+        if (!deleteSource || !deletable) return;
+        try { File.Delete(path); AgentLog.Write("Downloads: eventresult coletado e removido"); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { AgentLog.Error("remover eventresult de Downloads", e); }
+    }
+    bool CollectCore(string path, bool backfill)
+    {
+        var deletable = false;
         var info = new FileInfo(path);
-        if (!backfill && info.LastWriteTimeUtc < State.Activated.UtcDateTime) return;
-        if (info.LastWriteTimeUtc > DateTime.UtcNow.AddSeconds(-30)) return;
-        if (observed.TryGetValue(path, out var previous) && previous == (info.Length, info.LastWriteTimeUtc)) return;
-        if (info.Length > (path.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase) ? Ibt.MaxFile : 1024 * 1024)) { Status = "Arquivo acima do limite; intervenção necessária"; return; }
+        var isIbt = path.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase);
+        if (!backfill && info.LastWriteTimeUtc < State.Activated.UtcDateTime) return false;
+        if (info.LastWriteTimeUtc > DateTime.UtcNow.AddSeconds(-30)) return false;
+        if (observed.TryGetValue(path, out var previous) && previous == (info.Length, info.LastWriteTimeUtc)) return false;
+        if (info.Length > (isIbt ? Ibt.MaxFile : 1024 * 1024)) { Status = "Arquivo acima do limite; intervenção necessária"; return false; }
         // Exclusive open proves the simulator/exporter released its file. A crash before the
         // checkpoint replays it; deterministic queue keys deduplicate durable payloads.
         using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.None);
         var hash = Convert.ToHexString(SHA256.HashData(stream)).ToLowerInvariant();
-        if (State.Files.Contains(hash)) { observed[path] = (info.Length, info.LastWriteTimeUtc); return; }
+        // Hash checkpoints are only recorded after validation + queueing, so a known JSON hash is a validated event_result.
+        // Not marked as observed: if the source cannot be deleted now (locked), the next tick retries.
+        if (State.Files.Contains(hash)) { if (isIbt) observed[path] = (info.Length, info.LastWriteTimeUtc); return !isIbt; }
         stream.Position = 0;
         try
         {
@@ -176,10 +194,12 @@ sealed class Store
             }
             foreach (var target in targets.Values) QueueReference(target.car, target.track, target.year, target.quarter);
             lock (persistGate) { State.Files.Add(hash); Save(); }
-            observed[path] = (info.Length, info.LastWriteTimeUtc); Status = "Arquivo coletado";
+            Status = "Arquivo coletado"; deletable = !isIbt;
+            if (isIbt) observed[path] = (info.Length, info.LastWriteTimeUtc);
         }
         catch (InvalidDataException) { observed[path] = (info.Length, info.LastWriteTimeUtc); Status = "Arquivo incompatível; intervenção necessária"; }
         catch (JsonException) { observed[path] = (info.Length, info.LastWriteTimeUtc); Status = "Exportação inválida; intervenção necessária"; }
+        return deletable;
     }
     static void CollectReferenceTarget(JsonElement metadata, Dictionary<string, (string car, int track, int? year, int? quarter)> targets)
     {

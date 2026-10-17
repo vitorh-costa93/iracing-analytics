@@ -71,8 +71,12 @@ export default function CarCompareView() {
   const [category, setCategory] = useState<Category>("gt3");
   const [season, setSeason] = useState("auto");
   const [week, setWeek] = useState("all");
-  const resolvedListKey = useRef<string | null>(null);
-  const [list, setList] = useState<ListPayload | null>(null);
+  // Listas (temporadas + pistas) por classe/temporada, em memória: as duas classes são pré-buscadas ao
+  // montar, então trocar a classe é síncrono (sem esperar rede). A rota tem cache durável de 300s; aqui
+  // só se evitam requests repetidos. Chave "<classe>|<temporada>"; a resposta "auto" também é guardada
+  // sob o id real da temporada que ela resolveu.
+  const [lists, setLists] = useState<Record<string, ListPayload>>({});
+  const inflight = useRef<Map<string, Promise<ListPayload>>>(new Map());
   const [trackId, setTrackId] = useState<number | null>(null);
   const [data, setData] = useState<ComparisonPayload | null>(null);
   const [loadingList, setLoadingList] = useState(true);
@@ -85,26 +89,63 @@ export default function CarCompareView() {
   const [openId, setOpenId] = useState<string | null>(null);
   const [hoveredGapSectionId, setHoveredGapSectionId] = useState<string | null>(null);
 
-  useEffect(() => {
-    // Resolving "auto" to the real season id changes `season`; the list for that id is the one just loaded, so skip the refetch.
-    if (season !== "auto" && resolvedListKey.current === `${category}|${season}`) return;
-    let active = true;
-    setLoadingList(true);
-    setError(null);
-    fetch(`/api/telemetry/car-comparison?category=${category}${season !== "auto" ? `&season=${season}` : ""}`)
+  const listKey = `${category}|${season}`;
+  const list = lists[listKey] ?? null;
+  // Temporadas da classe mesmo enquanto a lista de outra temporada ainda carrega (o seletor não some).
+  const seasonsSource = list ?? lists[`${category}|auto`] ?? null;
+
+  const fetchList = useCallback((cat: Category, seasonParam: string): Promise<ListPayload> => {
+    const key = `${cat}|${seasonParam}`;
+    const pending = inflight.current.get(key);
+    if (pending) return pending;
+    const request = fetch(`/api/telemetry/car-comparison?category=${cat}${seasonParam !== "auto" ? `&season=${seasonParam}` : ""}`)
       .then((response) => response.json())
       .then((result: ListPayload) => {
-        if (!active) return;
         if (result.status !== "ok") throw new Error(result.message ?? "Erro ao buscar temporadas e pistas");
-        setList(result);
-        resolvedListKey.current = `${category}|${season === "auto" ? result.selectedSeasonId : season}`;
-        if (season === "auto" && result.selectedSeasonId) setSeason(result.selectedSeasonId);
-        setTrackId((current) => (current !== null && result.tracks.some((track) => track.trackId === current) ? current : result.tracks[0]?.trackId ?? null));
+        setLists((previous) => ({ ...previous, [key]: result, ...(seasonParam === "auto" && result.selectedSeasonId ? { [`${cat}|${result.selectedSeasonId}`]: result } : {}) }));
+        return result;
       })
+      .finally(() => { inflight.current.delete(key); });
+    inflight.current.set(key, request);
+    return request;
+  }, []);
+
+  // Pré-busca das duas classes (temporada mais recente) ao montar.
+  useEffect(() => {
+    for (const option of CLASS_OPTIONS) void fetchList(option.value, "auto").catch(() => undefined);
+  }, [fetchList]);
+
+  useEffect(() => {
+    let active = true;
+    const apply = (result: ListPayload) => {
+      if (!active) return;
+      if (season === "auto" && result.selectedSeasonId) setSeason(result.selectedSeasonId);
+      setTrackId((current) => (current !== null && result.tracks.some((track) => track.trackId === current) ? current : result.tracks[0]?.trackId ?? null));
+    };
+    setError(null);
+    if (list) { setLoadingList(false); apply(list); return () => { active = false; }; }
+    setLoadingList(true);
+    fetchList(category, season)
+      .then(apply)
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoadingList(false));
     return () => { active = false; };
-  }, [category, season]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, season, list, fetchList]);
+
+  function changeCategory(next: Category) {
+    if (next === category) return;
+    const cached = lists[`${next}|auto`] ?? null;
+    setCategory(next);
+    // Limpa já o que era da classe antiga; com a lista em cache, escolhe a temporada/pista sincronicamente.
+    setSeason(cached?.selectedSeasonId ?? "auto");
+    setTrackId(cached?.tracks[0]?.trackId ?? null);
+    setWeek("all");
+    setData(null);
+    setCarAId(null);
+    setCarBId(null);
+    setOpenId(null);
+  }
 
   useEffect(() => { setWeek("all"); }, [trackId, season]);
 
@@ -168,11 +209,11 @@ export default function CarCompareView() {
   const prev = useCallback(() => { if (openIndex > 0) setOpenId(sections[openIndex - 1].id); }, [openIndex, sections]);
   const next = useCallback(() => { if (openIndex >= 0 && openIndex < sections.length - 1) setOpenId(sections[openIndex + 1].id); }, [openIndex, sections]);
 
-  if (loadingList && !list) return <div className="ngt-state">Buscando temporadas e pistas onde você andou com mais de um carro…</div>;
+  if (loadingList && !seasonsSource) return <div className="ngt-state">Buscando temporadas e pistas onde você andou com mais de um carro…</div>;
   if (error && !data) return <div className="ngt-state" data-tone="error">{error}</div>;
 
-  const seasonValue = season === "auto" ? list?.selectedSeasonId ?? "all" : season;
-  const seasonOptions = [...(list?.seasons ?? []).map((item) => ({ value: item.seasonId, label: item.seasonName })), { value: "all", label: "Todas as temporadas" }];
+  const seasonValue = season === "auto" ? seasonsSource?.selectedSeasonId ?? "all" : season;
+  const seasonOptions = [...(seasonsSource?.seasons ?? []).map((item) => ({ value: item.seasonId, label: item.seasonName })), { value: "all", label: "Todas as temporadas" }];
   const trackOptions = (list?.tracks ?? []).map((track) => ({ value: String(track.trackId), label: `${track.trackName}${track.trackVariant ? ` (${track.trackVariant})` : ""}` }));
   const minMicro = cars.reduce<number | null>((min, car) => (car.microcorrections ? (min === null ? car.microcorrections.perLap : Math.min(min, car.microcorrections.perLap)) : min), null);
   const maxMicro = Math.max(1, ...cars.map((car) => car.microcorrections?.perLap ?? 0));
@@ -211,7 +252,7 @@ export default function CarCompareView() {
         <SelectPill ariaLabel="Temporada" value={seasonValue} options={seasonOptions} onChange={(value) => setSeason(value)} />
         <SelectPill ariaLabel="Pista" value={trackId !== null ? String(trackId) : ""} disabled={!trackOptions.length}
           options={trackOptions.length ? trackOptions : [{ value: "", label: "Nenhuma pista com 2 carros" }]} onChange={(value) => setTrackId(Number(value))} />
-        <SelectPill ariaLabel="Classe" value={category} options={CLASS_OPTIONS} onChange={(value) => { setCategory(value); setSeason("auto"); setTrackId(null); }} />
+        <SelectPill ariaLabel="Classe" value={category} options={CLASS_OPTIONS} onChange={changeCategory} />
         {!!data?.weeks && data.weeks.length > 1 && (
           <SelectPill ariaLabel="Semana" value={week} onChange={setWeek}
             options={[{ value: "all", label: "Todas as semanas" }, ...data.weeks.map((item) => ({ value: String(item.weekNumber), label: `Semana ${item.weekNumber} · ${item.lapCount} voltas` }))]} />

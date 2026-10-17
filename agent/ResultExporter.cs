@@ -1,40 +1,47 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using System.Windows.Automation;
 
 namespace RacingAgent;
 
 /// <summary>
-/// Opt-in idle export of official race results from the installed iRacing UI.
-/// Works through UI Automation only (the tree stays complete while the window is minimized):
-/// InvokePattern on the "Results" button of each race row, then on the modal's download
-/// button and its "Download JSON" item. No focus, SendInput or coordinates. Runs only with the
-/// sim closed and the user idle (60 s), never touches a modal the user already has open, stops
-/// at the first race the server already has, and is capped per run and per day. The JSON that
-/// the UI drops in Downloads as a GUID .tmp is read, queued and deleted immediately.
+/// Background export of official race results from the installed iRacing UI.
+/// Works through UI Automation only: InvokePattern on the "Results" button of each race row, then on
+/// the modal's download button and its "Download JSON" item. No SendInput or coordinates; the window
+/// is brought forward only as far as needed (see ExistingWindow). Every scan fingerprints all visible
+/// "Recent Races" rows (up to 10) and opens only those not yet confirmed in State.SentRaces, so a new
+/// race at any position is caught. Runs only with the sim closed (no user-idle requirement), never
+/// touches a modal/dialog the user already has open, and is capped per run and per day. The JSON that
+/// the UI drops in Downloads as a GUID .tmp is read, queued and deleted immediately (also on failure paths).
 /// </summary>
 internal sealed partial class ResultExporter
 {
     const int MaxPerRun = 5, MaxPerDay = 20;
-    static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(10), ScanInterval = TimeSpan.FromHours(6);
-    internal static bool SkipIdleGate;
+    static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(10), TriggerInterval = TimeSpan.FromSeconds(60), ScanInterval = TimeSpan.FromMinutes(30);
     // Dev check only (--export-test N): export the N newest results regardless of what the server knows.
     internal static int TestCount;
     internal static readonly List<long> TestIds = new();
     readonly object gate = new();
     Stopwatch? sinceAttempt;
     bool running;
+    // Event-driven scan request (agent start with the UI open, iRacing UI opened, simulator closed). Cleared when an attempt starts;
+    // re-armed (bounded) when the attempt could not read the list, e.g. the UI is still loading.
+    static volatile bool scanRequested; static int triggerRetries;
+    internal static void RequestScan(string reason) { if (!scanRequested) AgentLog.Write("Varredura solicitada: " + reason); triggerRetries = 0; scanRequested = true; }
 
-    internal bool Due(Store store) => store.State.PendingResult || DateTimeOffset.UtcNow - store.State.LastScan >= ScanInterval;
+    internal bool Due(Store store) => scanRequested || store.State.PendingResult || DateTimeOffset.UtcNow - store.State.LastScan >= ScanInterval;
 
     internal async Task<string> TryExportAsync(Store store, CancellationToken cancellation = default)
     {
+        var triggered = scanRequested;
         lock (gate)
         {
             if (running) return "Exportação: verificação em andamento.";
-            if (sinceAttempt is not null && sinceAttempt.Elapsed < MinInterval) return "Exportação: aguardando intervalo de dez minutos.";
+            if (sinceAttempt is not null && sinceAttempt.Elapsed < (triggered ? TriggerInterval : MinInterval)) return "Exportação: aguardando intervalo entre tentativas.";
             if (!SafeToOperate()) return "Exportação pausada: simulador aberto.";
+            scanRequested = false;
             var today = DateTimeOffset.UtcNow.ToString("yyyy-MM-dd");
             if (store.State.ExportDay != today) { store.State.ExportDay = today; store.State.Exports = 0; }
             sinceAttempt = Stopwatch.StartNew(); running = true;
@@ -44,18 +51,25 @@ internal sealed partial class ResultExporter
             if (!store.State.FieldMigrated)
             {
                 // The server now treats a race as known only once its field is stored: forget the local "already exported" memory once.
-                store.State.FieldMigrated = true; store.State.LastResultIds = []; store.State.LastTopRace = ""; store.Save();
+                store.State.FieldMigrated = true; store.State.LastResultIds = []; store.State.SentRaces = []; store.Save();
             }
             var known = TestCount > 0 ? new HashSet<long>() : await store.KnownResults(cancellation);
-            if (known is null) return "Exportação: servidor indisponível para conferir corridas conhecidas.";
+            if (known is null) { Rearm(triggered); return Log("Exportação: servidor indisponível para conferir corridas conhecidas."); }
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-            timeout.CancelAfter(TimeSpan.FromSeconds(TestCount > 0 ? 600 : 120));
-            return await Task.Run(() => { try { return Export(store, known, timeout.Token); } finally { RestoreWindowState(); } }, CancellationToken.None).WaitAsync(timeout.Token);
+            timeout.CancelAfter(TimeSpan.FromSeconds(TestCount > 0 ? 600 : 240));
+            listRead = false;
+            var result = await Task.Run(() => { try { return Export(store, known, timeout.Token); } finally { RestoreWindowState(); } }, CancellationToken.None).WaitAsync(timeout.Token);
+            if (!listRead) Rearm(triggered);
+            return Log(result);
         }
-        catch (OperationCanceledException) { return "Exportação: verificação cancelada ou tempo excedido."; }
-        catch (Exception e) { return $"Exportação indisponível: provedor de acessibilidade não respondeu ({e.GetType().Name}: {e.Message} @ {string.Join(" < ", (e.StackTrace ?? "").Split('\n').Take(3).Select(l => l.Trim()))})."; }
+        catch (OperationCanceledException) { Rearm(triggered); return Log("Exportação: verificação cancelada ou tempo excedido."); }
+        catch (Exception e) { AgentLog.Error("Export", e); Rearm(triggered); return $"Exportação indisponível: provedor de acessibilidade não respondeu ({e.GetType().Name}: {e.Message} @ {string.Join(" < ", (e.StackTrace ?? "").Split('\n').Take(3).Select(l => l.Trim()))})."; }
         finally { lock (gate) running = false; }
     }
+    static volatile bool listRead;
+    // A triggered scan that could not read the list (UI still loading) is retried a few times, never indefinitely.
+    static void Rearm(bool triggered) { if (triggered && Interlocked.Increment(ref triggerRetries) <= 4) scanRequested = true; }
+    static string Log(string line) { AgentLog.Write(line); return line; }
 
     static string Export(Store store, HashSet<long> known, CancellationToken cancellation)
     {
@@ -78,13 +92,16 @@ internal sealed partial class ResultExporter
             rows = WaitFor(() => RecentRaces(window) is { Count: > 0 } r ? r : null, cancellation, 8000) ?? [];
         }
         if (rows.Count == 0) return "Exportação: não achei 'Recent Races' (Perfil > Stats) no iRacing.";
-        // Unchanged newest row = no new race since the last scan: nothing is opened, nothing is downloaded.
-        if (TestCount == 0 && store.State.LastTopRace == rows[0].Fingerprint)
+        listRead = true;
+        // Every visible row (up to 10) is checked: rows whose fingerprint is already confirmed are not opened, all others are
+        // opened newest first and checked id by id (server-known ids are confirmed without a download).
+        var confirmed = store.State.SentRaces;
+        if (TestCount == 0 && rows.All(r => confirmed.Contains(r.Fingerprint)))
         {
             store.State.LastScan = DateTimeOffset.UtcNow; store.Save();
-            return "Exportação: nenhuma corrida nova em Recent Races.";
+            return $"Exportação: {rows.Count} corridas em Recent Races, todas já confirmadas.";
         }
-        int exported = 0; var stop = ""; var reachedKnown = false; var runIds = new List<long>();
+        int exported = 0; var stop = ""; var checkedRows = 0; var runIds = new List<long>();
         var limit = TestCount > 0 ? TestCount : MaxPerRun; var staleRetries = 0;
         for (var i = 0; i < rows.Count && exported < limit; i++)
         {
@@ -92,6 +109,8 @@ internal sealed partial class ResultExporter
             if (!SafeToOperate()) { stop = " Pausada: simulador aberto."; break; }
             try {
             var current = RecentRaces(window); if (i >= current.Count) break;
+            var fingerprint = current[i].Fingerprint;
+            if (TestCount == 0 && confirmed.Contains(fingerprint)) continue;
             ScrollIntoView(current[i].Row);
             if (!Invoke(current[i].Button)) { stop = " Falha ao abrir resultado."; break; }
             try
@@ -101,14 +120,17 @@ internal sealed partial class ResultExporter
                 // The modal header shows the subsession id: decide before spending a download.
                 var shown = ModalSubsessionId(window);
                 if (TestCount == 0 && shown is not null && known.Contains(shown.Value))
-                { reachedKnown = true; continue; } // checked id by id: skip known races, keep going down the list
+                { Confirm(store, fingerprint); checkedRows++; continue; } // checked id by id: skip known races, keep going down the list
                 if (store.State.Exports >= MaxPerDay) { stop = " Limite diário de downloads atingido."; break; }
                 var json = DownloadJson(window, modal, cancellation);
                 store.State.Exports++; store.Save();
                 if (json is null) { stop = " Download JSON indisponível."; break; }
-                var id = store.EnqueueOfficial(json, known);
+                long? id;
+                try { id = store.EnqueueOfficial(json, known); }
+                catch (JsonException) { id = null; }
                 if (id is null) { stop = " JSON inesperado."; break; }
-                if (known.Contains(id.Value) && TestCount == 0) { reachedKnown = true; continue; }
+                if (TestCount == 0) Confirm(store, fingerprint); // queued durably (or already known): never reopened
+                if (known.Contains(id.Value) && TestCount == 0) { checkedRows++; continue; }
                 runIds.Add(id.Value);
                 if (TestCount > 0) TestIds.Add(id.Value);
                 exported++;
@@ -120,11 +142,12 @@ internal sealed partial class ResultExporter
         }
         // Newest first, bounded: the durable record of which result ids were already exported.
         store.State.LastResultIds = runIds.Concat(store.State.LastResultIds.Where(x => !runIds.Contains(x))).Take(20).ToList();
-        // Only a scan that reached an already-known race (or exhausted the list) proves the newer rows were all handled.
-        if (TestCount == 0 && (reachedKnown || (stop.Length == 0 && exported < limit))) store.State.LastTopRace = rows[0].Fingerprint;
+        // Keep the confirmed set bounded: forget fingerprints that left the visible list once it grows past 50.
+        if (confirmed.Count > 50) confirmed.IntersectWith(rows.Select(r => r.Fingerprint));
         store.State.LastScan = DateTimeOffset.UtcNow; store.Save();
-        return $"Exportação: {exported} resultado(s) novo(s) enfileirado(s).{stop}{(LastError.Length > 0 ? " [" + LastError + "]" : "")}";
+        return $"Exportação: {exported} resultado(s) novo(s) enfileirado(s), {checkedRows} já conhecida(s).{stop}{(LastError.Length > 0 ? " [" + LastError + "]" : "")}";
     }
+    static void Confirm(Store store, string fingerprint) { if (fingerprint.Length > 0) { store.State.SentRaces.Add(fingerprint); store.Save(); } }
 
     // The header text can sit outside the dialog node, so search the whole window (onscreen only; the page behind has no 7+ digit text).
     internal static long? ModalSubsessionId(AutomationElement window)
@@ -199,7 +222,7 @@ internal sealed partial class ResultExporter
         if (download is null)
         {
             var all = window.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>().ToList();
-            LastError = $"botão de download do rodapé não encontrado (botões {all.Count}, share {all.Count(b => b.Current.Name.Contains("Share"))}, sem nome {all.Count(b => b.Current.Name.Length == 0 && !b.Current.IsOffscreen)}; share {all.First(b => b.Current.Name.Contains("Share")).Current.BoundingRectangle}; menu {string.Join(" ", all.Where(b => b.Current.AutomationId.StartsWith("menu-button-")).Select(b => b.Current.BoundingRectangle.ToString() + (b.Current.IsOffscreen ? "off" : "")))})";
+            LastError = $"botão de download do rodapé não encontrado (botões {all.Count}, share {all.Count(b => b.Current.Name.Contains("Share"))}, sem nome {all.Count(b => b.Current.Name.Length == 0 && !b.Current.IsOffscreen)}; share {all.FirstOrDefault(b => b.Current.Name.Contains("Share"))?.Current.BoundingRectangle.ToString() ?? "ausente"}; menu {string.Join(" ", all.Where(b => b.Current.AutomationId.StartsWith("menu-button-")).Select(b => b.Current.BoundingRectangle.ToString() + (b.Current.IsOffscreen ? "off" : "")))})";
             return null;
         }
         if (!Invoke(download)) { LastError = "Invoke do botão de download falhou"; return null; }
@@ -209,33 +232,72 @@ internal sealed partial class ResultExporter
         if (item is null) return null;
         var downloads = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), "Downloads");
         var started = DateTime.UtcNow.AddSeconds(-1);
-        if (!Invoke(item)) return null;
-        for (var waited = 0; waited < 15000; waited += 500)
+        // Every exit path (success, timeout, invalid content, cancellation) dismisses the Save dialog and then
+        // removes any .tmp created after `started` whose content is an event_result (never other files).
+        try
         {
-            cancellation.ThrowIfCancellationRequested();
-            Thread.Sleep(500);
-            foreach (var file in new DirectoryInfo(downloads).EnumerateFiles("*.tmp").Where(f => f.CreationTimeUtc >= started && f.Length is > 0 and <= 1024 * 1024))
+            if (!Invoke(item)) return null;
+            for (var waited = 0; waited < 15000; waited += 500)
             {
-                try
+                cancellation.ThrowIfCancellationRequested();
+                Thread.Sleep(500);
+                foreach (var file in new DirectoryInfo(downloads).EnumerateFiles("*.tmp").Where(f => f.CreationTimeUtc >= started && f.Length is > 0 and <= 1024 * 1024))
                 {
-                    byte[] bytes;
-                    using (var stream = new FileStream(file.FullName, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+                    try
                     {
-                        bytes = new byte[stream.Length];
-                        stream.ReadExactly(bytes);
+                        var bytes = ReadEventResultTmp(file.FullName);
+                        if (bytes is null) continue;
+                        if (new FileInfo(file.FullName).Length != bytes.Length) continue; // still being written
+                        return bytes;
                     }
-                    var head = Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 120));
-                    if (!head.TrimStart().StartsWith('{') || !head.Contains("\"event_result\"")) continue;
-                    if (new FileInfo(file.FullName).Length != bytes.Length) continue; // still being written
-                    DismissSave(window);
-                    try { File.Delete(file.FullName); } catch (IOException) { }
-                    return bytes;
+                    catch (IOException) { }
                 }
-                catch (IOException) { }
             }
+            return null;
         }
-        DismissSave(window);
-        return null;
+        finally
+        {
+            try { DismissSave(window); } catch (Exception e) { AgentLog.Error("DismissSave", e); }
+            CleanDownloadTmp(downloads, started);
+        }
+    }
+
+    // Reads a Downloads .tmp and returns its bytes only when it is an event_result JSON.
+    static byte[]? ReadEventResultTmp(string path)
+    {
+        byte[] bytes;
+        using (var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+        {
+            bytes = new byte[stream.Length];
+            stream.ReadExactly(bytes);
+        }
+        var head = Encoding.UTF8.GetString(bytes, 0, Math.Min(bytes.Length, 120));
+        return head.TrimStart().StartsWith('{') && head.Contains("\"event_result\"") ? bytes : null;
+    }
+
+    // The browser may still hold the file for a moment after the dialog closes: a few short retries, best effort.
+    static void CleanDownloadTmp(string downloads, DateTime started)
+    {
+        for (var attempt = 0; attempt < 4; attempt++)
+        {
+            var left = 0;
+            try
+            {
+                foreach (var file in new DirectoryInfo(downloads).EnumerateFiles("*.tmp").Where(f => f.CreationTimeUtc >= started && f.Length is > 0 and <= 1024 * 1024))
+                {
+                    try
+                    {
+                        if (ReadEventResultTmp(file.FullName) is null) continue;
+                        File.Delete(file.FullName);
+                    }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { left++; }
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException) { left++; }
+            if (left == 0) return;
+            Thread.Sleep(500);
+        }
+        AgentLog.Write("Aviso: .tmp de event_result não pôde ser removido de Downloads");
     }
 
     // The UI's download opens a native Save dialog (#32770, titled with the blob URL) while the
@@ -372,18 +434,41 @@ internal sealed partial class ResultExporter
             }
         }
         if (handles.Count != 1) return null;
-        // A minimized window exposes no UI tree: restore it without taking focus; the caller re-minimizes it afterwards.
-        windowHandle = handles[0]; restoredFromMinimized = false;
-        if (IsIconic(windowHandle)) { ShowWindow(windowHandle, 4); restoredFromMinimized = true; Thread.Sleep(1500); }
-        // The embedded Chromium only exposes its UI tree while the window is not occluded: raise it for the scan (sim is closed).
+        windowHandle = handles[0]; restoredFromMinimized = false; raisedFrom = IntPtr.Zero; raised = false;
+        var element = AutomationElement.FromHandle(windowHandle);
+        // Escalate only as far as needed to get a complete UI tree (the embedded Chromium hides it while minimized/occluded):
+        // 1) as is (user keeps working, nothing changes on screen); 2) restore from minimized without activation (SW_SHOWNOACTIVATE);
+        // 3) place above other windows without activating (SWP_NOACTIVATE: no focus, keyboard input stays where it was);
+        // 4) last resort, bring to the foreground (steals focus; documented limitation). The caller restores the state afterwards.
+        if (TreeReady(element)) return element;
+        if (IsIconic(windowHandle)) { ShowWindow(windowHandle, 4); restoredFromMinimized = true; Thread.Sleep(1500); if (TreeReady(element)) return element; }
+        raisedFrom = GetForegroundWindow(); raised = true;
+        SetWindowPos(windowHandle, new IntPtr(0) /* HWND_TOP */, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate);
+        Thread.Sleep(1500); if (TreeReady(element)) return element;
         if (GetForegroundWindow() != windowHandle) { SetForegroundWindow(windowHandle); Thread.Sleep(2500); }
-        return AutomationElement.FromHandle(windowHandle);
+        return element;
     }
+    // A usable tree exposes at least one hyperlink (the left navigation); an occluded/minimized Chromium exposes none.
+    static bool TreeReady(AutomationElement window)
+    {
+        try { return window.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Hyperlink)) is not null; }
+        catch (Exception e) when (e is ElementNotAvailableException or InvalidOperationException) { return false; }
+    }
+    const uint SwpNoSize = 0x1, SwpNoMove = 0x2, SwpNoActivate = 0x10;
     [DllImport("user32.dll")] static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int cx, int cy, uint flags);
 
-    static IntPtr windowHandle; static bool restoredFromMinimized;
-    internal static void RestoreWindowState() { if (restoredFromMinimized && windowHandle != IntPtr.Zero) ShowWindow(windowHandle, 7); restoredFromMinimized = false; }
+    static IntPtr windowHandle, raisedFrom; static bool restoredFromMinimized, raised;
+    internal static void RestoreWindowState()
+    {
+        if (windowHandle == IntPtr.Zero) return;
+        if (restoredFromMinimized) ShowWindow(windowHandle, 7); // SW_SHOWMINNOACTIVE
+        else if (raised && raisedFrom != IntPtr.Zero && raisedFrom != windowHandle)
+            SetWindowPos(windowHandle, raisedFrom, 0, 0, 0, 0, SwpNoSize | SwpNoMove | SwpNoActivate); // back just behind the window the user was on
+        if (raised && raisedFrom != IntPtr.Zero && GetForegroundWindow() != raisedFrom) SetForegroundWindow(raisedFrom);
+        restoredFromMinimized = false; raised = false; raisedFrom = IntPtr.Zero;
+    }
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool IsIconic(IntPtr hwnd);
     [DllImport("user32.dll")] [return: MarshalAs(UnmanagedType.Bool)] static extern bool ShowWindow(IntPtr hwnd, int command);
 
@@ -409,9 +494,4 @@ internal sealed partial class ResultExporter
     }
 
     [DllImport("user32.dll")] static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
-    [StructLayout(LayoutKind.Sequential)]
-    struct LastInputInfo { internal uint Size; internal uint Time; }
-    [DllImport("user32.dll")]
-    [return: MarshalAs(UnmanagedType.Bool)]
-    static extern bool GetLastInputInfo(ref LastInputInfo input);
 }
