@@ -33,13 +33,22 @@ export function cachedQuery<T>(keyParts: (string | number | null | undefined)[],
 
 /** Invalidate Data Cache + Vercel CDN by tag. Never throws: a failed invalidation must not break a write route. */
 export async function invalidate(...tags: CacheTag[]) {
-  const unique = [...new Set(tags)];
+  let unique: CacheTag[] = [...new Set(tags)];
   // Keep the last successful response available while new data is calculated.
+  // Content-aware: only tags whose source data actually changed are invalidated, so a sync that
+  // found nothing new neither dirties the cache nor spends refresh budget.
   try {
     const { supabaseAdmin } = await import("@/lib/supabase-admin");
-    const { error } = await supabaseAdmin.rpc("invalidate_analytics_cache", { p_tags: unique });
-    if (error) console.warn("durable cache invalidation failed", error.code);
+    const { data, error } = await supabaseAdmin.rpc("invalidate_analytics_cache_if_changed", { p_tags: unique });
+    if (!error && Array.isArray(data)) {
+      unique = unique.filter((tag) => (data as string[]).includes(tag));
+    } else {
+      if (error) console.warn("durable cache invalidation failed", error.code);
+      const fallback = await supabaseAdmin.rpc("invalidate_analytics_cache", { p_tags: unique });
+      if (fallback.error) console.warn("durable cache invalidation failed", fallback.error.code);
+    }
   } catch { console.warn("durable cache invalidation unavailable"); }
+  if (!unique.length) return;
   for (const tag of unique) {
     try { revalidateTag(tag); } catch (error) { console.warn("revalidateTag failed", tag, error instanceof Error ? error.message : error); }
   }
@@ -49,6 +58,8 @@ export async function invalidate(...tags: CacheTag[]) {
   } catch (error) {
     console.warn("invalidateByTag failed", error instanceof Error ? error.message : error);
   }
+  // Warm only when a cached analytics tag changed (sync-status alone has no durable entries).
+  if (!unique.some((tag) => tag !== CACHE_TAGS.syncStatus)) return;
   try {
     const { waitUntil } = await import("@vercel/functions");
     const { scheduleAnalyticsWarm } = await import("@/lib/analytics-warm");

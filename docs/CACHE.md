@@ -16,6 +16,10 @@ Implementação: `lib/cache.ts`. Camadas: (1) CDN da Vercel via `Cache-Control: 
 
 A meta de 3s precisa ser medida no navegador e nas variantes preparadas. Uma variante realmente inédita sem resultado persistido ainda exige seu primeiro cálculo; não interpretar CDN HIT como prova de cold start nem prometer latência absoluta da rede. Preparação depois de publicação e invalidação contínua são parte do fluxo.
 
+## Invalidação por conteúdo (19/10/2026)
+
+`invalidate()` só marca o cache como desatualizado quando os dados-fonte mudaram de fato. A RPC `invalidate_analytics_cache_if_changed` compara uma impressão digital por tag (`analytics_source_fingerprint()`: contagens/somas de race_results, rating_history, laps, lap_sectors, setup_files etc.) com a última que invalidou (`analytics_cache_control.fingerprints`). Sync sem novidade = nenhuma entrada suja, nenhum refresh, nenhum warm. `sync-status` não tem impressão digital e sempre invalida (sem entradas duráveis). Se a RPC faltar, cai para a invalidação incondicional antiga. Quando o orçamento de refresh acaba, usuários recebem o último payload válido como `STALE` em vez de erro (só requisições automáticas de warm recebem 503). Ao criar nova tabela que alimente uma rota em cache, inclua-a na função de impressão digital.
+
 ## Tags
 
 | Tag | Cobre | Rotas GET |
