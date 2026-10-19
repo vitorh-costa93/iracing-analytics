@@ -117,9 +117,20 @@ export function withDurableCache<R extends Request>(handler: (request: R) => Pro
         const { data, error } = await db.rpc("claim_analytics_cache_refresh", { p_key: key, p_lease_seconds: LEASE_SECONDS });
         if (!error && data === true) return compute();
       } catch { /* A denied or unavailable lease must not bypass the refresh budget. */ }
-      if (!usable) return Response.json({ status: "unavailable", message: "Cache refresh unavailable" }, {
-        status: 503, headers: { "Cache-Control": "no-store", "X-Analytics-Cache": "UNAVAILABLE" },
-      });
+      if (!usable) {
+        // Automated warm requests must never overspend the refresh budget.
+        if (warm) return Response.json({ status: "unavailable", message: "Cache refresh unavailable" }, {
+          status: 503, headers: { "Cache-Control": "no-store", "X-Analytics-Cache": "UNAVAILABLE" },
+        });
+        // A person is waiting: never show an error. Serve the last good payload of this contract
+        // (marked STALE, never CDN-cached); if none is servable, compute once without writing storage.
+        const servable = entry.version === options.version && isOkPayload(entry.payload)
+          && Number.isFinite(generated) && generated <= now && now - generated < hardTtlMs;
+        if (!servable) return annotated(await handler(request), "UNAVAILABLE", true);
+        return Response.json(entry.payload, { headers: {
+          "X-Analytics-Cache": "STALE", "X-Analytics-Generated-At": entry.generated_at, "Cache-Control": "no-store",
+        } });
+      }
     } else if (!usable) return computeCold();
     // The usable guard above guarantees a stored response, including denied warm requests.
     if (!entry) return computeCold();

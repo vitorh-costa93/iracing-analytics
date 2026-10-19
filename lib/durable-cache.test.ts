@@ -49,14 +49,22 @@ describe("durable response cache", () => {
     expect(handler).toHaveBeenCalledTimes(2);
   });
 
-  it("never serves a changed source older than 15 minutes when refresh budget is denied", async () => {
-    const wrapped = withDurableCache(async () => good(), options);
+  it("serves the last good payload as STALE (never an error) to users when refresh budget is denied", async () => {
+    const handler = vi.fn(async () => good());
+    const wrapped = withDurableCache(handler, options);
     await wrapped(request());
     const row = state.writes[0];
     row.generated_at = new Date(Date.now() - 30 * 60_000).toISOString();
     row.invalidated_at = new Date(Date.now() - 16 * 60_000).toISOString();
     state.claim = false;
-    expect((await wrapped(request())).status).toBe(503);
+    const res = await wrapped(request());
+    expect(res.status).toBe(200);
+    expect(res.headers.get("x-analytics-cache")).toBe("STALE");
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(handler).toHaveBeenCalledTimes(1);
+    row.generated_at = new Date(Date.now() - 8 * 86400_000).toISOString();
+    expect((await wrapped(request())).status).toBe(200);
+    expect(handler).toHaveBeenCalledTimes(2);
   });
   it("keeps private persistent responses out of CDN on MISS and HIT", async () => {
     const handler = vi.fn(async () => Response.json({ status: "ok" }, { headers: {
