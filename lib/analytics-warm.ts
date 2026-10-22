@@ -1,4 +1,5 @@
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { analyticsWarmPlan } from "@/lib/analytics-warm-plan";
 
 // Never use a request Host/Origin to send the server secret.
 const ORIGIN = "https://iracing-analytics.vercel.app";
@@ -29,13 +30,9 @@ export async function warmAnalytics() {
   const { data: allowed, error } = await supabaseAdmin.rpc("claim_analytics_cache_warm");
   if (error || !allowed) return;
   const { data: rows, error: readError } = await supabaseAdmin.from("analytics_response_cache")
-    .select("route").lt("refresh_after", new Date().toISOString()).order("generated_at").limit(8);
+    .select("route,generated_at,refresh_after").order("generated_at", { ascending: false }).limit(512);
   if (readError) return;
-  const routes = [...new Set([
-    "/api/telemetry/car-comparison?category=gt3", "/api/telemetry/car-comparison?category=gtp",
-    "/api/telemetry/active-week", "/api/telemetry/race-debrief",
-    ...(rows ?? []).map(row => String(row.route)),
-  ])].filter(route => ALLOWED.test(route));
+  const routes = analyticsWarmPlan(rows ?? []).filter(route => ALLOWED.test(route));
   const deadline = Date.now() + 220_000;
   for (let index = 0; index < 8 && index < routes.length && Date.now() < deadline; index += 2) {
     await Promise.allSettled(routes.slice(index, index + 2).map(async route => {
@@ -43,8 +40,8 @@ export async function warmAnalytics() {
         headers: { "x-analytics-warm": secret }, cache: "no-store", signal: AbortSignal.timeout(Math.min(50_000, deadline - Date.now())),
       });
       const body = await response.text();
-      // Prepare the initial comparison for a newly discovered track, before a visitor opens it.
-      if (route.startsWith("/api/telemetry/car-comparison?") && !route.includes("trackId=")) {
+      // Keep already pending routes ahead of optional comparison discovery.
+      if (routes.length < 8 && route.startsWith("/api/telemetry/car-comparison?") && !route.includes("trackId=")) {
         try {
           const payload = JSON.parse(body);
           const trackId = payload.tracks?.[0]?.trackId;

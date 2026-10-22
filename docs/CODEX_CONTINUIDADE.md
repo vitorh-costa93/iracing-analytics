@@ -1,5 +1,11 @@
 # Continuidade — iracing-analytics
 
+## Frescor e orçamento de cache — 21/10/2026
+- Baseline local/GitHub igual a 684fb41; apenas agent/backfill-run.out e agent/resumo.txt locais não versionados, preservados. Cache de overview gerado 20/10 e reports 17/10; dirty_refreshes=64, refreshes=0. Supabase compartilhado tem migrations de outros projetos: não fazer db push indiscriminado.
+- Correção: migration 20261022000128 aplicada; reserva64 para results/ref, fallback normal128, teto192 e leases intactos. lib/analytics-warm-plan.ts prioriza leituras principais, deduplica versões e exclui fresh antes de aquecer. Status/overview revalidam ao foco e 120s visível sem sync.
+- SQL real em rollback: fallback64→normal, reserva com normal128, teto192, lease único e lap-only sem consumir reserva PASS. npm test 544 PASS +1 skip; build PASS. Publicação e prova HTTP/UI pendentes no momento deste registro.
+- Quatro resultados de 21/10 confirmados: 89536363/89538576 Spa SF23, 89537745/89542108 Mugello Aston. Última Mugello enviada automaticamente 22/10 00:00UTC após cota10MiB; não houve bypass ou reimportação manual.
+
 ## Correção permanente e PRD — 14/10/2026
 - GitHub: 9273f58 (retenção/contrato/referências), d576831 (retry por lease), 11393bd (cache versionado e rotação). PRD Vercel READY em iracing-analytics.vercel.app, deployment dpl_2Nv7wmeHPxBF5C7oygQFFfViLihR. Agente instalado atualizado, bandeja ativa, DPAPI/checkpoints preservados.
 - Migrations preserve_agent_telemetry e agent_reference aplicadas. Replay de dois recibos lap_v2 retornou duplicate. Retenção nativa não remove temporada desconhecida; Garage61 não tenta buscar ira_.

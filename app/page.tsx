@@ -206,6 +206,25 @@ export default function Home() {
     loadDashboard();
   }, [loadDashboard]);
 
+  // The native agent writes outside this tab. Revalidate cached reads on return from the game
+  // and while visible; never trigger Garage61 sync or heavy force-refresh from a timer.
+  useEffect(() => {
+    let last = Date.now();
+    const revalidate = () => {
+      if (document.visibilityState !== "visible" || Date.now() - last < 30_000) return;
+      last = Date.now();
+      void loadDashboard();
+    };
+    const timer = window.setInterval(revalidate, 120_000);
+    window.addEventListener("focus", revalidate);
+    document.addEventListener("visibilitychange", revalidate);
+    return () => {
+      window.clearInterval(timer);
+      window.removeEventListener("focus", revalidate);
+      document.removeEventListener("visibilitychange", revalidate);
+    };
+  }, [loadDashboard]);
+
   useEffect(() => {
     function onImportComplete(event: MessageEvent) {
       if (event.origin !== "https://irstats.com" && event.origin !== "https://garage61.net" && event.origin !== window.location.origin) return;

@@ -1,5 +1,11 @@
 # Cache compartilhado (servidor/CDN)
 
+## Correção de frescor — 21/10/2026
+- Incidente: resultados no banco, overview de 20/10 e relatórios de 17/10; reserva de 64 esgotada e orçamento normal de 128 ocioso. Aquecimento forçava comparações frescas e versões antigas antes das telas principais.
+- `claim_analytics_cache_refresh`: reserva de 64 exclusiva para mudanças reais de results/telemetry-ref posteriores à geração da entrada. Mudanças somente de laps usam o orçamento normal. Se a reserva acabar, pode usar vagas normais livres; teto total continua 192/dia, lease e reset diário preservados.
+- `analytics-warm-plan.ts`: deduplica versões pela geração mais recente da URL antes de filtrar vencimento; aquece apenas rotas vencidas, no máximo oito. Prioriza overview, semana ativa, corrida e reports; descobertas opcionais não deslocam a fila existente.
+- Navegador: status compartilhado e overview revalidam ao recuperar foco/visibilidade e a cada 120s enquanto visíveis. Leituras normais com cache, sem sync nem force-refresh recorrente; status tem deduplicação mínima de 60s, overview de 30s no foco. Não há polling em aba oculta.
+
 Implementação: `lib/cache.ts`. Camadas: (1) CDN da Vercel via `Cache-Control: public, s-maxage=N, stale-while-revalidate=M` + header `Vercel-Cache-Tag`; (2) Data Cache do Next (`cachedQuery` = `unstable_cache`); (3) Map em memória por instância (mantido onde havia lógica delicada). Respostas com status != 200 saem `no-store`. Nada com cookie/auth por usuário ou conteúdo privado de setup vai para o CDN.
 
 ## Respostas persistentes e primeiro acesso (16/10/2026)
