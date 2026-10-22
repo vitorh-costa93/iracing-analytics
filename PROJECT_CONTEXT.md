@@ -4,6 +4,7 @@
 - Corrigida distribuição do orçamento persistente: 64 atualizações reservadas para resultados/referências, 128 normais, com empréstimo das vagas normais livres e teto total de 192/dia intacto. Telemetria frequente não consome a reserva de resultados.
 - Aquecimento elimina versões obsoletas e respostas ainda frescas da seleção; prioriza overview/semana/corrida/report. Status e overview no navegador revalidam leituras com cache ao voltar do simulador e enquanto visíveis (120s), sem executar sync externo.
 - Evidência: quatro corridas de 21/10 confirmadas no Supabase (duas SF23/Spa, duas Aston GT3/Mugello). A última Mugello aguardou a cota diária de 10 MiB do agente e foi enviada automaticamente no reset UTC; cota preservada. Ver docs/CACHE.md e continuidade para validação PRD.
+- Reserva das telas atuais protegida também de seletores históricos. Durante lote de ingestão, snapshots avançam como STALE quando invalidados durante cálculo, sem republicar fresh nem retroceder a geração. Permissão server-only do contador de downloads de telemetria restaurada para preservar a medição de consumo.
 
 ## Cache persistente e latência — 16/10/2026
 - Continuação da base de cache 54535d6: respostas analíticas pré-calculadas em Supabase (`analytics_response_cache`), servidas por `lib/durable-cache.ts`, sobrevivem a publicação/evicção da CDN. Atualização em segundo plano com lease, invalidação por tag com barreira contra cálculos anteriores à escrita, preparação limitada após sync e script explícito de preparação/medição de seletores reais (`scripts/warm-analytics.mjs`).

@@ -3,7 +3,9 @@
 ## Frescor e orçamento de cache — 21/10/2026
 - Baseline local/GitHub igual a 684fb41; apenas agent/backfill-run.out e agent/resumo.txt locais não versionados, preservados. Cache de overview gerado 20/10 e reports 17/10; dirty_refreshes=64, refreshes=0. Supabase compartilhado tem migrations de outros projetos: não fazer db push indiscriminado.
 - Correção: migration 20261022000128 aplicada; reserva64 para results/ref, fallback normal128, teto192 e leases intactos. lib/analytics-warm-plan.ts prioriza leituras principais, deduplica versões e exclui fresh antes de aquecer. Status/overview revalidam ao foco e 120s visível sem sync.
-- SQL real em rollback: fallback64→normal, reserva com normal128, teto192, lease único e lap-only sem consumir reserva PASS. npm test 544 PASS +1 skip; build PASS. Publicação e prova HTTP/UI pendentes no momento deste registro.
+- SQL real em rollback: fallback64→normal, reserva com normal128, teto192, lease único, histórico/lap-only sem consumir reserva, snapshot STALE sem regressão e upsert idempotente PASS. npm test 544 PASS +1 skip; build PASS. Código e261e94 publicado em PRD READY dpl_FJB341pqHzz5awyL7tPGtrKW3Ybq.
+- UI Chrome confirmou quatro linhas em Últimas corridas. HTTP overview HIT com quatro IDs e race-debrief HIT com quatro labels (2,438s), reports week formula/gt3 HIT (569/307ms). Não foi reexecutado sync/backfill nem apagado dado fonte. Contador de downloads estava sem EXECUTE para service_role nos logs; grant server-only restaurado e teste de execução em rollback PASS.
+- Migrations adicionais PRD 20261022000631 (reserva hot), 20261022000758 (progresso STALE), 20261022000922 (contador server-only). Sem mudança de código posterior ao build aprovado. Snapshot pendente desaparece por atualização normal; não resetar cotas nem filas para corrigir apresentação.
 - Quatro resultados de 21/10 confirmados: 89536363/89538576 Spa SF23, 89537745/89542108 Mugello Aston. Última Mugello enviada automaticamente 22/10 00:00UTC após cota10MiB; não houve bypass ou reimportação manual.
 
 ## Correção permanente e PRD — 14/10/2026
