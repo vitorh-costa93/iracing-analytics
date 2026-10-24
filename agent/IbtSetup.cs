@@ -56,6 +56,9 @@ static class IbtSetup
         // Local season bucket (the server resolves the real season from recordedAt): seasons start mid-Dec/Mar/Jun/Sep.
         var bucket = recordedAt.UtcDateTime.AddDays(16); var season = $"{bucket.Year}Q{(bucket.Month - 1) / 3 + 1}";
         var digest = Ibt.Hash(Encoding.UTF8.GetBytes(string.Join('\n', identity)));
+        // iRacing's name of the loaded setup file (e.g. "TS 26S4 SF23 W06 Spa Race.sto"): lets the server attach these
+        // parameters to the matching uploaded .sto. Part of the key so setups sent before the field existed are re-sent once.
+        var rawName = info.S("DriverSetupName") ?? ""; var setupName = rawName.Length <= 200 && !rawName.Any(char.IsControl) ? rawName.Trim() : "";
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
             version = 1, kind = "ibt_setup", key = Ibt.Hash(Encoding.UTF8.GetBytes($"ibt_setup:{user}:{carId}:{trackId}:{season}:{digest}:{setupName}")),
