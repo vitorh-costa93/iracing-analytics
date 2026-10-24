@@ -92,7 +92,7 @@ async function handlePost(request:NextRequest){
    // The loaded file's name matches an uploaded .sto of this context that has no readable parameters: give it these
    // parameters (the dropdown entry the driver already knows) instead of adding a second "IBT xxxx" entry.
    if(setup.setupName){
-    const norm=(v:string)=>v.replace(/\.sto$/i,'').replace(/[\s_]+/g,' ').trim().toLowerCase();
+    const norm=(v:string)=>v.replace(/^.*[\/]/,'').replace(/\.sto$/i,'').replace(/[\s_]+/g,' ').trim().toLowerCase();
     const {data:uploads,error:uploadsError}=await db.from('setup_files').select('id,filename').eq('driver_id',device.driver_id).eq('car_id',car).eq('track_id',track).eq('source','manual_commercial').is('decoded_params',null).limit(60);
     if(uploadsError)throw new Error('setup');
     const hit=(uploads??[]).find(u=>norm(String(u.filename))===norm(setup.setupName));
