@@ -89,6 +89,11 @@ async function handlePost(request:NextRequest){
    const setup=parseAgentIbtSetup(body,Number(device.customer_id));
    const [car,track]=await Promise.all([catalog('cars',setup.nativeCarId,setup.carName),catalog('tracks',setup.nativeTrackId,setup.trackName,setup.trackConfig)]);
    const id=ibtSetupIdentity(setup,car,track);key=id.key;hash=id.hash;bytes=size;setupRows=setup.rows;
+   // Same rule as the Garage61 import (one setup per season+car+track): a setup already stored for this context
+   // by another source (same parameters) is not stored again.
+   const {data:known,error:knownError}=await db.from('setup_files').select('decoded_params').eq('driver_id',device.driver_id).eq('season_id',setup.season.id).eq('car_id',car).eq('track_id',track).neq('source',IBT_SETUP_SOURCE).not('decoded_params','is',null).limit(30);
+   if(knownError)throw new Error('setup');
+   if(classifyAgainstFixed(setup.rows,(known??[]).map(r=>r.decoded_params))==='fixed')return reply(200,'stored');
    row={driver_id:device.driver_id,season_id:setup.season.id,car_id:car,track_id:track,source:IBT_SETUP_SOURCE,setup_kind:'unknown',filename:id.filename,
     storage_path:`${IBT_SETUP_SOURCE}/${device.driver_id}/${setup.season.id}/${car}/${track}/${setup.identity}`,file_size:Buffer.byteLength(JSON.stringify(setup.rows)),
     decoded_car_name:String(car),decoded_params:setup.rows,decoder:'iracing_ibt'};
