@@ -58,11 +58,11 @@ static class IbtSetup
         var digest = Ibt.Hash(Encoding.UTF8.GetBytes(string.Join('\n', identity)));
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
-            version = 1, kind = "ibt_setup", key = Ibt.Hash(Encoding.UTF8.GetBytes($"ibt_setup:{user}:{carId}:{trackId}:{season}:{digest}")),
+            version = 1, kind = "ibt_setup", key = Ibt.Hash(Encoding.UTF8.GetBytes($"ibt_setup:{user}:{carId}:{trackId}:{season}:{digest}:{setupName}")),
             setup = new
             {
                 customerId = user, nativeCarId = carId, nativeTrackId = trackId, carName = mine.S("CarScreenName") ?? "", trackName = weekend.S("TrackName") ?? "",
-                trackConfig = weekend.S("TrackConfigName") ?? "", loadType = info.S("DriverSetupLoadTypeName") ?? "", recordedAt = recordedAt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture), parameters,
+                trackConfig = weekend.S("TrackConfigName") ?? "", loadType = info.S("DriverSetupLoadTypeName") ?? "", setupName = setupName, recordedAt = recordedAt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture), parameters,
             },
         });
         if (payload.Length > MaxPayload) { reason = "payload acima de 64 KiB"; return null; }

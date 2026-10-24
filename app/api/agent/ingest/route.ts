@@ -6,7 +6,7 @@ import { parseAgentTelemetry, agentHash } from '@/lib/agent-telemetry';
 import { parseAgentReference, AGENT_REFERENCE_PREFIX } from '@/lib/agent-reference';
 import { parseAgentIbtResult, IBT_RESULT_MAX_BYTES } from '@/lib/agent-ibt-result';
 import { parseAgentIbtSetup, ibtSetupIdentity, IBT_SETUP_MAX_BYTES, IBT_SETUP_SOURCE } from '@/lib/agent-ibt-setup';
-import { classifyAgainstFixed, DecodedSetupRow } from '@/lib/setup-params';
+import { classifyAgainstFixed, DecodedSetupRow, setupIdentityHash } from '@/lib/setup-params';
 export const runtime='nodejs';
 export const maxDuration=30;
 const reply=(status:number,code:string,retry?:number)=>NextResponse.json({status:code},{status,headers:{'Cache-Control':'no-store',...(retry?{'Retry-After':String(retry)}:{})}});
@@ -89,6 +89,23 @@ async function handlePost(request:NextRequest){
    const setup=parseAgentIbtSetup(body,Number(device.customer_id));
    const [car,track]=await Promise.all([catalog('cars',setup.nativeCarId,setup.carName),catalog('tracks',setup.nativeTrackId,setup.trackName,setup.trackConfig)]);
    const id=ibtSetupIdentity(setup,car,track);key=id.key;hash=id.hash;bytes=size;setupRows=setup.rows;
+   // The loaded file's name matches an uploaded .sto of this context that has no readable parameters: give it these
+   // parameters (the dropdown entry the driver already knows) instead of adding a second "IBT xxxx" entry.
+   if(setup.setupName){
+    const norm=(v:string)=>v.replace(/\.sto$/i,'').replace(/[\s_]+/g,' ').trim().toLowerCase();
+    const {data:uploads,error:uploadsError}=await db.from('setup_files').select('id,filename').eq('driver_id',device.driver_id).eq('car_id',car).eq('track_id',track).eq('source','manual_commercial').is('decoded_params',null).limit(60);
+    if(uploadsError)throw new Error('setup');
+    const hit=(uploads??[]).find(u=>norm(String(u.filename))===norm(setup.setupName));
+    if(hit){
+     const {error:fillError}=await db.from('setup_files').update({decoded_params:setup.rows,decoded_at:new Date().toISOString(),decoder:'iracing_ibt',decoded_car_name:String(car)}).eq('id',hit.id).is('decoded_params',null);
+     if(fillError)throw new Error('setup');
+     // The same parameters stored earlier as a separate "IBT xxxx" entry of this context are now redundant.
+     const {data:twins}=await db.from('setup_files').select('id,decoded_params').eq('driver_id',device.driver_id).eq('car_id',car).eq('track_id',track).eq('source',IBT_SETUP_SOURCE).limit(60);
+     const twinIds=(twins??[]).filter(t=>setupIdentityHash(t.decoded_params as DecodedSetupRow[])===setupIdentityHash(setup.rows)).map(t=>t.id);
+     if(twinIds.length)await db.from('setup_files').delete().in('id',twinIds);
+     return reply(200,'stored');
+    }
+   }
    // Same rule as the Garage61 import (one setup per season+car+track): a setup already stored for this context
    // by another source (same parameters) is not stored again.
    const {data:known,error:knownError}=await db.from('setup_files').select('decoded_params').eq('driver_id',device.driver_id).eq('season_id',setup.season.id).eq('car_id',car).eq('track_id',track).neq('source',IBT_SETUP_SOURCE).not('decoded_params','is',null).limit(30);

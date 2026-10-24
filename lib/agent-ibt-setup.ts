@@ -40,6 +40,8 @@ export type AgentIbtSetup = {
   season: { id: string; name: string }; rows: DecodedSetupRow[]; identity: string;
   /** iRacing's own DriverSetupLoadTypeName: 'fixed' = the series' fixed setup was loaded (authoritative). */
   loadType: 'fixed' | 'user' | '';
+  /** DriverSetupName of the IBT (the loaded .sto's name), '' when absent. */
+  setupName: string;
 };
 
 /**
@@ -58,6 +60,7 @@ export function parseAgentIbtSetup(payload: unknown, customerId: number): AgentI
   nativeCarId: nativeId(s.nativeCarId), nativeTrackId: nativeId(s.nativeTrackId),
   carName: name(s.carName), trackName: name(s.trackName), trackConfig: name(s.trackConfig ?? '', true),
   season: { id: season.id, name: season.name }, rows, identity: setupIdentityHash(rows),
+  setupName: typeof s.setupName === 'string' ? name(s.setupName, true) : '',
   loadType: typeof s.loadType === 'string' && s.loadType.trim().toLowerCase() === 'fixed' ? 'fixed' : typeof s.loadType === 'string' && s.loadType.trim() ? 'user' : '',
  };
 }
