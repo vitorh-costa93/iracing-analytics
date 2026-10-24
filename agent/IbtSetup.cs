@@ -62,7 +62,7 @@ static class IbtSetup
             setup = new
             {
                 customerId = user, nativeCarId = carId, nativeTrackId = trackId, carName = mine.S("CarScreenName") ?? "", trackName = weekend.S("TrackName") ?? "",
-                trackConfig = weekend.S("TrackConfigName") ?? "", recordedAt = recordedAt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture), parameters,
+                trackConfig = weekend.S("TrackConfigName") ?? "", loadType = info.S("DriverSetupLoadTypeName") ?? "", recordedAt = recordedAt.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ", CultureInfo.InvariantCulture), parameters,
             },
         });
         if (payload.Length > MaxPayload) { reason = "payload acima de 64 KiB"; return null; }
