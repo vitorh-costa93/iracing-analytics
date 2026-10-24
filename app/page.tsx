@@ -164,7 +164,7 @@ export default function Home() {
   const [message, setMessage] = useState<string | null>(null);
   const [chartCategory, setChartCategory] = useState<Category>("sports");
   // Celular (etapa 7, Mobile.dc.html): mostra uma categoria de KPIs por vez; no desktop as duas aparecem.
-  const [mobileFilter, setMobileFilter] = useState<"all" | Category>("sports");
+  const [mobileFilter, setMobileFilter] = useState<"all" | Category>("all");
   const isMobile = useIsMobile();
   // No celular o filtro do topo vale para a página inteira (KPIs, gráfico, performance, corridas e contextos).
   const pageFilter: "all" | Category = isMobile ? mobileFilter : "all";
