@@ -8,7 +8,7 @@ type SetupRow = { id: string; filename: string; storage_path: string; car_id: nu
 
 async function decode(setup: SetupRow) {
   if (Array.isArray(setup.decoded_params)) return { carName: setup.decoded_car_name, rows: setup.decoded_params as DecodedRow[] };
-  throw new Error(`O ${setupDisplayName(setup.filename)} ainda não tem parâmetros lidos pelo Garage61. Rode uma sessão com ele antes de comparar.`);
+  throw new Error(`O ${setupDisplayName(setup.filename)} ainda não tem parâmetros lidos. Rode uma sessão no iRacing com esse setup carregado (o agente lê os parâmetros do IBT automaticamente) antes de comparar.`);
 }
 
 export async function POST(request: NextRequest) {
