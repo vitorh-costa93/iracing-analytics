@@ -46,6 +46,8 @@ sealed class State
     public Dictionary<string, string> ReferencePayloads { get; set; } = [];
     public Dictionary<string, string> ReferenceFingerprints { get; set; } = [];
     public int ReferenceScanCursor { get; set; }
+    /// <summary>Keys of ibt_setup payloads already queued (one per distinct setup/car/track/season; newest last, max 500).</summary>
+    public List<string> SetupKeys { get; set; } = [];
 }
 sealed class Attempt { public int Count { get; set; } public DateTimeOffset Next { get; set; } }
 sealed class Store
@@ -94,7 +96,7 @@ sealed class Store
         using var doc = JsonDocument.Parse(payload);
         var key = doc.RootElement.GetProperty("key").GetString()!;
         if (key.Length != 64 || key.Any(c => !char.IsAsciiHexDigit(c))) throw new InvalidDataException("queue_key");
-        if (payload.Length > (doc.RootElement.GetProperty("kind").GetString() switch { "result" => 1024 * 1024, "ibt_result" => SessionResult.MaxPayload, _ => 512 * 1024 })) throw new InvalidDataException("payload_size");
+        if (payload.Length > (doc.RootElement.GetProperty("kind").GetString() switch { "result" => 1024 * 1024, "ibt_result" => SessionResult.MaxPayload, "ibt_setup" => IbtSetup.MaxPayload, _ => 512 * 1024 })) throw new InvalidDataException("payload_size");
         var path = Path.Combine(Root, "queue", key + ".json");
         if (File.Exists(path) || File.Exists(Path.Combine(Root, "quarantine", key + ".json"))) return;
         if (Directory.EnumerateFiles(Path.Combine(Root, "queue")).Concat(Directory.EnumerateFiles(Path.Combine(Root, "quarantine"))).Sum(p => new FileInfo(p).Length) + payload.Length > 100L * 1024 * 1024) throw new IOException("queue_full");
@@ -110,6 +112,24 @@ sealed class Store
             Enqueue(snapshot.Payload); State.ResultSubsessions.Add(snapshot.SubsessionId); State.PendingResult = false;
         }
         Save(); Status = snapshot.ResultsOfficial ? "Resultado oficial capturado" : "Resultado provisório capturado"; return true;
+    }
+    /// <summary>Queues the CarSetup of an own .ibt once per distinct setup (deterministic key); readouts such as tyre
+    /// wear or fuel do not create a new setup. Never blocks the telemetry of the same file.</summary>
+    public bool EnqueueSetup(Stream stream)
+    {
+        byte[]? payload;
+        try { payload = IbtSetup.FromIbt(stream, out _); } catch (Exception e) when (e is InvalidDataException or EndOfStreamException or JsonException) { return false; }
+        if (payload is null) return false;
+        using (var doc = JsonDocument.Parse(payload))
+        {
+            var key = doc.RootElement.GetProperty("key").GetString()!;
+            lock (persistGate)
+            {
+                if (State.SetupKeys.Contains(key)) return false;
+                Enqueue(payload); State.SetupKeys.Add(key); if (State.SetupKeys.Count > 500) State.SetupKeys.RemoveRange(0, State.SetupKeys.Count - 500);
+            }
+        }
+        Save(); return true;
     }
     /// <summary>Queues an official event_result JSON exported by the idle exporter (no file left in
     /// Downloads). Returns the subsession id, or null when the payload is not an event_result.</summary>
@@ -175,6 +195,7 @@ sealed class Store
             {
                 var result = SessionResult.FromIbt(stream, out _); stream.Position = 0;
                 if (result is not null) EnqueueResult(result);
+                EnqueueSetup(stream); stream.Position = 0;
             }
             var targets = new Dictionary<string, (string car, int track, int? year, int? quarter)>();
             if (path.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase)) foreach (var payload in Ibt.Read(stream))

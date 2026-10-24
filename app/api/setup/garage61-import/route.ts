@@ -1,6 +1,7 @@
 import { CACHE_TAGS as T, withInvalidate } from "@/lib/cache";
 import { NextRequest, NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabase-admin";
+import { setupParamsToRows } from "@/lib/setup-params";
 
 type IncomingSetup = {
   car: number;
@@ -20,17 +21,8 @@ const CORS_HEADERS = {
   "Access-Control-Allow-Headers": "Content-Type, x-import-key",
 };
 
-function humanize(value: string) {
-  return value.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/\bArb\b/g, "ARB").replace(/\bRd\b/g, "3rd");
-}
-
-function decodedRows(parameters: IncomingSetup["parameters"]) {
-  return Object.entries(parameters ?? {}).flatMap(([tab, sections]) =>
-    Object.entries(sections ?? {}).flatMap(([section, values]) =>
-      Object.entries(values ?? {}).map(([label, metricValue]) => ({ tab: humanize(tab), section: humanize(section), label: humanize(label), metric_value: metricValue, is_mapped: true }))
-    )
-  );
-}
+// Same normalization as the agent's IBT CarSetup (lib/setup-params.ts).
+const decodedRows = (parameters: IncomingSetup["parameters"]) => setupParamsToRows(parameters);
 
 function safeName(value: string) {
   return value.normalize("NFKD").replace(/[^a-zA-Z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 120) || "setup";

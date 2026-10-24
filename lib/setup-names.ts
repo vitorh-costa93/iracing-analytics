@@ -11,7 +11,7 @@ export function setupDisplayName(filename: string): string {
 
 /** Origem do setup em uma palavra, como no mockup ("Garage61", "importado"). */
 export function setupSourceLabel(source: string | null | undefined): string {
-  return source === "garage61" ? "Garage61" : "importado";
+  return source === "garage61" ? "Garage61" : source === "ibt_setup" ? "IBT" : "importado";
 }
 
 type Position = { axle: "front" | "rear" | null; side: "left" | "right" | null };

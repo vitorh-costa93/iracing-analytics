@@ -13,7 +13,7 @@ export async function GET() {
     const [runsResult, resultsResult, setupsResult, driverResult] = await Promise.all([
       supabaseAdmin.from("sync_runs").select("sync_type,status,started_at,finished_at,error_message").order("started_at", { ascending: false }).limit(100),
       supabaseAdmin.from("race_results").select("imported_at").order("imported_at", { ascending: false }).limit(1).maybeSingle(),
-      supabaseAdmin.from("setup_files").select("created_at").eq("source", "garage61").order("created_at", { ascending: false }).limit(1).maybeSingle(),
+      supabaseAdmin.from("setup_files").select("created_at").in("source", ["garage61", "ibt_setup"]).order("created_at", { ascending: false }).limit(1).maybeSingle(),
       supabaseAdmin.from("drivers").select("name, platform_driver_id").order("updated_at", { ascending: false }).limit(1).maybeSingle(),
     ]);
     if (runsResult.error) throw runsResult.error;

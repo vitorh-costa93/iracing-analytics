@@ -5,6 +5,8 @@ import { parseAgentResult, AgentValidationError } from '@/lib/agent-result';
 import { parseAgentTelemetry, agentHash } from '@/lib/agent-telemetry';
 import { parseAgentReference, AGENT_REFERENCE_PREFIX } from '@/lib/agent-reference';
 import { parseAgentIbtResult, IBT_RESULT_MAX_BYTES } from '@/lib/agent-ibt-result';
+import { parseAgentIbtSetup, ibtSetupIdentity, IBT_SETUP_MAX_BYTES, IBT_SETUP_SOURCE } from '@/lib/agent-ibt-setup';
+import { classifyAgainstFixed, DecodedSetupRow } from '@/lib/setup-params';
 export const runtime='nodejs';
 export const maxDuration=30;
 const reply=(status:number,code:string,retry?:number)=>NextResponse.json({status:code},{status,headers:{'Cache-Control':'no-store',...(retry?{'Retry-After':String(retry)}:{})}});
@@ -65,8 +67,8 @@ export async function GET(request:NextRequest){
 async function handlePost(request:NextRequest){
  try {
   const device=await authorize(request);if(!device)return reply(401,'unauthorized');
-  const {body,size}=await boundedBody(request);if(body.version!==1||!['result','telemetry','ibt_result','reference'].includes(String(body.kind)))throw new AgentValidationError();
-  let key:string,hash:string,bytes=0,row:Record<string,unknown>,session:Record<string,unknown>|null=null,gzip:Buffer|null=null,referenceCsv:string|null=null;
+  const {body,size}=await boundedBody(request);if(body.version!==1||!['result','telemetry','ibt_result','reference','ibt_setup'].includes(String(body.kind)))throw new AgentValidationError();
+  let key:string,hash:string,bytes=0,row:Record<string,unknown>,session:Record<string,unknown>|null=null,gzip:Buffer|null=null,referenceCsv:string|null=null,setupRows:DecodedSetupRow[]|null=null;
   if(body.kind==='result'){
    const result=parseAgentResult(body.export,Number(device.customer_id));
    // New key (not `result:`): receipts of results stored before the field existed keep their old hash,
@@ -81,6 +83,15 @@ async function handlePost(request:NextRequest){
    key=`ibt_result:${result.subsessionId}`;hash=agentHash(JSON.stringify(result));
    const [car,track]=await Promise.all([catalog('cars',result.nativeCarId,result.carName),catalog('tracks',result.nativeTrackId,result.trackName,result.trackConfig)]);
    row={...result.row,series_name:await seriesName(String(device.driver_id),car,track,result.row.raced_at,result.seriesId),driver_id:device.driver_id,irstats_race_id:result.subsessionId,car_id:car,track_id:track};
+  }else if(body.kind==='ibt_setup'){
+   // CarSetup of the driver's own .ibt -> setup_files (no Storage object: storage_path is a virtual unique id).
+   if(size>IBT_SETUP_MAX_BYTES)throw new AgentValidationError();
+   const setup=parseAgentIbtSetup(body,Number(device.customer_id));
+   const [car,track]=await Promise.all([catalog('cars',setup.nativeCarId,setup.carName),catalog('tracks',setup.nativeTrackId,setup.trackName,setup.trackConfig)]);
+   const id=ibtSetupIdentity(setup,car,track);key=id.key;hash=id.hash;bytes=size;setupRows=setup.rows;
+   row={driver_id:device.driver_id,season_id:setup.season.id,car_id:car,track_id:track,source:IBT_SETUP_SOURCE,setup_kind:'unknown',filename:id.filename,
+    storage_path:`${IBT_SETUP_SOURCE}/${device.driver_id}/${setup.season.id}/${car}/${track}/${setup.identity}`,file_size:Buffer.byteLength(JSON.stringify(setup.rows)),
+    decoded_car_name:String(car),decoded_params:setup.rows,decoder:'iracing_ibt'};
   }else if(body.kind==='reference'){
    const ref=parseAgentReference(body);key=`reference:${agentHash(JSON.stringify(body.key))}`;
    const [car,track]=await Promise.all([catalog('cars',ref.nativeCarId,ref.carName),catalog('tracks',ref.nativeTrackId,ref.trackName,ref.trackConfig)]);
@@ -106,6 +117,15 @@ async function handlePost(request:NextRequest){
   if(admission.status==='conflict')return reply(422,'identity_conflict');
   if(admission.status!=='accepted')return reply(429,admission.status,admission.status==='busy'?120:admission.status==='storage'?86400:3600);
   if(gzip){const {error:uploadError}=await db.storage.from('telemetry').upload(String(row.telemetry_path),gzip,{contentType:'application/gzip',upsert:false});if(uploadError && !['409'].includes(String('statusCode' in uploadError?uploadError.statusCode:'')))throw new Error('upload');}
+  if(setupRows!==null){
+   // Fixed vs unknown (never 'commercial'): equality with a fixed setup already known for this car (lib/setup-params.ts).
+   const {data:fixed,error:fixedError}=await db.from('setup_files').select('decoded_params').eq('driver_id',device.driver_id).eq('car_id',Number(row.car_id)).eq('setup_kind','fixed')
+    .neq('source',IBT_SETUP_SOURCE).not('decoded_params','is',null).order('updated_at',{ascending:false}).limit(30);
+   if(fixedError)throw new Error('setup');
+   row.setup_kind=classifyAgainstFixed(setupRows,(fixed??[]).map(r=>r.decoded_params));
+   const {error:setupCommitError}=await db.rpc('agent_commit_setup',{p_device:device.id,p_key:key,p_lease:admission.lease,p_row:row});
+   if(setupCommitError)throw new Error('commit');return reply(200,'stored');
+  }
   if(referenceCsv!==null){
    const {error:refUploadError}=await db.storage.from('telemetry-references').upload(String(row.storage_path),new Blob([referenceCsv],{type:'text/csv'}),{upsert:true,contentType:'text/csv'});
    if(refUploadError)throw new Error('upload');

@@ -400,6 +400,23 @@ static class SelfTest
         using (var stale = new MemoryStream(SyntheticIbt(Yaml(resultsOfficial: 0)))) if (SessionResult.FromIbt(stale, out _) is not null) throw new Exception("ibt stale snapshot accepted");
         checks.Add("Synthetic IBT result (official only, race start from records): OK");
 
+        string SetupYaml(string wing = "20.0 deg", string tread = "97%, 97%, 95%") => Yaml()[..Yaml().IndexOf("CarSetup:", StringComparison.Ordinal)] + $"CarSetup:\n UpdateCount: 3\n Secret: do-not-send\n TiresAero:\n  LeftFront:\n   ColdPressure: 138 kPa\n   TreadRemaining: {tread}\n  RearAero:\n   WingAngle: {wing}\n Chassis:\n  Rear:\n   FuelLevel: 39.0 L\n   RdSpringRate: 600 N/mm\n  AeroCalculator:\n   DownforceToDrag: 3.309:1\n...\n";
+        if (IbtSetup.Build(Yaml(), at, out _) is not null) throw new Exception("setup without parameters");
+        var setupPayload = IbtSetup.Build(SetupYaml(), at, out var setupWhy) ?? throw new Exception("setup " + setupWhy);
+        var setupText = Encoding.UTF8.GetString(setupPayload);
+        using (var doc = JsonDocument.Parse(setupPayload))
+        {
+            var s = doc.RootElement.GetProperty("setup"); var p = s.GetProperty("parameters");
+            if (doc.RootElement.GetProperty("kind").GetString() != "ibt_setup" || s.GetProperty("customerId").GetInt32() != 42 || s.GetProperty("nativeCarId").GetInt32() != 196 || s.GetProperty("nativeTrackId").GetInt32() != 8
+                || p.GetProperty("Chassis").GetProperty("Rear").GetProperty("RdSpringRate").GetString() != "600 N/mm" || p.GetProperty("Chassis").GetProperty("AeroCalculator").GetProperty("DownforceToDrag").GetString() != "3.309:1" || p.TryGetProperty("UpdateCount", out _)) throw new Exception("setup fields");
+        }
+        if (setupText.Contains("Synthetic Driver") || setupText.Contains("Synthetic Rival") || setupText.Contains("UserName") || setupText.Contains("do-not-send") || setupText.Contains("ResultsPositions") || setupText.Contains("IRating")) throw new Exception("setup privacy");
+        string SetupKey(string yaml) { using var d = JsonDocument.Parse(IbtSetup.Build(yaml, at, out _)!); return d.RootElement.GetProperty("key").GetString()!; }
+        if (SetupKey(SetupYaml(tread: "50%, 50%, 50%")) != SetupKey(SetupYaml()) || SetupKey(SetupYaml(wing: "21.0 deg")) == SetupKey(SetupYaml())) throw new Exception("setup identity");
+        var setupStore = new Store(Path.Combine(root, "setup"), "http://localhost:1/api/agent/ingest");
+        using (var s1 = new MemoryStream(SyntheticIbt(SetupYaml()))) using (var s2 = new MemoryStream(SyntheticIbt(SetupYaml(tread: "10%, 10%, 10%")))) if (!setupStore.EnqueueSetup(s1) || setupStore.EnqueueSetup(s2) || setupStore.Backlog != 1) throw new Exception("setup dedupe");
+        checks.Add("IBT CarSetup -> ibt_setup (CarSetup only, no names/YAML, readouts ignored by identity, deduped): OK");
+
         if (SimMonitor.TelemStartWParam != 0x0001000A) throw new Exception("broadcast wParam");
         var name = "Local\\RacingAgentSelfTest-" + Guid.NewGuid().ToString("N");
         using var mmf = MemoryMappedFile.CreateNew(name, 1 << 20); using var view = mmf.CreateViewAccessor();
