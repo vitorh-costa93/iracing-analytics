@@ -88,7 +88,10 @@ sealed class Store
         State.AuthPaused = false; State.Next = default; Save();
     }
     string? Token() => File.Exists(Path.Combine(Root, "credential.bin")) ? Encoding.UTF8.GetString(Dpapi.Protect(File.ReadAllBytes(Path.Combine(Root, "credential.bin")), true)) : null;
-    static int Priority(string file) { try { using var s=File.OpenRead(file);var b=new byte[64];var n=s.Read(b,0,b.Length);var head=Encoding.UTF8.GetString(b,0,n);return head.Contains("\"kind\":\"result\"")||head.Contains("\"kind\":\"ibt_result\"")?0:head.Contains("\"kind\":\"reference\"")?1:2;}catch{return 2;} }
+    static string Head(string file) { try { using var s=File.OpenRead(file);var b=new byte[512];var n=s.Read(b,0,b.Length);return Encoding.UTF8.GetString(b,0,n);}catch{return "";} }
+    /// <summary>Setups are tiny (max 64 KiB, database only, no Storage): they go first and do not consume the lap/telemetry request or byte budget.</summary>
+    static bool IsSetup(string head) => head.Contains("\"kind\":\"ibt_setup\"");
+    static int Priority(string file) { var head=Head(file);return IsSetup(head)||head.Contains("\"kind\":\"result\"")||head.Contains("\"kind\":\"ibt_result\"")?0:head.Contains("\"kind\":\"reference\"")?1:2; }
     public int Backlog => Directory.GetFiles(Path.Combine(Root, "queue"), "*.json").Length;
     public int Quarantined => Directory.GetFiles(Path.Combine(Root, "quarantine"), "*.json").Length;
     public void Enqueue(byte[] payload)
@@ -298,14 +301,17 @@ sealed class Store
         if (State.Next > now) { Status = "Aguardando janela de retry"; return; }
         var token = Token(); if (token is null) { Status = "Configure seu token para enviar"; return; }
         while (recent.TryPeek(out var t) && t < now.AddMinutes(-1)) recent.Dequeue();
-        if (recent.Count >= 10 || State.Requests >= (BackfillMode ? 3000 : Math.Clamp(State.DailyLimit, 1, 128))) { Status = "Limite de requests atingido"; return; }
+        var budgetFull = recent.Count >= 10 || State.Requests >= (BackfillMode ? 3000 : Math.Clamp(State.DailyLimit, 1, 128));
         foreach (var file in Directory.EnumerateFiles(Path.Combine(Root, "queue"), "*.json").OrderBy(Priority).ThenBy(f => new FileInfo(f).CreationTimeUtc))
         {
             var key = Path.GetFileNameWithoutExtension(file);
             var attempt = State.Attempts.GetValueOrDefault(key) ?? new(); if (attempt.Next > now) continue;
             var payload = await File.ReadAllBytesAsync(file, cancellation);
-            if (!BackfillMode && State.Bytes + payload.Length > 10L * 1024 * 1024) { Status = "Limite de 10 MiB/dia atingido"; return; }
-            State.Requests++; State.Bytes += payload.Length; State.Next = now.AddSeconds(6); Save(); recent.Enqueue(now);
+            var setup = IsSetup(Head(file));
+            if (!setup && budgetFull) { Status = "Limite de requests atingido"; return; }
+            if (!setup && !BackfillMode && State.Bytes + payload.Length > 10L * 1024 * 1024) { Status = "Limite de 10 MiB/dia atingido"; return; }
+            if (!setup) { State.Requests++; State.Bytes += payload.Length; recent.Enqueue(now); }
+            State.Next = now.AddSeconds(setup ? 1 : 6); Save();
             using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = new ByteArrayContent(payload) };
             request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json"); request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", token);
             try

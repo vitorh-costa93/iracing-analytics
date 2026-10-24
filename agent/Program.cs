@@ -63,6 +63,7 @@ static class Program
                 if (once + 1 < args.Length) File.WriteAllText(args[once + 1], $"{line}\nFila: {store.Backlog}\nDownloads hoje: {store.State.Exports}\n"); return;
             }
             if (args.Contains("--backfill")) { foreach (var file in Sources()) { try { store.Collect(file, true); } catch (IOException) { } } return; }
+            if (args.Contains("--backfill-setups")) { var queued = 0; foreach (var file in Sources().Where(f => f.EndsWith(".ibt", StringComparison.OrdinalIgnoreCase))) { try { using var ibt = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite); if (store.EnqueueSetup(ibt)) queued++; } catch (IOException) { } } Console.WriteLine($"Setups enfileirados: {queued}"); return; }
             if (args.Contains("--scan-references")) { var report=store.ScanReferences(Sources(),force:true,limit:12); var output=Array.IndexOf(args,"--out"); if(output>=0&&output+1<args.Length)File.WriteAllText(args[output+1],report); return; }
             var requeue=Array.IndexOf(args,"--requeue-telemetry");
             if(requeue>=0) {
