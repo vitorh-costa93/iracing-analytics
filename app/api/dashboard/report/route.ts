@@ -11,7 +11,7 @@ import { retirementEvents } from "@/lib/race-retirement-events";
 import { telemetryInputProfile } from "@/lib/telemetry-input-profile";
 import { paceVsResultInsight } from "@/lib/pace-vs-result-insight";
 import { buildRecommendation } from "@/lib/recommendation";
-import { byCar, scatterPoints, summarizeField, tallyCauses, type RaceForField } from "@/lib/debrief-field";
+import { byCar, leftOnTable, scatterPoints, summarizeField, tallyCauses, type RaceForField } from "@/lib/debrief-field";
 import { exitCauses, fieldMetricsFor } from "@/lib/debrief-field-data";
 import { paceConsistencyNote } from "@/lib/pace-consistency-note";
 import { buildPaceChart, currentStreak, inputConsistencyPct, longestStreak, lossTimingBins, PACE_OUTLIER_PCT } from "@/lib/debrief-charts";
@@ -127,7 +127,8 @@ async function handleGet(request:NextRequest){
     const [causeNow,causeBefore]=await Promise.all([exitCauses(driver.id,selected,fieldMetrics),exitCauses(driver.id,fieldReference,fieldMetrics)]);
     const toField=(items:RaceInput[],causes:Map<number,import("@/lib/debrief-field").ExitCause|null>):RaceForField[]=>items.map(row=>({subsessionId:row.irstats_race_id??null,date:row.raced_at,car:row.car_name,track:row.track_name,delta:delta(row),classFinish:row.class_finish_position??null,cause:row.irstats_race_id!=null?causes.get(row.irstats_race_id)??null:null}));
     const nowField=toField(selected,causeNow),beforeField=toField(fieldReference,causeBefore);
-    fieldBlock={now:summarizeField(nowField,fieldMetrics),before:summarizeField(beforeField,fieldMetrics),causes:{now:tallyCauses(nowField,fieldMetrics),before:tallyCauses(beforeField,fieldMetrics)},scatter:{now:scatterPoints(nowField,fieldMetrics),before:scatterPoints(beforeField,fieldMetrics)},cars:{now:byCar(nowField,fieldMetrics),before:byCar(beforeField,fieldMetrics)},referenceLabel:scope==="week"?"semana "+latestWeek+" da "+previous.season_name:previous.season_name+" no mesmo ponto"+(latestWeek?" (semanas 1–"+latestWeek+")":"")};
+    const lot=leftOnTable(nowField,fieldMetrics,threshold),latestRace=[...currentRows].filter(row=>row.category===segment.category).sort((a,b)=>new Date(b.raced_at).getTime()-new Date(a.raced_at).getTime())[0],currentIrating=latestRace?latestRace.irating_after:null;
+    fieldBlock={leftOnTable:{...lot,currentIrating,withoutLeft:currentIrating!==null?currentIrating+lot.total:null},now:summarizeField(nowField,fieldMetrics),before:summarizeField(beforeField,fieldMetrics),causes:{now:tallyCauses(nowField,fieldMetrics),before:tallyCauses(beforeField,fieldMetrics)},scatter:{now:scatterPoints(nowField,fieldMetrics),before:scatterPoints(beforeField,fieldMetrics)},cars:{now:byCar(nowField,fieldMetrics),before:byCar(beforeField,fieldMetrics)},referenceLabel:scope==="week"?"semana "+latestWeek+" da "+previous.season_name:previous.season_name+" no mesmo ponto"+(latestWeek?" (semanas 1–"+latestWeek+")":"")};
    }
   }catch(error){console.error("debrief field block",error)}
   const splitText=pace.split===null?"":" Hoje o seu normal é "+dec(pace.split,2)+"%.";
@@ -153,6 +154,7 @@ async function handleGet(request:NextRequest){
      scope==="week"?"Referência: as outras semanas desta season. O saldo delas é comparado por corrida, para ser justo com uma semana só. Os indicadores de permanência, ritmo e resultado vs esperado usam a mesma semana da season anterior.":"Referência: a season anterior da semana 1 até o mesmo ponto desta (nunca ela inteira), no mesmo segmento.",
      "Permanência: corridas em que você completou 90% das voltas do líder da classe ou mais. Saída antecipada: menos que isso (campo completo importado pelo agente).",
      "Ritmo vs grid: a posição da sua melhor volta entre todos da sua classe (top 0% = a mais rápida). Resultado vs esperado: o Δ de iRating real menos o que a fórmula da comunidade daria para a posição que o seu iRating previa (estimativa).",
+     "iRating deixado na mesa: nas corridas com perda grande ou saída antecipada (menos de 90% das voltas do líder da classe), a diferença entre o Δ esperado pela fórmula da comunidade (posição que o seu iRating previa) e o Δ real, nunca negativa. Corridas sem Δ esperado calculável ficam fora da soma. É uma estimativa.",
      "Perda grande: corrida em que você perdeu mais de "+threshold+" pontos de iRating.",
      "Ritmo: sua melhor volta em cada corrida, comparada à sua melhor volta de corrida no mesmo carro e pista (nesta season e na anterior). Corridas mais de "+PACE_OUTLIER_PCT+"% longe disso ficam de fora.",
      "Rápido ou devagar: comparado à sua distância típica nessas corridas."+splitText,
@@ -168,4 +170,4 @@ async function handleGet(request:NextRequest){
  }catch(error){return noStoreJson({status:"error",message:error instanceof Error?error.message:String(error)},500)}
 }
 
-export const GET = withDurableCache(handleGet, { version: "report-v1", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 300, validUntil: analyticsValidUntil });
+export const GET = withDurableCache(handleGet, { version: "report-v2", tags: [CACHE_TAGS.results, CACHE_TAGS.laps], ttlSeconds: 300, validUntil: analyticsValidUntil });

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { byCar, cascadeKey, classifyExit, raceFieldMetrics, scatterPoints, summarizeField, tallyCauses, type ExitLap, type FieldResultRow, type RaceForField } from "./debrief-field";
+import { byCar, cascadeKey, classifyExit, leftOnTable, raceFieldMetrics, scatterPoints, summarizeField, tallyCauses, type ExitLap, type FieldResultRow, type RaceForField } from "./debrief-field";
 
 let custSeed = 1;
 function row(sub: number, over: Partial<FieldResultRow> = {}): FieldResultRow {
@@ -102,4 +102,46 @@ describe("classifyExit", () => {
   it("ritmo que cai antes de sair indica dano", () => expect(classifyExit(6, [...steady.slice(0, 3), lap(4, 120), lap(5, 118), lap(6, 90)])).toBe("damage"));
   it("última volta fora da pista", () => expect(classifyExit(6, [...steady.slice(0, 5), lap(6, 95, { off_track: true })])).toBe("offTrack"));
   it("volta de box não conta como ritmo lento", () => expect(classifyExit(6, [...steady.slice(0, 3), lap(4, 140, { pit_in: true }), lap(5, 90), lap(6, 90)])).toBe("abrupt"));
+});
+
+describe("leftOnTable", () => {
+  const metric = (id: number, lapsRatio: number | null, expectedDelta: number | null) => ({ subsessionId: id, lapsComplete: 10, classMaxLaps: 10, lapsRatio, pace: null, expectedDelta, realDelta: null, residual: null });
+  const race = (id: number, delta: number): RaceForField => ({ subsessionId: id, date: "2026-10-01", car: "C", track: "T", delta, classFinish: null });
+  const metrics = new Map([
+    [1, metric(1, 1, 20)], // perda grande
+    [2, metric(2, 0.5, 20)], // saída antecipada, delta pequeno
+    [3, metric(3, 0.5, 30)], // ambos
+    [4, metric(4, 1, null)], // sem esperado
+    [5, metric(5, 0.5, -80)], // esperado < real
+    [6, metric(6, 1, 50)], // não elegível
+  ]);
+  it("só perda grande", () => {
+    const r = leftOnTable([race(1, -60)], metrics, 50);
+    expect(r).toMatchObject({ eligible: 1, included: 1, total: 80 });
+    expect(r.top[0].reason).toBe("bigLoss");
+  });
+  it("só saída antecipada", () => {
+    const r = leftOnTable([race(2, -10)], metrics, 50);
+    expect(r.total).toBe(30);
+    expect(r.top[0].reason).toBe("earlyExit");
+  });
+  it("ambos contam uma vez", () => {
+    const r = leftOnTable([race(3, -70)], metrics, 50);
+    expect(r).toMatchObject({ eligible: 1, included: 1, total: 100 });
+    expect(r.top[0].reason).toBe("both");
+  });
+  it("expected null fica fora da soma mas é contado", () => {
+    const r = leftOnTable([race(4, -90)], metrics, 50);
+    expect(r).toMatchObject({ eligible: 1, included: 0, withoutExpected: 1, total: 0 });
+  });
+  it("esperado menor que o real vira 0", () => {
+    const r = leftOnTable([race(5, -10)], metrics, 50);
+    expect(r).toMatchObject({ included: 1, total: 0 });
+    expect(r.top).toEqual([]);
+  });
+  it("soma e ignora não elegíveis", () => {
+    const r = leftOnTable([race(1, -60), race(2, -10), race(3, -70), race(6, -5), race(4, -90)], metrics, 50);
+    expect(r).toMatchObject({ eligible: 4, included: 3, withoutExpected: 1, total: 210 });
+    expect(r.top.map((item) => item.left)).toEqual([100, 80, 30]);
+  });
 });

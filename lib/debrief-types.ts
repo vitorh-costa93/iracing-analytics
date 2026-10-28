@@ -1,6 +1,6 @@
 import type { PaceChart } from "@/lib/debrief-charts";
 import type { RichText } from "@/lib/debrief-narrative";
-import type { CarRow, CauseTally, FieldSide, ScatterPoint } from "@/lib/debrief-field";
+import type { CarRow, CauseTally, FieldSide, LeftOnTable, ScatterPoint } from "@/lib/debrief-field";
 
 /** Contrato do GET /api/dashboard/report consumido por app/debriefs (redesign etapa 5). Mudou de
  * forma em 26/09/2026 (contextos por média, evidência completa): o cache local do navegador subiu para v7 (components/debriefs/DebriefsView.tsx). */
@@ -24,6 +24,12 @@ export type DebriefField = {
   cars: { now: CarRow[]; before: CarRow[] };
   /** Rótulo da referência: "S3 no mesmo ponto (semanas 1–4)" / "semana 4 da S3". */
   referenceLabel: string;
+  /** iRating deixado na mesa (14/10/2026): só agregados da seção atual. */
+  leftOnTable: LeftOnTable & {
+    /** iRating atual + total, quando o último irating_after da categoria já está carregado. */
+    currentIrating: number | null;
+    withoutLeft: number | null;
+  };
 };
 
 export type DebriefSection = {

@@ -191,6 +191,43 @@ export function tallyCauses(races: RaceForField[], metrics: Map<number, RaceFiel
   return out;
 }
 
+/* ------------------------------------------------------------------ iRating deixado na mesa */
+export type LeftReason = "bigLoss" | "earlyExit" | "both";
+export type LeftOnTableRace = { date: string; car: string; track: string; expected: number; real: number; left: number; reason: LeftReason };
+export type LeftOnTable = {
+  /** Corridas com perda grande (Δ < -threshold, mesma regra de base.severity) ou saída antecipada (< 90% das voltas da classe). */
+  eligible: number;
+  /** Elegíveis com Δ esperado calculável (entram na soma). */
+  included: number;
+  /** Elegíveis sem Δ esperado/real calculável (fora da soma). */
+  withoutExpected: number;
+  total: number;
+  top: LeftOnTableRace[];
+};
+
+/** Soma de max(0, Δ esperado − Δ real) nas corridas elegíveis. Só agregados: nunca linhas do campo. */
+export function leftOnTable(races: RaceForField[], metrics: Map<number, RaceFieldMetric>, threshold: number): LeftOnTable {
+  let eligible = 0, withoutExpected = 0;
+  const included: LeftOnTableRace[] = [];
+  for (const race of races) {
+    const metric = race.subsessionId === null ? undefined : metrics.get(race.subsessionId);
+    const bigLoss = race.delta < -threshold;
+    const earlyExit = !!metric && metric.lapsRatio !== null && metric.lapsRatio < EARLY_EXIT_RATIO;
+    if (!bigLoss && !earlyExit) continue;
+    eligible += 1;
+    if (!metric || metric.expectedDelta === null) { withoutExpected += 1; continue; }
+    included.push({
+      date: race.date, car: race.car, track: race.track, expected: metric.expectedDelta, real: race.delta,
+      left: Math.max(0, metric.expectedDelta - race.delta), reason: bigLoss && earlyExit ? "both" : bigLoss ? "bigLoss" : "earlyExit",
+    });
+  }
+  return {
+    eligible, included: included.length, withoutExpected,
+    total: Math.round(sum(included.map((item) => item.left))),
+    top: included.filter((item) => item.left > 0).sort((a, b) => b.left - a.left).slice(0, 3).map((item) => ({ ...item, expected: Math.round(item.expected), left: Math.round(item.left) })),
+  };
+}
+
 /* ------------------------------------------------------------------ dispersão e por carro */
 export type ScatterPoint = { date: string; car: string; pacePct: number; delta: number; exitLap: number | null; classLaps: number | null };
 export function scatterPoints(races: RaceForField[], metrics: Map<number, RaceFieldMetric>): ScatterPoint[] {

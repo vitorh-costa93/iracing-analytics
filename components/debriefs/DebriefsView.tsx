@@ -16,7 +16,7 @@ type Segment = "formula" | "gt3" | "imsa";
 
 // Versão do cache local: v9 (13/10/2026: bloco `field` do campo completo, comparação até o mesmo ponto); v8 (contextos da week com mínimo de 1 corrida; v7: contextos por média, evidência completa; contrato em lib/debrief-types.ts). Suba ao mudar a
 // forma do payload, para nenhum navegador carregar um payload antigo direto no estado (bug de 08/09).
-const CACHE_VERSION = "iracing-debrief-v9-";
+const CACHE_VERSION = "iracing-debrief-v10-";
 const SEGMENTS: Array<{ value: Segment; label: string }> = [
   { value: "formula", label: "Super Formula" },
   { value: "gt3", label: "GT3" },
@@ -174,6 +174,8 @@ function Debrief({ section, scope, referenceLabel }: { section: DebriefSection; 
           sub={(streak.direction === "gain" ? "ganhando iRating" : streak.direction === "loss" ? "perdendo iRating" : "sem sequência aberta") + " · recorde " + streak.recordGain} />
       </section>
 
+      {field && <LeftOnTablePanel lot={field.leftOnTable} />}
+
       {field ? (
         <div className="ngd-row-2">
           <Panel kicker="RITMO CONTRA O GRID × RESULTADO" title="Seu ritmo no grid virou iRating?"
@@ -269,6 +271,30 @@ function Kpi({ label, value, unit, sub, tone }: { label: string; value: string; 
       <div className="ngd-kpi-value" data-tone={tone}>{value}{unit && <span className="ngd-kpi-unit">{unit}</span>}</div>
       <div className="ngd-kpi-sub">{sub}</div>
     </div>
+  );
+}
+
+const LEFT_REASON = { bigLoss: "perda grande", earlyExit: "saída antecipada", both: "perda grande e saída antecipada" } as const;
+
+function LeftOnTablePanel({ lot }: { lot: NonNullable<DebriefSection["field"]>["leftOnTable"] }) {
+  const none = lot.eligible === 0 || (lot.included > 0 && lot.total === 0);
+  return (
+    <section className="ngd-kpis" aria-label="iRating deixado na mesa" style={{ gridTemplateColumns: "minmax(0, 1fr)" }}>
+      <Kpi label="iRating deixado na mesa" value={none ? "Nada deixado na mesa" : lot.included ? "+" + lot.total : "—"} tone={none ? "gain" : lot.total ? "loss" : "neutral"}
+        sub={lot.eligible === 0
+          ? "nenhuma corrida com perda grande ou saída antecipada"
+          : "em " + plural(lot.included, "corrida", "corridas") + " com perda grande ou saída antecipada" + (lot.withoutExpected ? " · " + plural(lot.withoutExpected, "corrida", "corridas") + " sem esperado calculável" : "") + (lot.withoutLeft !== null && lot.total > 0 ? " · seria " + lot.withoutLeft + " hoje (agora " + lot.currentIrating + ")" : "")} />
+      {lot.top.length > 0 && (
+        <details className="ngd-note">
+          <summary>Corridas que mais custaram</summary>
+          {lot.top.map((race) => (
+            <p key={race.date + race.track}>
+              {shortDate(race.date)} · {race.car} · {race.track}: esperado {signedInt(race.expected)}, real {signedInt(race.real)}, deixou +{race.left} ({LEFT_REASON[race.reason]})
+            </p>
+          ))}
+        </details>
+      )}
+    </section>
   );
 }
 
