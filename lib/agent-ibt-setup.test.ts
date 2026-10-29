@@ -78,6 +78,9 @@ describe("parseAgentIbtSetup", () => {
     expect(a.key).toMatch(/^ibt_setup:[a-f0-9]{64}$/);
     expect(a.filename).toMatch(/^IBT [a-f0-9]{8}$/);
     expect(ibtSetupIdentity(setup, 10, 21).key).not.toBe(a.key);
+    const named = ibtSetupIdentity({ ...setup, setupName: "P1Doks - 26S4\\Le Mans\\P1Doks_PorscheGTP_LeMans_R_26S4W7.sto" }, 10, 20);
+    expect(named.filename).toBe("P1Doks_PorscheGTP_LeMans_R_26S4W7");
+    expect(named.key).toBe(a.key);
   });
   it("rejects another customer, missing ids, nested/raw YAML and oversized trees", () => {
     const bad = (p: unknown) => expect(() => parseAgentIbtSetup(p, 42)).toThrow(AgentValidationError);

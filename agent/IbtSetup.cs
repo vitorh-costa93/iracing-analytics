@@ -61,7 +61,7 @@ static class IbtSetup
         var rawName = info.S("DriverSetupName") ?? ""; var setupName = rawName.Length <= 200 && !rawName.Any(char.IsControl) ? rawName.Trim() : "";
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
-            version = 1, kind = "ibt_setup", key = Ibt.Hash(Encoding.UTF8.GetBytes($"ibt_setup:{user}:{carId}:{trackId}:{season}:{digest}:{setupName}:n3")),
+            version = 1, kind = "ibt_setup", key = Ibt.Hash(Encoding.UTF8.GetBytes($"ibt_setup:{user}:{carId}:{trackId}:{season}:{digest}:{setupName}:n4")),
             setup = new
             {
                 customerId = user, nativeCarId = carId, nativeTrackId = trackId, carName = mine.S("CarScreenName") ?? "", trackName = weekend.S("TrackName") ?? "",

@@ -27,7 +27,7 @@ static class ReferenceFinder
         var folder=Path.Combine(root,car);if(!Directory.Exists(folder))return "";
         var season=year is >0&&quarter is >0?Path.Combine(folder,SeasonFolder(year.Value,quarter.Value)):Directory.EnumerateDirectories(folder).Where(d=>Regex.IsMatch(Path.GetFileName(d),@"^\d{2}S[1-4]$")).OrderByDescending(d=>d,StringComparer.OrdinalIgnoreCase).FirstOrDefault();
         if(season is null||!Directory.Exists(season))return "";
-        return Ibt.Hash(Encoding.UTF8.GetBytes(string.Join('|',Directory.EnumerateFiles(season,"*.ibt").OrderBy(p=>p,StringComparer.OrdinalIgnoreCase).Take(MaxFiles).Select(p=>$"{Path.GetFileName(p)}:{new FileInfo(p).Length}:{File.GetLastWriteTimeUtc(p).Ticks}"))+":"+File.GetLastWriteTimeUtc(Path.Combine(season,"reference-race.json")).Ticks));
+        return Ibt.Hash(Encoding.UTF8.GetBytes(string.Join('|',Directory.EnumerateFiles(season,"*.ibt").OrderBy(p=>p,StringComparer.OrdinalIgnoreCase).Take(MaxFiles).Select(p=>$"{Path.GetFileName(p)}:{new FileInfo(p).Length}:{File.GetLastWriteTimeUtc(p).Ticks}"))+":"+File.GetLastWriteTimeUtc(Path.Combine(season,"reference-race.json")).Ticks+":policy2"));
     }
 
     internal static (string car, int track, int? year, int? quarter)? PeekTarget(Stream stream)
@@ -45,6 +45,17 @@ static class ReferenceFinder
         var car = carMatch.Success ? carMatch.Groups[1].Value.Trim().Trim('"', '\'') : "";
         int? Number(string key) => int.TryParse(Get(key), out var n) && n > 0 ? n : null;
         return SafeName.IsMatch(car) && !car.Contains("..") ? (car, Number("TrackID")!.Value, Number("SeasonYear"), Number("SeasonQuarter")) : null;
+    }
+
+    /// <summary>Name of the setup the file's driver had loaded (e.g. "..._LeMans_R_26S4W7.sto"): a race/quali tag there classifies a test-drive file.</summary>
+    internal static string PeekSetupName(Stream stream)
+    {
+        var header = new byte[144]; stream.Position = 0; stream.ReadExactly(header);
+        var length = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(16, 4)); var at = BinaryPrimitives.ReadInt32LittleEndian(header.AsSpan(20, 4));
+        if (length < 1 || length > 4 * 1024 * 1024 || at < 144 || (long)at + length > stream.Length) return "";
+        var bytes = new byte[length]; stream.Position = at; stream.ReadExactly(bytes);
+        var match = Regex.Match(Encoding.UTF8.GetString(bytes), @"(?m)^\s*DriverSetupName:\s*(.+?)\r?$");
+        return match.Success ? Path.GetFileNameWithoutExtension(match.Groups[1].Value.Trim().Trim('"', '\'').Replace('\\', '/').Split('/')[^1]) : "";
     }
 
     /// <summary>Cheap header read: the YAML track id, without parsing a single telemetry record.</summary>
@@ -81,11 +92,13 @@ static class ReferenceFinder
                 var target = PeekTarget(stream);
                 if (target is null || !string.Equals(target.Value.car, carPath, StringComparison.OrdinalIgnoreCase)) continue;
                 stream.Position = 0;
+                var label = Path.GetFileName(file) + " " + PeekSetupName(stream);
+                stream.Position = 0;
                 foreach (var payload in Ibt.Read(stream, reference: true))
                 {
                     using var doc = JsonDocument.Parse(payload); var lap = doc.RootElement.GetProperty("lap");
                     var sessionType=doc.RootElement.GetProperty("metadata").GetProperty("sessionType").GetString()??"";
-                    if(!IsRaceReference(sessionType,Path.GetFileName(file),declared.Contains(Path.GetFileName(file))))continue;
+                    if(!IsRaceReference(sessionType,label,declared.Contains(Path.GetFileName(file))))continue;
                     if (!lap.GetProperty("clean").GetBoolean() || (lap.TryGetProperty("overtake", out var ot) && ot.GetBoolean())) continue;
                     var time = lap.GetProperty("time").GetDouble();
                     if (time < bestTime) { bestTime = time; best = payload; bestFile = Path.GetFileName(file); }

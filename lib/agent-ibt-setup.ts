@@ -66,7 +66,13 @@ export function parseAgentIbtSetup(payload: unknown, customerId: number): AgentI
 }
 
 /** Deterministic receipt key / body hash / stable filename for one distinct setup per season+car+track. */
-export function ibtSetupIdentity(setup: Pick<AgentIbtSetup, 'season' | 'identity'>, carId: number, trackId: number) {
+export function ibtSetupIdentity(setup: Pick<AgentIbtSetup, 'season' | 'identity'> & { setupName?: string }, carId: number, trackId: number) {
  const digest = agentHash(`${setup.season.id}:${carId}:${trackId}:${setup.identity}`);
- return { key: `ibt_setup:${digest}`, hash: digest, filename: `IBT ${setup.identity.slice(0, 8)}` };
+ return { key: `ibt_setup:${digest}`, hash: digest, filename: ibtSetupLabel(setup.setupName) ?? `IBT ${setup.identity.slice(0, 8)}` };
+}
+
+/** The loaded .sto's own name (no folder prefix, no extension), so the dropdown shows what the driver sees in iRacing. */
+export function ibtSetupLabel(setupName: string | undefined): string | null {
+ const label = (setupName ?? '').replace(/^.*[\\/]/, '').replace(/\.sto$/i, '').trim();
+ return label || null;
 }
