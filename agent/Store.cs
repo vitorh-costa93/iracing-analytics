@@ -301,15 +301,18 @@ sealed class Store
         if (State.Next > now) { Status = "Aguardando janela de retry"; return; }
         var token = Token(); if (token is null) { Status = "Configure seu token para enviar"; return; }
         while (recent.TryPeek(out var t) && t < now.AddMinutes(-1)) recent.Dequeue();
-        var budgetFull = recent.Count >= 10 || State.Requests >= (BackfillMode ? 3000 : Math.Clamp(State.DailyLimit, 1, 128));
+        var dailyCap = BackfillMode ? 3000 : Math.Clamp(State.DailyLimit, 1, 128);
+        var budgetFull = recent.Count >= 10 || State.Requests >= dailyCap;
+        // Race results are few and tiny: a telemetry backlog that used the whole day's budget must not hold them back (small extra allowance).
+        var resultsBudgetFull = recent.Count >= 10 || State.Requests >= dailyCap + 20;
         foreach (var file in Directory.EnumerateFiles(Path.Combine(Root, "queue"), "*.json").OrderBy(Priority).ThenBy(f => new FileInfo(f).CreationTimeUtc))
         {
             var key = Path.GetFileNameWithoutExtension(file);
             var attempt = State.Attempts.GetValueOrDefault(key) ?? new(); if (attempt.Next > now) continue;
             var payload = await File.ReadAllBytesAsync(file, cancellation);
             var setup = IsSetup(Head(file));
-            if (!setup && budgetFull) { Status = "Limite de requests atingido"; return; }
-            if (!setup && !BackfillMode && State.Bytes + payload.Length > 10L * 1024 * 1024) { Status = "Limite de 10 MiB/dia atingido"; return; }
+            if (!setup && (Priority(file) == 0 ? resultsBudgetFull : budgetFull)) { Status = "Limite de requests atingido"; return; }
+            if (!setup && !BackfillMode && State.Bytes + payload.Length > (Priority(file) == 0 ? 12L : 10L) * 1024 * 1024) { Status = "Limite de 10 MiB/dia atingido"; return; }
             if (!setup) { State.Requests++; State.Bytes += payload.Length; recent.Enqueue(now); }
             State.Next = now.AddSeconds(setup ? 1 : 6); Save();
             using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = new ByteArrayContent(payload) };
