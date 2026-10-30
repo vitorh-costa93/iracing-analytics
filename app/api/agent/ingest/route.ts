@@ -5,7 +5,7 @@ import { parseAgentResult, AgentValidationError } from '@/lib/agent-result';
 import { parseAgentTelemetry, agentHash } from '@/lib/agent-telemetry';
 import { parseAgentReference, AGENT_REFERENCE_PREFIX } from '@/lib/agent-reference';
 import { parseAgentIbtResult, IBT_RESULT_MAX_BYTES } from '@/lib/agent-ibt-result';
-import { parseAgentIbtSetup, ibtSetupIdentity, IBT_SETUP_MAX_BYTES, IBT_SETUP_SOURCE } from '@/lib/agent-ibt-setup';
+import { parseAgentIbtSetup, ibtSetupIdentity, ibtSetupLabel, IBT_SETUP_MAX_BYTES, IBT_SETUP_SOURCE } from '@/lib/agent-ibt-setup';
 import { classifyAgainstFixed, DecodedSetupRow, setupIdentityHash } from '@/lib/setup-params';
 export const runtime='nodejs';
 export const maxDuration=30;
@@ -89,6 +89,17 @@ async function handlePost(request:NextRequest){
    const setup=parseAgentIbtSetup(body,Number(device.customer_id));
    const [car,track]=await Promise.all([catalog('cars',setup.nativeCarId,setup.carName),catalog('tracks',setup.nativeTrackId,setup.trackName,setup.trackConfig)]);
    const id=ibtSetupIdentity(setup,car,track);key=id.key;hash=id.hash;bytes=size;setupRows=setup.rows;
+   // Already stored under the old "IBT xxxx" name (same virtual storage_path): only rename it. The receipt key does not
+   // include the name, so the normal admission would answer "duplicate" and never write the new filename.
+   const label=ibtSetupLabel(setup.setupName);
+   if(label){
+    const storagePath=`${IBT_SETUP_SOURCE}/${device.driver_id}/${setup.season.id}/${car}/${track}/${setup.identity}`;
+    for(const name of [label,`${label} (${setup.identity.slice(0,4)})`]){
+     const {data:renamed,error:renameError}=await db.from('setup_files').update({filename:name,updated_at:new Date().toISOString()}).eq('driver_id',device.driver_id).eq('source',IBT_SETUP_SOURCE).eq('storage_path',storagePath).neq('filename',name).select('id');
+     if(!renameError){if(renamed?.length)return reply(200,'stored');break;}
+     if(renameError.code!=='23505')throw new Error('setup');
+    }
+   }
    // The loaded file's name matches an uploaded .sto of this context that has no readable parameters: give it these
    // parameters (the dropdown entry the driver already knows) instead of adding a second "IBT xxxx" entry.
    if(setup.setupName){
