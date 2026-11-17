@@ -13,7 +13,6 @@ import { refreshSyncStatus, useSyncStatus } from "@/lib/use-sync-status";
 const NAV = [
   { href: "/", short: "Visão", label: "Visão Geral", match: (path: string) => path === "/" },
   { href: "/telemetry", short: "Telemetria", label: "Telemetry Lab", match: (path: string) => path.startsWith("/telemetry") },
-  { href: "/debriefs", short: "Debriefs", label: "Debriefs", match: (path: string) => path.startsWith("/debriefs") },
   { href: "/setup", short: "Setup", label: "Setup Lab", match: (path: string) => path.startsWith("/setup") },
 ];
 

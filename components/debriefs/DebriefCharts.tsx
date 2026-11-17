@@ -56,18 +56,26 @@ export function LossTimingBars({ current, reference, referenceLabel }: { current
 }
 
 /** "Δ de iRating por semana": uma barra por week, para cima (ganho) ou para baixo (perda) de uma linha zero. */
-export function WeekPressureBars({ weeks, heightPx = 130 }: { weeks: Array<{ week: number; delta: number; races: number; severeLosses: number }>; heightPx?: number }) {
+export function WeekPressureBars({ weeks, heightPx = 130 }: { weeks: Array<{ week: number; delta: number; races: number; severeLosses: number; cars?: string[]; tracks?: string[] }>; heightPx?: number }) {
   const max = Math.max(1, ...weeks.map((item) => Math.abs(item.delta)));
   const zeroY = Math.round(heightPx * 0.5);
   const maxBar = Math.max(24, Math.round(heightPx * 0.42));
   return (
     <div className="ngd-weeks">
       <div className="ngd-weeks-zero" style={{ top: zeroY }} />
-      {weeks.map((item) => {
+      {weeks.map((item, index) => {
         const h = Math.max(2, Math.round((Math.abs(item.delta) / max) * maxBar));
+        const align = index <= 1 ? "left" : index >= weeks.length - 2 ? "right" : "center";
+        const trackText = item.tracks?.length ? item.tracks.join(" · ") : "Sem corridas";
+        const carText = item.cars?.length ? item.cars.join(" · ") : "—";
         return (
-          <div className="ngd-weeks-col" style={{ height: heightPx }} key={item.week} title={weekShort(item.week) + ": " + signedInt(item.delta) + " em " + item.races + " corrida(s)" + (item.severeLosses ? " · " + item.severeLosses + " perda(s) grande(s)" : "")}>
+          <div className="ngd-weeks-col" style={{ height: heightPx }} key={item.week}>
             <div className="ngd-weeks-bar" data-tone={item.delta >= 0 ? "gain" : "loss"} style={item.delta >= 0 ? { top: zeroY - h, height: h } : { top: zeroY, height: h }} />
+            <div className="ngd-week-tip" data-align={align} role="tooltip">
+              <div className="ngd-week-tip-delta" data-tone={item.delta >= 0 ? "gain" : "loss"}>{weekShort(item.week)} · {signedInt(item.delta)} iRating</div>
+              <div className="ngd-week-tip-line">{trackText}</div>
+              <div className="ngd-week-tip-muted">{carText}</div>
+            </div>
             <span>{weekShort(item.week)}</span>
           </div>
         );

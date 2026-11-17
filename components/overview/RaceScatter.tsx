@@ -29,8 +29,8 @@ export default function RaceScatter({ points, tall = false }: { points: RaceScat
   let tip: { x: number; y: number } | null = null;
   if (hovered) {
     const px = x(hovered.durationMinutes), py = y(hovered.delta);
-    const tx = px - 210 < x0 ? px + 14 : px - 210;
-    tip = { x: Math.min(tx, vw - 206), y: Math.min(Math.max(py - 24, 4), vh - 56) };
+    const tx = px - 224 < x0 ? px + 14 : px - 224;
+    tip = { x: Math.min(tx, vw - 222), y: Math.min(Math.max(py - 24, 4), vh - 54) };
   }
 
   return (
@@ -60,10 +60,10 @@ export default function RaceScatter({ points, tall = false }: { points: RaceScat
       })}
       {hovered && tip && (
         <g pointerEvents="none">
-          <rect x={tip.x} y={tip.y} width={196} height={50} rx={6} fill="var(--ng-header)" stroke="var(--ng-tooltip-border)" />
-          <text x={tip.x + 12} y={tip.y + 18} fontSize={13} fontWeight={600} fill={hovered.delta >= 0 ? "var(--ng-gain)" : "var(--ng-loss)"}>{signedNumber(hovered.delta)} iRating</text>
-          <text x={tip.x + 12} y={tip.y + 33} fontSize={11.5} fill="var(--ng-text-2)">{hovered.durationMinutes.toFixed(1).replace(".", ",")} min · {hovered.car.length > 26 ? hovered.car.slice(0, 25) + "…" : hovered.car}</text>
-          <text x={tip.x + 12} y={tip.y + 46} fontSize={11.5} fill="var(--ng-muted)">{hovered.track.length > 24 ? hovered.track.slice(0, 23) + "…" : hovered.track} · {new Date(hovered.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</text>
+          <rect x={tip.x} y={tip.y} width={214} height={48} rx={6} fill="var(--ng-header)" stroke="var(--ng-tooltip-border)" />
+          <text x={tip.x + 10} y={tip.y + 16} fontSize={11.5} fontWeight={600} fill={hovered.delta >= 0 ? "var(--ng-gain)" : "var(--ng-loss)"}>{signedNumber(hovered.delta)} iRating</text>
+          <text x={tip.x + 10} y={tip.y + 30} fontSize={10} fill="var(--ng-text-2)">{hovered.durationMinutes.toFixed(1).replace(".", ",")} min · {hovered.car.length > 26 ? hovered.car.slice(0, 25) + "…" : hovered.car}</text>
+          <text x={tip.x + 10} y={tip.y + 42} fontSize={10} fill="var(--ng-muted)">{hovered.track.length > 26 ? hovered.track.slice(0, 25) + "…" : hovered.track} · {new Date(hovered.startedAt).toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })}</text>
         </g>
       )}
       <text x={14} y={(y0 + y1) / 2} fontSize={12} fill="var(--ng-soft)" transform={`rotate(-90 14 ${(y0 + y1) / 2})`} textAnchor="middle">Δ iRating</text>

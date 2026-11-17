@@ -5,6 +5,8 @@
 - `components/ActiveWeekTelemetry.tsx`, `components/telemetry/CornerByCorner.tsx`, `components/telemetry/LapMap.tsx` e `lib/track-map.ts`: no modo embarcado da Visão Geral, exibe os cards históricos de `weeklyContexts` no topo, rotaciona automaticamente o `LapMap` em 90° (`preferLandscape`) quando a pista é mais alta que larga (`210px` de altura), remove a coluna `"Em uma frase"` do `Curva a Curva` compacto com os 4 KPIs em linha única, e abre automaticamente no contexto da última corrida.
 - `app/api/dashboard/overview/route.ts`: adiciona `expectedVsReal` por categoria (`formula_car` / `sports_car`) usando `fieldMetricsFor` (`lib/debrief-field-data.ts`).
 - `components/overview/LatestRaces.tsx`, `components/TelemetryTabs.tsx`, `components/telemetry/RaceDebriefView.tsx` e `app/api/telemetry/race-debrief/route.ts`: cada corrida na tabela `Últimas corridas` tem ícone direto para `/telemetry?tab=debrief&raceId=<irstats_race_id>`.
+- `components/overview/RaceScatter.tsx` e `components/debriefs/DebriefCharts.tsx` (`app/night-grid-debriefs.css`): tooltip equilibrada no `RaceScatter` (`11.5px`/`10px` em `214×48`) e tooltip no hover das colunas de `Δ de iRating por semana` exibindo pista(s) e carro(s) daquela week.
+- `components/AppHeader.tsx` e `components/TelemetryTabs.tsx`: removida a aba `Debriefs` do cabeçalho e a sub-aba `Semana ativa` do `Telemetry Lab` (que agora abre direto em `Race Debrief`, `Comparação de carros` e `Plano e volta`).
 - Validação: `npm test` (557 passed) e `npm run build` PASS.
 
 ## Frescor e orçamento de cache — 21/10/2026
