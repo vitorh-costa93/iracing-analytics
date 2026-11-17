@@ -400,10 +400,10 @@ export default function Home() {
           <div className="ngo-right-col">
             <Panel
               className="ngo-telem-panel"
-              kicker="TELEMETRY LAB · SEMANA ATIVA"
+              kicker="DEEP DIVE · SEMANA ATIVA"
               title="Telemetria da semana atual"
               titleSize="md"
-              actions={<Link className="ngo-link" href="/telemetry">Abrir Telemetry Lab →</Link>}
+              actions={<Link className="ngo-link" href="/telemetry">Abrir Deep Dive →</Link>}
             >
               <ActiveWeekTelemetry embedded weeklyContexts={weeklyContexts} lastRace={lastRace} />
             </Panel>

@@ -1,3 +1,5 @@
+import { trackLengthKm } from "@/lib/track-lengths";
+
 export type Finisher = { carName: string; fastestLapTime: string | null };
 
 /** Parses irstats' "M:SS.mmm" lap-time text (e.g. "1:27.305") into seconds. */
@@ -74,6 +76,8 @@ export type WinnerGapByTrack = {
   races: number;
   avgGapSeconds: number;
   avgGapPct: number;
+  avgGapPerKm: number | null;
+  trackLengthKm: number | null;
   bestGapSeconds: number;
   worstGapSeconds: number;
 };
@@ -125,24 +129,32 @@ const round3 = (value: number) => Math.round(value * 1000) / 1000;
  * are part of the field). `by: "car"` groups by car name instead (the label still comes out in
  * `track`). Sorted by average gap in seconds, smallest first; the percentage stays for display. */
 export function aggregateWinnerGapByTrack(rows: WinnerGapRace[], by: "track" | "car" = "track"): WinnerGapByTrack[] {
-  const byTrack = new Map<string, Array<{ seconds: number; pct: number }>>();
+  const byTrack = new Map<string, Array<{ seconds: number; pct: number; perKm: number | null; lengthKm: number | null }>>();
   for (const row of rows) {
     const gap = raceWinnerGap(row.fastest_lap_time, row.class_fastest_lap_time);
     if (!gap || Math.abs(gap.pct) > MAX_PLAUSIBLE_GAP_PCT) continue;
     const key = by === "car" ? row.car_name : row.track_name;
     if (!key) continue;
+    const lengthKm = trackLengthKm(row.track_name);
+    const perKm = lengthKm ? gap.seconds / lengthKm : null;
     const list = byTrack.get(key) ?? [];
-    list.push(gap);
+    list.push({ ...gap, perKm, lengthKm });
     byTrack.set(key, list);
   }
   return [...byTrack.entries()]
-    .map(([track, gaps]) => ({
-      track,
-      races: gaps.length,
-      avgGapSeconds: round3(gaps.reduce((sum, gap) => sum + gap.seconds, 0) / gaps.length),
-      avgGapPct: round3(gaps.reduce((sum, gap) => sum + gap.pct, 0) / gaps.length),
-      bestGapSeconds: round3(Math.min(...gaps.map((gap) => gap.seconds))),
-      worstGapSeconds: round3(Math.max(...gaps.map((gap) => gap.seconds))),
-    }))
-    .sort((a, b) => a.avgGapSeconds - b.avgGapSeconds);
+    .map(([track, gaps]) => {
+      const withKm = gaps.filter((gap): gap is { seconds: number; pct: number; perKm: number; lengthKm: number } => gap.perKm !== null);
+      const uniqueLengths = new Set(withKm.map((g) => g.lengthKm));
+      return {
+        track,
+        races: gaps.length,
+        avgGapSeconds: round3(gaps.reduce((sum, gap) => sum + gap.seconds, 0) / gaps.length),
+        avgGapPct: round3(gaps.reduce((sum, gap) => sum + gap.pct, 0) / gaps.length),
+        avgGapPerKm: withKm.length ? round3(withKm.reduce((sum, gap) => sum + gap.perKm, 0) / withKm.length) : null,
+        trackLengthKm: by === "track" && uniqueLengths.size === 1 ? [...uniqueLengths][0] : null,
+        bestGapSeconds: round3(Math.min(...gaps.map((gap) => gap.seconds))),
+        worstGapSeconds: round3(Math.max(...gaps.map((gap) => gap.seconds))),
+      };
+    })
+    .sort((a, b) => (a.avgGapPerKm ?? a.avgGapSeconds) - (b.avgGapPerKm ?? b.avgGapSeconds));
 }

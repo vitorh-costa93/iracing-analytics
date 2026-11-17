@@ -6,7 +6,7 @@
 - `app/api/dashboard/overview/route.ts`: adiciona `expectedVsReal` por categoria (`formula_car` / `sports_car`) usando `fieldMetricsFor` (`lib/debrief-field-data.ts`).
 - `components/overview/LatestRaces.tsx`, `components/TelemetryTabs.tsx`, `components/telemetry/RaceDebriefView.tsx` e `app/api/telemetry/race-debrief/route.ts`: cada corrida na tabela `Últimas corridas` tem ícone direto para `/telemetry?tab=debrief&raceId=<irstats_race_id>`.
 - `components/overview/RaceScatter.tsx` e `components/debriefs/DebriefCharts.tsx` (`app/night-grid-debriefs.css`): tooltip equilibrada no `RaceScatter` (`11.5px`/`10px` em `214×48`) e tooltip no hover das colunas de `Δ de iRating por semana` exibindo pista(s) e carro(s) daquela week.
-- `components/AppHeader.tsx` e `components/TelemetryTabs.tsx`: removida a aba `Debriefs` do cabeçalho e a sub-aba `Semana ativa` do `Telemetry Lab` (que agora abre direto em `Race Debrief`, `Comparação de carros` e `Plano e volta`).
+- `components/AppHeader.tsx`, `components/TelemetryTabs.tsx`, `app/telemetry/page.tsx`, `components/telemetry/HistoryView.tsx`: `Telemetry Lab` renomeado para `Deep Dive` (`Race Debrief`, `Comparação de carros` e `Histórico` no lugar de `Plano e volta`). A aba `Histórico` traz os KPIs históricos (sem Saldo Acumulado), `DeltaByContext`, `GapToWinner` normalizado por extensão da pista em `s/km` (`lib/track-lengths.ts` + `lib/winner-gap.ts`), Matriz Ritmo × Conversão e Sobrevivência/Deixado na pista.
 - Validação: `npm test` (557 passed) e `npm run build` PASS.
 
 ## Frescor e orçamento de cache — 21/10/2026

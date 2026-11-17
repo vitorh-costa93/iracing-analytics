@@ -5,7 +5,7 @@ import { formatSignedSeconds } from "@/lib/engineer-talk";
 import { Chip } from "@/components/ui";
 import { signedNumber } from "./format";
 
-export type WinnerGapItem = { track: string; races: number; avgGapSeconds: number; avgGapPct: number; bestGapSeconds: number; worstGapSeconds: number };
+export type WinnerGapItem = { track: string; races: number; avgGapSeconds: number; avgGapPct: number; avgGapPerKm?: number | null; trackLengthKm?: number | null; bestGapSeconds: number; worstGapSeconds: number };
 export type RankingItem = { label: string; delta: number; races: number; group?: string | null; avgDelta: number };
 
 function evidence(races: number) {
@@ -59,48 +59,57 @@ export function DeltaByContext({ items, kind, emptyText }: { items: RankingItem[
 
 
 function seconds(v: number) { return formatSignedSeconds(v); }
+function perKm(v: number) { return `${v > 0 ? "+" : ""}${v.toLocaleString("pt-BR", { minimumFractionDigits: 3, maximumFractionDigits: 3 })} s/km`; }
 function percent(v: number) { return `${v > 0 ? "+" : ""}${v.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}%`; }
 
 export function gapOverall(items: WinnerGapItem[]) {
+  const withKm = items.filter((i) => i.avgGapPerKm != null);
+  if (withKm.length) {
+    const races = withKm.reduce((s, i) => s + i.races, 0);
+    return races ? withKm.reduce((s, i) => s + (i.avgGapPerKm ?? 0) * i.races, 0) / races : 0;
+  }
   const races = items.reduce((s, i) => s + i.races, 0);
   return races ? items.reduce((s, i) => s + i.avgGapPct * i.races, 0) / races : 0;
 }
 
-/** Medida 2: gap em segundos para a melhor volta da sua classe na corrida (você faz parte do grupo,
- * então o gap nunca é negativo; zero = a melhor volta foi sua). Só itens com mais de uma corrida;
- * 5 menores e 5 maiores gaps. */
+/** Medida 2: gap em segundos dividido pela extensão da pista em km (`s/km`) para a melhor volta
+ * da sua classe na corrida. Só itens com mais de uma corrida; 5 menores e 5 maiores gaps. */
 export function GapToWinner({ items: allItems, kind = "track" }: { items: WinnerGapItem[]; kind?: "track" | "car" }) {
-  // Só pistas com mais de uma corrida; até 5 menores e 5 maiores gaps (mesma seleção da Medida 1).
-  // Ordem e barras pelo gap em % do tempo de volta: normaliza pela extensão da pista (Le Mans
-  // tem gap em segundos naturalmente maior que Okayama). Os segundos ficam como detalhe.
-  const eligible = allItems.filter((i) => i.races > 1).sort((a, b) => a.avgGapPct - b.avgGapPct);
+  const metricOf = (i: WinnerGapItem) => i.avgGapPerKm ?? i.avgGapPct;
+  const eligible = allItems.filter((i) => i.races > 1).sort((a, b) => metricOf(a) - metricOf(b));
   const items = eligible.length > 10 ? [...eligible.slice(0, 5), ...eligible.slice(-5)] : eligible;
   if (!items.length) return <div className="ngo-empty">Ainda sem itens com mais de uma corrida com a melhor volta da classe.</div>;
-  const min = Math.min(...items.map((i) => i.avgGapPct), 0);
-  const max = Math.max(...items.map((i) => i.avgGapPct), 0);
+  const min = Math.min(...items.map(metricOf), 0);
+  const max = Math.max(...items.map(metricOf), 0);
   const range = Math.max(max - min, 0.001);
   const zero = (-min / range) * 100;
   return (
     <div className="ngo-rank">
       <div className="ngo-rank-axis"><span /><span><span>MAIS PERTO</span><span>MAIS LONGE</span></span><span /></div>
       {items.map((item) => {
-        const faster = item.avgGapPct <= 0;
+        const val = metricOf(item);
+        const faster = val <= 0;
         const tone = faster ? "var(--ng-gain)" : "var(--ng-loss)";
-        const w = Math.max((Math.abs(item.avgGapPct) / range) * 100, 1);
+        const w = Math.max((Math.abs(val) / range) * 100, 1);
         return (
           <div className="ngo-rank-row" key={item.track}>
             <div className="ngo-rank-label">
               <Lead kind={kind} label={item.track} />
               <div className="ngo-rank-text">
                 <div className="ngo-rank-name">{item.track}</div>
-                <div className="ngo-rank-sub">{item.races} corr. · melhor {seconds(item.bestGapSeconds)} · pior {seconds(item.worstGapSeconds)}</div>
+                <div className="ngo-rank-sub">
+                  {item.races} corr.{item.trackLengthKm ? ` · ${item.trackLengthKm.toFixed(2).replace(".", ",")} km` : ""} · melhor {seconds(item.bestGapSeconds)} · pior {seconds(item.worstGapSeconds)}
+                </div>
               </div>
             </div>
             <div className="ngo-rank-bar">
               {min < 0 && <i className="ngo-rank-center" style={{ left: `${zero}%` }} />}
               <span style={{ background: tone, left: faster ? `${zero - w}%` : `${zero}%`, width: `${w}%` }} />
             </div>
-            <div className="ngo-rank-value ngo-rank-value-2" style={{ color: tone }}>média {percent(item.avgGapPct)}<span>{seconds(item.avgGapSeconds)}</span></div>
+            <div className="ngo-rank-value ngo-rank-value-2" style={{ color: tone }}>
+              {item.avgGapPerKm != null ? perKm(item.avgGapPerKm) : percent(item.avgGapPct)}
+              <span>{seconds(item.avgGapSeconds)}</span>
+            </div>
           </div>
         );
       })}

@@ -12,7 +12,7 @@ import { refreshSyncStatus, useSyncStatus } from "@/lib/use-sync-status";
  * "Atualizar dados" (lib/data-sync-action.ts, mesma ação de antes) e identidade do piloto. */
 const NAV = [
   { href: "/", short: "Visão", label: "Visão Geral", match: (path: string) => path === "/" },
-  { href: "/telemetry", short: "Telemetria", label: "Telemetry Lab", match: (path: string) => path.startsWith("/telemetry") },
+  { href: "/telemetry", short: "Deep Dive", label: "Deep Dive", match: (path: string) => path.startsWith("/telemetry") },
   { href: "/setup", short: "Setup", label: "Setup Lab", match: (path: string) => path.startsWith("/setup") },
 ];
 
