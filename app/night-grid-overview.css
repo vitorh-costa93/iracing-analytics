@@ -82,13 +82,13 @@
 .ngo-race-debrief-btn:hover { color: var(--ng-reference); border-color: var(--ng-border); background: var(--ng-card-2); }
 
 /* Layout do wireframe na Visão Geral: esquerda (KPIs + Race Survival + Δ por semana) e direita (Telemetry Lab · Semana ativa) */
-.ngo-hero-split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.ngo-hero-split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--space-4); align-items: stretch; }
 .ngo-left-col, .ngo-right-col { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 .ngo-kpis-stacked { display: flex; flex-direction: column; gap: var(--space-3); }
-.ngo-season-charts { display: flex; flex-direction: column; gap: var(--space-3); }
+.ngo-season-charts { display: flex; flex-direction: column; gap: var(--space-3); flex: 1 1 auto; }
 .ngo-season-charts-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 2px 2px 0; }
-.ngo-scatter-panel { height: 300px; }
-.ngo-pressure-panel { min-height: 0; gap: var(--space-2); }
+.ngo-scatter-panel { flex: 1.15 1 340px; height: auto; }
+.ngo-pressure-panel { flex: 1 1 260px; min-height: 0; gap: var(--space-2); }
 .ngo-telem-panel { gap: var(--space-3); }
 .ngo-telem-head-stack { display: flex; flex-direction: column; gap: var(--space-2); }
 .ngo-ctx-badges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }

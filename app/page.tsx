@@ -383,7 +383,7 @@ export default function Home() {
                 }
               >
                 <div className="ng-panel-subtitle">Só a season atual · duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</div>
-                <RaceScatter points={scatter} />
+                <RaceScatter points={scatter} tall />
               </Panel>
 
               <Panel
@@ -393,7 +393,7 @@ export default function Home() {
                 titleSize="md"
                 actions={<Link className="ngo-link" href="/debriefs?scope=season">Debrief da season →</Link>}
               >
-                {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
+                {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} heightPx={230} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
               </Panel>
             </div>
           </div>

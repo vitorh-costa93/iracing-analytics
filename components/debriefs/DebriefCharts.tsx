@@ -55,17 +55,19 @@ export function LossTimingBars({ current, reference, referenceLabel }: { current
   );
 }
 
-/** "Pressão por semana": uma barra por week, para cima (ganho) ou para baixo (perda) de uma linha zero. */
-export function WeekPressureBars({ weeks }: { weeks: Array<{ week: number; delta: number; races: number; severeLosses: number }> }) {
+/** "Δ de iRating por semana": uma barra por week, para cima (ganho) ou para baixo (perda) de uma linha zero. */
+export function WeekPressureBars({ weeks, heightPx = 130 }: { weeks: Array<{ week: number; delta: number; races: number; severeLosses: number }>; heightPx?: number }) {
   const max = Math.max(1, ...weeks.map((item) => Math.abs(item.delta)));
+  const zeroY = Math.round(heightPx * 0.5);
+  const maxBar = Math.max(24, Math.round(heightPx * 0.42));
   return (
     <div className="ngd-weeks">
-      <div className="ngd-weeks-zero" />
+      <div className="ngd-weeks-zero" style={{ top: zeroY }} />
       {weeks.map((item) => {
-        const h = Math.max(2, Math.round((Math.abs(item.delta) / max) * 58));
+        const h = Math.max(2, Math.round((Math.abs(item.delta) / max) * maxBar));
         return (
-          <div className="ngd-weeks-col" key={item.week} title={weekShort(item.week) + ": " + signedInt(item.delta) + " em " + item.races + " corrida(s)" + (item.severeLosses ? " · " + item.severeLosses + " perda(s) grande(s)" : "")}>
-            <div className="ngd-weeks-bar" data-tone={item.delta >= 0 ? "gain" : "loss"} style={item.delta >= 0 ? { top: 60 - h, height: h } : { top: 60, height: h }} />
+          <div className="ngd-weeks-col" style={{ height: heightPx }} key={item.week} title={weekShort(item.week) + ": " + signedInt(item.delta) + " em " + item.races + " corrida(s)" + (item.severeLosses ? " · " + item.severeLosses + " perda(s) grande(s)" : "")}>
+            <div className="ngd-weeks-bar" data-tone={item.delta >= 0 ? "gain" : "loss"} style={item.delta >= 0 ? { top: zeroY - h, height: h } : { top: zeroY, height: h }} />
             <span>{weekShort(item.week)}</span>
           </div>
         );
