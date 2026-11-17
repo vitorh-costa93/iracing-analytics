@@ -124,7 +124,9 @@
   .ngo-ctx-badges { grid-template-columns: minmax(0, 1fr); }
   .ngt-compact .ngt-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
-/* Deep Dive -> Histórico: linhas compactas */
+/* Deep Dive -> Histórico: linhas compactas e painéis com mesma altura por linha */
+.ng-hist-row { align-items: stretch; }
+.ng-hist-row > .ng-panel { height: 100%; }
 .ng-hist-perf .ngo-rank-row { min-height: 36px; padding: 4px 0; grid-template-columns: 210px minmax(0, 1fr) 96px; }
 .ng-hist-perf .ngo-rank-axis { grid-template-columns: 210px minmax(0, 1fr) 96px; }
 .ng-hist-perf .ngo-rank-text { min-width: 0; }

@@ -133,6 +133,20 @@ export default function HistoryView() {
   const qY = (d: number) => 112 - (d / maxAbsDelta) * 84;
   const hovered = quadrantPoints.find((p) => p.label === hoveredDot) ?? null;
 
+  // Greedy collision avoidance: only show permanent labels when they don't overlap already-placed labels;
+  // all points remain inspectable via hover tooltip.
+  const placedLabels: Array<{ x: number; y: number }> = [];
+  const labeledSet = new Set<string>();
+  const prioritized = [...quadrantPoints].sort((a, b) => Math.abs(b.avgDelta) - Math.abs(a.avgDelta));
+  for (const pt of prioritized) {
+    const cx = qX(pt.gapPerKm);
+    const cy = qY(pt.avgDelta);
+    if (placedLabels.some((p) => Math.abs(p.x - cx) < 96 && Math.abs(p.y - cy) < 20)) continue;
+    placedLabels.push({ x: cx, y: cy });
+    labeledSet.add(pt.label);
+    if (placedLabels.length >= 6) break;
+  }
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div className="ngo-perf-head">
@@ -212,8 +226,8 @@ export default function HistoryView() {
         />
       </div>
 
-      {/* Medida 1 & Medida 2 com linhas compactas */}
-      <div className="ngo-perf-grid ng-hist-perf">
+      {/* Medida 1 & Medida 2 com linhas compactas e mesma altura */}
+      <div className="ngo-perf-grid ng-hist-perf ng-hist-row">
         <Panel
           kicker={`MEDIDA 1 · ${segLabel}`}
           title={`Média de Δ iRating por ${activeMode === "car" ? "carro" : "pista"}`}
@@ -234,8 +248,8 @@ export default function HistoryView() {
         </Panel>
       </div>
 
-      {/* Matriz Ritmo × Conversão + Sobrevivência */}
-      <div className="ngo-perf-grid">
+      {/* Matriz Ritmo × Conversão + Sobrevivência com mesma altura */}
+      <div className="ngo-perf-grid ng-hist-row">
         <Panel
           kicker="MATRIZ RITMO × CONVERSÃO"
           title="Onde você é rápido vs. onde realmente pontua"
@@ -262,12 +276,16 @@ export default function HistoryView() {
                 const cy = qY(pt.avgDelta);
                 const active = hoveredDot === pt.label;
                 const fill = pt.avgDelta >= 0 ? "var(--ng-gain)" : "var(--ng-loss)";
+                const showLabel = labeledSet.has(pt.label) && !active;
                 return (
                   <g key={pt.label} style={{ cursor: "pointer" }} onMouseEnter={() => setHoveredDot(pt.label)} onMouseLeave={() => setHoveredDot(null)}>
-                    <circle cx={cx} cy={cy} r={active ? 7 : 5} fill={fill} stroke="var(--ng-bg)" strokeWidth={1.5} />
-                    <text x={cx} y={cy - 8} textAnchor="middle" fill="var(--ng-text-2)" fontSize={9.5} fontWeight={600}>
-                      {pt.label.length > 16 ? pt.label.slice(0, 15) + "…" : pt.label}
-                    </text>
+                    <circle cx={cx} cy={cy} r={active ? 7 : 5} fill={fill} fillOpacity={0.9} stroke="var(--ng-bg)" strokeWidth={1.5} />
+                    <circle cx={cx} cy={cy} r={12} fill="transparent" />
+                    {showLabel && (
+                      <text x={cx} y={cy - 8} textAnchor="middle" fill="var(--ng-text-2)" fontSize={9.5} fontWeight={600}>
+                        {pt.label.length > 16 ? pt.label.slice(0, 15) + "…" : pt.label}
+                      </text>
+                    )}
                   </g>
                 );
               })}
