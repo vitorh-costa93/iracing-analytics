@@ -49,20 +49,30 @@ export async function GET(request: NextRequest) {
     if (driverError) throw driverError;
     if (!driver) throw new Error("Nenhum piloto encontrado.");
 
-    const [{ data: summary }, { data: calendar }, { data: carGroups }] = await Promise.all([
+    const [{ data: summary, error: summaryError }, { data: calendar, error: calendarError }, { data: histPerf, error: histPerfError }] = await Promise.all([
       supabaseAdmin.from("v_season_summary").select("season_id,season_name"),
       supabaseAdmin.from("v_season_calendar").select("season_id,season_start"),
-      supabaseAdmin.from("car_groups").select("car_name,group_name"),
+      supabaseAdmin.from("v_historical_performance").select("car,car_class"),
     ]);
+    if (summaryError) throw summaryError;
+    if (calendarError) throw calendarError;
+    if (histPerfError) throw histPerfError;
 
-    const groupNamesByCar = new Map<string, string[]>();
-    for (const row of carGroups ?? []) {
-      const name = String(row.car_name ?? "");
-      const list = groupNamesByCar.get(name) ?? [];
-      list.push(String(row.group_name ?? ""));
-      groupNamesByCar.set(name, list);
+    const carClassByCar = new Map<string, string>();
+    for (const row of histPerf ?? []) {
+      if (row.car && row.car_class) carClassByCar.set(String(row.car), String(row.car_class));
     }
-    const classOf = (carName: string) => normalizeRaceClass(carName, groupNamesByCar.get(carName) ?? []);
+    const classOf = (carName: string, seriesName?: string | null): string | null => {
+      const fromHist = carClassByCar.get(carName);
+      if (fromHist) return fromHist;
+      const fromNorm = normalizeRaceClass(carName, []);
+      if (fromNorm) return fromNorm;
+      const text = `${carName} ${seriesName ?? ""}`;
+      if (/gt3|gt sprint/i.test(text)) return "GT3";
+      if (/499p|cadillac|acura|963|hybrid|gtp/i.test(text)) return "GTP";
+      if (/lmp2|p217/i.test(text)) return "LMP2";
+      return null;
+    };
 
     const calendarById = new Map((calendar ?? []).map((c) => [String(c.season_id), String(c.season_start)]));
     const seasons = [...(summary ?? [])]
@@ -102,7 +112,7 @@ export async function GET(request: NextRequest) {
 
     const matchesSegment = (row: RawRace, seg: Segment) => {
       const car = row.car_name ?? "";
-      const cls = classOf(car);
+      const cls = classOf(car, row.series_name);
       if (seg === "sf") return /super formula sf23/i.test(car);
       if (seg === "gt3") return cls === "GT3";
       return cls === "GTP" || cls === "LMP2";
@@ -112,7 +122,7 @@ export async function GET(request: NextRequest) {
     const histMap = new Map<string, { ratingCategory: "formula_car" | "sports_car" | "road"; carClass: string | null; car: string; track: string; races: number; delta: number }>();
     for (const row of filtered) {
       if (!row.car_name || !row.track_name || row.irating_delta === null) continue;
-      const carClass = classOf(row.car_name);
+      const carClass = classOf(row.car_name, row.series_name);
       const ratingCategory = row.category === "formula_car" || row.category === "sports_car" ? row.category : "road";
       const key = `${ratingCategory}::${carClass ?? ""}::${row.car_name}::${row.track_name}`;
       const cur = histMap.get(key) ?? { ratingCategory, carClass, car: row.car_name, track: row.track_name, races: 0, delta: 0 };
@@ -133,13 +143,13 @@ export async function GET(request: NextRequest) {
     });
     const gapRaces = dropEarlyExitRaces(filtered.filter((r) => r.track_name && r.fastest_lap_time && r.class_fastest_lap_time).map(toGapRace));
     const sfGap = gapRaces.filter((r) => /super formula sf23/i.test(r.car_name ?? ""));
-    const gt3Gap = gapRaces.filter((r) => classOf(r.car_name ?? "") === "GT3");
+    const gt3Gap = gapRaces.filter((r) => classOf(r.car_name ?? "", r.series_name) === "GT3");
     const imsaGap = gapRaces.filter((r) => {
-      const c = classOf(r.car_name ?? "");
+      const c = classOf(r.car_name ?? "", r.series_name);
       return c === "GTP" || c === "LMP2";
     });
-    const gtpGap = imsaGap.filter((r) => classOf(r.car_name ?? "") === "GTP");
-    const lmp2Gap = imsaGap.filter((r) => classOf(r.car_name ?? "") === "LMP2");
+    const gtpGap = imsaGap.filter((r) => classOf(r.car_name ?? "", r.series_name) === "GTP");
+    const lmp2Gap = imsaGap.filter((r) => classOf(r.car_name ?? "", r.series_name) === "LMP2");
 
     const winnerGapBySegment = {
       sf: aggregateWinnerGapByTrack(sfGap, "track"),

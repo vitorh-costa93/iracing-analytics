@@ -184,9 +184,10 @@ export default function HistoryView() {
         </div>
       </div>
 
-      {/* 3 KPIs compactos no topo (sem Saldo Acumulado) */}
-      <div className="ngo-kpi-grid ng-hist-kpis">
+      {/* 3 KPIs consistentes com o Night Grid (autoHeight para cards sem sparkline) */}
+      <div className="ngo-kpi-grid">
         <KpiCard
+          autoHeight
           category={segment === "sf" ? "formula" : "sports"}
           label="Corridas no histórico"
           value={totalRaces.toLocaleString("pt-BR")}
@@ -194,6 +195,7 @@ export default function HistoryView() {
           trendTone="neutral"
         />
         <KpiCard
+          autoHeight
           category={segment === "sf" ? "formula" : "sports"}
           label="Realizado vs. Esperado"
           value={field.residualAvg === null ? "—" : signedNumber(field.residualAvg, 1)}
@@ -201,6 +203,7 @@ export default function HistoryView() {
           trendTone={field.residualAvg === null || field.residualAvg === 0 ? "neutral" : field.residualAvg > 0 ? "gain" : "loss"}
         />
         <KpiCard
+          autoHeight
           category={segment === "sf" ? "formula" : "sports"}
           label="Taxa de conclusão"
           value={field.permanencePct != null ? `${field.permanencePct}%` : "—"}
