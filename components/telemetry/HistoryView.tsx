@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { KpiCard, Panel, SegmentedControl } from "@/components/ui";
+import { KpiCard, Panel, SegmentedControl, SelectPill } from "@/components/ui";
 import { DeltaByContext, GapToWinner, gapOverall, type RankingItem, type WinnerGapItem } from "@/components/overview/PerformancePanels";
 import { signedNumber } from "@/components/overview/format";
-import type { DebriefReport } from "@/lib/debrief-types";
+import type { LeftOnTable } from "@/lib/debrief-field";
 
 type HistoricalRow = {
   ratingCategory: "formula_car" | "sports_car" | "road";
@@ -16,16 +16,23 @@ type HistoricalRow = {
   avgDelta: number;
 };
 
-type OverviewPayload = {
+type HistoryPayload = {
+  status: string;
+  seasons: Array<{ id: string; name: string }>;
   historical: HistoricalRow[];
-  expectedVsReal?: {
-    formula_car: { realDelta: number | null; expectedDelta: number | null; residualTotal: number | null; residualAvg: number | null; races: number };
-    sports_car: { realDelta: number | null; expectedDelta: number | null; residualTotal: number | null; residualAvg: number | null; races: number };
-  };
-  winnerGapBySegment?: {
+  winnerGapBySegment: {
     sf: WinnerGapItem[];
     gt3: { track: WinnerGapItem[]; car: WinnerGapItem[] };
     imsa: Record<"all" | "GTP" | "LMP2", { track: WinnerGapItem[]; car: WinnerGapItem[] }>;
+  };
+  fieldSummary: {
+    races: number;
+    residualAvg: number | null;
+    residualRaces: number;
+    permanencePct: number | null;
+    early: number;
+    paceTopPct: number | null;
+    leftOnTable: LeftOnTable;
   };
 };
 
@@ -53,81 +60,72 @@ function perKmText(v: number) {
 }
 
 export default function HistoryView() {
-  const [overview, setOverview] = useState<OverviewPayload | null>(null);
-  const [reports, setReports] = useState<Partial<Record<Segment, DebriefReport>>>({});
+  const [data, setData] = useState<HistoryPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [segment, setSegment] = useState<Segment>("gt3");
   const [mode, setMode] = useState<RankingMode>("track");
   const [imsaClass, setImsaClass] = useState<ImsaClass>("all");
+  const [seasonId, setSeasonId] = useState<string>("all");
   const [hoveredDot, setHoveredDot] = useState<string | null>(null);
 
   useEffect(() => {
     let alive = true;
-    fetch("/api/dashboard/overview")
+    setLoading(true);
+    setError(null);
+    fetch(`/api/telemetry/history?seasonId=${encodeURIComponent(seasonId)}&segment=${segment}`)
       .then(async (res) => {
         const json = await res.json();
-        if (!res.ok) throw new Error(json.message ?? "Erro ao carregar histórico");
-        if (alive) setOverview(json);
+        if (!res.ok || json.status === "error") throw new Error(json.message ?? "Erro ao carregar histórico");
+        if (alive) setData(json);
       })
       .catch((err) => alive && setError(err instanceof Error ? err.message : "Erro ao carregar histórico"))
       .finally(() => alive && setLoading(false));
     return () => { alive = false; };
-  }, []);
-
-  useEffect(() => {
-    if (reports[segment]) return;
-    let alive = true;
-    fetch(`/api/dashboard/report?scope=season&segment=${segment}`)
-      .then((res) => (res.ok ? (res.json() as Promise<DebriefReport>) : null))
-      .then((rep) => {
-        if (alive && rep) setReports((prev) => ({ ...prev, [segment]: rep }));
-      })
-      .catch(() => {});
-    return () => { alive = false; };
-  }, [segment, reports]);
+  }, [seasonId, segment]);
 
   const activeMode: RankingMode = segment === "sf" ? "track" : mode;
 
-  const { perfItems, totalRaces, gapItems } = useMemo(() => {
-    if (!overview) return { perfItems: [], totalRaces: 0, gapItems: [] };
+  const { perfItems, perfItemsPlain, totalRaces, gapItems } = useMemo(() => {
+    if (!data) return { perfItems: [], perfItemsPlain: [], totalRaces: 0, gapItems: [] };
     const filtered = segment === "sf"
-      ? overview.historical.filter((r) => /super formula sf23/i.test(r.car))
+      ? data.historical.filter((r) => /super formula sf23/i.test(r.car))
       : segment === "gt3"
-      ? overview.historical.filter((r) => r.carClass === "GT3")
-      : overview.historical.filter((r) => (r.carClass === "GTP" || r.carClass === "LMP2") && (activeMode !== "track" || imsaClass === "all" || r.carClass === imsaClass));
+      ? data.historical.filter((r) => r.carClass === "GT3")
+      : data.historical.filter((r) => (r.carClass === "GTP" || r.carClass === "LMP2") && (activeMode !== "track" || imsaClass === "all" || r.carClass === imsaClass));
 
     const total = filtered.reduce((sum, r) => sum + r.races, 0);
     const items = aggregateRows(filtered, activeMode, segment === "imsa");
-    const seg = overview.winnerGapBySegment;
+    const plain = aggregateRows(filtered, activeMode, false);
+    const seg = data.winnerGapBySegment;
     const gaps = (segment === "sf" ? seg?.sf
       : segment === "gt3" ? seg?.gt3?.[activeMode]
       : seg?.imsa?.[activeMode === "track" ? imsaClass : "all"]?.[activeMode]) ?? [];
-    return { perfItems: items, totalRaces: total, gapItems: gaps };
-  }, [overview, segment, activeMode, imsaClass]);
+    return { perfItems: items, perfItemsPlain: plain, totalRaces: total, gapItems: gaps };
+  }, [data, segment, activeMode, imsaClass]);
 
   const quadrantPoints = useMemo(() => {
     const gapMap = new Map<string, WinnerGapItem>();
     for (const g of gapItems) gapMap.set(g.track, g);
     const points: Array<{ label: string; gapPerKm: number; avgDelta: number; races: number }> = [];
-    for (const p of perfItems) {
+    for (const p of perfItemsPlain) {
       const g = gapMap.get(p.label);
-      if (!g || g.avgGapPerKm == null) continue;
-      points.push({ label: p.label, gapPerKm: g.avgGapPerKm, avgDelta: p.avgDelta, races: p.races });
+      if (!g) continue;
+      const metric = g.avgGapPerKm ?? g.avgGapPct;
+      points.push({ label: p.label, gapPerKm: metric, avgDelta: p.avgDelta, races: p.races });
     }
     return points;
-  }, [perfItems, gapItems]);
+  }, [perfItemsPlain, gapItems]);
 
-  if (loading) return <div className="ngo-empty">Carregando histórico de performance…</div>;
-  if (error || !overview) return <div className="ngo-empty">{error ?? "Histórico indisponível."}</div>;
+  if (loading && !data) return <div className="ngo-empty">Carregando histórico completo do iRacing…</div>;
+  if (error || !data) return <div className="ngo-empty">{error ?? "Histórico indisponível."}</div>;
 
-  const field = reports[segment]?.sections?.[0]?.field ?? null;
+  const field = data.fieldSummary;
   const segLabel = segment === "sf" ? "SUPER FORMULA 23" : segment === "gt3" ? "GT3" : "IMSA GTP / LMP2";
   const avgGapKm = gapItems.length ? gapOverall(gapItems) : null;
-  const rvseCategory = segment === "sf" ? overview.expectedVsReal?.formula_car : overview.expectedVsReal?.sports_car;
-  const residualVal = field?.now.residualAvg ?? rvseCategory?.residualAvg ?? null;
+  const seasonLabel = seasonId === "all" ? "todo o histórico" : (data.seasons.find((s) => s.id === seasonId)?.name ?? "season");
 
-  const maxGapKm = Math.max(0.25, ...quadrantPoints.map((p) => p.gapPerKm));
+  const maxGapKm = Math.max(0.15, ...quadrantPoints.map((p) => p.gapPerKm));
   const minGapKm = Math.min(0, ...quadrantPoints.map((p) => p.gapPerKm));
   const midGapKm = (minGapKm + maxGapKm) / 2;
   const maxAbsDelta = Math.max(15, ...quadrantPoints.map((p) => Math.abs(p.avgDelta)));
@@ -136,7 +134,7 @@ export default function HistoryView() {
   const hovered = quadrantPoints.find((p) => p.label === hoveredDot) ?? null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "18px" }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
       <div className="ngo-perf-head">
         <div className="ngo-perf-controls">
           <SegmentedControl
@@ -172,45 +170,53 @@ export default function HistoryView() {
               ]}
             />
           )}
+          {data.seasons.length > 0 && (
+            <SelectPill
+              ariaLabel="Filtrar por season"
+              value={seasonId}
+              onChange={setSeasonId}
+              options={[
+                { value: "all", label: "Todas as seasons (Histórico)" },
+                ...data.seasons.map((s) => ({ value: s.id, label: s.name })),
+              ]}
+            />
+          )}
         </div>
       </div>
 
-      {/* 3 KPIs no topo (sem Saldo Acumulado) */}
-      <div className="ngo-kpi-grid">
+      {/* 3 KPIs compactos no topo (sem Saldo Acumulado) */}
+      <div className="ngo-kpi-grid ng-hist-kpis">
         <KpiCard
           category={segment === "sf" ? "formula" : "sports"}
           label="Corridas no histórico"
           value={totalRaces.toLocaleString("pt-BR")}
-          trend={`Segmento ${segLabel}`}
+          trend={`${segLabel} · ${seasonLabel}`}
           trendTone="neutral"
-          description="Todo o histórico desde o início no iRacing"
         />
         <KpiCard
           category={segment === "sf" ? "formula" : "sports"}
           label="Realizado vs. Esperado"
-          value={residualVal === null ? "—" : signedNumber(residualVal, 1)}
-          trend={field ? `Média por corrida na season (${field.now.residualRaces} corr.)` : "Média vs. modelo Elo no grid"}
-          trendTone={residualVal === null || residualVal === 0 ? "neutral" : residualVal > 0 ? "gain" : "loss"}
-          description="Positivo = rendeu acima do previsto pelo iRating"
+          value={field.residualAvg === null ? "—" : signedNumber(field.residualAvg, 1)}
+          trend={`Média/corrida vs. Elo (${field.residualRaces} corr. com campo)`}
+          trendTone={field.residualAvg === null || field.residualAvg === 0 ? "neutral" : field.residualAvg > 0 ? "gain" : "loss"}
         />
         <KpiCard
           category={segment === "sf" ? "formula" : "sports"}
           label="Taxa de conclusão"
-          value={field?.now.permanencePct != null ? `${field.now.permanencePct}%` : "—"}
-          trend={field ? `${field.now.early} saída(s) antecipada(s) (<90% das voltas)` : "Carregando dados de campo…"}
-          trendTone={field?.now.permanencePct != null && field.now.permanencePct < 80 ? "loss" : "gain"}
-          description={field?.leftOnTable.total ? `Deixado na pista: ${field.leftOnTable.total} iR` : "Permanência nas corridas oficiais"}
+          value={field.permanencePct != null ? `${field.permanencePct}%` : "—"}
+          trend={`${field.early} saída(s) antecipada(s) · deixado: ${field.leftOnTable.total > 0 ? `-${field.leftOnTable.total} iR` : "0 iR"}`}
+          trendTone={field.permanencePct != null && field.permanencePct < 80 ? "loss" : "gain"}
         />
       </div>
 
-      {/* Medida 1 & Medida 2 */}
-      <div className="ngo-perf-grid">
+      {/* Medida 1 & Medida 2 com linhas compactas */}
+      <div className="ngo-perf-grid ng-hist-perf">
         <Panel
           kicker={`MEDIDA 1 · ${segLabel}`}
           title={`Média de Δ iRating por ${activeMode === "car" ? "carro" : "pista"}`}
           titleSize="sm"
           as="article"
-          subtitle="5 maiores ganhos e 5 maiores perdas, por média de iRating por corrida (mín. 2 corridas)"
+          subtitle="5 maiores ganhos e 5 maiores perdas (mín. 2 corridas)"
         >
           <DeltaByContext items={perfItems} kind={activeMode} />
         </Panel>
@@ -219,7 +225,7 @@ export default function HistoryView() {
           title={`Sua melhor volta vs. melhor da classe (s/km), por ${activeMode === "car" ? "carro" : "pista"}`}
           titleSize="sm"
           as="article"
-          subtitle={`Gap em segundos ÷ extensão da pista em km · 5 menores e 5 maiores, 2+ corridas${avgGapKm !== null ? ` · média ${perKmText(avgGapKm)}` : ""}`}
+          subtitle={`Gap em s ÷ extensão em km · 5 menores e 5 maiores${avgGapKm !== null ? ` · média ${perKmText(avgGapKm)}` : ""}`}
         >
           <GapToWinner items={gapItems} kind={activeMode} />
         </Panel>
@@ -232,12 +238,12 @@ export default function HistoryView() {
           title="Onde você é rápido vs. onde realmente pontua"
           titleSize="sm"
           as="article"
-          subtitle="Cruza gap normalizado (s/km, mais rápido à direita) com Δ médio de iRating por corrida."
+          subtitle={`Cruza gap (s/km, mais rápido à direita) com Δ médio de iRating · ${seasonLabel}.`}
         >
           {quadrantPoints.length < 2 ? (
-            <div className="ngo-empty">Ainda sem pistas/carros suficientes com ambas as métricas.</div>
+            <div className="ngo-empty">Ainda sem pistas/carros suficientes com ambas as métricas neste recorte.</div>
           ) : (
-            <svg viewBox="0 0 600 230" style={{ width: "100%", height: "230px", overflow: "visible" }} role="img" aria-label="Matriz Ritmo versus Conversão em iRating">
+            <svg viewBox="0 0 600 220" style={{ width: "100%", height: "220px", overflow: "visible" }} role="img" aria-label="Matriz Ritmo versus Conversão em iRating">
               <rect x={56} y={18} width={255} height={94} fill="rgba(255,176,32,.04)" />
               <rect x={311} y={18} width={255} height={94} fill="rgba(61,214,140,.06)" />
               <rect x={56} y={112} width={255} height={94} fill="rgba(255,107,107,.05)" />
@@ -256,7 +262,7 @@ export default function HistoryView() {
                 return (
                   <g key={pt.label} style={{ cursor: "pointer" }} onMouseEnter={() => setHoveredDot(pt.label)} onMouseLeave={() => setHoveredDot(null)}>
                     <circle cx={cx} cy={cy} r={active ? 7 : 5} fill={fill} stroke="var(--ng-bg)" strokeWidth={1.5} />
-                    <text x={cx} y={cy - 8} textAnchor="middle" fill="var(--ng-text-2)" fontSize={10} fontWeight={600}>
+                    <text x={cx} y={cy - 8} textAnchor="middle" fill="var(--ng-text-2)" fontSize={9.5} fontWeight={600}>
                       {pt.label.length > 16 ? pt.label.slice(0, 15) + "…" : pt.label}
                     </text>
                   </g>
@@ -264,55 +270,51 @@ export default function HistoryView() {
               })}
               {hovered && (
                 <g pointerEvents="none">
-                  <rect x={Math.min(Math.max(qX(hovered.gapPerKm) - 95, 60), 370)} y={Math.max(qY(hovered.avgDelta) - 52, 6)} width={196} height={42} rx={6} fill="var(--ng-header)" stroke="var(--ng-tooltip-border)" />
+                  <rect x={Math.min(Math.max(qX(hovered.gapPerKm) - 95, 60), 370)} y={Math.max(qY(hovered.avgDelta) - 52, 6)} width={206} height={42} rx={6} fill="var(--ng-header)" stroke="var(--ng-tooltip-border)" />
                   <text x={Math.min(Math.max(qX(hovered.gapPerKm) - 85, 70), 380)} y={Math.max(qY(hovered.avgDelta) - 34, 24)} fontSize={11} fontWeight={600} fill="var(--ng-text)">{hovered.label}</text>
                   <text x={Math.min(Math.max(qX(hovered.gapPerKm) - 85, 70), 380)} y={Math.max(qY(hovered.avgDelta) - 18, 40)} fontSize={10} fill="var(--ng-muted)">{perKmText(hovered.gapPerKm)} · {signedNumber(hovered.avgDelta, 1)} iR/corr ({hovered.races})</text>
                 </g>
               )}
-              <text x={311} y={222} textAnchor="middle" fill="var(--ng-soft)" fontSize={10}>← Maior gap (s/km) · Menor gap (s/km) →</text>
+              <text x={311} y={218} textAnchor="middle" fill="var(--ng-soft)" fontSize={10}>← Maior gap (s/km) · Menor gap (s/km) →</text>
             </svg>
           )}
         </Panel>
 
         <Panel
           kicker="SOBREVIVÊNCIA &amp; IRATING DEIXADO NA PISTA"
-          title="Onde o iRating escapou na season"
+          title={`Onde o iRating escapou (${seasonLabel})`}
           titleSize="sm"
           as="article"
-          subtitle={field ? `Base: ${field.now.races} corridas oficiais (${field.referenceLabel}).` : "Carregando métricas de campo…"}
+          subtitle={`Base: ${field.races} corridas oficiais no recorte.`}
         >
-          {!field ? (
-            <div className="ngo-empty">Sem dados de campo disponíveis para este segmento.</div>
-          ) : (
-            <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-              <div className="ngo-kpi-grid">
-                <div style={{ background: "var(--ng-card-2)", borderRadius: "8px", padding: "10px 12px" }}>
-                  <div style={{ fontSize: "11px", color: "var(--ng-muted)" }}>Ritmo no grid</div>
-                  <div style={{ fontFamily: "var(--ng-font-display)", fontSize: "20px", fontWeight: 700 }}>
-                    {field.now.paceTopPct != null ? `Top ${field.now.paceTopPct}%` : "—"}
-                  </div>
-                </div>
-                <div style={{ background: "var(--ng-card-2)", borderRadius: "8px", padding: "10px 12px" }}>
-                  <div style={{ fontSize: "11px", color: "var(--ng-muted)" }}>Saídas precoces</div>
-                  <div style={{ fontFamily: "var(--ng-font-display)", fontSize: "20px", fontWeight: 700, color: field.now.early > 0 ? "var(--ng-loss)" : "var(--ng-gain)" }}>
-                    {field.now.early}
-                  </div>
-                </div>
-                <div style={{ background: "var(--ng-card-2)", borderRadius: "8px", padding: "10px 12px" }}>
-                  <div style={{ fontSize: "11px", color: "var(--ng-muted)" }}>Deixado na pista</div>
-                  <div style={{ fontFamily: "var(--ng-font-display)", fontSize: "20px", fontWeight: 700, color: "var(--ng-loss)" }}>
-                    {field.leftOnTable.total > 0 ? `-${field.leftOnTable.total} iR` : "0 iR"}
-                  </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div className="ngo-kpi-grid">
+              <div style={{ background: "var(--ng-card-2)", borderRadius: "8px", padding: "9px 12px" }}>
+                <div style={{ fontSize: "11px", color: "var(--ng-muted)" }}>Ritmo no grid</div>
+                <div style={{ fontFamily: "var(--ng-font-display)", fontSize: "18px", fontWeight: 700 }}>
+                  {field.paceTopPct != null ? `Top ${field.paceTopPct}%` : "—"}
                 </div>
               </div>
-              {field.leftOnTable.top.slice(0, 4).map((r) => (
-                <div key={`${r.date}-${r.track}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "7px 10px", background: "var(--ng-card-2)", borderRadius: "6px", fontSize: "12px" }}>
-                  <span style={{ color: "var(--ng-text-2)" }}><strong>{r.track}</strong> · {r.car}</span>
-                  <span style={{ color: "var(--ng-loss)", fontWeight: 600 }}>esp {signedNumber(r.expected)} → real {signedNumber(r.real)}</span>
+              <div style={{ background: "var(--ng-card-2)", borderRadius: "8px", padding: "9px 12px" }}>
+                <div style={{ fontSize: "11px", color: "var(--ng-muted)" }}>Saídas precoces</div>
+                <div style={{ fontFamily: "var(--ng-font-display)", fontSize: "18px", fontWeight: 700, color: field.early > 0 ? "var(--ng-loss)" : "var(--ng-gain)" }}>
+                  {field.early}
                 </div>
-              ))}
+              </div>
+              <div style={{ background: "var(--ng-card-2)", borderRadius: "8px", padding: "9px 12px" }}>
+                <div style={{ fontSize: "11px", color: "var(--ng-muted)" }}>Deixado na pista</div>
+                <div style={{ fontFamily: "var(--ng-font-display)", fontSize: "18px", fontWeight: 700, color: "var(--ng-loss)" }}>
+                  {field.leftOnTable.total > 0 ? `-${field.leftOnTable.total} iR` : "0 iR"}
+                </div>
+              </div>
             </div>
-          )}
+            {field.leftOnTable.top.slice(0, 4).map((r) => (
+              <div key={`${r.date}-${r.track}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "var(--ng-card-2)", borderRadius: "6px", fontSize: "12px" }}>
+                <span style={{ color: "var(--ng-text-2)" }}><strong>{r.track}</strong> · {r.car}</span>
+                <span style={{ color: "var(--ng-loss)", fontWeight: 600 }}>esp {signedNumber(r.expected)} → real {signedNumber(r.real)}</span>
+              </div>
+            ))}
+          </div>
         </Panel>
       </div>
     </div>

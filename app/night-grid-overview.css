@@ -124,6 +124,14 @@
   .ngo-ctx-badges { grid-template-columns: minmax(0, 1fr); }
   .ngt-compact .ngt-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+/* Deep Dive -> Histórico: linhas compactas e KPIs consistentes */
+.ng-hist-kpis .ng-kpi { padding: 12px 14px; min-height: 0; gap: 4px; }
+.ng-hist-kpis .ng-kpi-value { font-size: 26px; }
+.ng-hist-perf .ngo-rank-row { min-height: 36px; padding: 4px 0; grid-template-columns: 210px minmax(0, 1fr) 96px; }
+.ng-hist-perf .ngo-rank-axis { grid-template-columns: 210px minmax(0, 1fr) 96px; }
+.ng-hist-perf .ngo-rank-text { min-width: 0; }
+.ng-hist-perf .ngo-rank-name,
+.ng-hist-perf .ngo-rank-sub { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ngo-races-head { min-height: 0; padding-top: 4px; padding-bottom: 4px; font-size: var(--text-xs); letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); border-bottom-color: var(--ng-border); }
 .ngo-races-row .r { text-align: right; }
 .ngo-races-date { color: var(--ng-muted); }
