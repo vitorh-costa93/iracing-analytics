@@ -376,7 +376,7 @@ async function handleGet(request: Request) {
       return { id: race.id, label: raceLabel(race), category: race.category, hasSession: sessionsByRace.has(race.id) || laps.length > 0, telemetryLaps: laps.filter((lap) => lap.telemetry_path).length };
     });
     const requested = params.get("raceId");
-    const selected = races.find((race) => race.id === requested)
+    const selected = races.find((race) => race.id === requested || String(race.irstats_race_id) === requested)
       ?? races.find((race) => (list.find((item) => item.id === race.id)?.telemetryLaps ?? 0) >= 3)
       ?? races[0];
     const session = sessionsByRace.get(selected.id);

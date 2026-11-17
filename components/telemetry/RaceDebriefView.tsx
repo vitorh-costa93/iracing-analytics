@@ -83,7 +83,9 @@ function VariationBar({ label, kind, item }: { label: string; kind: "brake" | "t
 
 export default function RaceDebriefView({ onOpenReference }: { onOpenReference?: () => void }) {
   const [races, setRaces] = useState<RaceOption[]>([]);
-  const [raceId, setRaceId] = useState<string | null>(null);
+  const [raceId, setRaceId] = useState<string | null>(() =>
+    typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("raceId") : null
+  );
   const [debrief, setDebrief] = useState<Debrief | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);

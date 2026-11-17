@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ActiveWeekTelemetry from "@/components/ActiveWeekTelemetry";
 import RaceDebriefView from "@/components/telemetry/RaceDebriefView";
 import CarCompareView from "@/components/telemetry/CarCompareView";
@@ -28,6 +28,10 @@ const TITLES: Record<Mode, { eyebrow: string; title: string }> = {
 
 export default function TelemetryTabs() {
   const [mode, setMode] = useState<Mode>("lap");
+  useEffect(() => {
+    const tab = new URLSearchParams(window.location.search).get("tab");
+    if (tab === "debrief" || tab === "cars" || tab === "plan" || tab === "lap") setMode(tab);
+  }, []);
   const select = (value: Mode) => { setMode(value); trackUiEvent("telemetry_tab_selected", { tab: value }); };
   return (
     <>

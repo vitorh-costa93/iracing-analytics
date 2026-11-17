@@ -77,7 +77,22 @@
 /* Últimas corridas */
 .ngo-races-panel { padding: 14px 20px; gap: 2px; }
 .ngo-races { display: flex; flex-direction: column; }
-.ngo-races-row { display: grid; grid-template-columns: 88px minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.1fr) 92px 44px 44px 64px; gap: 10px; padding: 0 8px; min-height: 34px; align-items: center; font-size: var(--text-md); border-bottom: 1px solid var(--ng-line); }
+.ngo-races-row { display: grid; grid-template-columns: 88px minmax(0, 1.1fr) minmax(0, 1.4fr) minmax(0, 1.1fr) 92px 44px 44px 64px 36px; gap: 10px; padding: 0 8px; min-height: 34px; align-items: center; font-size: var(--text-md); border-bottom: 1px solid var(--ng-line); }
+.ngo-race-debrief-btn { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: var(--ng-radius-button); color: var(--ng-muted); border: 1px solid transparent; text-decoration: none; transition: color .15s, border-color .15s, background .15s; }
+.ngo-race-debrief-btn:hover { color: var(--ng-reference); border-color: var(--ng-border); background: var(--ng-card-2); }
+
+/* Layout do wireframe na Visão Geral: esquerda (KPIs + Race Survival + Pressão por semana) e direita (Telemetry Lab · Semana ativa) */
+.ngo-hero-split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
+.ngo-left-col, .ngo-right-col { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
+.ngo-kpis-stacked { display: flex; flex-direction: column; gap: var(--space-3); }
+.ngo-pressure-panel { min-height: 220px; }
+.ngo-telem-panel { gap: var(--space-3); }
+.ngo-telem-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); flex-wrap: wrap; }
+.ngt-embedded .ngt-lap-grid-embedded { grid-template-columns: minmax(0, 1fr); }
+.ngt-embedded .ngt-tall { min-height: 0; }
+@media (max-width: 1180px) {
+  .ngo-hero-split { grid-template-columns: minmax(0, 1fr); }
+}
 .ngo-races-head { min-height: 0; padding-top: 4px; padding-bottom: 4px; font-size: var(--text-xs); letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); border-bottom-color: var(--ng-border); }
 .ngo-races-row .r { text-align: right; }
 .ngo-races-date { color: var(--ng-muted); }
@@ -128,7 +143,8 @@
   .ngo-rank-center { display: none; }
   .ngo-races-panel { padding: 14px 16px; }
   .ngo-races-head { display: none; }
-  .ngo-races-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "track delta" "sub sub"; min-height: 48px; padding: 6px 0; row-gap: 0; gap: 0 10px; }
+  .ngo-races-row { grid-template-columns: minmax(0, 1fr) auto 32px; grid-template-areas: "track delta action" "sub sub action"; min-height: 48px; padding: 6px 0; row-gap: 0; gap: 0 10px; }
+  .ngo-races-action { grid-area: action; justify-self: end; }
   .ngo-races-date, .ngo-races-series, .ngo-races-car, .ngo-races-best, .ngo-races-grid, .ngo-races-pos { display: none; }
   .ngo-races-track { grid-area: track; font-weight: 600; }
   .ngo-races-delta { grid-area: delta; }

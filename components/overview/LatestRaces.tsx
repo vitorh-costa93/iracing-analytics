@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { signedNumber } from "./format";
 
@@ -21,7 +22,7 @@ export default function LatestRaces({ races }: { races: OverviewRace[] }) {
     <>
       <div className="ngo-races" role="table" aria-label="Últimas corridas">
         <div className="ngo-races-row ngo-races-head" role="row">
-          <div>Data</div><div>Série</div><div>Pista</div><div>Carro</div><div className="r">Melhor volta</div><div className="r">Grid</div><div className="r">Pos.</div><div className="r">iRating</div>
+          <div>Data</div><div>Série</div><div>Pista</div><div>Carro</div><div className="r">Melhor volta</div><div className="r">Grid</div><div className="r">Pos.</div><div className="r">iRating</div><div className="r" aria-label="Race Debrief" />
         </div>
         {rows.map((r) => (
           <div className="ngo-races-row" role="row" key={r.id}>
@@ -34,6 +35,19 @@ export default function LatestRaces({ races }: { races: OverviewRace[] }) {
             <div className="r ngo-races-grid">{r.startPosition ?? "—"}</div>
             <div className="r ngo-races-pos">{r.finishPosition !== null ? `P${r.finishPosition}` : "—"}</div>
             <div className="r ngo-races-delta" style={{ color: r.delta === null ? "var(--ng-muted)" : r.delta >= 0 ? "var(--ng-gain)" : "var(--ng-loss)" }}>{r.delta === null ? "—" : signedNumber(r.delta)}</div>
+            <div className="r ngo-races-action">
+              <Link
+                href={`/telemetry?tab=debrief&raceId=${r.id}`}
+                className="ngo-race-debrief-btn"
+                title="Abrir Race Debrief desta corrida"
+                aria-label={`Abrir Race Debrief de ${r.track}`}
+              >
+                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M2 12V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v8a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1Z" />
+                  <path d="M4.5 9.5 6.5 7l2 1.8L11.5 5.5" />
+                </svg>
+              </Link>
+            </div>
             <div className="ngo-races-mobile-sub">{[new Date(r.startedAt).toLocaleDateString("pt-BR"), r.series, r.car, r.bestLap, r.finishPosition !== null ? `P${r.finishPosition}` : null].filter(Boolean).join(" · ")}</div>
           </div>
         ))}

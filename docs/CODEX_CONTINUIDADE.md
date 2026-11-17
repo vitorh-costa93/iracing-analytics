@@ -1,5 +1,11 @@
 # Continuidade — iracing-analytics
 
+## Redesign da Visão Geral (Home) — 17/11/2026
+- `app/page.tsx` e `app/night-grid-overview.css`: layout split 2 colunas na Visão Geral — esquerda com KPIs (`iRating`, `Vitórias`, `Resultado vs Esperado` no lugar de `Sequência`), `Race Survival` e `Pressão por semana` (`WeekPressureBars`); direita com `ActiveWeekTelemetry` embarcado (`SF contexto`, `GT3 contexto`, `IMSA contexto`), abrindo automaticamente no contexto da última corrida (`lastRace`).
+- `app/api/dashboard/overview/route.ts`: adiciona `expectedVsReal` por categoria (`formula_car` / `sports_car`) usando `fieldMetricsFor` (`lib/debrief-field-data.ts`).
+- `components/overview/LatestRaces.tsx`, `components/TelemetryTabs.tsx`, `components/telemetry/RaceDebriefView.tsx` e `app/api/telemetry/race-debrief/route.ts`: cada corrida na tabela `Últimas corridas` tem ícone direto para `/telemetry?tab=debrief&raceId=<irstats_race_id>`.
+- Validação: `npm test` (557 passed) e `npm run build` PASS.
+
 ## Frescor e orçamento de cache — 21/10/2026
 - Baseline local/GitHub igual a 684fb41; apenas agent/backfill-run.out e agent/resumo.txt locais não versionados, preservados. Cache de overview gerado 20/10 e reports 17/10; dirty_refreshes=64, refreshes=0. Supabase compartilhado tem migrations de outros projetos: não fazer db push indiscriminado.
 - Correção: migration 20261022000128 aplicada; reserva64 para results/ref, fallback normal128, teto192 e leases intactos. lib/analytics-warm-plan.ts prioriza leituras principais, deduplica versões e exclui fresh antes de aquecer. Status/overview revalidam ao foco e 120s visível sem sync.

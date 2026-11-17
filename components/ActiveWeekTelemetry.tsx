@@ -11,7 +11,7 @@ import { microLapSummary, microSectionChip } from "@/lib/microcorrection-talk";
 import { lapWhenLabel, selectionExplanation } from "@/lib/telemetry-selection";
 import { formatSignedSeconds } from "@/lib/engineer-talk";
 import { sectionMarkerLabel, type LapCorner } from "@/lib/corner-sequences";
-import { Panel, SelectPill } from "@/components/ui";
+import { Panel, SegmentedControl, SelectPill } from "@/components/ui";
 import LapMap, { type LapMapMarker } from "@/components/telemetry/LapMap";
 import RepresentativeLapChart, { sectionNameAt } from "@/components/telemetry/RepresentativeLapChart";
 import CornerByCorner, { filterSections, isLossSection, type CornerFilter } from "@/components/telemetry/CornerByCorner";
@@ -75,6 +75,27 @@ function rankContexts(items: Combination[]) {
 
 const isSf23 = (name: string) => /super formula sf23/i.test(name);
 
+export type EmbeddedBadge = "sf" | "gt3" | "imsa";
+export type LastRaceHint = { car?: string | null; track?: string | null; series?: string | null; ratingCategory?: string | null };
+
+function badgeOfCombination(item: Combination): EmbeddedBadge {
+  if (isSf23(item.car.name) || item.car.category === "formula" || /super formula/i.test(item.car.name)) return "sf";
+  if (item.car.carClass === "GTP" || item.car.carClass === "LMP2" || /499p|cadillac|acura|963|hybrid|p217/i.test(item.car.name)) return "imsa";
+  return "gt3";
+}
+
+function badgeOfLastRace(hint: LastRaceHint | null | undefined): EmbeddedBadge | null {
+  if (!hint) return null;
+  const text = `${hint.series ?? ""} ${hint.car ?? ""}`;
+  if (hint.ratingCategory === "formula_car" || /super formula|sf23/i.test(text)) return "sf";
+  if (/imsa|gtp|lmp2|499p|cadillac|acura|963|hybrid|p217/i.test(text)) return "imsa";
+  return "gt3";
+}
+
+function normalizeMatch(value: string | null | undefined) {
+  return (value ?? "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
 /** Microcorreções precisam do traço em resolução cheia (lib/microcorrections.ts), não dos ~900 pontos
  * do gráfico: o CSV já baixado é lido de novo, sem nenhum download extra. */
 function microOf(csv: string, lapTimeSeconds: number): MicrocorrectionResult | null {
@@ -84,9 +105,17 @@ function microOf(csv: string, lapTimeSeconds: number): MicrocorrectionResult | n
   } catch { return null; }
 }
 
-export default function ActiveWeekTelemetry() {
+export default function ActiveWeekTelemetry({
+  embedded = false,
+  lastRace = null,
+}: {
+  embedded?: boolean;
+  lastRace?: LastRaceHint | null;
+} = {}) {
   const [data, setData] = useState<ActiveWeekData | null>(null);
   const [selectedKey, setSelectedKey] = useState("");
+  const [activeBadge, setActiveBadge] = useState<EmbeddedBadge>(() => badgeOfLastRace(lastRace) ?? "gt3");
+  const [autoPickedFromLastRace, setAutoPickedFromLastRace] = useState(false);
   const [trace, setTrace] = useState<Trace | null>(null);
   const [traceCsv, setTraceCsv] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -117,15 +146,48 @@ export default function ActiveWeekTelemetry() {
         if (!response.ok) throw new Error(result.message ?? "Erro ao carregar telemetria");
         if (!active) return;
         setData(result);
-        setSelectedKey((current) => current || rankContexts(result.combinations ?? [])[0]?.key || "");
+        const list = rankContexts(result.combinations ?? []);
+        if (!embedded) {
+          setSelectedKey((current) => current || list[0]?.key || "");
+        }
       })
       .catch((reason) => active && setError(reason instanceof Error ? reason.message : String(reason)))
       .finally(() => active && setLoading(false));
     return () => { active = false; };
-  }, [retryCount]);
+  }, [retryCount, embedded]);
 
   const ranked = useMemo(() => rankContexts(data?.combinations ?? []), [data]);
-  const selected = useMemo(() => ranked.find((item) => item.key === selectedKey) ?? null, [ranked, selectedKey]);
+
+  // No modo embarcado da Visão Geral, abre sempre no contexto onde foi feita a última corrida.
+  useEffect(() => {
+    if (!embedded || autoPickedFromLastRace || !ranked.length) return;
+    const hintBadge = badgeOfLastRace(lastRace);
+    const carNeedle = normalizeMatch(lastRace?.car);
+    const trackNeedle = normalizeMatch(lastRace?.track);
+    const exact = ranked.find((item) => {
+      const carOk = carNeedle && (normalizeMatch(item.car.name).includes(carNeedle) || carNeedle.includes(normalizeMatch(item.car.name)));
+      const trackOk = trackNeedle && (normalizeMatch(item.track.name).includes(trackNeedle) || trackNeedle.includes(normalizeMatch(item.track.name)));
+      return carOk && trackOk;
+    });
+    const chosen = exact
+      ?? (hintBadge ? ranked.find((item) => badgeOfCombination(item) === hintBadge) : undefined)
+      ?? ranked[0];
+    if (chosen) {
+      setActiveBadge(badgeOfCombination(chosen));
+      setSelectedKey(chosen.key);
+      setAutoPickedFromLastRace(true);
+    }
+  }, [embedded, autoPickedFromLastRace, ranked, lastRace]);
+
+  const badgeContexts = useMemo(
+    () => (embedded ? ranked.filter((item) => badgeOfCombination(item) === activeBadge) : ranked),
+    [embedded, ranked, activeBadge]
+  );
+
+  const selected = useMemo(() => {
+    if (!embedded) return ranked.find((item) => item.key === selectedKey) ?? null;
+    return badgeContexts.find((item) => item.key === selectedKey) ?? badgeContexts[0] ?? null;
+  }, [embedded, ranked, badgeContexts, selectedKey]);
 
   useEffect(() => {
     let active = true;
@@ -283,9 +345,36 @@ export default function ActiveWeekTelemetry() {
     tone: isLossSection(section) ? "loss" : "gain",
   }));
 
+  const selectBadge = (badge: EmbeddedBadge) => {
+    setActiveBadge(badge);
+    const first = ranked.find((item) => badgeOfCombination(item) === badge);
+    if (first) setSelectedKey(first.key);
+  };
+
   return (
-    <div className="ngt-screen">
-      {ranked.length > 3 && (
+    <div className={embedded ? "ngt-screen ngt-embedded" : "ngt-screen"}>
+      {embedded ? (
+        <div className="ngo-telem-head">
+          <SegmentedControl
+            ariaLabel="Contexto da semana ativa"
+            value={activeBadge}
+            onChange={selectBadge}
+            options={[
+              { value: "sf", label: "SF contexto" },
+              { value: "gt3", label: "GT3 contexto" },
+              { value: "imsa", label: "IMSA contexto" },
+            ]}
+          />
+          {badgeContexts.length > 1 && selected && (
+            <SelectPill
+              ariaLabel="Sessão no contexto"
+              value={selected.key}
+              options={badgeContexts.map((item) => ({ value: item.key, label: `${item.track.name} · ${item.car.name}` }))}
+              onChange={(key) => { const item = badgeContexts.find((entry) => entry.key === key); if (item) selectContext(item); }}
+            />
+          )}
+        </div>
+      ) : ranked.length > 3 && (
         <div className="ngt-more-contexts">
           <span>{data?.week ? `${data.week.seasonName} · ${weekLabel(data.week.number)} · ${ranked.length} contextos com atividade` : `${ranked.length} contextos com atividade`}</span>
           <SelectPill ariaLabel="Outros contextos da semana" value={selectedKey}
@@ -294,33 +383,39 @@ export default function ActiveWeekTelemetry() {
         </div>
       )}
 
-      <div className="ngt-contexts" role="group" aria-label="Contextos da semana">
-        {cards.map((item) => {
-          const cached = item.bestLap ? gapCache[item.bestLap.id] : undefined;
-          const live = item.key === selectedKey && comparison ? comparison.estimatedGap : null;
-          const gap = live ?? cached?.gap ?? null;
-          const noReference = item.key === selectedKey && !referenceLoading && !referenceTrace;
-          return (
-            <button key={item.key} type="button" className="ngt-context" aria-pressed={item.key === selectedKey} onClick={() => selectContext(item)}
-              title={`${item.track.name}${item.track.variant ? ` (${item.track.variant})` : ""} · ${item.car.name}`}>
-              <span className="ngt-context-bar" data-category={item.car.category ?? undefined} />
-              <div className="ngt-context-main">
-                <div className="ngt-context-track">{item.track.name}</div>
-                <div className="ngt-context-car">{item.car.name}{item.car.carClass ? ` · ${item.car.carClass}` : ""} · {item.lapsFound} voltas</div>
-              </div>
-              <div className="ngt-context-side">
-                <div className="ngt-context-best">{item.bestLap ? formatLapTime(item.bestLap.lapTime) : "—"}</div>
-                <div className="ngt-context-gap" data-tone={gap === null ? undefined : gap > 0 ? "loss" : "gain"}>
-                  {gap !== null ? `${formatSignedSeconds(gap)} vs. ref.` : noReference ? "sem referência" : "abra para calcular"}
+      {!embedded && (
+        <div className="ngt-contexts" role="group" aria-label="Contextos da semana">
+          {cards.map((item) => {
+            const cached = item.bestLap ? gapCache[item.bestLap.id] : undefined;
+            const live = item.key === selectedKey && comparison ? comparison.estimatedGap : null;
+            const gap = live ?? cached?.gap ?? null;
+            const noReference = item.key === selectedKey && !referenceLoading && !referenceTrace;
+            return (
+              <button key={item.key} type="button" className="ngt-context" aria-pressed={item.key === selectedKey} onClick={() => selectContext(item)}
+                title={`${item.track.name}${item.track.variant ? ` (${item.track.variant})` : ""} · ${item.car.name}`}>
+                <span className="ngt-context-bar" data-category={item.car.category ?? undefined} />
+                <div className="ngt-context-main">
+                  <div className="ngt-context-track">{item.track.name}</div>
+                  <div className="ngt-context-car">{item.car.name}{item.car.carClass ? ` · ${item.car.carClass}` : ""} · {item.lapsFound} voltas</div>
                 </div>
-              </div>
-            </button>
-          );
-        })}
-      </div>
+                <div className="ngt-context-side">
+                  <div className="ngt-context-best">{item.bestLap ? formatLapTime(item.bestLap.lapTime) : "—"}</div>
+                  <div className="ngt-context-gap" data-tone={gap === null ? undefined : gap > 0 ? "loss" : "gain"}>
+                    {gap !== null ? `${formatSignedSeconds(gap)} vs. ref.` : noReference ? "sem referência" : "abra para calcular"}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {embedded && !selected && (
+        <div className="ngt-state">Sem atividade nesta semana para este contexto.</div>
+      )}
 
       {selected && (
-        <div className="ngt-lap-grid">
+        <div className={embedded ? "ngt-lap-grid ngt-lap-grid-embedded" : "ngt-lap-grid"}>
           <Panel className="ngt-tall" kicker="Volta representativa" title="Tempo perdido e o que você fez nos pedais"
             subtitle={<>
               <div>{eligibility}{gpsNote ? ` ${gpsNote}` : ""}</div>

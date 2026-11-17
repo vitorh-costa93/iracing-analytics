@@ -4,6 +4,8 @@ import { analyticsValidUntil, nextAnalyticsBoundary } from "@/lib/analytics-vali
 import { supabaseAdmin } from "@/lib/supabase-admin";
 import { CACHE_TAGS, cachedJson, invalidate, noStoreJson } from "@/lib/cache";
 import { aggregateWinnerGapByTrack, dropEarlyExitRaces, parseLapTimeSeconds, type WinnerGapRace } from "@/lib/winner-gap";
+import { fieldMetricsFor } from "@/lib/debrief-field-data";
+import type { RaceInput } from "@/lib/race-engineer-analysis";
 
 // 31/08/2026: "o iRating segue desatualizado... a tabela no fim dessa aba já contém as duas corridas
 // que fiz hoje" -- without this, the route has no dynamic-only API call to force Next.js to treat it
@@ -637,6 +639,34 @@ async function handleGet(request: Request) {
       formula_car: streakStats(career.filter((row) => row.category === "formula_car")),
       sports_car: streakStats(career.filter((row) => row.category === "sports_car")),
     };
+
+    const seasonFieldMetrics = await fieldMetricsFor(currentSeasonRaces as unknown as RaceInput[]);
+    function expectedVsRealStats(category: "formula_car" | "sports_car") {
+      let realDelta = 0;
+      let expectedDelta = 0;
+      let count = 0;
+      for (const row of currentSeasonRaces) {
+        if (row.category !== category) continue;
+        const metric = seasonFieldMetrics.get(row.irstats_race_id);
+        if (!metric || metric.realDelta === null || metric.expectedDelta === null) continue;
+        realDelta += metric.realDelta;
+        expectedDelta += metric.expectedDelta;
+        count += 1;
+      }
+      if (!count) return { realDelta: null, expectedDelta: null, residualTotal: null, residualAvg: null, races: 0 };
+      const residualTotal = realDelta - expectedDelta;
+      return {
+        realDelta,
+        expectedDelta,
+        residualTotal,
+        residualAvg: Number((residualTotal / count).toFixed(1)),
+        races: count,
+      };
+    }
+    const expectedVsReal = {
+      formula_car: expectedVsRealStats("formula_car"),
+      sports_car: expectedVsRealStats("sports_car"),
+    };
     function seasonIdForRace(racedAt: string) {
       const t = new Date(racedAt).getTime();
       for (const row of seasonCalendar) {
@@ -1070,6 +1100,7 @@ async function handleGet(request: Request) {
       races,
 
       streaks,
+      expectedVsReal,
 
       winnerGapByTrack,
       winnerGapBySegment,
