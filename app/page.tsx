@@ -97,6 +97,25 @@ type DashboardData = {
   };
 };
 
+function normalizedText(value: string) {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+}
+
+function scheduledContextMatches(context: ScheduledWeekContext, row: HistoricalRow) {
+  const historicalTrack = normalizedText(row.track);
+  if (!context.trackMatchTerms.some((term) => {
+    const normalizedTerm = normalizedText(term);
+    return normalizedTerm.length >= 3 && (historicalTrack.includes(normalizedTerm) || normalizedTerm.includes(historicalTrack));
+  })) return false;
+  if (context.kind === "sf23") return /super formula/i.test(row.car);
+  if (context.kind === "imsa") return row.carClass === "GTP" || row.carClass === "LMP2";
+  return row.carClass === "GT3";
+}
+
+function stripFixedSuffix(series: string) {
+  return series.replace(/\s*[-–—]?\s*\(?fixed\)?\s*$/i, "").trim();
+}
+
 function shortSeason(name: string) {
   return name.replace(" Season ", " S");
 }
@@ -224,6 +243,37 @@ export default function Home() {
     severeLosses: 0,
   }));
 
+  const carClassByCar = new Map<string, string | null>();
+  for (const row of data.historical) {
+    if (!carClassByCar.has(row.car)) carClassByCar.set(row.car, row.carClass);
+  }
+  const scheduledContexts = data.weeklyContexts ?? [];
+  const weeklyContexts = (scheduledContexts.length
+    ? scheduledContexts.map((context) => ({
+      kind: context.kind,
+      series: context.series,
+      track: context.track,
+      matches: (row: HistoricalRow) => scheduledContextMatches(context, row),
+    }))
+    : data.races.filter((race) => race.seasonWeek === data.kpis.formula.irating.week).map((race) => {
+    const carClass = carClassByCar.get(race.car) ?? null;
+    return {
+      kind: /super formula/i.test(race.car) ? "sf23" : (carClass === "GTP" || carClass === "LMP2") ? "imsa" : "gt3",
+      series: stripFixedSuffix(race.series ?? race.car),
+      track: race.track,
+      matches: (row: HistoricalRow) => row.track === race.track && (carClass ? row.carClass === carClass : row.car === race.car),
+    };
+  })).reduce<Array<{ key: string; kind: string; series: string; track: string; avg: number | null; races: number; isFormula: boolean }>>((items, context) => {
+    const key = `${context.series}::${context.track}`;
+    if (items.some((item) => item.key === key)) return items;
+    const contextRows = data.historical.filter(context.matches);
+    const isFormula = contextRows.length > 0 ? contextRows.every((row) => /super formula/i.test(row.car)) : /super formula|formula/i.test(context.series);
+    const races = contextRows.reduce((sum, row) => sum + row.races, 0);
+    const avg = races >= 2 ? contextRows.reduce((sum, row) => sum + row.delta, 0) / races : null;
+    items.push({ key, kind: context.kind, series: context.series, track: context.track, avg, races, isFormula });
+    return items;
+  }, []).filter((item) => pageFilter === "all" || (pageFilter === "formula") === item.isFormula).slice(0, 3);
+
   // ---- Night Grid: dados dos KPIs (mesmas fontes de antes: data.kpis, data.streaks, data.weekly, data.races)
   const prevShort = previousLabel.replace(/^\d{4}\s*/, "");
   const currentRaceRows = (category: "formula_car" | "sports_car") => data.races.filter((race) => race.ratingCategory === category);
@@ -311,37 +361,41 @@ export default function Home() {
               ))}
             </section>
 
-            <Panel
-              className="ngo-scatter-panel"
-              kicker="RACE SURVIVAL"
-              title="Duração × Δ iRating"
-              titleSize="md"
-              actions={
-                <>
-                  {pageFilter === "all" && (
-                    <SegmentedControl ariaLabel="Categoria do gráfico" value={chartCategory} onChange={(value) => { setChartCategory(value); setChartSeries("all"); }}
-                      options={[{ value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
-                  )}
-                  {seriesOptions.length > 1 && (
+            <div className="ngo-season-charts">
+              {pageFilter === "all" && (
+                <div className="ngo-season-charts-head">
+                  <span className="ng-kicker">ANÁLISE DA SEASON · CATEGORIA</span>
+                  <SegmentedControl ariaLabel="Categoria dos gráficos da season" value={chartCategory} onChange={(value) => { setChartCategory(value); setChartSeries("all"); }}
+                    options={[{ value: "sports", label: "Sports Car" }, { value: "formula", label: "Formula Car" }]} />
+                </div>
+              )}
+
+              <Panel
+                className="ngo-scatter-panel"
+                kicker="RACE SURVIVAL"
+                title="Duração × Δ iRating"
+                titleSize="md"
+                actions={
+                  seriesOptions.length > 1 ? (
                     <SelectPill ariaLabel="Filtrar por série" value={chartSeries} onChange={setChartSeries}
                       options={[{ value: "all", label: `Todas as séries (${categoryRaces.length})` }, ...seriesOptions.map(([series, count]) => ({ value: series, label: `${series} (${count})` }))]} />
-                  )}
-                </>
-              }
-            >
-              <div className="ng-panel-subtitle">Só a season atual · duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</div>
-              <RaceScatter points={scatter} />
-            </Panel>
+                  ) : undefined
+                }
+              >
+                <div className="ng-panel-subtitle">Só a season atual · duração estimada (voltas × melhor volta) — pontos à esquerda indicam sessões encerradas cedo.</div>
+                <RaceScatter points={scatter} />
+              </Panel>
 
-            <Panel
-              className="ngo-pressure-panel"
-              kicker="PRESSÃO POR SEMANA · SEASON DEBRIEF"
-              title="Como cada semana fechou o iRating"
-              titleSize="md"
-              actions={<Link className="ngo-link" href="/debriefs?scope=season">Debrief da season →</Link>}
-            >
-              {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
-            </Panel>
+              <Panel
+                className="ngo-pressure-panel"
+                kicker="SEASON DEBRIEF · SALDO SEMANAL"
+                title="Δ de iRating por semana"
+                titleSize="md"
+                actions={<Link className="ngo-link" href="/debriefs?scope=season">Debrief da season →</Link>}
+              >
+                {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
+              </Panel>
+            </div>
           </div>
 
           <div className="ngo-right-col">
@@ -352,7 +406,7 @@ export default function Home() {
               titleSize="md"
               actions={<Link className="ngo-link" href="/telemetry">Abrir Telemetry Lab →</Link>}
             >
-              <ActiveWeekTelemetry embedded lastRace={lastRace} />
+              <ActiveWeekTelemetry embedded weeklyContexts={weeklyContexts} lastRace={lastRace} />
             </Panel>
           </div>
         </div>

@@ -77,10 +77,25 @@ const isSf23 = (name: string) => /super formula sf23/i.test(name);
 
 export type EmbeddedBadge = "sf" | "gt3" | "imsa";
 export type LastRaceHint = { car?: string | null; track?: string | null; series?: string | null; ratingCategory?: string | null };
+export type EmbeddedWeekContext = {
+  key: string;
+  kind?: string;
+  series: string;
+  track: string;
+  avg: number | null;
+  races: number;
+  isFormula: boolean;
+};
 
 function badgeOfCombination(item: Combination): EmbeddedBadge {
   if (isSf23(item.car.name) || item.car.category === "formula" || /super formula/i.test(item.car.name)) return "sf";
   if (item.car.carClass === "GTP" || item.car.carClass === "LMP2" || /499p|cadillac|acura|963|hybrid|p217/i.test(item.car.name)) return "imsa";
+  return "gt3";
+}
+
+function badgeOfWeekContext(ctx: EmbeddedWeekContext): EmbeddedBadge {
+  if (ctx.kind === "sf23" || ctx.isFormula || /super formula|sf23/i.test(ctx.series)) return "sf";
+  if (ctx.kind === "imsa" || /imsa|gtp|lmp2/i.test(ctx.series)) return "imsa";
   return "gt3";
 }
 
@@ -108,9 +123,11 @@ function microOf(csv: string, lapTimeSeconds: number): MicrocorrectionResult | n
 export default function ActiveWeekTelemetry({
   embedded = false,
   lastRace = null,
+  weeklyContexts = [],
 }: {
   embedded?: boolean;
   lastRace?: LastRaceHint | null;
+  weeklyContexts?: EmbeddedWeekContext[];
 } = {}) {
   const [data, setData] = useState<ActiveWeekData | null>(null);
   const [selectedKey, setSelectedKey] = useState("");
@@ -345,26 +362,64 @@ export default function ActiveWeekTelemetry({
     tone: isLossSection(section) ? "loss" : "gain",
   }));
 
-  const selectBadge = (badge: EmbeddedBadge) => {
+  const selectBadge = (badge: EmbeddedBadge, trackHint?: string) => {
     setActiveBadge(badge);
-    const first = ranked.find((item) => badgeOfCombination(item) === badge);
-    if (first) setSelectedKey(first.key);
+    const matchingBadge = ranked.filter((item) => badgeOfCombination(item) === badge);
+    if (trackHint) {
+      const needle = normalizeMatch(trackHint);
+      const byTrack = matchingBadge.find((item) => {
+        const t = normalizeMatch(item.track.name);
+        return t.includes(needle) || needle.includes(t);
+      });
+      if (byTrack) { setSelectedKey(byTrack.key); return; }
+    }
+    if (matchingBadge[0]) setSelectedKey(matchingBadge[0].key);
   };
 
   return (
     <div className={embedded ? "ngt-screen ngt-embedded" : "ngt-screen"}>
       {embedded ? (
-        <div className="ngo-telem-head">
-          <SegmentedControl
-            ariaLabel="Contexto da semana ativa"
-            value={activeBadge}
-            onChange={selectBadge}
-            options={[
-              { value: "sf", label: "SF contexto" },
-              { value: "gt3", label: "GT3 contexto" },
-              { value: "imsa", label: "IMSA contexto" },
-            ]}
-          />
+        <div className="ngo-telem-head-stack">
+          {weeklyContexts.length > 0 ? (
+            <div className="ngo-ctx-badges" role="group" aria-label="Contextos da semana">
+              {weeklyContexts.map((ctx) => {
+                const badge = badgeOfWeekContext(ctx);
+                const isActive = activeBadge === badge && (!selected || normalizeMatch(selected.track.name).includes(normalizeMatch(ctx.track)) || normalizeMatch(ctx.track).includes(normalizeMatch(selected.track.name)) || badgeContexts.length <= 1);
+                return (
+                  <button
+                    key={ctx.key}
+                    type="button"
+                    className="ngo-ctx-badge"
+                    aria-pressed={isActive}
+                    onClick={() => selectBadge(badge, ctx.track)}
+                  >
+                    <span className="ngo-context-bar" style={{ background: badge === "sf" ? "var(--ng-formula)" : "var(--ng-sports)" }} />
+                    <span className="ngo-ctx-badge-text">
+                      <span className="ngo-ctx-badge-track">{ctx.track}</span>
+                      <span className="ngo-ctx-badge-sub">{ctx.series} · {ctx.avg === null ? "sem histórico" : `${ctx.races} corridas`}</span>
+                    </span>
+                    <span className="ngo-ctx-badge-avg">
+                      <span style={{ color: ctx.avg === null ? "var(--ng-muted)" : ctx.avg >= 0 ? "var(--ng-gain)" : "var(--ng-loss)" }}>
+                        {ctx.avg === null ? "—" : `${ctx.avg > 0 ? "+" : ""}${ctx.avg.toFixed(1).replace(".", ",")}`}
+                      </span>
+                      <small>iR médio</small>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <SegmentedControl
+              ariaLabel="Contexto da semana ativa"
+              value={activeBadge}
+              onChange={(b) => selectBadge(b)}
+              options={[
+                { value: "sf", label: "SF contexto" },
+                { value: "gt3", label: "GT3 contexto" },
+                { value: "imsa", label: "IMSA contexto" },
+              ]}
+            />
+          )}
           {badgeContexts.length > 1 && selected && (
             <SelectPill
               ariaLabel="Sessão no contexto"
@@ -416,26 +471,28 @@ export default function ActiveWeekTelemetry({
 
       {selected && (
         <div className={embedded ? "ngt-lap-grid ngt-lap-grid-embedded" : "ngt-lap-grid"}>
-          <Panel className="ngt-tall" kicker="Volta representativa" title="Tempo perdido e o que você fez nos pedais"
-            subtitle={<>
-              <div>{eligibility}{gpsNote ? ` ${gpsNote}` : ""}</div>
-              {lapWhen && <div className="ngt-lapwhen">{`${lapWhen[0].toUpperCase()}${lapWhen.slice(1)} · ${formatLapTime(selected.bestLap!.lapTime)} · passe o mouse no gráfico para comparar`}</div>}
-              {referenceTrace && reference && (
-                <div className="ngt-refline"><span>Referência: {reference.filename} · enviada em {new Date(reference.uploadedAt).toLocaleDateString("pt-BR")}</span>{uploadButton("Trocar referência")}</div>
-              )}
-              {referenceMessage && <div className="ngt-refline" data-tone={referenceMessageError ? "error" : undefined}><span>{referenceMessage}</span></div>}
-            </>}
-            actions={comparison ? <div className="ngt-legend"><span><i />Sua volta</span><span><i data-line="ref" />Referência</span></div> : undefined}>
-            {traceLoading || (referenceLoading && trace) ? <div className="ngt-empty-chart">Carregando a telemetria da volta…</div>
-              : error ? <div className="ngt-empty-chart" role="alert">{error}<button type="button" className="ngt-link-button" onClick={retry}>Tentar novamente</button></div>
-              : !selected.bestLap ? <div className="ngt-empty-chart">{selected.noBestLapReason === "only_overtake_laps" ? "Todas as voltas limpas desta semana usaram P2P/Overtake, então nenhuma foi escolhida como representativa. Faça uma volta limpa sem Overtake." : "Ainda não há uma volta limpa com telemetria para este carro e pista nesta semana."}</div>
-              : !referenceTrace ? <div className="ngt-empty-chart">Ainda não há volta de referência para este carro e pista. Envie um CSV ou IBT do iRacing (uma volta limpa, sem P2P) para ver onde você perde tempo.{uploadButton("Enviar referência")}</div>
-              : trace && comparison ? <RepresentativeLapChart trace={trace} referenceTrace={referenceTrace} comparison={comparison} sectionName={(d) => sectionNameAt(comparison, d)} hover={hover} onHover={setHover} />
-              : trace ? <div className="ngt-empty-chart">Não foi possível alinhar amostras suficientes entre a sua volta e a referência.</div>
-              : null}
-          </Panel>
-          <Panel className="ngt-tall" kicker="Track Position" title={selected.track.name} subtitle="A bolinha segue o ponto do gráfico · gire para ampliar, arraste para mover">
-            <div className="ngt-map-wrap">
+          {!embedded && (
+            <Panel className="ngt-tall" kicker="Volta representativa" title="Tempo perdido e o que você fez nos pedais"
+              subtitle={<>
+                <div>{eligibility}{gpsNote ? ` ${gpsNote}` : ""}</div>
+                {lapWhen && <div className="ngt-lapwhen">{`${lapWhen[0].toUpperCase()}${lapWhen.slice(1)} · ${formatLapTime(selected.bestLap!.lapTime)} · passe o mouse no gráfico para comparar`}</div>}
+                {referenceTrace && reference && (
+                  <div className="ngt-refline"><span>Referência: {reference.filename} · enviada em {new Date(reference.uploadedAt).toLocaleDateString("pt-BR")}</span>{uploadButton("Trocar referência")}</div>
+                )}
+                {referenceMessage && <div className="ngt-refline" data-tone={referenceMessageError ? "error" : undefined}><span>{referenceMessage}</span></div>}
+              </>}
+              actions={comparison ? <div className="ngt-legend"><span><i />Sua volta</span><span><i data-line="ref" />Referência</span></div> : undefined}>
+              {traceLoading || (referenceLoading && trace) ? <div className="ngt-empty-chart">Carregando a telemetria da volta…</div>
+                : error ? <div className="ngt-empty-chart" role="alert">{error}<button type="button" className="ngt-link-button" onClick={retry}>Tentar novamente</button></div>
+                : !selected.bestLap ? <div className="ngt-empty-chart">{selected.noBestLapReason === "only_overtake_laps" ? "Todas as voltas limpas desta semana usaram P2P/Overtake, então nenhuma foi escolhida como representativa. Faça uma volta limpa sem Overtake." : "Ainda não há uma volta limpa com telemetria para este carro e pista nesta semana."}</div>
+                : !referenceTrace ? <div className="ngt-empty-chart">Ainda não há volta de referência para este carro e pista. Envie um CSV ou IBT do iRacing (uma volta limpa, sem P2P) para ver onde você perde tempo.{uploadButton("Enviar referência")}</div>
+                : trace && comparison ? <RepresentativeLapChart trace={trace} referenceTrace={referenceTrace} comparison={comparison} sectionName={(d) => sectionNameAt(comparison, d)} hover={hover} onHover={setHover} />
+                : trace ? <div className="ngt-empty-chart">Não foi possível alinhar amostras suficientes entre a sua volta e a referência.</div>
+                : null}
+            </Panel>
+          )}
+          <Panel className={embedded ? "ngt-map-compact" : "ngt-tall"} kicker="Track Position" title={`${selected.track.name} · ${selected.car.name}`} subtitle={embedded ? "Clique em uma curva no mapa ou na lista abaixo para ver o detalhe." : "A bolinha segue o ponto do gráfico · gire para ampliar, arraste para mover"}>
+            <div className={embedded ? "ngt-map-wrap ngt-map-wrap-embedded" : "ngt-map-wrap"}>
               {trace ? <LapMap trace={trace} referenceTrace={referenceTrace} trackId={selected.track.id} variant="position" hoverDistance={hover} markers={markers} onMarkerClick={openSectionById} />
                 : <div className="ngt-map-empty">{traceLoading ? "Carregando o mapa…" : "Mapa indisponível sem telemetria."}</div>}
             </div>
