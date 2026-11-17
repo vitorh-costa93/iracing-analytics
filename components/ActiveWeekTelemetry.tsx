@@ -493,14 +493,14 @@ export default function ActiveWeekTelemetry({
           )}
           <Panel className={embedded ? "ngt-map-compact" : "ngt-tall"} kicker="Track Position" title={`${selected.track.name} · ${selected.car.name}`} subtitle={embedded ? "Clique em uma curva no mapa ou na lista abaixo para ver o detalhe." : "A bolinha segue o ponto do gráfico · gire para ampliar, arraste para mover"}>
             <div className={embedded ? "ngt-map-wrap ngt-map-wrap-embedded" : "ngt-map-wrap"}>
-              {trace ? <LapMap trace={trace} referenceTrace={referenceTrace} trackId={selected.track.id} variant="position" hoverDistance={hover} markers={markers} onMarkerClick={openSectionById} />
+              {trace ? <LapMap trace={trace} referenceTrace={referenceTrace} trackId={selected.track.id} variant="position" hoverDistance={hover} markers={markers} onMarkerClick={openSectionById} width={embedded ? 560 : 380} height={embedded ? 210 : 330} preferLandscape={embedded} />
                 : <div className="ngt-map-empty">{traceLoading ? "Carregando o mapa…" : "Mapa indisponível sem telemetria."}</div>}
             </div>
           </Panel>
         </div>
       )}
 
-      {comparison && <CornerByCorner comparison={comparison} filter={filter} onFilter={(value) => { setFilter(value); setOpenId(null); }} biggestLossId={biggestLossId} onOpen={openSectionById} micro={microSummary} />}
+      {comparison && <CornerByCorner comparison={comparison} filter={filter} onFilter={(value) => { setFilter(value); setOpenId(null); }} biggestLossId={biggestLossId} onOpen={openSectionById} micro={microSummary} compact={embedded} />}
 
       {comparison && openSection && trace && referenceTrace && (
         <SectionPopup section={openSection} index={openIndex} total={visibleSections.length} trace={trace} referenceTrace={referenceTrace}

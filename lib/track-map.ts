@@ -15,11 +15,18 @@ const METERS_PER_DEGREE_LAT = 110_540; // ~constant; longitude's own meters-per-
  * lines' actual GPS separation share the same real-world scale, instead of an arbitrary constant
  * that has no relationship to how far apart the two cars actually were.
  */
-export function createTrackProjector(points: GpsPoint[], width: number, height: number, padding = 12, fillViewport = false) {
+export function createTrackProjector(points: GpsPoint[], width: number, height: number, padding = 12, fillViewport = false, preferLandscape = false) {
   const meanLat = points.reduce((sum, point) => sum + point.lat, 0) / Math.max(points.length, 1);
   const lonScale = Math.cos(meanLat * Math.PI / 180);
-  const xs = points.map((point) => point.lon * lonScale);
-  const ys = points.map((point) => point.lat);
+  const rawXs = points.map((point) => point.lon * lonScale);
+  const rawYs = points.map((point) => point.lat);
+  const rawSpanX = Math.max(...rawXs) - Math.min(...rawXs);
+  const rawSpanY = Math.max(...rawYs) - Math.min(...rawYs);
+  const rotate90 = preferLandscape && width > height && rawSpanY > rawSpanX;
+  const xOf = (point: GpsPoint) => (rotate90 ? -point.lat : point.lon * lonScale);
+  const yOf = (point: GpsPoint) => (rotate90 ? point.lon * lonScale : point.lat);
+  const xs = points.map(xOf);
+  const ys = points.map(yOf);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
   const usableWidth = Math.max(1, width - padding * 2), usableHeight = Math.max(1, height - padding * 2);
   const scaleX = usableWidth / Math.max(maxX - minX, 0.000001);
@@ -29,7 +36,7 @@ export function createTrackProjector(points: GpsPoint[], width: number, height: 
   const drawWidth = (maxX - minX) * xScale, drawHeight = (maxY - minY) * yScale;
   const offsetX = (width - drawWidth) / 2 - minX * xScale;
   const offsetY = (height - drawHeight) / 2 + maxY * yScale;
-  const project = (point: GpsPoint) => `${(point.lon * lonScale * xScale + offsetX).toFixed(1)},${(offsetY - point.lat * yScale).toFixed(1)}`;
+  const project = (point: GpsPoint) => `${(xOf(point) * xScale + offsetX).toFixed(1)},${(offsetY - yOf(point) * yScale).toFixed(1)}`;
   // yScale is px per degree-latitude; degrees-latitude per meter is constant, so px-per-meter
   // follows directly. (xScale would give the same answer via lonScale, since both axes share one
   // uniform `scale` unless fillViewport stretched them apart — yScale/lat is the safe constant one.)

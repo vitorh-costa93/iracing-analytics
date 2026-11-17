@@ -82,14 +82,14 @@
 .ngo-race-debrief-btn:hover { color: var(--ng-reference); border-color: var(--ng-border); background: var(--ng-card-2); }
 
 /* Layout do wireframe na Visão Geral: esquerda (KPIs + Race Survival + Δ por semana) e direita (Telemetry Lab · Semana ativa) */
-.ngo-hero-split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--space-4); align-items: stretch; }
+.ngo-hero-split { display: grid; grid-template-columns: minmax(0, 1.05fr) minmax(0, 1fr); gap: var(--space-4); align-items: start; }
 .ngo-left-col, .ngo-right-col { display: flex; flex-direction: column; gap: var(--space-4); min-width: 0; }
 .ngo-kpis-stacked { display: flex; flex-direction: column; gap: var(--space-3); }
-.ngo-season-charts { display: flex; flex-direction: column; gap: var(--space-3); flex: 1 1 auto; }
+.ngo-season-charts { display: flex; flex-direction: column; gap: var(--space-3); }
 .ngo-season-charts-head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-2); padding: 2px 2px 0; }
-.ngo-scatter-panel { height: 340px; flex: 1 1 340px; }
-.ngo-pressure-panel { min-height: 220px; flex: 1 1 auto; justify-content: space-between; }
-.ngo-telem-panel { gap: var(--space-3); flex: 1 1 auto; }
+.ngo-scatter-panel { height: 300px; }
+.ngo-pressure-panel { min-height: 0; gap: var(--space-2); }
+.ngo-telem-panel { gap: var(--space-3); }
 .ngo-telem-head-stack { display: flex; flex-direction: column; gap: var(--space-2); }
 .ngo-ctx-badges { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--space-2); }
 .ngo-ctx-badge {
@@ -106,11 +106,23 @@
 .ngo-ctx-badge-avg span { font-family: var(--ng-font-display); font-weight: 700; font-size: 15px; line-height: 1.1; }
 .ngo-ctx-badge-avg small { font-size: 10px; color: var(--ng-soft); }
 .ngt-embedded .ngt-lap-grid-embedded { grid-template-columns: minmax(0, 1fr); }
-.ngt-embedded .ngt-map-compact { min-height: 0; }
-.ngt-embedded .ngt-map-wrap-embedded { height: 250px; min-height: 250px; }
+.ngt-embedded .ngt-map-compact { min-height: 0; padding: 14px 16px; gap: 6px; }
+.ngt-embedded .ngt-map-wrap-embedded { height: 210px; min-height: 210px; }
+/* Curva a Curva compacto na Visão Geral: 4 KPIs em linha única, sem coluna "Em uma frase" e linhas mais baixas */
+.ngt-compact { padding: 14px 16px; gap: 8px; }
+.ngt-compact .ngt-summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.ngt-compact .ngt-summary > div { padding: 8px 10px; gap: 2px; min-width: 0; }
+.ngt-compact .ngt-summary strong { font-size: 16px; line-height: 1.1; white-space: nowrap; }
+.ngt-compact .ngt-summary span { font-size: 10.5px; line-height: 1.2; }
+.ngt-compact .ngt-rows-head,
+.ngt-compact .ngt-row { grid-template-columns: minmax(0, 1.4fr) minmax(72px, 1fr) 64px 86px; gap: 10px; }
+.ngt-compact .ngt-row { padding: 6px 8px; min-height: 0; }
+.ngt-compact .ngt-row-name { font-size: 13px; }
+.ngt-compact .ngt-row-range { font-size: 11px; }
 @media (max-width: 1180px) {
   .ngo-hero-split { grid-template-columns: minmax(0, 1fr); }
   .ngo-ctx-badges { grid-template-columns: minmax(0, 1fr); }
+  .ngt-compact .ngt-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 .ngo-races-head { min-height: 0; padding-top: 4px; padding-bottom: 4px; font-size: var(--text-xs); letter-spacing: .1em; text-transform: uppercase; color: var(--ng-soft); border-bottom-color: var(--ng-border); }
 .ngo-races-row .r { text-align: right; }

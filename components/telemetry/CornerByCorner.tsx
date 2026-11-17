@@ -41,7 +41,7 @@ export function SectionTotalsSummary({ comparison, against }: { comparison: LapC
 
 /** Seção "Curva a curva" (Telemetry.dc.html): todos os trechos com tempo ganho/perdido, barra
  * divergente, frase curta e etiqueta; curvas coladas aparecem como uma sequência só. */
-export default function CornerByCorner({ comparison, filter, onFilter, biggestLossId, onOpen, micro }: {
+export default function CornerByCorner({ comparison, filter, onFilter, biggestLossId, onOpen, micro, compact = false }: {
   comparison: LapComparison;
   filter: CornerFilter;
   onFilter: (filter: CornerFilter) => void;
@@ -49,18 +49,19 @@ export default function CornerByCorner({ comparison, filter, onFilter, biggestLo
   onOpen: (id: string) => void;
   /** resumo das microcorreções da volta contra a referência (lib/microcorrection-talk.ts) */
   micro?: { text: string; tone: "gain" | "loss" | "neutral" } | null;
+  compact?: boolean;
 }) {
   const sections = comparison.sections;
   const maxAbs = Math.max(0.01, ...sections.map((section) => Math.abs(section.lostSeconds)));
   const visible = filterSections(sections, filter);
 
   return (
-    <Panel kicker="Curva a curva" title="Onde você perde e onde você é forte"
-      subtitle="Curvas coladas viram uma sequência só: uma não vale sozinha, porque você pode sacrificar a entrada de uma para sair melhor da outra. Clique para ver o detalhe."
+    <Panel className={compact ? "ngt-compact" : undefined} kicker="Curva a curva" title="Onde você perde e onde você é forte"
+      subtitle={compact ? "Clique em qualquer trecho para ver o diagnóstico completo." : "Curvas coladas viram uma sequência só: uma não vale sozinha, porque você pode sacrificar a entrada de uma para sair melhor da outra. Clique para ver o detalhe."}
       actions={<SegmentedControl options={FILTERS} value={filter} onChange={onFilter} ariaLabel="Filtrar trechos" />}>
       <SectionTotalsSummary comparison={comparison} against="a referência" />
       {micro && <p className="ngt-micro-note" data-tone={micro.tone === "neutral" ? undefined : micro.tone}>{micro.text}</p>}
-      <div className="ngt-rows-head" aria-hidden><span>Trecho</span><span><span>Perde</span><span>Ganha</span></span><span>Tempo</span><span>Em uma frase</span><span /></div>
+      <div className="ngt-rows-head" aria-hidden><span>Trecho</span><span><span>Perde</span><span>Ganha</span></span><span>Tempo</span>{!compact && <span>Em uma frase</span>}<span /></div>
       {visible.length === 0 && <div className="ngt-empty-list">{filter === "loss" ? "Nenhum trecho com perda contra a referência." : filter === "gain" ? "Nenhum trecho em que você ganha da referência." : "Nenhuma curva detectada nesta volta."}</div>}
       {visible.map((section) => {
         const talk = describeSection(section, { isBiggestLoss: section.id === biggestLossId });
@@ -75,7 +76,7 @@ export default function CornerByCorner({ comparison, filter, onFilter, biggestLo
             </div>
             <div className="ngt-bar" aria-hidden><div className="ngt-bar-axis" /><div className="ngt-bar-fill" style={{ left: loss ? `${50 - w}%` : "50%", width: `${w}%` }} /></div>
             <div className="ngt-row-dt">{formatSignedSeconds(-section.lostSeconds)}</div>
-            <div className="ngt-row-note">{talk.note}</div>
+            {!compact && <div className="ngt-row-note">{talk.note}</div>}
             <div className="ngt-row-tag"><span className="ngt-tag" data-tone={loss ? "loss" : "gain"}>{talk.tag}</span></div>
           </button>
         );

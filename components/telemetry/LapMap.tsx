@@ -37,7 +37,7 @@ function splitGpsSegments<T extends GpsLike>(points: T[]) {
 
 const validGps = (point: TracePoint) => point.lat !== null && point.lon !== null && !(point.lat === 0 && point.lon === 0);
 
-export default function LapMap({ trace, referenceTrace, trackId, variant, range = null, hoverDistance = null, markers = [], onMarkerClick, width = 380, height = 330 }: {
+export default function LapMap({ trace, referenceTrace, trackId, variant, range = null, hoverDistance = null, markers = [], onMarkerClick, width = 380, height = 330, preferLandscape = false }: {
   trace: Trace;
   referenceTrace?: Trace | null;
   trackId: number | null;
@@ -49,6 +49,7 @@ export default function LapMap({ trace, referenceTrace, trackId, variant, range 
   onMarkerClick?: (id: string) => void;
   width?: number;
   height?: number;
+  preferLandscape?: boolean;
 }) {
   const [boundary, setBoundary] = useState<TrackBoundary | null>(null);
   useEffect(() => {
@@ -78,7 +79,7 @@ export default function LapMap({ trace, referenceTrace, trackId, variant, range 
   let boundsPoints: GpsLike[] = gps;
   if (zoomed && (selected.length >= 2 || refSelected.length >= 2)) boundsPoints = [...selected, ...refSelected];
   else if (!zoomed && boundaryPoints.length) boundsPoints = boundaryPoints;
-  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), width, height, 18, false);
+  const projectGps = createTrackProjector(boundsPoints.map((point) => ({ lat: Number(point.lat), lon: Number(point.lon) })), width, height, 18, false, preferLandscape);
   const project = (point: GpsLike) => projectGps({ lat: Number(point.lat), lon: Number(point.lon) });
   const xy = (point: GpsLike) => project(point).split(",").map(Number) as [number, number];
   const isFullTrackView = !zoomed && boundaryPoints.length > 0;
