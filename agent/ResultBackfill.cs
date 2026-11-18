@@ -158,7 +158,7 @@ internal sealed partial class ResultExporter
         var s = store.State;
         if (s.Day != DateTimeOffset.UtcNow.ToString("yyyy-MM-dd")) return true;
         if (Store.BackfillMode) return s.Requests < 3000;
-        return s.Requests < Math.Clamp(s.DailyLimit, 1, 128) && s.Bytes + 200 * 1024 < 10L * 1024 * 1024;
+        return s.Requests < Math.Clamp(s.DailyLimit, 1, 128) && s.Bytes + 200 * 1024 < 25L * 1024 * 1024;
     }
 
     // A node that vanishes while the tree is being enumerated reads as an empty name.

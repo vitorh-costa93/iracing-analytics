@@ -312,7 +312,7 @@ sealed class Store
             var payload = await File.ReadAllBytesAsync(file, cancellation);
             var setup = IsSetup(Head(file));
             if (!setup && (Priority(file) == 0 ? resultsBudgetFull : budgetFull)) { Status = "Limite de requests atingido"; return; }
-            if (!setup && !BackfillMode && State.Bytes + payload.Length > (Priority(file) == 0 ? 12L : 10L) * 1024 * 1024) { Status = "Limite de 10 MiB/dia atingido"; return; }
+            if (!setup && !BackfillMode && State.Bytes + payload.Length > (Priority(file) == 0 ? 27L : 25L) * 1024 * 1024) { Status = "Limite de 25 MiB/dia atingido"; return; }
             if (!setup) { State.Requests++; State.Bytes += payload.Length; recent.Enqueue(now); }
             State.Next = now.AddSeconds(setup ? 1 : 6); Save();
             using var request = new HttpRequestMessage(HttpMethod.Post, Endpoint) { Content = new ByteArrayContent(payload) };

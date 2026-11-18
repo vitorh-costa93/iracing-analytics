@@ -1,5 +1,11 @@
 # Continuidade — iracing-analytics
 
+## Agente: teto 25 MiB/dia e gatilho ocioso de 10 min (mouse/teclado/volante) — 18/11/2026
+- Diagnóstico: fila local tinha 20 arquivos retidos após bater `Limite de 10 MiB/dia atingido` em 18/11 (`agent.log`).
+- `agent/Store.cs`, `agent/ResultBackfill.cs`, `agent/Program.cs`: teto diário elevado de `10 MiB/dia` para `25 MiB/dia` (`27 MiB` com folga de resultados).
+- `agent/IdleMonitor.cs` e `agent/Program.cs`: monitoramento passivo de ociosidade em mouse/teclado (`GetLastInputInfo`) e volante/pedais (`winmm.dll` `joyGetPosEx` sem HidHide). Quando todos os dispositivos ficam ociosos por >= 10 min com simulador fechado e há varredura pendente (`exporter.Due(store)`), o agente abre `iRacingUI.exe`, executa a verificação de resultados e fecha o `iRacingUI.exe` ao concluir.
+- Validação: `dotnet build` (0 erros/avisos), `--self-test` (18/18 checks PASS), publicado em `Documents\RacingAnalyticsAgent\app` e bandeja reiniciada (PID 20632).
+
 ## Redesign da Visão Geral (Home) — 17/11/2026
 - `app/page.tsx`, `app/night-grid-overview.css`, `components/overview/RaceScatter.tsx` e `components/debriefs/DebriefCharts.tsx`: layout split 2 colunas alinhado (`align-items: stretch`, zero espaço vazio) — esquerda com KPIs (`iRating`, `Vitórias`, `Resultado vs Esperado` no lugar de `Sequência`), cabeçalho compartilhado de categoria (`Sports Car` / `Formula Car`) controlando `Race Survival` (`tall` 680×290) e `Δ de iRating por semana` (`WeekPressureBars` `heightPx=230`); direita com `ActiveWeekTelemetry` embarcado.
 - `components/ActiveWeekTelemetry.tsx`, `components/telemetry/CornerByCorner.tsx`, `components/telemetry/LapMap.tsx` e `lib/track-map.ts`: no modo embarcado da Visão Geral, exibe os cards históricos de `weeklyContexts` no topo, rotaciona automaticamente o `LapMap` em 90° (`preferLandscape`) quando a pista é mais alta que larga (`210px` de altura), remove a coluna `"Em uma frase"` do `Curva a Curva` compacto com os 4 KPIs em linha única, e abre automaticamente no contexto da última corrida.

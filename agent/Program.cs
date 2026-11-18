@@ -91,7 +91,7 @@ static class Program
 }
 sealed class AgentForm : Form
 {
-    readonly Store store; readonly ResultExporter exporter = new(); readonly SimMonitor monitor; readonly System.Windows.Forms.Timer simTimer = new() { Interval = 2000 }; readonly NotifyIcon tray; readonly System.Windows.Forms.Timer timer = new() { Interval = 15000 }; readonly Label status = new() { AutoSize = true, MaximumSize = new Size(510, 0) }; bool busy, exiting; readonly CancellationTokenSource cancellation = new();
+    readonly Store store; readonly ResultExporter exporter = new(); readonly IdleMonitor idleMonitor = new(); readonly SimMonitor monitor; readonly System.Windows.Forms.Timer simTimer = new() { Interval = 2000 }; readonly NotifyIcon tray; readonly System.Windows.Forms.Timer timer = new() { Interval = 15000 }; readonly Label status = new() { AutoSize = true, MaximumSize = new Size(510, 0) }; bool busy, exiting; readonly CancellationTokenSource cancellation = new();
     public AgentForm(Store store, bool startHidden)
     {
         this.store = store;
@@ -122,7 +122,7 @@ sealed class AgentForm : Form
         panel.Controls.Add(new Label { Text = "O resultado da corrida é lido do SessionInfo ao vivo (iRating estimado). O JSON exportado do iRacing para Downloads continua sendo a fonte oficial e substitui a estimativa.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
         tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Backfill histórico de resultados (2023 S4 em diante)...", null, async (_, _) => await RunBackfill()); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
         FormClosing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } else { cancellation.Cancel(); timer.Stop(); simTimer.Stop(); monitor.Dispose(); tray.Dispose(); } };
-        Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start(); simTimer.Tick += (_, _) => { monitor.Poll(); try { WatchProcesses(); } catch (Exception e) { AgentLog.Error("WatchProcesses", e); } }; simTimer.Start();
+        Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start(); simTimer.Tick += (_, _) => { monitor.Poll(); idleMonitor.Poll(); try { WatchProcesses(); } catch (Exception e) { AgentLog.Error("WatchProcesses", e); } }; simTimer.Start();
         AgentLog.Write("Agente iniciado");
     }
     async Task RunBackfill()
@@ -172,10 +172,41 @@ sealed class AgentForm : Form
             var exportStatus = "";
             await Step("coleta", () => Task.Run(() => { foreach (var file in Program.Sources()) { try { store.Collect(file, deleteSource: true); } catch (IOException) { } catch (UnauthorizedAccessException) { } } }, cancellation.Token));
             await Step("referências", () => Task.Run(() => store.ScanReferences(Program.Sources()), cancellation.Token));
-            await Step("exportação", async () => { if (store.State.ExperimentalExport && exporter.Due(store)) exportStatus = await exporter.TryExportAsync(store, cancellation.Token); });
+            await Step("exportação", async () =>
+            {
+                if (!store.State.ExperimentalExport || !exporter.Due(store)) return;
+                if (IdleMonitor.IsIracingUiRunning())
+                {
+                    exportStatus = await exporter.TryExportAsync(store, cancellation.Token);
+                    return;
+                }
+                if (!ResultExporter.SafeToOperate() || !idleMonitor.IsIdleFor(TimeSpan.FromMinutes(10))) return;
+                var uiPath = IdleMonitor.FindIracingUiPath();
+                if (uiPath is null) return;
+                AgentLog.Write("Ociosidade >= 10 min (mouse/teclado/volante): abrindo iRacingUI para verificar resultados.");
+                using var started = Process.Start(new ProcessStartInfo(uiPath) { UseShellExecute = true });
+                try
+                {
+                    for (var i = 0; i < 20 && !cancellation.IsCancellationRequested; i++)
+                    {
+                        await Task.Delay(1500, cancellation.Token);
+                        if (ResultExporter.SafeToOperate() && IdleMonitor.IsIracingUiRunning())
+                        {
+                            var ready = await Task.Run(() => ResultExporter.ExistingWindow() is not null, cancellation.Token);
+                            if (ready) break;
+                        }
+                    }
+                    exportStatus = await exporter.TryExportAsync(store, cancellation.Token);
+                }
+                finally
+                {
+                    IdleMonitor.CloseIracingUi();
+                    AgentLog.Write("iRacingUI fechado após verificação ociosa.");
+                }
+            });
             await Step("envio", () => store.Send(cancellation.Token));
             if (store.Status != lastLogged) { lastLogged = store.Status; AgentLog.Write($"Status: {store.Status} | fila {store.Backlog} | quarentena {store.Quarantined} | sucessos {store.State.Successes}"); }
-            status.Text = $"{store.Status}\niRacing: {monitor.Status}\nFila: {store.Backlog} | Sucessos: {store.State.Successes} | Quarentena: {store.Quarantined}\nHoje: {store.State.Requests}/{store.State.DailyLimit} requests, {store.State.Bytes / 1024} KiB/10240\n{exportStatus}";
+            status.Text = $"{store.Status}\niRacing: {monitor.Status}\nFila: {store.Backlog} | Sucessos: {store.State.Successes} | Quarentena: {store.Quarantined}\nHoje: {store.State.Requests}/{store.State.DailyLimit} requests, {store.State.Bytes / 1024} KiB/25600\n{exportStatus}";
         }
         catch (OperationCanceledException) { }
         catch (Exception e) { AgentLog.Error("Tick", e); status.Text = "Falha local; fila preservada. Verifique agent.log."; }
