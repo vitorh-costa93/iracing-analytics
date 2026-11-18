@@ -392,7 +392,7 @@ export default function Home() {
                 title="Δ de iRating por semana"
                 titleSize="md"
               >
-                {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} heightPx={230} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
+                {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} heightPx={isMobile ? 140 : 230} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
               </Panel>
             </div>
           </div>

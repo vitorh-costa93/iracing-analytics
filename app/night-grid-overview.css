@@ -159,6 +159,8 @@
   .ng-eyebrow { font-size: var(--text-xs); }
   .ng-page-title { flex-direction: column; align-items: flex-start; gap: var(--space-1); }
   .ngo-main { gap: 14px; padding-top: 16px; }
+  .ngo-hero-split, .ngo-left-col, .ngo-right-col, .ngo-season-charts { gap: 14px; }
+  .ngo-season-charts-head { flex-wrap: wrap; gap: 6px; }
   .ngo-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
   .ngo-kpi-grid .ng-kpi-spark, .ngo-kpi-grid .ng-kpi-desc { display: none; }
   .ngo-kpi-grid > :nth-child(3) { grid-column: 1 / -1; }
@@ -167,15 +169,24 @@
   .ngo-scatter-panel .ng-select select { width: 100%; }
   .ngo-tools .dmaic-report-actions { display: contents; }
   .ng-kpi-trend { font-size: var(--text-sm); }
-  .ngo-scatter-panel { height: auto; padding: 14px 16px; }
+  .ngo-scatter-panel { height: auto; flex: none; padding: 14px 16px; }
+  .ngo-pressure-panel { flex: none; padding: 14px 16px; }
   .ngo-scatter { min-height: 170px; flex: none; }
   .ngo-scatter-panel .ng-panel-head, .ngo-perf-head { flex-wrap: wrap; }
   .ngo-scatter-panel .ng-panel-head-actions { margin-left: 0; flex-wrap: wrap; }
-  .ngo-perf-controls { width: 100%; }
+  .ngo-telem-panel { padding: 14px 16px; }
+  .ngt-embedded .ngt-map-wrap-embedded { height: 190px; min-height: 190px; }
+  .ngt-compact { padding: 12px 14px; }
+  .ngt-compact .ngt-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+  .ngt-compact .ngt-rows-head { display: none; }
+  .ngt-compact .ngt-row { grid-template-columns: minmax(0, 1fr) auto auto; gap: 8px; padding: 7px 6px; }
+  .ngt-compact .ngt-row .ngt-bar { display: none; }
+  .ngo-perf-controls { width: 100%; flex-direction: column; align-items: stretch; gap: 8px; }
   .ngo-perf-controls .ng-segmented { max-width: 100%; overflow-x: auto; }
-  .ngo-rank-axis { display: none; }
-  .ngo-rank-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label value" "bar bar"; gap: var(--space-1) 10px; padding: 8px 0; min-height: 0; }
-  .ngo-rank-label { grid-area: label; }
+  .ngo-perf-controls .ng-select, .ngo-perf-controls .ng-select select { width: 100%; }
+  .ngo-rank-axis, .ng-hist-perf .ngo-rank-axis { display: none; }
+  .ngo-rank-row, .ng-hist-perf .ngo-rank-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "label value" "bar bar"; gap: var(--space-1) 10px; padding: 8px 0; min-height: 0; }
+  .ngo-rank-label { grid-area: label; min-width: 0; }
   .ngo-rank-value { grid-area: value; }
   .ngo-rank-bar { grid-area: bar; height: 6px; background: var(--ng-code-bg); border-radius: var(--radius); }
   .ngo-rank-bar > span { top: 0; height: 6px; border-radius: var(--radius); }

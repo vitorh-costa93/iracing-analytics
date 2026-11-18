@@ -330,9 +330,9 @@ export default function HistoryView() {
               </div>
             </div>
             {field.leftOnTable.top.slice(0, 4).map((r) => (
-              <div key={`${r.date}-${r.track}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 10px", background: "var(--ng-card-2)", borderRadius: "6px", fontSize: "12px" }}>
-                <span style={{ color: "var(--ng-text-2)" }}><strong>{r.track}</strong> · {r.car}</span>
-                <span style={{ color: "var(--ng-loss)", fontWeight: 600 }}>esp {signedNumber(r.expected)} → real {signedNumber(r.real)}</span>
+              <div key={`${r.date}-${r.track}`} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: "4px 10px", padding: "6px 10px", background: "var(--ng-card-2)", borderRadius: "6px", fontSize: "12px" }}>
+                <span style={{ color: "var(--ng-text-2)", minWidth: 0 }}><strong>{r.track}</strong> · {r.car}</span>
+                <span style={{ color: "var(--ng-loss)", fontWeight: 600, whiteSpace: "nowrap" }}>esp {signedNumber(r.expected)} → real {signedNumber(r.real)}</span>
               </div>
             ))}
           </div>

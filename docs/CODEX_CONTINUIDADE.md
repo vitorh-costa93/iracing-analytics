@@ -7,7 +7,8 @@
 - `components/overview/LatestRaces.tsx`, `components/TelemetryTabs.tsx`, `components/telemetry/RaceDebriefView.tsx` e `app/api/telemetry/race-debrief/route.ts`: cada corrida na tabela `Últimas corridas` tem ícone direto para `/telemetry?tab=debrief&raceId=<irstats_race_id>`.
 - `components/overview/RaceScatter.tsx` e `components/debriefs/DebriefCharts.tsx` (`app/night-grid-debriefs.css`): tooltip equilibrada no `RaceScatter` (`11.5px`/`10px` em `214×48`) e tooltip no hover das colunas de `Δ de iRating por semana` exibindo pista(s) e carro(s) daquela week.
 - `app/api/telemetry/history/route.ts`, `components/telemetry/HistoryView.tsx` e `app/night-grid-overview.css`: nova rota `/api/telemetry/history` servindo todo o histórico do iRacing por padrão (com filtro opcional de Season), populando KPIs compactos (sem Saldo Acumulado), `DeltaByContext`/`GapToWinner` em `s/km` com linhas compactas de 1 linha, Matriz Ritmo × Conversão e Sobrevivência/Deixado na pista.
-- Validação: `npm test` (557 passed) e `npm run build` PASS.
+- `app/night-grid-overview.css`, `app/night-grid-debriefs.css`, `app/page.tsx`, `components/debriefs/DebriefCharts.tsx` e `components/telemetry/HistoryView.tsx`: revisão completa do layout mobile (`<= 760px`) — `Curva a Curva` compacto em 3 colunas (sem barra lateral) + 2×2 nos 4 KPIs, `Δ de iRating por semana` em `140px` com toque para abrir a tooltip de pista/carro, e `Deep Dive -> Histórico` com ranking em 2 linhas, controles empilhados e quebra limpa nas listas.
+- Validação: `npm test` (557 passed), `npx tsc --noEmit` e `npm run build` PASS.
 
 ## Frescor e orçamento de cache — 21/10/2026
 - Baseline local/GitHub igual a 684fb41; apenas agent/backfill-run.out e agent/resumo.txt locais não versionados, preservados. Cache de overview gerado 20/10 e reports 17/10; dirty_refreshes=64, refreshes=0. Supabase compartilhado tem migrations de outros projetos: não fazer db push indiscriminado.

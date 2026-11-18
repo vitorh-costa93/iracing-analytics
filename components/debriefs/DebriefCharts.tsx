@@ -1,4 +1,6 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState, type ReactNode } from "react";
 import { weekShort } from "@/lib/season-week";
 import type { PaceChart } from "@/lib/debrief-charts";
 import { LOSS_BINS } from "@/lib/debrief-charts";
@@ -57,6 +59,7 @@ export function LossTimingBars({ current, reference, referenceLabel }: { current
 
 /** "Δ de iRating por semana": uma barra por week, para cima (ganho) ou para baixo (perda) de uma linha zero. */
 export function WeekPressureBars({ weeks, heightPx = 130 }: { weeks: Array<{ week: number; delta: number; races: number; severeLosses: number; cars?: string[]; tracks?: string[] }>; heightPx?: number }) {
+  const [activeWeek, setActiveWeek] = useState<number | null>(null);
   const max = Math.max(1, ...weeks.map((item) => Math.abs(item.delta)));
   const zeroY = Math.round(heightPx * 0.5);
   const maxBar = Math.max(24, Math.round(heightPx * 0.42));
@@ -68,8 +71,10 @@ export function WeekPressureBars({ weeks, heightPx = 130 }: { weeks: Array<{ wee
         const align = index <= 1 ? "left" : index >= weeks.length - 2 ? "right" : "center";
         const trackText = item.tracks?.length ? item.tracks.join(" · ") : "Sem corridas";
         const carText = item.cars?.length ? item.cars.join(" · ") : "—";
+        const isOpen = activeWeek === item.week;
         return (
-          <div className="ngd-weeks-col" style={{ height: heightPx }} key={item.week}>
+          <div className="ngd-weeks-col" style={{ height: heightPx }} key={item.week} data-open={isOpen ? "" : undefined}
+            onClick={() => setActiveWeek((cur) => (cur === item.week ? null : item.week))}>
             <div className="ngd-weeks-bar" data-tone={item.delta >= 0 ? "gain" : "loss"} style={item.delta >= 0 ? { top: zeroY - h, height: h } : { top: zeroY, height: h }} />
             <div className="ngd-week-tip" data-align={align} role="tooltip">
               <div className="ngd-week-tip-delta" data-tone={item.delta >= 0 ? "gain" : "loss"}>{weekShort(item.week)} · {signedInt(item.delta)} iRating</div>
