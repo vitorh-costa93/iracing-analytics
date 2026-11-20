@@ -307,8 +307,6 @@ export default function Home() {
           trendTone={toneOf(iratingDiff)}
           sparkline={current.some((v) => v !== null) ? { kind: "lines", current, previous: previous.some((v) => v !== null) ? previous : undefined, count: Math.max(current.length, previous.length) } : undefined}
           description={`Tracejado: ${prevShort}${kpi.irating.previousSameWeek === null ? "" : ` · ${prevShort} na mesma week: ${kpi.irating.previousSameWeek.toLocaleString("pt-BR")}`}`} />,
-        /* Só aparece no celular (Mobile.dc.html tem Safety Rating como cartão próprio); no desktop o selo do iRating cobre. */
-        <div key="sr" className="ngo-kpi-sr-wrap"><KpiCard category={key} label="Safety Rating" value={kpi.safetyRating.currentDisplay ?? "—"} /></div>,
         <KpiCard key="w" category={key} label="Vitórias"
           value={kpi.wins.current === null ? "—" : kpi.wins.current.toLocaleString("pt-BR")}
           trend={winsDiff === null ? "Sem comparação anterior" : `${arrow(winsDiff)} ${signedNumber(winsDiff)} vs. ${prevShort}`}
@@ -392,7 +390,7 @@ export default function Home() {
                 title="Δ de iRating por semana"
                 titleSize="md"
               >
-                {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} heightPx={isMobile ? 140 : 230} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
+                {pressureWeeks.length ? <WeekPressureBars weeks={pressureWeeks} /> : <p className="ngo-empty">Ainda não há semanas fechadas nesta season.</p>}
               </Panel>
             </div>
           </div>

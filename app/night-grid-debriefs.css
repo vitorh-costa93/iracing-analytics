@@ -57,9 +57,9 @@
 .ngd-hist-bar[data-kind="ref"] { background: #5C6A9E; }
 
 /* Pressão por week */
-.ngd-weeks { position: relative; display: flex; gap: var(--space-1); margin-top: 8px; }
-.ngd-weeks-zero { position: absolute; left: 0; right: 0; top: 60px; height: 1px; background: #5C6A9E; }
-.ngd-weeks-col { flex: 1; position: relative; height: 130px; }
+.ngd-weeks { position: relative; display: flex; gap: var(--space-1); margin-top: 8px; flex: 1 1 auto; min-height: 140px; }
+.ngd-weeks-zero { position: absolute; left: 0; right: 0; top: 46%; height: 1px; background: #5C6A9E; }
+.ngd-weeks-col { flex: 1; position: relative; min-height: 140px; height: 100%; cursor: pointer; }
 .ngd-weeks-bar { position: absolute; left: 50%; transform: translateX(-50%); width: 64%; max-width: 40px; border-radius: var(--radius); }
 .ngd-weeks-bar[data-tone="gain"] { background: var(--ng-gain); }
 .ngd-weeks-bar[data-tone="loss"] { background: var(--ng-loss); }

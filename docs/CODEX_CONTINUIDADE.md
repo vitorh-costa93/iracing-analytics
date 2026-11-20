@@ -1,5 +1,11 @@
 # Continuidade — iracing-analytics
 
+## Correções mobile, eixo X semanal e agente self-contained — 20/11/2026
+- `RacingAnalyticsAgent`: o último publish (`--self-contained false`) falhou no boot de hoje (`09:55:59`, Event Viewer) por ausência do runtime `.NET 9.0.0` global. Republicado com `--self-contained true -r win-x64`, `--self-test` PASS (18/18) e bandeja iniciada (PID `3908`).
+- `app/page.tsx`: removido o card extra de `Safety Rating` no mobile (mantendo os mesmos 3 KPIs do desktop com selo no `iRating`).
+- `components/debriefs/DebriefCharts.tsx` e `app/night-grid-debriefs.css`: `WeekPressureBars` (`Δ de iRating por semana`) convertido para altura e linha zero em `%` (`46%` / `40%`), impedindo o eixo X (`W1..W12`) de vazar do painel em qualquer dispositivo sem escalar fonte.
+- Validação: `npm test` (557 passed), `npx tsc --noEmit` e `npm run build` PASS.
+
 ## Agente: teto 25 MiB/dia e gatilho ocioso de 10 min (mouse/teclado/volante) — 18/11/2026
 - Diagnóstico: fila local tinha 20 arquivos retidos após bater `Limite de 10 MiB/dia atingido` em 18/11 (`agent.log`).
 - `agent/Store.cs`, `agent/ResultBackfill.cs`, `agent/Program.cs`: teto diário elevado de `10 MiB/dia` para `25 MiB/dia` (`27 MiB` com folga de resultados).
