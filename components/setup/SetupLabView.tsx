@@ -194,7 +194,7 @@ export default function SetupLabView() {
       const response = await fetch("/api/setup/inventory", { method: "POST", body: form });
       const result = await response.json();
       if (!response.ok) throw new Error(result.message ?? "Erro no envio");
-      setNotice(`${setupDisplayName(file.name)} guardado. Ele entra na análise quando o Garage61 ler os parâmetros de uma sessão com ele.`);
+      setNotice(`${setupDisplayName(file.name)} guardado. Ele entra na análise quando o agente registrar os parâmetros de uma sessão com ele.`);
       loadInventory();
     } catch (error) {
       setNotice(error instanceof Error ? error.message : String(error));
@@ -304,15 +304,13 @@ export default function SetupLabView() {
             </div>
             <div>
               <div className="ngs-extras-title">Anexar setup .sto</div>
-              <p>O arquivo vai para o cofre privado, nunca é publicado nem reescrito. A comparação usa os parâmetros que o Garage61 leu das suas sessões com ele.</p>
+              <p>O arquivo vai para o cofre privado, nunca é publicado nem reescrito. A comparação usa os parâmetros que o agente registrou das suas sessões com ele.</p>
               <label className="ngs-upload" data-disabled={uploading || !selected ? "" : undefined}>
                 {uploading ? "Enviando…" : "Escolher arquivo .sto"}
                 <input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadSetup(file); event.target.value = ""; }} />
               </label>
             </div>
             <div>
-              <div className="ngs-extras-title">Importar setups do Garage61</div>
-              <p>Use o favorito de importação na página do Garage61, já logado.</p>
               <AppTabs />
             </div>
           </div>

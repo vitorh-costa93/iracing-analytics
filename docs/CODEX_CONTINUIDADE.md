@@ -1,5 +1,9 @@
 # Continuidade — iracing-analytics
 
+## Refresh de Profile > Stats no agente & limpeza Garage61/iRStats na UI — 21/11/2026
+- `agent/ResultExporter.cs` e `agent/Program.cs`: `ResultExporter.Export` agora re-navega `Profile > Stats` quando `LastScan >= 30s` (evitando DOM stale do `iRacingUI` aberto) e `Program.cs` passa `WorkingDirectory` ao abrir `iRacingUI.exe`. Republicado `--self-contained true`, `--self-test` PASS e bandeja iniciada (PID `10048`).
+- `app/page.tsx`, `components/AppHeader.tsx`, `components/debriefs/DebriefField.tsx`, `components/telemetry/RaceDebriefView.tsx`, `components/setup/SetupComparator.tsx` e `components/setup/SetupLabView.tsx`: removidos atalhos e menções de interface ao `Garage61` e `iRStats` (exibindo `Resultados` / `Telemetria` e `agente`).
+
 ## Correções mobile, eixo X semanal e agente self-contained — 20/11/2026
 - `RacingAnalyticsAgent`: o último publish (`--self-contained false`) falhou no boot de hoje (`09:55:59`, Event Viewer) por ausência do runtime `.NET 9.0.0` global. Republicado com `--self-contained true -r win-x64`, `--self-test` PASS (18/18) e bandeja iniciada (PID `3908`).
 - `app/page.tsx`: removido o card extra de `Safety Rating` no mobile (mantendo os mesmos 3 KPIs do desktop com selo no `iRating`).

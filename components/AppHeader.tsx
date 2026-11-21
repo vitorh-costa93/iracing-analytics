@@ -52,13 +52,13 @@ export default function AppHeader() {
 
   const sources = status?.sources;
   const freshnessText = sources && now !== null
-    ? `iRStats ${relativeAge(sources.irstats.lastImportAt, now)} · Garage61 ${relativeAge(sources.garage61.lastSuccessAt, now)}`
+    ? `Resultados ${relativeAge(sources.irstats.lastImportAt, now)} · Telemetria ${relativeAge(sources.garage61.lastSuccessAt, now)}`
     : status === null ? "Fontes indisponíveis" : "Verificando fontes…";
   const freshnessTitle = sources
     ? [
-        `iRStats: resultados importados em ${fullDate(sources.irstats.lastImportAt)}`,
-        `Garage61: última sincronização útil em ${fullDate(sources.garage61.lastSuccessAt)}`,
-        `Setups do Garage61: última importação em ${fullDate(sources.setups.lastImportAt)}`,
+        `Resultados: importados em ${fullDate(sources.irstats.lastImportAt)}`,
+        `Telemetria: última atualização em ${fullDate(sources.garage61.lastSuccessAt)}`,
+        `Setups: última importação em ${fullDate(sources.setups.lastImportAt)}`,
       ].join("\n")
     : undefined;
   const driver = status?.driver ?? null;

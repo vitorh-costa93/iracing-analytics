@@ -128,7 +128,7 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
   const sampleText = sample.telemetryLaps
     ? `${sample.robust ? "amostra robusta" : "amostra limitada"} · ${sample.telemetryLaps} ${sample.telemetryLaps === 1 ? "volta analisada" : "voltas analisadas"}`
     : "sem telemetria armazenada";
-  const options = races.map((item) => ({ value: item.id, label: `${item.label}${item.telemetryLaps >= 3 ? "" : !item.hasSession ? " · sem sessão Garage61" : " · sem telemetria"}` }));
+  const options = races.map((item) => ({ value: item.id, label: `${item.label}${item.telemetryLaps >= 3 ? "" : !item.hasSession ? " · sem sessão registrada" : " · sem telemetria"}` }));
 
   return (
     <div className="ngr-screen" aria-busy={loading}>
@@ -196,7 +196,7 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
                 <div className="ngr-pace-item">
                   <div className="ngr-pace-head"><span>{pace.reference.kind === "reference" ? "Sua volta de referência" : "Vencedor da classe"}</span><span>{signed(pace.reference.gap, 3)}</span></div>
                   <div className="ngr-track ngr-track-lg"><div className="ngr-fill" data-tone="reference" style={{ width: `${barWidth(pace.reference.gap, bestLap)}%` }} /></div>
-                  <div className="ngr-note">{pace.reference.kind === "reference" ? "Tempo estimado da volta que você enviou como referência para este carro e pista" : "Melhor volta de quem venceu a sua classe (iRStats)"}</div>
+                  <div className="ngr-note">{pace.reference.kind === "reference" ? "Tempo estimado da volta que você enviou como referência para este carro e pista" : "Melhor volta de quem venceu a sua classe"}</div>
                 </div>
               )}
             </div>

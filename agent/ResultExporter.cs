@@ -78,7 +78,9 @@ internal sealed partial class ResultExporter
         if (ResultModal(window) is not null) return "Exportação: um resultado está aberto no iRacing; não vou interferir.";
         if (SaveDialogs(window).Count > 0) return "Exportação: há um diálogo Salvar aberto no iRacing; não vou interferir.";
         var rows = RecentRaces(window);
-        if (rows.Count == 0)
+        // If iRacingUI stayed open on Stats from an earlier session, its Chromium DOM keeps stale rows
+        // until Profile > Stats is re-navigated; always refresh via Profile -> Stats.
+        if (rows.Count == 0 || DateTimeOffset.UtcNow - store.State.LastScan >= TimeSpan.FromSeconds(30))
         {
             // Profile > Stats is where the last 10 races live; navigate there only when idle and nothing is open.
             foreach (var name in new[] { "Profile", "Stats" })

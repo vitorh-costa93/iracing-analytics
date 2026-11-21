@@ -184,7 +184,7 @@ sealed class AgentForm : Form
                 var uiPath = IdleMonitor.FindIracingUiPath();
                 if (uiPath is null) return;
                 AgentLog.Write("Ociosidade >= 10 min (mouse/teclado/volante): abrindo iRacingUI para verificar resultados.");
-                using var started = Process.Start(new ProcessStartInfo(uiPath) { UseShellExecute = true });
+                using var started = Process.Start(new ProcessStartInfo(uiPath) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(uiPath) ?? "" });
                 try
                 {
                     for (var i = 0; i < 20 && !cancellation.IsCancellationRequested; i++)

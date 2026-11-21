@@ -92,7 +92,7 @@ export function CausesTable({ field, referenceName }: { field: DebriefField; ref
             </tr>
           ))}
           {(now.unknown.count > 0 || before.unknown.count > 0) && (
-            <tr><td><strong>Sem voltas para classificar</strong><span className="sub">a sessão não está no Garage61 nem no agente</span></td><td className="r" data-tone="muted">{tally(now.unknown)}</td><td className="r sep" data-tone="muted">{tally(before.unknown)}</td></tr>
+            <tr><td><strong>Sem voltas para classificar</strong><span className="sub">a sessão não foi registrada pelo agente</span></td><td className="r" data-tone="muted">{tally(now.unknown)}</td><td className="r sep" data-tone="muted">{tally(before.unknown)}</td></tr>
           )}
           <tr className="ngd-table-total"><td><strong>Total</strong></td><td className="r" data-tone={total(now).count ? "loss" : "muted"}><strong>{tally(total(now))}</strong></td><td className="r sep" data-tone={total(before).count ? "loss" : "muted"}><strong>{hasReference ? tally(total(before)) : "—"}</strong></td></tr>
         </tbody>

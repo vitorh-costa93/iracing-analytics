@@ -34,7 +34,7 @@ export function SetupComparator({ setups, baseId, comparisonId, onBase, onCompar
       </div>
       {error && <div className="ngs-note" data-tone="loss">{error}</div>}
       {!result && !error && (
-        <div className="ngs-note">{setups.length < 2 ? "Este carro e pista ainda têm menos de dois setups lidos pelo Garage61." : "Escolha dois setups diferentes e rode a análise."}</div>
+        <div className="ngs-note">{setups.length < 2 ? "Este carro e pista ainda têm menos de dois setups registrados pelo agente." : "Escolha dois setups diferentes e rode a análise."}</div>
       )}
       {result && (
         <>
