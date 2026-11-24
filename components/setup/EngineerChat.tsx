@@ -194,7 +194,7 @@ export function EngineerChat({
         </div>
         <div className="ngs-symptoms">
           {SYMPTOM_CHIPS.map((symptom) => (
-            <button key={symptom} type="button" className="ngs-symptom" disabled={!canChat} onClick={() => { setDraft(symptom); setMenuClosed(true); onSymptom?.(); inputRef.current?.focus(); }}>{symptom}</button>
+            <button key={symptom} type="button" className="ngs-symptom" disabled={!canChat} onClick={() => { setDraft((prev) => (prev.trim() ? `${prev.trim()} — ${symptom}` : symptom)); setMenuClosed(true); onSymptom?.(); inputRef.current?.focus(); }}>{symptom}</button>
           ))}
         </div>
       </div>

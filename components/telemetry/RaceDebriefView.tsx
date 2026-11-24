@@ -132,9 +132,19 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
 
   return (
     <div className="ngr-screen" aria-busy={loading}>
+      {error && <div className="ngt-state" data-tone="error">{error}<button type="button" className="ngt-link-button" onClick={() => setRetry((count) => count + 1)}>Tentar novamente</button></div>}
       <div className="ngr-toolbar">
         <SelectPill ariaLabel="Corrida" value={raceId ?? race.id} options={options} className="ngr-race-select"
-          onChange={(value) => { setRaceId(value); const item = races.find((entry) => entry.id === value); trackUiEvent("debrief_category_selected", { category: item?.category ?? undefined }); }} />
+          onChange={(value) => {
+            setRaceId(value);
+            if (typeof window !== "undefined") {
+              const url = new URL(window.location.href);
+              url.searchParams.set("raceId", value);
+              window.history.replaceState(null, "", url.toString());
+            }
+            const item = races.find((entry) => entry.id === value);
+            trackUiEvent("debrief_category_selected", { category: item?.category ?? undefined });
+          }} />
         <Chip tone={sample.robust ? "gain" : "neutral"}>{sampleText}</Chip>
         {loading && <span className="ngr-loading">atualizando…</span>}
         <div className="ngr-spacer" />
@@ -254,7 +264,12 @@ export default function RaceDebriefView({ onOpenReference }: { onOpenReference?:
                 <div role="cell" className="ngr-fast">{section.talk.fastLaps}</div>
                 <div role="cell" className="ngr-if">{section.talk.ifAlways}</div>
                 {bestPassBySection.get(section.id) && (
-                  <div role="cell" className="ngr-best-cell"><BestPassDetail pass={bestPassBySection.get(section.id)!} label={section.label} trackId={race.trackId} /></div>
+                  <div role="cell" className="ngr-best-cell">
+                    <details className="ngr-best-details">
+                      <summary className="ngr-link">Ver melhor passagem no trecho ({bestPassBySection.get(section.id)!.passes} passagens)</summary>
+                      <BestPassDetail pass={bestPassBySection.get(section.id)!} label={section.label} trackId={race.trackId} />
+                    </details>
+                  </div>
                 )}
               </div>
             ))}

@@ -51,15 +51,23 @@ export default function AppHeader() {
   }, []);
 
   const sources = status?.sources;
+  const resultsAt = sources?.results?.lastImportAt ?? sources?.irstats.lastImportAt ?? null;
+  const telemetryAt = sources?.telemetry?.lastSuccessAt ?? sources?.garage61.lastSuccessAt ?? null;
+  const agent = sources?.agent;
+  const agentUsedMb = agent ? (agent.todayBytes / (1024 * 1024)).toFixed(1).replace(".", ",") : null;
+  const agentCapMb = agent ? Math.round(agent.dailyByteLimit / (1024 * 1024)) : 25;
+  const recentErr = sources?.garage61.recentError ?? null;
   const freshnessText = sources && now !== null
-    ? `Resultados ${relativeAge(sources.irstats.lastImportAt, now)} · Telemetria ${relativeAge(sources.garage61.lastSuccessAt, now)}`
+    ? `Resultados ${relativeAge(resultsAt, now)} · Telemetria ${relativeAge(telemetryAt, now)}`
     : status === null ? "Fontes indisponíveis" : "Verificando fontes…";
   const freshnessTitle = sources
     ? [
-        `Resultados: importados em ${fullDate(sources.irstats.lastImportAt)}`,
-        `Telemetria: última atualização em ${fullDate(sources.garage61.lastSuccessAt)}`,
+        `Resultados: importados em ${fullDate(resultsAt)}`,
+        `Telemetria: última volta em ${fullDate(telemetryAt)}`,
         `Setups: última importação em ${fullDate(sources.setups.lastImportAt)}`,
-      ].join("\n")
+        agent ? `Agente local: visto em ${fullDate(agent.lastSeenAt)} · hoje ${agentUsedMb} / ${agentCapMb} MB (${agent.todayRequests} req)` : null,
+        recentErr ? `Alerta recente: ${recentErr.message ?? "falha de sincronização"} (${fullDate(recentErr.at)})` : null,
+      ].filter(Boolean).join("\n")
     : undefined;
   const driver = status?.driver ?? null;
 

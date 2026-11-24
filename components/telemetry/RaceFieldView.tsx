@@ -86,7 +86,11 @@ function Scatter({ points }: { points: NonNullable<FieldPayload["quali"]>["point
       <line x1={at(1)} y1={at(1)} x2={at(size)} y2={at(size)} className="ngf-axis" />
       <text x={S - pad} y={pad - 8} className="ngf-axis-text" textAnchor="end">chegada →</text>
       <text x={pad} y={S - 6} className="ngf-axis-text">largada →</text>
-      {points.map((p, i) => <circle key={i} cx={at(p.start)} cy={at(p.finish)} r={p.me ? 5 : 3} className={p.me ? "ngf-me" : "ngf-pt"} />)}
+      {points.map((p, i) => (
+        <circle key={i} cx={at(p.start)} cy={at(p.finish)} r={p.me ? 5 : 3} className={p.me ? "ngf-me" : "ngf-pt"}>
+          <title>{`Largada P${p.start} → Chegada P${p.finish}${p.me ? " (Você)" : ""}`}</title>
+        </circle>
+      ))}
     </svg>
   );
 }

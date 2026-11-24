@@ -60,11 +60,22 @@ function shortLap(seconds: number) {
   return `${minutes}:${(seconds - minutes * 60).toFixed(2).padStart(5, "0")}`;
 }
 
-async function loadTrace(lapId: string) {
-  const response = await fetch(`/api/garage61/laps/${encodeURIComponent(lapId)}/telemetry`);
-  const text = await response.text();
-  if (!response.ok) throw new Error("A telemetria da volta mais rápida de um dos carros ainda não foi trazida para o app. Use \"Atualizar dados\" no cabeçalho para buscá-la.");
-  return parseTelemetryCsv(text);
+const traceCache = new Map<string, Promise<Trace>>();
+
+function loadTrace(lapId: string) {
+  const cached = traceCache.get(lapId);
+  if (cached) return cached;
+  const promise = (async () => {
+    const response = await fetch(`/api/garage61/laps/${encodeURIComponent(lapId)}/telemetry`);
+    const text = await response.text();
+    if (!response.ok) {
+      traceCache.delete(lapId);
+      throw new Error("A telemetria da volta mais rápida de um dos carros ainda não foi enviada pelo RacingAnalyticsAgent.");
+    }
+    return parseTelemetryCsv(text);
+  })();
+  traceCache.set(lapId, promise);
+  return promise;
 }
 
 export default function CarCompareView() {
@@ -210,7 +221,6 @@ export default function CarCompareView() {
   const next = useCallback(() => { if (openIndex >= 0 && openIndex < sections.length - 1) setOpenId(sections[openIndex + 1].id); }, [openIndex, sections]);
 
   if (loadingList && !seasonsSource) return <div className="ngt-state">Buscando temporadas e pistas onde você andou com mais de um carro…</div>;
-  if (error && !data) return <div className="ngt-state" data-tone="error">{error}</div>;
 
   const seasonValue = season === "auto" ? seasonsSource?.selectedSeasonId ?? "all" : season;
   const seasonOptions = [...(seasonsSource?.seasons ?? []).map((item) => ({ value: item.seasonId, label: item.seasonName })), { value: "all", label: "Todas as temporadas" }];

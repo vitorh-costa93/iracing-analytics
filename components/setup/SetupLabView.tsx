@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import AppTabs from "@/components/AppTabs";
 import { Chip, PageTitle, SelectPill } from "@/components/ui";
 import { latestProposal } from "@/lib/engineer-proposal";
 import { setupDisplayName } from "@/lib/setup-names";
@@ -228,7 +227,10 @@ export default function SetupLabView() {
   const setupOptions = [
     ...(uploads.length ? [] : [{ value: "", label: "Nenhum setup lido ainda" }]),
     ...(proposal && uploads.some((item) => item.id === proposal.baseSetupId) ? [{ value: PROPOSAL_VALUE, label: `B · ${proposal.baseName} (proposta)` }] : []),
-    ...uploads.map((item) => ({ value: item.id, label: setupDisplayName(item.filename) })),
+    ...uploads.map((item) => ({
+      value: item.id,
+      label: `${setupDisplayName(item.filename)}${!item.decoded_at ? " · aguardando sessão" : ""}`,
+    })),
   ];
   const seasonShort = seasonName.replace(/^\d{4}\s+/, "");
   const brand = selected?.car.name.split(" - ")[0].split(" ").slice(0, 2).join(" ") ?? "";
@@ -285,10 +287,8 @@ export default function SetupLabView() {
           error={compareError}
         />
 
-        {/* Recursos que o mockup não redesenha, mantidos de forma discreta: biblioteca local privada,
-            envio de .sto para o cofre e os favoritos de importação (Garage61/iRStats). */}
         <details className="ngs-extras">
-          <summary>Biblioteca local, anexar setup e importação</summary>
+          <summary>Biblioteca local e anexar setup</summary>
           <div className="ngs-extras-body">
             <div>
               <div className="ngs-extras-title">Biblioteca local privada</div>
@@ -309,9 +309,6 @@ export default function SetupLabView() {
                 {uploading ? "Enviando…" : "Escolher arquivo .sto"}
                 <input type="file" accept=".sto,application/octet-stream" disabled={uploading || !selected} onChange={(event) => { const file = event.target.files?.[0]; if (file) void uploadSetup(file); event.target.value = ""; }} />
               </label>
-            </div>
-            <div>
-              <AppTabs />
             </div>
           </div>
         </details>

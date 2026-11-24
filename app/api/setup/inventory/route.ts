@@ -34,14 +34,12 @@ export const GET = withDurableCache(handleGet, { version: "setup-inventory-v1", 
 async function buildInventory() {
   {
     const { driverId, seasonId, seasonName, seasonStart, seasonEnd } = await context();
-    const [sessionsResult, setupsResult, lapsResult] = await Promise.all([
+    const [sessionsResult, setupsResult] = await Promise.all([
       supabaseAdmin.from("race_results").select("car_id,track_id,raced_at").eq("driver_id", driverId).gte("raced_at", seasonStart).lt("raced_at", seasonEnd),
       supabaseAdmin.from("setup_files").select("id,car_id,track_id,source,setup_kind,filename,file_size,created_at,decoded_at,decoder").eq("driver_id", driverId).eq("season_id", seasonId).order("created_at", { ascending: false }),
-      supabaseAdmin.from("laps").select("id,car_id,track_id,can_view_setup,garage61_payload").eq("driver_id", driverId).limit(5000),
     ]);
     if (sessionsResult.error) throw sessionsResult.error;
     if (setupsResult.error) throw setupsResult.error;
-    if (lapsResult.error) throw lapsResult.error;
 
     const pairMap = new Map<string, { carId: number; trackId: number; races: number; lastRace: string | null }>();
     for (const row of sessionsResult.data ?? []) {
@@ -63,18 +61,8 @@ async function buildInventory() {
     const cars = new Map((carsResult.data ?? []).map((item) => [Number(item.id), item]));
     const tracks = new Map((tracksResult.data ?? []).map((item) => [Number(item.id), item]));
 
-    const seasonLaps = (lapsResult.data ?? []).filter((row) => (row.garage61_payload as Payload | null)?.season?.id === seasonId);
-
-    // Was: a live Garage61 call every time a car/track pair got selected here, overriding the
-    // already-synced `laps` table for that one pair. Beyond being the exact "hits the API on every
-    // page view" pattern this whole rework is fixing, it meant a Garage61 rate-limit (or any
-    // transient failure) made a pair look like it had NO accessible setup at all, even when the
-    // synced data already knew better -- reads Supabase only now, same as everything else here.
     const contexts = [...pairMap.entries()].map(([key, pair]) => {
-      const relevant = seasonLaps.filter((lap) => Number(lap.car_id) === pair.carId && Number(lap.track_id) === pair.trackId);
-      const observed = relevant.map((lap) => ({ id: lap.id, canViewSetup: lap.can_view_setup }));
       const uploads = (setupsResult.data ?? []).filter((setup) => Number(setup.car_id) === pair.carId && Number(setup.track_id) === pair.trackId);
-      const visibleLap = observed.find((lap) => lap.canViewSetup);
       const car = cars.get(pair.carId), track = tracks.get(pair.trackId);
       return {
         key,
@@ -82,7 +70,6 @@ async function buildInventory() {
         track: { id: pair.trackId, name: track?.name ?? `Pista ${pair.trackId}`, variant: track?.variant ?? null },
         races: pair.races,
         lastRace: pair.lastRace,
-        garage61: { scanned: relevant.length > 0, accessible: Boolean(visibleLap), accessibleLapId: visibleLap?.id ?? null, observedLaps: observed.length },
         uploads,
       };
     }).sort((a, b) => (b.lastRace ?? "").localeCompare(a.lastRace ?? ""));

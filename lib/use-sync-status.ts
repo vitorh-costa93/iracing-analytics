@@ -7,6 +7,9 @@ export type SyncStatusPayload = {
   status: string;
   driver?: { name: string; iracingId: string | null } | null;
   sources?: {
+    telemetry?: { lastSuccessAt: string | null };
+    results?: { lastImportAt: string | null };
+    agent?: { lastSeenAt: string | null; todayRequests: number; todayBytes: number; dailyByteLimit: number };
     garage61: { lastSuccessAt: string | null; latestStatus: string; latestError: string | null; recentError: { at: string; message: string | null } | null };
     irstats: { lastImportAt: string | null };
     setups: { lastImportAt: string | null };

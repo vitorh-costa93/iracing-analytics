@@ -30,7 +30,7 @@ export default function LatestRaces({ races }: { races: OverviewRace[] }) {
             <div className="ngo-races-series" title={r.series ?? undefined}>{r.series ?? "Série não informada"}</div>
             <div className="ngo-races-track"><span style={{ background: CATEGORY_COLOR[r.ratingCategory ?? ""] ?? "var(--ng-soft)" }} />{r.track}</div>
             <div className="ngo-races-car">{r.car}</div>
-            {/* bestLap já vem formatado do iRStats (ex.: 1:27.305): exibido como está. */}
+            {/* Melhor volta oficial da corrida já formatada. */}
             <div className="r ngo-races-best">{r.bestLap ?? "—"}</div>
             <div className="r ngo-races-grid">{r.startPosition ?? "—"}</div>
             <div className="r ngo-races-pos">{r.finishPosition !== null ? `P${r.finishPosition}` : "—"}</div>

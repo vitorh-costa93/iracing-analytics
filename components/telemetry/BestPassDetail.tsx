@@ -50,6 +50,16 @@ export default function BestPassDetail({ pass, label, trackId }: { pass: BestPas
   const onTouch = (event: TouchEvent<SVGSVGElement>) => { if (event.touches[0]) setHover(toD(event.touches[0].clientX, event.currentTarget)); };
 
   const gain = pass.gainVsAverage;
+  const hoverPoint = useMemo(() => {
+    if (hover === null || !pass.points.length) return null;
+    let best = pass.points[0];
+    let bestDiff = Math.abs(best.d - hover);
+    for (const point of pass.points) {
+      const diff = Math.abs(point.d - hover);
+      if (diff < bestDiff) { best = point; bestDiff = diff; }
+    }
+    return best;
+  }, [hover, pass.points]);
   return (
     <div className="ngr-best" role="group" aria-label={`Melhor passagem em ${label}`}>
       <div className="ngr-best-text">
@@ -62,6 +72,12 @@ export default function BestPassDetail({ pass, label, trackId }: { pass: BestPas
         <div className="ngr-best-legend">
           <span><i data-line="brake" />Freio</span><span><i data-line="throttle" />Acelerador</span>
           {pass.referencePoints && <span className="ngr-best-legend-ref"><i data-line="ref" />Sua volta de referência (pontilhado)</span>}
+          {hoverPoint && (
+            <span className="ngr-best-readout">
+              · Freio {hoverPoint.brake !== null ? `${Math.round(hoverPoint.brake * 100)}%` : "—"} · Acel. {hoverPoint.throttle !== null ? `${Math.round(hoverPoint.throttle * 100)}%` : "—"}
+              {hoverPoint.speed !== null ? ` · ${Math.round(hoverPoint.speed * 3.6)} km/h` : ""}
+            </span>
+          )}
         </div>
       </div>
       <svg className="ngr-best-chart" viewBox={`0 0 ${W} ${H}`} role="img"
