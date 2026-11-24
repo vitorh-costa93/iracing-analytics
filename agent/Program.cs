@@ -108,22 +108,69 @@ sealed class AgentForm : Form
         using var run = Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run");
         var startup = new CheckBox { Text = "Iniciar com Windows", AutoSize = true, Checked = run?.GetValue("RacingAnalyticsAgent") is not null }; panel.Controls.Add(startup);
         startup.CheckedChanged += (_, _) => { using var key = Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run"); if (startup.Checked) key.SetValue("RacingAnalyticsAgent", $"\"{Environment.ProcessPath}\" --tray"); else key.DeleteValue("RacingAnalyticsAgent", false); };
-        var open = new Button { Text = "Abrir resultados no iRacing", AutoSize = true }; open.Click += (_, _) =>
+        var refreshNow = new Button { Text = "Puxar últimas corridas agora (abre iRacing UI)", AutoSize = true }; refreshNow.Click += async (_, _) => await RunManualRefresh(); panel.Controls.Add(refreshNow);
+        var open = new Button { Text = "Abrir iRacing UI manualmente", AutoSize = true }; open.Click += (_, _) =>
         {
-            var paths = new[] { Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "iRacing", "ui", "iRacingUI.exe"), Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "iRacing", "ui", "iRacingUI.exe") };
-            var path = paths.FirstOrDefault(File.Exists);
+            var path = IdleMonitor.FindIracingUiPath();
             if (path is null) { status.Text = "iRacing UI não localizado. Abra o aplicativo e selecione Results."; return; }
-            try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); status.Text = "Abra Results no iRacing UI e exporte o resultado."; } catch { status.Text = "Não foi possível abrir o iRacing UI; abra-o manualmente."; }
+            try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(path) ?? "" }); status.Text = "Abra Results no iRacing UI e exporte o resultado."; } catch { status.Text = "Não foi possível abrir o iRacing UI; abra-o manualmente."; }
         }; panel.Controls.Add(open);
         var record = new CheckBox { Text = "Ligar gravação .ibt automaticamente ao entrar na pista (SDK oficial)", AutoSize = true, Checked = store.State.AutoRecord }; panel.Controls.Add(record);
         record.CheckedChanged += (_, _) => { store.State.AutoRecord = record.Checked; store.Save(); };
         var experimental = new CheckBox { Text = "Exportar resultados oficiais em segundo plano (confere as últimas 10 corridas, só envia as que faltam) — necessário para enviar o resultado oficial", AutoSize = true, Checked = store.State.ExperimentalExport }; panel.Controls.Add(experimental);
         experimental.CheckedChanged += (_, _) => { store.State.ExperimentalExport = experimental.Checked; store.Save(); };
         panel.Controls.Add(new Label { Text = "O resultado da corrida é lido do SessionInfo ao vivo (iRating estimado). O JSON exportado do iRacing para Downloads continua sendo a fonte oficial e substitui a estimativa.", AutoSize = true, MaximumSize = new Size(505, 0) }); panel.Controls.Add(status);
-        tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Backfill histórico de resultados (2023 S4 em diante)...", null, async (_, _) => await RunBackfill()); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
+        tray = new NotifyIcon { Icon = SystemIcons.Application, Text = "Racing Analytics", Visible = true }; var menu = new ContextMenuStrip(); menu.Items.Add("Puxar últimas corridas agora", null, async (_, _) => await RunManualRefresh()); menu.Items.Add("Configurar / estado", null, (_, _) => { Show(); WindowState = FormWindowState.Normal; Activate(); }); menu.Items.Add("Backfill histórico de resultados (2023 S4 em diante)...", null, async (_, _) => await RunBackfill()); menu.Items.Add("Sair", null, (_, _) => { exiting = true; Close(); }); tray.ContextMenuStrip = menu; tray.DoubleClick += (_, _) => { Show(); Activate(); };
         FormClosing += (_, e) => { if (!exiting) { e.Cancel = true; Hide(); } else { cancellation.Cancel(); timer.Stop(); simTimer.Stop(); monitor.Dispose(); tray.Dispose(); } };
         Shown += (_, _) => { if (startHidden) Hide(); }; timer.Tick += async (_, _) => await Tick(); timer.Start(); simTimer.Tick += (_, _) => { monitor.Poll(); idleMonitor.Poll(); try { WatchProcesses(); } catch (Exception e) { AgentLog.Error("WatchProcesses", e); } }; simTimer.Start();
         AgentLog.Write("Agente iniciado");
+    }
+    async Task<string> ExportWithUiAsync(bool openIfClosed, string logReason, CancellationToken ct)
+    {
+        if (IdleMonitor.IsIracingUiRunning()) return await exporter.TryExportAsync(store, ct);
+        if (!openIfClosed || !ResultExporter.SafeToOperate()) return "";
+        var uiPath = IdleMonitor.FindIracingUiPath();
+        if (uiPath is null) return "iRacing UI não localizado.";
+        AgentLog.Write(logReason);
+        using var started = Process.Start(new ProcessStartInfo(uiPath) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(uiPath) ?? "" });
+        try
+        {
+            for (var i = 0; i < 20 && !ct.IsCancellationRequested; i++)
+            {
+                await Task.Delay(1500, ct);
+                if (ResultExporter.SafeToOperate() && IdleMonitor.IsIracingUiRunning())
+                {
+                    var ready = await Task.Run(() => ResultExporter.ExistingWindow() is not null, ct);
+                    if (ready) break;
+                }
+            }
+            return await exporter.TryExportAsync(store, ct);
+        }
+        finally
+        {
+            IdleMonitor.CloseIracingUi();
+            AgentLog.Write("iRacingUI fechado após verificação.");
+        }
+    }
+    async Task RunManualRefresh()
+    {
+        if (busy) { status.Text = "Aguarde a verificação em andamento e tente de novo."; return; }
+        if (!ResultExporter.SafeToOperate()) { status.Text = "Feche o simulador antes de puxar as últimas corridas."; return; }
+        busy = true;
+        status.Text = "Abrindo iRacing UI e puxando últimas corridas…";
+        try
+        {
+            store.State.SentRaces.Clear();
+            store.Save();
+            ResultExporter.RequestScan("refresh manual pelo agente");
+            var exportStatus = await ExportWithUiAsync(openIfClosed: true, "Refresh manual: abrindo iRacingUI para puxar últimas corridas.", cancellation.Token);
+            await store.Send(cancellation.Token);
+            status.Text = $"{store.Status}\n{exportStatus}\nFila: {store.Backlog} | Sucessos: {store.State.Successes}";
+            AgentLog.Write($"Refresh manual concluído: {exportStatus} | {store.Status}");
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception e) { AgentLog.Error("RunManualRefresh", e); status.Text = "Falha ao puxar corridas; veja agent.log."; }
+        finally { busy = false; }
     }
     async Task RunBackfill()
     {
@@ -175,34 +222,8 @@ sealed class AgentForm : Form
             await Step("exportação", async () =>
             {
                 if (!store.State.ExperimentalExport || !exporter.Due(store)) return;
-                if (IdleMonitor.IsIracingUiRunning())
-                {
-                    exportStatus = await exporter.TryExportAsync(store, cancellation.Token);
-                    return;
-                }
-                if (!ResultExporter.SafeToOperate() || !idleMonitor.IsIdleFor(TimeSpan.FromMinutes(10))) return;
-                var uiPath = IdleMonitor.FindIracingUiPath();
-                if (uiPath is null) return;
-                AgentLog.Write("Ociosidade >= 10 min (mouse/teclado/volante): abrindo iRacingUI para verificar resultados.");
-                using var started = Process.Start(new ProcessStartInfo(uiPath) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(uiPath) ?? "" });
-                try
-                {
-                    for (var i = 0; i < 20 && !cancellation.IsCancellationRequested; i++)
-                    {
-                        await Task.Delay(1500, cancellation.Token);
-                        if (ResultExporter.SafeToOperate() && IdleMonitor.IsIracingUiRunning())
-                        {
-                            var ready = await Task.Run(() => ResultExporter.ExistingWindow() is not null, cancellation.Token);
-                            if (ready) break;
-                        }
-                    }
-                    exportStatus = await exporter.TryExportAsync(store, cancellation.Token);
-                }
-                finally
-                {
-                    IdleMonitor.CloseIracingUi();
-                    AgentLog.Write("iRacingUI fechado após verificação ociosa.");
-                }
+                var openIdle = !IdleMonitor.IsIracingUiRunning() && idleMonitor.IsIdleFor(TimeSpan.FromMinutes(10));
+                exportStatus = await ExportWithUiAsync(openIdle, "Ociosidade >= 10 min (mouse/teclado/volante): abrindo iRacingUI para verificar resultados.", cancellation.Token);
             });
             await Step("envio", () => store.Send(cancellation.Token));
             if (store.Status != lastLogged) { lastLogged = store.Status; AgentLog.Write($"Status: {store.Status} | fila {store.Backlog} | quarentena {store.Quarantined} | sucessos {store.State.Successes}"); }
