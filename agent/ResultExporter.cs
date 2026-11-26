@@ -19,7 +19,7 @@ namespace RacingAgent;
 internal sealed partial class ResultExporter
 {
     const int MaxPerRun = 5, MaxPerDay = 20;
-    static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(10), TriggerInterval = TimeSpan.FromSeconds(60), ScanInterval = TimeSpan.FromMinutes(30);
+    static readonly TimeSpan MinInterval = TimeSpan.FromMinutes(10), TriggerInterval = TimeSpan.FromSeconds(60), ScanInterval = TimeSpan.FromMinutes(30), IdleAutoOpenInterval = TimeSpan.FromHours(6);
     // Dev check only (--export-test N): export the N newest results regardless of what the server knows.
     internal static int TestCount;
     internal static readonly List<long> TestIds = new();
@@ -32,6 +32,15 @@ internal sealed partial class ResultExporter
     internal static void RequestScan(string reason) { if (!scanRequested) AgentLog.Write("Varredura solicitada: " + reason); triggerRetries = 0; scanRequested = true; }
 
     internal bool Due(Store store) => scanRequested || store.State.PendingResult || DateTimeOffset.UtcNow - store.State.LastScan >= ScanInterval;
+
+    internal bool CanRunNow()
+    {
+        lock (gate) return !running && (sinceAttempt is null || sinceAttempt.Elapsed >= (scanRequested ? TriggerInterval : MinInterval)) && SafeToOperate();
+    }
+
+    /// <summary>Só abre o iRacingUI em ociosidade quando há corrida pendente ou após 6h sem varredura (evita abrir à toa quando não há corrida nova).</summary>
+    internal bool ShouldAutoOpenUi(Store store) =>
+        CanRunNow() && (store.State.PendingResult || DateTimeOffset.UtcNow - store.State.LastScan >= IdleAutoOpenInterval);
 
     internal async Task<string> TryExportAsync(Store store, CancellationToken cancellation = default)
     {
@@ -100,7 +109,9 @@ internal sealed partial class ResultExporter
         var confirmed = store.State.SentRaces;
         if (TestCount == 0 && rows.All(r => confirmed.Contains(r.Fingerprint)))
         {
-            store.State.LastScan = DateTimeOffset.UtcNow; store.Save();
+            store.State.LastScan = DateTimeOffset.UtcNow;
+            store.State.PendingResult = false;
+            store.Save();
             return $"Exportação: {rows.Count} corridas em Recent Races, todas já confirmadas.";
         }
         int exported = 0; var stop = ""; var checkedRows = 0; var runIds = new List<long>();
@@ -146,7 +157,9 @@ internal sealed partial class ResultExporter
         store.State.LastResultIds = runIds.Concat(store.State.LastResultIds.Where(x => !runIds.Contains(x))).Take(20).ToList();
         // Keep the confirmed set bounded: forget fingerprints that left the visible list once it grows past 50.
         if (confirmed.Count > 50) confirmed.IntersectWith(rows.Select(r => r.Fingerprint));
-        store.State.LastScan = DateTimeOffset.UtcNow; store.Save();
+        store.State.LastScan = DateTimeOffset.UtcNow;
+        if (stop.Length == 0) store.State.PendingResult = false;
+        store.Save();
         return $"Exportação: {exported} resultado(s) novo(s) enfileirado(s), {checkedRows} já conhecida(s).{stop}{(LastError.Length > 0 ? " [" + LastError + "]" : "")}";
     }
     static void Confirm(Store store, string fingerprint) { if (fingerprint.Length > 0) { store.State.SentRaces.Add(fingerprint); store.Save(); } }

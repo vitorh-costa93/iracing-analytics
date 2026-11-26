@@ -128,10 +128,11 @@ sealed class AgentForm : Form
     async Task<string> ExportWithUiAsync(bool openIfClosed, string logReason, CancellationToken ct)
     {
         if (IdleMonitor.IsIracingUiRunning()) return await exporter.TryExportAsync(store, ct);
-        if (!openIfClosed || !ResultExporter.SafeToOperate()) return "";
+        if (!openIfClosed || !exporter.CanRunNow()) return "";
         var uiPath = IdleMonitor.FindIracingUiPath();
         if (uiPath is null) return "iRacing UI não localizado.";
         AgentLog.Write(logReason);
+        agentOpeningUi = true;
         using var started = Process.Start(new ProcessStartInfo(uiPath) { UseShellExecute = true, WorkingDirectory = Path.GetDirectoryName(uiPath) ?? "" });
         try
         {
@@ -149,6 +150,7 @@ sealed class AgentForm : Form
         finally
         {
             IdleMonitor.CloseIracingUi();
+            agentOpeningUi = false;
             AgentLog.Write("iRacingUI fechado após verificação.");
         }
     }
@@ -184,7 +186,7 @@ sealed class AgentForm : Form
         }
         finally { busy = false; }
     }
-    int watchTick; bool uiWas, simWas; string lastLogged = "";
+    int watchTick; bool uiWas, simWas; volatile bool agentOpeningUi; string lastLogged = "";
     // Event-driven scan triggers for the result exporter (checked every ~10 s): iRacing UI opened (including
     // already open when the agent starts) and simulator closed. The exporter itself still refuses to run with the sim open.
     void WatchProcesses()
@@ -200,7 +202,7 @@ sealed class AgentForm : Form
                 else if (name.StartsWith("iRacingSim", StringComparison.OrdinalIgnoreCase)) sim = true;
             }
         }
-        if (ui && !uiWas) ResultExporter.RequestScan(watchTick == 1 ? "agente iniciado com iRacing UI aberto" : "iRacing UI aberto");
+        if (ui && !uiWas && !agentOpeningUi) ResultExporter.RequestScan(watchTick == 1 ? "agente iniciado com iRacing UI aberto" : "iRacing UI aberto");
         if (simWas && !sim) ResultExporter.RequestScan("simulador fechado");
         uiWas = ui; simWas = sim;
     }
@@ -222,7 +224,7 @@ sealed class AgentForm : Form
             await Step("exportação", async () =>
             {
                 if (!store.State.ExperimentalExport || !exporter.Due(store)) return;
-                var openIdle = !IdleMonitor.IsIracingUiRunning() && idleMonitor.IsIdleFor(TimeSpan.FromMinutes(10));
+                var openIdle = !IdleMonitor.IsIracingUiRunning() && idleMonitor.IsIdleFor(TimeSpan.FromMinutes(10)) && exporter.ShouldAutoOpenUi(store);
                 exportStatus = await ExportWithUiAsync(openIdle, "Ociosidade >= 10 min (mouse/teclado/volante): abrindo iRacingUI para verificar resultados.", cancellation.Token);
             });
             await Step("envio", () => store.Send(cancellation.Token));

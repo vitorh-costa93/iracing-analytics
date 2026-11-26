@@ -1,5 +1,13 @@
 # Continuidade — iracing-analytics
 
+## Correção do loop de abertura do iRacingUI no agente — 26/11/2026
+- **Diagnóstico (`agent.log`):** Quando havia `PendingResult` pendente ou o cooldown de `MinInterval` (10 min) estava ativo, `ExportWithUiAsync` abria o `iRacingUI` a cada 15s antes de checar `CanRunNow()`, além de `WatchProcesses()` rearmar `RequestScan` sobre a própria abertura do agente e `Export()` não limpar `PendingResult` quando todas as 10 corridas de `Recent Races` já estavam confirmadas.
+- **Correção (`agent/ResultExporter.cs`, `agent/Program.cs`):**
+  - Adicionados `CanRunNow()` (impede abrir o `iRacingUI` durante cooldown ou execução concorrente) e `ShouldAutoOpenUi(store)` (só abre o `iRacingUI` automaticamente em ociosidade quando há `PendingResult` ou a cada **6h**, em vez de ficar abrindo sem corrida nova).
+  - `Export()` agora limpa `PendingResult = false` ao confirmar todas as corridas de `Recent Races` ou concluir a varredura sem bloqueio (`stop.Length == 0`).
+  - `WatchProcesses()` ignora a transição de abertura enquanto `agentOpeningUi` estiver ativo.
+- **Validação e entrega:** Publicado `--self-contained true -r win-x64` em `C:\Users\Vitor\Documents\RacingAnalyticsAgent\app\`, `--self-test` PASS e bandeja ativa (PID `5588`).
+
 ## Auditoria geral, limpeza de legado e escala 1:1 — 24/11/2026
 - **Agente (`agent/Program.cs`):** Adicionado botão `"Puxar últimas corridas agora (abre iRacing UI)"` na janela e item `"Puxar últimas corridas agora"` no menu da bandeja (`RunManualRefresh` / `ExportWithUiAsync`), permitindo que o agente abra o `iRacingUI`, limpe o cache local `SentRaces`, puxe todas as corridas novas contra o servidor, envie via `store.Send` e feche o `iRacingUI` automaticamente. Republicado `--self-contained true -r win-x64`, `--self-test` PASS (18/18) e bandeja ativa (PID `3880`).
 - **Escala dos eixos (`RaceScatter`):** `components/overview/RaceScatter.tsx` agora mede o container via `ResizeObserver` mantendo `viewBox` 1:1 em pixels reais (`fontSize={11}`), eliminando o zoom desproporcional dos rótulos dos eixos no desktop.
