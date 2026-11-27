@@ -323,17 +323,6 @@ export default function SetupLabView() {
       <SetupAssistantDrawer
         open={assistantOpen}
         onClose={() => setAssistantOpen(false)}
-        context={{
-          carId: selected?.car.id,
-          trackId: selected?.track.id,
-          carName: selected?.car.name,
-          trackName: selected ? `${selected.track.name}${selected.track.variant ? ` (${selected.track.variant})` : ""}` : undefined,
-          seasonName: seasonName || undefined,
-          activeSetupId: activeSetup?.id,
-          activeSetupName: activeSetup ? setupDisplayName(activeSetup.filename) : undefined,
-          setupNames: uploads.map((item) => setupDisplayName(item.filename)),
-          proposalSummary: proposal?.what || undefined,
-        }}
       />
     </div>
   );

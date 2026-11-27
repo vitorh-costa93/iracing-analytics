@@ -10,18 +10,6 @@ type ChatMessage = {
   images?: string[];
 };
 
-export type SetupAssistantContext = {
-  carId?: number;
-  trackId?: number;
-  carName?: string;
-  trackName?: string;
-  seasonName?: string;
-  activeSetupId?: string;
-  activeSetupName?: string;
-  setupNames?: string[];
-  proposalSummary?: string;
-};
-
 const MAX_IMAGES_PER_MESSAGE = 4;
 
 const QUICK_PROMPTS = [
@@ -74,11 +62,9 @@ async function compressImageFile(file: File): Promise<string> {
 export function SetupAssistantDrawer({
   open,
   onClose,
-  context,
 }: {
   open: boolean;
   onClose: () => void;
-  context: SetupAssistantContext;
 }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -188,7 +174,7 @@ export function SetupAssistantDrawer({
       const response = await fetch("/api/setup/assistant", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ messages: nextHistory, context }),
+        body: JSON.stringify({ messages: nextHistory }),
       });
       const payload = (await response.json()) as { status?: string; reply?: string; message?: string };
       if (!response.ok || payload.status !== "ok" || !payload.reply) {
@@ -202,9 +188,7 @@ export function SetupAssistantDrawer({
     }
   }
 
-  const contextLabel = context.carName && context.trackName
-    ? `${context.carName} · ${context.trackName}`
-    : "Setup Lab · Assistente Geral";
+  const contextLabel = "Chatbot geral · independente de carro e pista";
 
   return (
     <div className="ngsa-backdrop" onClick={onClose}>
@@ -253,9 +237,9 @@ export function SetupAssistantDrawer({
         <div className="ngsa-body">
           {messages.length === 0 && (
             <div className="ngsa-welcome">
-              <p className="ngsa-welcome-title">Chatbot de Setup conectado ao seu contexto</p>
+              <p className="ngsa-welcome-title">Chatbot geral de Setup e iRacing</p>
               <p className="ngsa-welcome-desc">
-                Tire dúvidas livres de engenharia de pista, peça diagnóstico de comportamento do carro ou cole prints (`Ctrl+V`) do setup dentro do iRacing.
+                Independente do carro e pista selecionados acima. Tire dúvidas livres de engenharia, compare conceitos ou cole prints (`Ctrl+V`) de qualquer setup.
               </p>
               <div className="ngsa-quick-list">
                 {QUICK_PROMPTS.map((prompt) => (
@@ -289,7 +273,7 @@ export function SetupAssistantDrawer({
           ))}
 
           {isSending && (
-            <div className="ngsa-typing">Analisando contexto, setup e histórico…</div>
+            <div className="ngsa-typing">Pensando…</div>
           )}
 
           {error && (

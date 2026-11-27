@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabase-admin";
 import { modelFor } from "@/lib/ai-models";
 import { logAiUsage, parseOpenAiUsage } from "@/lib/ai-usage";
-import { setupDisplayName } from "@/lib/setup-names";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -11,18 +9,6 @@ type AssistantMessage = {
   role: "user" | "assistant";
   content: string;
   images?: string[];
-};
-
-type AssistantContext = {
-  carId?: number;
-  trackId?: number;
-  carName?: string;
-  trackName?: string;
-  seasonName?: string;
-  activeSetupId?: string;
-  activeSetupName?: string;
-  setupNames?: string[];
-  proposalSummary?: string;
 };
 
 const MAX_MESSAGES = 10;
@@ -37,82 +23,6 @@ function sanitizeImages(images: unknown): string[] {
     .slice(0, MAX_IMAGES_PER_MESSAGE);
 }
 
-async function loadContextSummary(ctx: AssistantContext): Promise<string> {
-  const lines: string[] = [];
-  if (ctx.carName || ctx.trackName) {
-    lines.push(`Contexto selecionado no Setup Lab: ${ctx.carName ?? "Carro não selecionado"} · ${ctx.trackName ?? "Pista não selecionada"}${ctx.seasonName ? ` (${ctx.seasonName})` : ""}.`);
-  }
-  if (ctx.activeSetupName) {
-    lines.push(`Setup ativo no seletor: ${ctx.activeSetupName}.`);
-  }
-  if (ctx.setupNames?.length) {
-    lines.push(`Setups disponíveis neste contexto: ${ctx.setupNames.slice(0, 12).join(", ")}.`);
-  }
-  if (ctx.proposalSummary) {
-    lines.push(`Última proposta no painel Setup B: ${ctx.proposalSummary}`);
-  }
-
-  try {
-    const { data: driver } = await supabaseAdmin
-      .from("drivers")
-      .select("id")
-      .order("updated_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (driver && Number.isInteger(ctx.carId) && Number.isInteger(ctx.trackId)) {
-      const [racesRes, setupRes] = await Promise.all([
-        supabaseAdmin
-          .from("race_results")
-          .select("raced_at,finish_position,start_position,irating_delta,incidents,best_lap_time")
-          .eq("driver_id", driver.id)
-          .eq("car_id", ctx.carId!)
-          .eq("track_id", ctx.trackId!)
-          .order("raced_at", { ascending: false })
-          .limit(5),
-        ctx.activeSetupId
-          ? supabaseAdmin
-              .from("setup_files")
-              .select("filename,decoded_params")
-              .eq("id", ctx.activeSetupId)
-              .eq("driver_id", driver.id)
-              .maybeSingle()
-          : Promise.resolve({ data: null }),
-      ]);
-
-      const races = racesRes.data ?? [];
-      if (races.length > 0) {
-        lines.push(
-          "Últimas corridas do piloto nesta combinação:",
-          ...races.map((r) => {
-            const date = r.raced_at ? new Date(r.raced_at).toLocaleDateString("pt-BR") : "?";
-            const pos = r.finish_position != null ? `P${r.finish_position}` : "P?";
-            const grid = r.start_position != null ? ` (largou P${r.start_position})` : "";
-            const delta = r.irating_delta != null ? `, Δ iR ${r.irating_delta >= 0 ? "+" : ""}${r.irating_delta}` : "";
-            const inc = r.incidents != null ? `, ${r.incidents}x` : "";
-            const best = r.best_lap_time ? `, melhor ${r.best_lap_time}` : "";
-            return `- ${date}: ${pos}${grid}${delta}${inc}${best}`;
-          })
-        );
-      }
-
-      const decoded = setupRes.data?.decoded_params as Array<{ label?: string; value?: string }> | null | undefined;
-      if (Array.isArray(decoded) && decoded.length > 0) {
-        const sample = decoded
-          .filter((row) => row?.label && row?.value)
-          .slice(0, 45)
-          .map((row) => `${row.label}: ${row.value}`)
-          .join(" | ");
-        lines.push(`Parâmetros lidos de ${setupDisplayName(String(setupRes.data?.filename ?? "setup"))}: ${sample}`);
-      }
-    }
-  } catch {
-    // Falha ao enriquecer contexto do Supabase não impede o chatbot de responder.
-  }
-
-  return lines.join("\n");
-}
-
 export async function POST(request: NextRequest) {
   const t0 = Date.now();
   const model = modelFor("engineer");
@@ -122,7 +32,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ status: "error", message: "OPENAI_KEY não configurada." }, { status: 500 });
     }
 
-    const body = (await request.json()) as { messages?: AssistantMessage[]; context?: AssistantContext };
+    const body = (await request.json()) as { messages?: AssistantMessage[] };
     const rawMessages = Array.isArray(body.messages) ? body.messages.slice(-MAX_MESSAGES) : [];
     const normalized = rawMessages
       .filter((m) => m && (m.role === "user" || m.role === "assistant"))
@@ -147,15 +57,13 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const contextSummary = await loadContextSummary(body.context ?? {});
     const systemPrompt = [
-      "Você é o Assistente IA de Setup do Racing Analytics (engenheiro de pista de iRacing).",
+      "Você é o Assistente IA do Racing Analytics (chatbot geral de engenharia de pista e setup para iRacing, independente da seleção de carro/pista da tela).",
       "Responda sempre em português do Brasil, de forma objetiva, prática e sem jargão desnecessário.",
-      "Ajude com ajustes de setup (aero, barras, molas, amortecedores, diferencial, pressão/cambagem, freio), análise de prints da garagem do iRacing enviados pelo usuário, interpretação de comportamento do carro (subesterço, sobresterço, tração, frenagem) e estratégia de treino/corrida.",
+      "Ajude com dúvidas livres sobre dinâmica veicular e ajustes de setup (aero, barras, molas, amortecedores, diferencial, pressão/cambagem, freio), análise de prints da garagem do iRacing enviados pelo usuário, comportamento do carro (subesterço, sobresterço, tração, frenagem) e estratégia de treino/corrida.",
       "Quando o usuário enviar prints de setup ou telemetria, leia os valores visíveis e sugira ajustes concretos passo a passo (indicando direção do ajuste, o que melhora e possível efeito colateral).",
-      "Se algum parâmetro não estiver visível nem nos dados abaixo, diga claramente em vez de inventar.",
-      contextSummary ? `\nContexto atual:\n${contextSummary}` : "",
-    ].filter(Boolean).join("\n");
+      "Se o usuário não informar o carro ou pista na conversa e isso for essencial para um ajuste específico, pergunte ou explique os princípios aplicáveis de forma clara, sem inventar parâmetros.",
+    ].join("\n");
 
     const openAiMessages = [
       { role: "system" as const, content: systemPrompt },
