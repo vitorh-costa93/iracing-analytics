@@ -13,9 +13,9 @@ type ChatMessage = {
 const MAX_IMAGES_PER_MESSAGE = 4;
 
 const QUICK_PROMPTS = [
+  "Compare meus setups fixos vs. comerciais e aponte os padrões que mais se repetem.",
+  "Quais carros e pistas têm mais variação de iRating no meu histórico recente?",
   "O carro está saindo de frente na entrada da curva. O que ajustar?",
-  "Como melhorar a tração na saída sem deixar a traseira solta?",
-  "O que mudar para ter mais estabilidade na freada?",
   "Analise o print do meu setup atual e sugira melhorias.",
 ];
 
@@ -188,7 +188,7 @@ export function SetupAssistantDrawer({
     }
   }
 
-  const contextLabel = "Chatbot geral · independente de carro e pista";
+  const contextLabel = "Conectado à base completa · todos os carros e pistas";
 
   return (
     <div className="ngsa-backdrop" onClick={onClose}>
@@ -237,9 +237,9 @@ export function SetupAssistantDrawer({
         <div className="ngsa-body">
           {messages.length === 0 && (
             <div className="ngsa-welcome">
-              <p className="ngsa-welcome-title">Chatbot geral de Setup e iRacing</p>
+              <p className="ngsa-welcome-title">Assistente IA conectado à sua base</p>
               <p className="ngsa-welcome-desc">
-                Independente do carro e pista selecionados acima. Tire dúvidas livres de engenharia, compare conceitos ou cole prints (`Ctrl+V`) de qualquer setup.
+                Livre da seleção de carro e pista acima. Explore padrões entre setups fixos e comerciais, consulte seu histórico de corridas ou cole prints (`Ctrl+V`) de qualquer setup.
               </p>
               <div className="ngsa-quick-list">
                 {QUICK_PROMPTS.map((prompt) => (
@@ -273,7 +273,7 @@ export function SetupAssistantDrawer({
           ))}
 
           {isSending && (
-            <div className="ngsa-typing">Pensando…</div>
+            <div className="ngsa-typing">Consultando sua base de setups e corridas…</div>
           )}
 
           {error && (

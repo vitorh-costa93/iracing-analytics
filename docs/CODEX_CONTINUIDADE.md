@@ -1,8 +1,8 @@
 # Continuidade — iracing-analytics
 
 ## Assistente IA (Chatbot) na aba Setup Lab — 27/11/2026
-- **UI & UX (`components/setup/SetupAssistantDrawer.tsx`, `components/setup/SetupLabView.tsx`, `app/night-grid-setup.css`):** Adicionado botão `"Assistente IA"` no topo do Setup Lab que abre um drawer lateral direito no padrão do `Controle de Gastos` (*Night Grid*, até `460px`, fecha com `ESC` ou backdrop), totalmente **independente da seleção de carro e pista** (reservada ao chat do Engenheiro), com quick prompts clicáveis, bolhas em Markdown (`ReactMarkdown`) e envio de até 4 imagens por mensagem (seletor, `Ctrl+V` e drag-and-drop com compressão em `<canvas>`).
-- **Backend (`app/api/setup/assistant/route.ts`):** Nova rota `POST /api/setup/assistant` usando `modelFor("engineer")` (`gpt-6-luna`), visão (`image_url`) nas 2 últimas mensagens do usuário e logging em `ai_usage`.
+- **UI & UX (`components/setup/SetupAssistantDrawer.tsx`, `components/setup/SetupLabView.tsx`, `app/night-grid-setup.css`):** Adicionado botão `"Assistente IA"` no topo do Setup Lab que abre um drawer lateral direito no padrão do `Controle de Gastos` (*Night Grid*, até `460px`, fecha com `ESC` ou backdrop), independente da seleção de carro/pista da tela, com quick prompts, bolhas em Markdown e envio de até 4 imagens (`Ctrl+V`, drag-and-drop ou arquivo).
+- **Backend (`app/api/setup/assistant/route.ts`):** Nova rota `POST /api/setup/assistant` com `modelFor("engineer")` (`gpt-6-luna`), visão e **tools read-only conectadas ao Supabase** (`list_setups`, `inspect_or_compare_setups` via `diffSetups`, `query_race_history`), permitindo perguntas abrangentes entre carros, pistas, setups fixos vs. comerciais e histórico de corridas.
 - **Validação:** `npm test` (557 passed, 1 skipped), `npx tsc --noEmit` PASS e `npm run build` PASS.
 
 ## Correção do loop de abertura do iRacingUI no agente — 26/11/2026
