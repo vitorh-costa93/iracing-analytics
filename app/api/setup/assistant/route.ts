@@ -342,6 +342,7 @@ export async function POST(request: NextRequest) {
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
           model,
+          reasoning_effort: "none",
           messages: openAiMessages,
           tools: TOOLS,
           tool_choice: round < MAX_TOOL_ROUNDS ? "auto" : "none",
