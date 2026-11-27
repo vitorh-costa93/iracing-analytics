@@ -1,5 +1,10 @@
 # Continuidade — iracing-analytics
 
+## Assistente IA (Chatbot) na aba Setup Lab — 27/11/2026
+- **UI & UX (`components/setup/SetupAssistantDrawer.tsx`, `components/setup/SetupLabView.tsx`, `app/night-grid-setup.css`):** Adicionado botão `"Assistente IA"` no topo do Setup Lab que abre um drawer lateral direito no padrão do `Controle de Gastos` (*Night Grid*, até `460px`, fecha com `ESC` ou backdrop), com quick prompts clicáveis, bolhas de conversa em Markdown (`ReactMarkdown`), e suporte a envio de até 4 imagens por mensagem (seletor, `Ctrl+V` e drag-and-drop com compressão em `<canvas>`).
+- **Backend (`app/api/setup/assistant/route.ts`):** Nova rota `POST /api/setup/assistant` usando `modelFor("engineer")` (`gpt-6-luna`), visão (`image_url`) nas 2 últimas mensagens do usuário, logging em `ai_usage` e injeção automática do contexto atual do Setup Lab (carro, pista, season, setup ativo com parâmetros decodificados quando disponíveis, proposta atual do Setup B e últimas 5 corridas do combo em `race_results`).
+- **Validação:** `npm test` (557 passed, 1 skipped), `npx tsc --noEmit` PASS e `npm run build` PASS.
+
 ## Correção do loop de abertura do iRacingUI no agente — 26/11/2026
 - **Diagnóstico (`agent.log`):** Quando havia `PendingResult` pendente ou o cooldown de `MinInterval` (10 min) estava ativo, `ExportWithUiAsync` abria o `iRacingUI` a cada 15s antes de checar `CanRunNow()`, além de `WatchProcesses()` rearmar `RequestScan` sobre a própria abertura do agente e `Export()` não limpar `PendingResult` quando todas as 10 corridas de `Recent Races` já estavam confirmadas.
 - **Correção (`agent/ResultExporter.cs`, `agent/Program.cs`):**

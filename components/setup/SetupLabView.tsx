@@ -1,12 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { Chip, PageTitle, SelectPill } from "@/components/ui";
 import { latestProposal } from "@/lib/engineer-proposal";
 import { setupDisplayName } from "@/lib/setup-names";
 import { trackUiEvent } from "@/lib/track-ui-event";
 import { EngineerChat } from "./EngineerChat";
 import { ProposalPanel } from "./ProposalPanel";
+import { SetupAssistantDrawer } from "./SetupAssistantDrawer";
 import { SetupComparator } from "./SetupComparator";
 import type { ChatMessage, CompareResult, LibraryItem, SetupContext } from "./types";
 
@@ -45,6 +47,7 @@ export default function SetupLabView() {
   const [compareError, setCompareError] = useState<string | null>(null);
   const [library, setLibrary] = useState<{ total: number; importedAt: string | null; items: LibraryItem[] }>({ total: 0, importedAt: null, items: [] });
   const [carNames, setCarNames] = useState<Record<string, string>>({});
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const compareCache = useRef(new Map<string, CompareResult>());
   // Mesmo cuidado da tela antiga: se o piloto trocar de carro/pista no meio do streaming, a resposta
   // pertence a outra conversa e não pode cair na que está na tela (ela já fica salva no servidor).
@@ -250,6 +253,10 @@ export default function SetupLabView() {
           <div className="ngs-grow" />
           {selected && <Chip>{conversation.length ? "conversa salva" : "conversa nova"} · {seasonShort || "season atual"} · {brand} · {selected.track.name}</Chip>}
           <Chip>.sto original nunca é reescrito</Chip>
+          <button type="button" className="ngsa-trigger" onClick={() => setAssistantOpen(true)}>
+            <Sparkles size={14} />
+            <span>Assistente IA</span>
+          </button>
         </div>
 
         {notice && (
@@ -313,6 +320,21 @@ export default function SetupLabView() {
           </div>
         </details>
       </main>
+      <SetupAssistantDrawer
+        open={assistantOpen}
+        onClose={() => setAssistantOpen(false)}
+        context={{
+          carId: selected?.car.id,
+          trackId: selected?.track.id,
+          carName: selected?.car.name,
+          trackName: selected ? `${selected.track.name}${selected.track.variant ? ` (${selected.track.variant})` : ""}` : undefined,
+          seasonName: seasonName || undefined,
+          activeSetupId: activeSetup?.id,
+          activeSetupName: activeSetup ? setupDisplayName(activeSetup.filename) : undefined,
+          setupNames: uploads.map((item) => setupDisplayName(item.filename)),
+          proposalSummary: proposal?.what || undefined,
+        }}
+      />
     </div>
   );
 }
